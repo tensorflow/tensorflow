@@ -1733,9 +1733,9 @@ max {
 }
 
 ENTRY main {
-  p0 = f16[270336,8]{1,0} parameter(0)
+  p0 = f16[303104,8]{1,0} parameter(0)
   neg_inf = f16[] constant(-inf)
-  ROOT res = f16[270336]{0} reduce(p0, neg_inf), dimensions={1}, to_apply=max
+  ROOT res = f16[303104]{0} reduce(p0, neg_inf), dimensions={1}, to_apply=max
 }
 )"));
   const HloInstruction* root = module->entry_computation()->root_instruction();

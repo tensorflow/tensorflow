@@ -50,7 +50,8 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
   float ops_per_ns = flops_per_ns_per_unit * n_compute_units;
 
   // Allow for 2% error to account for imprecise estimates.
-  EXPECT_NEAR(ops_per_ns / 1000.0, expected_tflops, expected_tflops * 0.02);
+  EXPECT_NEAR(ops_per_ns / 1000.0, expected_tflops, expected_tflops * 0.02)
+      << "Failed for dtype: " << xla::PrimitiveType_Name(dtype);
 }
 
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
@@ -78,7 +79,41 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   CheckPeakOpsPerNs(h100_device_info, /*is_matrix_unit=*/false,
                     xla::PrimitiveType::F32, 67.0);
   CheckPeakOpsPerNs(h100_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::S32, 33.5);
+  CheckPeakOpsPerNs(h100_device_info, /*is_matrix_unit=*/false,
                     xla::PrimitiveType::F64, 33.5);
+}
+
+TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
+  DeviceDescription b200_device_info =
+      xla::gpu::TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
+  FillExecutionUnitDesc(b200_device_info.cuda_compute_capability(),
+                        b200_device_info.clock_rate_ghz(), b200_device_info);
+
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F4E2M1FN, 9000.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F8E4M3, 4500.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::S8, 4500.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F16, 2200.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::BF16, 2200.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F32, 1100.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/true,
+                    xla::PrimitiveType::F64, 37.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F16, 75.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::BF16, 75.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F32, 75.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::S32, 37.0);
+  CheckPeakOpsPerNs(b200_device_info, /*is_matrix_unit=*/false,
+                    xla::PrimitiveType::F64, 37.0);
 }
 
 TEST(CudaCoreInfoTableTest, GetFpusPerCore) {

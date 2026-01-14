@@ -40,6 +40,8 @@ struct DTypeDescr {
 constexpr DTypeDescr kI8 = DTypeDescr{/*is_float=*/false, 8};
 constexpr DTypeDescr kI32 = DTypeDescr{/*is_float=*/false, 32};
 
+constexpr DTypeDescr kF4 = DTypeDescr{/*is_float=*/true, 4};
+constexpr DTypeDescr kF6 = DTypeDescr{/*is_float=*/true, 6};
 constexpr DTypeDescr kF8 = DTypeDescr{/*is_float=*/true, 8};
 constexpr DTypeDescr kF16 = DTypeDescr{/*is_float=*/true, 16};
 constexpr DTypeDescr kF32 = DTypeDescr{/*is_float=*/true, 32};
@@ -72,6 +74,16 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
   // [ArithmThroughput] CUDA C++ Best Practices Guide, v13.0
   // Table 5 Throughput of Native Arithmetic Instructions.
   // https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/#throughput-of-native-arithmetic-instructions
+  //
+  // [WikiTensorCore] Wikipedia: CUDA - Tensor cores
+  // Table: FMA per cycle per tensor core
+  // https://en.wikipedia.org/wiki/CUDA#Tensor_cores
+  //
+  // [BlackwellArch] NVIDIA Blackwell Architecture Technical Brief, v2.1
+  // https://resources.nvidia.com/en-us-blackwell-architecture/blackwell-architecture-technical-brief
+  //
+  // [B200Specs] B200 Specs
+  // https://www.techpowerup.com/gpu-specs/b200.c4210
 
   // =============== Constants ===============
   // Make sure to annotate with the sources when adding new data.
@@ -81,6 +93,13 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
   // TC vs non-TC clock rate on H100: 1830 MHz / 1980 MHz
   constexpr float kHopperTcClockScale = 0.924;
   constexpr int kHopperTcPerSm = 4;
+
+  // We got the ratio by fitting the performance numbers from [BlackwellArch]
+  // "Table 3. System Specifications for HGX B300 and HGX B200" to Ops/Clock
+  // data assuming the base frequency is 1965 MHz and there are 148 SMs
+  // [B200Specs].
+  constexpr float kBlackwellTcClockScale = 0.934;
+  constexpr int kBlackwellTcPerSm = 4;  // [B200Specs]
 
   // =============== Lookup table ===============
   // Make sure to annotate with the sources when adding new data.
@@ -113,6 +132,29 @@ const std::vector<DTypeCoreInfo>* FindCoreInfoForDType(CudaComputeCapability cc,
                // HPC" multiplied by 2 like the numbers above.
                // * FP64 TC runs at base clock rate.
                {kF64, kHopperTcPerSm, 32, 1.0},
+           }},
+          {CudaComputeCapability::Blackwell(),
+           /*cuda_core_perf_table=*/
+           {
+               // DType, Units/SM, Ops/Clk
+               {kF16, 128,
+                1},  // [ArithmThroughput]: 2-way SIMD but 64 results per op.
+               {kF32, 128, 1},
+               {kF64, 64, 1},
+               {kI32, 64, 1},
+           },
+           // Data from [WikiTensorCore]
+           /*tensor_core_perf_table=*/
+           {
+               // DType  Units/SM   Ops/Clk  ClockScale
+               {kF4, kBlackwellTcPerSm, 4096, kBlackwellTcClockScale},
+               {kF6, kBlackwellTcPerSm, 2048, kBlackwellTcClockScale},
+               {kI8, kBlackwellTcPerSm, 2048, kBlackwellTcClockScale},
+               {kF8, kBlackwellTcPerSm, 2048, kBlackwellTcClockScale},
+               {kF16, kBlackwellTcPerSm, 1024, kBlackwellTcClockScale},
+               {kF32, kBlackwellTcPerSm, 512, kBlackwellTcClockScale},
+               // Assuming clock rate is the same as base, like Hopper.
+               {kF64, kBlackwellTcPerSm, 16, 1.0},
            }}});
 
   for (const auto& config : *kTable) {
