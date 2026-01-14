@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
+#include "xla/backends/gpu/runtime/convolution_reorder_thunk.pb.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
