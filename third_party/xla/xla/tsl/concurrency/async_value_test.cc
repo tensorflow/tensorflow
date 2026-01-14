@@ -178,7 +178,8 @@ TEST(AsyncValueTest, StackAllocatedAsyncValue) {
   EXPECT_TRUE(ptr.IsAvailable());
 
   // Check that when owner is destructed it calls the payload destructor.
-  std::make_unique<AsyncValueOwningRef<Payload>>(std::move(owner));
+  static_cast<void>(
+      std::make_unique<AsyncValueOwningRef<Payload>>(std::move(owner)));
   EXPECT_EQ(2, counter);
 }
 

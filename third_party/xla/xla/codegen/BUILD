@@ -57,8 +57,6 @@ cc_library(
     srcs = ["llvm_kernel_source.cc"],
     hdrs = ["llvm_kernel_source.h"],
     deps = [
-        ":kernel_definition",
-        ":kernel_emitter",
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
         "@llvm-project//llvm:Core",
@@ -77,7 +75,6 @@ cc_library(
     deps = [
         ":kernel_source",
         ":kernel_spec",
-        "//xla/tsl/platform:logging",
     ],
 )
 
@@ -86,11 +83,8 @@ cc_library(
     srcs = ["mlir_kernel_source.cc"],
     hdrs = ["mlir_kernel_source.h"],
     deps = [
-        ":kernel_definition",
-        ":kernel_emitter",
         ":kernel_source",
         "//xla:util",
-        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -117,7 +111,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
@@ -136,8 +129,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

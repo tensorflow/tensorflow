@@ -132,9 +132,11 @@ ProcessNewGpuCompilationEnvironment(
 }  // namespace xla
 
 static bool InitModule() {
-  xla::CompilationEnvironments::RegisterProcessNewEnvFn(
-      xla::GpuCompilationEnvironment::descriptor(),
-      xla::ProcessNewGpuCompilationEnvironment);
+  // TODO(b/284274097): Enable the registration once GPU compilation environment
+  // is well supported.
+  // xla::CompilationEnvironments::RegisterProcessNewEnvFn(
+  //     xla::GpuCompilationEnvironment::descriptor(),
+  //     xla::ProcessNewGpuCompilationEnvironment);
   return true;
 }
 static bool module_initialized = InitModule();

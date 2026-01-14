@@ -31,11 +31,11 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
+#include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
+#include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -73,12 +73,12 @@ class DistributedRuntimeCoordinationServiceClient
   GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) override;
   absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) override;
-  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::StatusOr<CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
-  std::unique_ptr<tsl::CoordinationServiceAgent> coord_agent_;
-  tensorflow::CoordinationServiceConfig config_;
+  std::unique_ptr<CoordinationServiceAgent> coord_agent_;
+  CoordinationServiceAgent::Config config_;
   absl::Duration min_connect_barrier_timeout_;
   int task_id_;
 };
@@ -87,30 +87,25 @@ DistributedRuntimeCoordinationServiceClient::
     DistributedRuntimeCoordinationServiceClient(
         std::shared_ptr<::grpc::Channel> channel, const Options& options) {
   // Convert options to coordination config.
-  tensorflow::CoordinationServiceConfig config;
-  config.set_service_type("standalone");
-  config.set_service_leader("/job:jax_worker/task:0");
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.init_timeout));
-  config.set_heartbeat_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.heartbeat_timeout));
-  config.set_cluster_register_with_barrier(true);
-  config.set_shutdown_barrier_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.shutdown_timeout));
-  config.set_agent_destruction_without_shutdown(
-      !options.shutdown_on_destruction);
-  config.set_poll_for_error_from_service_at_startup(
-      options.poll_for_error_from_service_at_startup);
+  CoordinationServiceAgent::Config config;
+  config.service_leader = "/job:jax_worker/task:0";
+  config.cluster_register_timeout = options.init_timeout;
+  config.heartbeat_timeout = options.heartbeat_timeout;
+  config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;
+  config.poll_for_error_from_service_at_startup =
+      options.poll_for_error_from_service_at_startup;
 
-  std::unique_ptr<tsl::CoordinationClient> leader_client;
-  leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
-  coord_agent_ = tsl::CreateCoordinationServiceAgent();
-  const absl::Status status = coord_agent_->Initialize(
+  std::unique_ptr<CoordinationClient> leader_client;
+  leader_client.reset(NewGrpcCoordinationClient(channel));
+  auto agent = CoordinationServiceAgent::Create(
       options.env, "jax_worker", options.node_id, config,
       std::move(leader_client), options.missed_heartbeat_callback,
       options.recoverable);
-  if (!status.ok()) {
-    LOG(ERROR) << "Coordination agent failed to initialize: " << status;
+  if (!agent.ok()) {
+    LOG(ERROR) << "Coordination agent failed to initialize: " << agent.status();
+  } else {
+    coord_agent_ = *std::move(agent);
   }
   task_id_ = options.node_id;
   config_ = config;
@@ -132,7 +127,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            "scheduled, or 3) scheduling delays. Consider setting a longer "
            "initialization timeout if such delays are expected, the timeout is "
            "currently set to: "
-        << absl::Milliseconds(config_.cluster_register_timeout_in_ms())
+        << config_.cluster_register_timeout
         << ".\n\nOriginal runtime error: " << s;
   } else {
     LOG(ERROR) << "Failed to connect to distributed JAX controller: " << s;
@@ -232,12 +227,12 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
 
   // Get the set of live tasks.
   TF_ASSIGN_OR_RETURN(
-      const std::vector<tsl::CoordinationServiceAgent::AliveTask> live_tasks,
+      const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
       coord_agent_->GetAliveTasks(tasks));
 
   // Extract the node ids from the live tasks.
   absl::flat_hash_map<int32_t, IncarnationId> live_nodes;
-  for (const tsl::CoordinationServiceAgent::AliveTask& task : live_tasks) {
+  for (const CoordinationServiceAgent::AliveTask& task : live_tasks) {
     live_nodes[task.task_id] = task.incarnation_id;
   }
   return live_nodes;
@@ -258,7 +253,7 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
   return live_nodes;
 }
 
-absl::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }

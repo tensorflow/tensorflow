@@ -260,7 +260,19 @@ NB_MODULE(_profiler, m) {
           &tensorflow::ProfileOptions::set_raise_error_on_start_failure)
       .def_prop_rw(
           "advanced_configuration",
-          &tensorflow::ProfileOptions::advanced_configuration,
+          [](const tensorflow::ProfileOptions& options) {
+            nb::dict dict;
+            for (const auto& [key, value] : options.advanced_configuration()) {
+              if (value.has_bool_value()) {
+                dict[key.c_str()] = value.bool_value();
+              } else if (value.has_int64_value()) {
+                dict[key.c_str()] = value.int64_value();
+              } else {
+                dict[key.c_str()] = value.string_value();
+              }
+            }
+            return dict;
+          },
           [](tensorflow::ProfileOptions* options, const nb::dict& dict) {
             if (options->mutable_advanced_configuration() == nullptr) {
               throw xla::XlaRuntimeError("advanced_configuration is null");

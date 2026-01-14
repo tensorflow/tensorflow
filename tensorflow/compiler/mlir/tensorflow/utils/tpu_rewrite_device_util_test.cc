@@ -793,8 +793,8 @@ TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismFalse) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -811,8 +811,8 @@ TEST(TPURewriteDeviceUtilTest, TestHasModelParallelismTrue) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 5));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -830,8 +830,8 @@ TEST(TPURewriteDeviceUtilTest,
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -848,8 +848,8 @@ TEST(TPURewriteDeviceUtilTest,
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices devices;
@@ -865,8 +865,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
 
@@ -884,8 +884,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
@@ -904,8 +904,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingDeviceAssignment) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -924,8 +924,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceAssignment) {
   mlir::OpBuilder builder(module_ref->getBodyRegion());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -951,8 +951,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailBadDeviceName) {
                     llvm::ArrayRef<llvm::StringRef>({"bad_device_name"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -974,16 +974,16 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceTPUReplicate) {
 
   llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<llvm::StringRef, 4>>
       devices;
-  auto replicate = builder.create<mlir::tf_device::ReplicateOp>(
-      mlir::UnknownLoc::get(&context), /*num_replicas=*/2, devices,
+  auto replicate = mlir::tf_device::ReplicateOp::create(
+      builder, mlir::UnknownLoc::get(&context), /*num_replicas=*/2, devices,
       llvm::ArrayRef<std::pair<mlir::ValueRange, mlir::Type>>{},
       mlir::ValueRange{}, mlir::TypeRange{});
   builder.setInsertionPoint(&replicate.getBody().front(),
                             replicate.getBody().front().begin());
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -1007,8 +1007,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceNotReplicated) {
                      "/job:worker/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
   cluster->setAttr(kNumCoresPerReplicaAttr,
                    builder.getIntegerAttr(builder.getIntegerType(64), 1));
   cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
@@ -1034,8 +1034,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceInGenericPipeline) {
                     {"/job:localhost/replica:0/task:0/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
 
   mlir::TF::RuntimeDevices runtime_devices;
   (void)GetDevicesFromOp(*module_ref, &runtime_devices);
@@ -1060,8 +1060,8 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceInGenericPipelineMultiCPUs) {
                      "/job:worker/replica:0/task:2/device:CPU:0"})));
 
   llvm::SmallVector<mlir::Type, 8> result_types;
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      mlir::UnknownLoc::get(&context), result_types);
+  auto cluster = mlir::tf_device::ClusterOp::create(
+      builder, mlir::UnknownLoc::get(&context), result_types);
 
   mlir::TF::RuntimeDevices runtime_devices;
   (void)GetDevicesFromOp(*module_ref, &runtime_devices);

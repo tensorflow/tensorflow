@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
@@ -156,6 +157,17 @@ absl::StatusOr<TensorValue> EmitNestedFusion(
 
   return EmitScope(b, to_emit, region_values);
 }
+
+// Get a constant with all high bits of the same type as provided.
+mlir::Value OnesLike(mlir::ImplicitLocOpBuilder& b, mlir::Type type) {
+  mlir::Type element_type = mlir::getElementTypeOrSelf(type);
+  CHECK(element_type.isInteger()) << "OnesLike only supports integer types.";
+
+  int64_t width = element_type.getIntOrFloatBitWidth();
+  mlir::APInt all_ones = mlir::APInt::getAllOnes(width);
+  return mlir::createScalarOrSplatConstant(b, b.getLoc(), type, all_ones);
+}
+
 }  // namespace
 
 SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
@@ -425,10 +437,12 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kFloor:
       return mm::FloorOp::create(b, inputs[0]);
     case HloOpcode::kNot:
-      return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0]));
+      return ma::XOrIOp::create(b, inputs[0], OnesLike(b, inputs[0].getType()));
     case HloOpcode::kNegate:
-      // NegFOp is not supported by Triton.
-      return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
+      if (is_integer) {
+        return Subtract(b, {ZerosLike(b, inputs[0]), inputs[0]});
+      }
+      return ma::NegFOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
       TF_ASSIGN_OR_RETURN(
           Type dst_ty, PrimitiveTypeToMlirType(b, hlo.shape().element_type()));

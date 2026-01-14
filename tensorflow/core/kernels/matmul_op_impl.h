@@ -477,7 +477,7 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
 namespace {
 // A dummy type to group matmul autotune results together.
 struct BlasLtMatmulAutoTuneGroup {
-  static string name() { return "MatmulLt"; }
+  static std::string name() { return "MatmulLt"; }
 };
 
 typedef AutotuneSingleton<BlasLtMatmulAutoTuneGroup, BlasLtMatmulPlanParams,
@@ -493,7 +493,7 @@ typedef AutotuneSingleton<BlasLtMatmulAutoTuneGroup, BlasLtMatmulPlanParams,
 class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
-  using DeviceMemoryBytes = se::DeviceMemory<uint8>;
+  using DeviceMemoryBytes = stream_executor::DeviceAddress<uint8>;
 
   BlasScratchAllocator(OpKernelContext* context)
       : memory_limit_(0), total_byte_size_(0), context_(context) {}
@@ -503,21 +503,22 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return memory_limit_; }
 
-  tsl::StatusOr<DeviceMemoryBytes> AllocateBytes(int64_t byte_size) override {
+  absl::StatusOr<BlasScratchAllocator::DeviceMemoryBytes> AllocateBytes(
+      int64_t byte_size) override {
     Tensor temporary_memory;
 
     if (memory_limit_ > 0 && byte_size > memory_limit_) {
-      return tsl::Status{
+      return absl::Status{
           absl::StatusCode::kUnavailable,
           absl::StrCat("Requested memory size (", byte_size,
                        ") exceeds the memory limit (", memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.retry_on_failure = false;
-    Status allocation_status(context_->allocate_temp(
+    absl::Status allocation_status(context_->allocate_temp(
         DT_UINT8, TensorShape({byte_size}), &temporary_memory));
     if (!allocation_status.ok()) {
-      return tsl::Status{
+      return absl::Status{
           absl::StatusCode::kUnavailable,
           absl::StrCat("Failed to allocate requested memory of (", byte_size,
                        ").")};
@@ -526,11 +527,12 @@ class BlasScratchAllocator : public se::ScratchAllocator {
     // allocator.
     allocated_tensors_.push_back(temporary_memory);
     total_byte_size_ += byte_size;
-    return tsl::StatusOr<DeviceMemoryBytes>(DeviceMemoryBytes::MakeFromByteSize(
-        temporary_memory.flat<uint8>().data(),
-        temporary_memory.flat<uint8>().size()));
+    return absl::StatusOr<BlasScratchAllocator::DeviceMemoryBytes>(
+        DeviceMemoryBytes::MakeFromByteSize(
+            temporary_memory.flat<uint8_t>().data(),
+            temporary_memory.flat<uint8_t>().size()));
   }
-  int64 TotalByteSize() { return total_byte_size_; }
+  int64_t TotalByteSize() { return total_byte_size_; }
 
  private:
   int64_t memory_limit_;
@@ -548,9 +550,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
-    const uint64 m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
-    const uint64 k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
-    const uint64 n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
+    const uint64_t m = in_x.dim_size(adj_x || trans_x ? 2 : 1);
+    const uint64_t k = in_x.dim_size(adj_x || trans_x ? 1 : 2);
+    const uint64_t n = in_y.dim_size(adj_y || trans_y ? 1 : 2);
     const int64_t batch_size = bcast.output_batch_size();
     auto blas_transpose_a = trans[adj_x ? 2 : (trans_x ? 1 : 0)];
     auto blas_transpose_b = trans[adj_y ? 2 : (trans_y ? 1 : 0)];
@@ -574,9 +576,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     auto* a_base_ptr = in_x.template flat<Scalar>().data();
     auto* b_base_ptr = in_y.template flat<Scalar>().data();
     auto* c_base_ptr = out->template flat<Scalar>().data();
-    uint64 a_stride;
-    uint64 b_stride;
-    uint64 c_stride;
+    uint64_t a_stride;
+    uint64_t b_stride;
+    uint64_t c_stride;
 
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
@@ -658,9 +660,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
             // Create a new scratch allocator with every autotuning run so that
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
-            Status cublas_launch_status = plan_and_algorithms->ExecuteOnStream(
-                stream, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i,
-                scratch_allocator, se::DeviceMemoryBase{}, &profile_result);
+            absl::Status cublas_launch_status =
+                plan_and_algorithms->ExecuteOnStream(
+                    stream, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0], i,
+                    scratch_allocator, stream_executor::DeviceAddressBase{},
+                    &profile_result);
 
             VLOG(4) << "  Autotune algorithm " << i
                     << " result: " << profile_result.elapsed_time_in_ms()

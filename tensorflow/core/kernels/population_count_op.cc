@@ -49,7 +49,7 @@ class PopulationCountOp : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, input_t.shape(), &output_t));
 
     auto input = input_t.flat<T>();
-    auto output = output_t->flat<uint8>();
+    auto output = output_t->flat<uint8_t>();
 
     functor::PopulationCount<Device, T> popcnt;
     popcnt(c, input, output);
@@ -77,7 +77,7 @@ namespace functor {
 namespace {
 
 template <typename T>
-inline uint8 PopCnt(const T v);
+inline uint8_t PopCnt(const T v);
 
 #define POPCNT(T, N)                  \
   template <>                         \
@@ -86,13 +86,13 @@ inline uint8 PopCnt(const T v);
   }
 
 POPCNT(int8_t, 8);
-POPCNT(uint8, 8);
+POPCNT(uint8_t, 8);
 POPCNT(int16_t, 16);
-POPCNT(uint16, 16);
+POPCNT(uint16_t, 16);
 POPCNT(int32_t, 32);
-POPCNT(uint32, 32);
+POPCNT(uint32_t, 32);
 POPCNT(int64_t, 64);
-POPCNT(uint64, 64);
+POPCNT(uint64_t, 64);
 
 #undef POPCNT
 
@@ -101,9 +101,9 @@ POPCNT(uint64, 64);
 template <typename T>
 struct PopulationCount<CPUDevice, T> {
   void operator()(OpKernelContext* c, typename TTypes<T>::ConstFlat input,
-                  TTypes<uint8>::Flat output) {
+                  TTypes<uint8_t>::Flat output) {
     const T* input_ptr = input.data();
-    uint8* output_ptr = output.data();
+    uint8_t* output_ptr = output.data();
     auto shard = [input_ptr, output_ptr](int64_t start, int64_t limit) {
       for (int64_t i = start; i < limit; ++i) {
         output_ptr[i] = PopCnt<T>(input_ptr[i]);
@@ -113,8 +113,9 @@ struct PopulationCount<CPUDevice, T> {
     // Approximating cost of popcnt: convert T to int64
     // (std::bitset constructor) and convert int64 to uint8
     // (bitset.count() -> output).  The .count() itself is relatively cheap.
-    const double total_cost = (Eigen::TensorOpCost::CastCost<T, uint8>() +
-                               Eigen::TensorOpCost::CastCost<int64_t, uint8>());
+    const double total_cost =
+        (Eigen::TensorOpCost::CastCost<T, uint8_t>() +
+         Eigen::TensorOpCost::CastCost<int64_t, uint8_t>());
     const int64_t shard_cost =
         (total_cost >= static_cast<double>(std::numeric_limits<int64_t>::max()))
             ? std::numeric_limits<int64_t>::max()

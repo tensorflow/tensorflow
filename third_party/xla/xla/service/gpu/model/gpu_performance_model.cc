@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -318,7 +318,6 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }
-
 
 }  // namespace gpu
 }  // namespace xla

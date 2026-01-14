@@ -141,7 +141,6 @@ cuda_py_strict_test(
     shard_count = 15,
     tags = [
         "no_oss",  # b/241024908
-        "cuda-only",
         "nomac",  # b/181799478
         "notap",  # b/31080670
     ],

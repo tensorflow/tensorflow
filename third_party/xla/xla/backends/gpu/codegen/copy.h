@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
@@ -33,9 +32,8 @@ namespace gpu {
 // implemented using `memcpy`s.
 class MemcpyFusion : public FusionInterface {
  public:
-  MemcpyFusion(const HloFusionAnalysis& analysis,
-               const BufferAssignment* buffer_assignment)
-      : analysis_(analysis), buffer_assignment_(buffer_assignment) {}
+  explicit MemcpyFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
@@ -43,7 +41,6 @@ class MemcpyFusion : public FusionInterface {
 
  private:
   const HloFusionAnalysis& analysis_;
-  const BufferAssignment* buffer_assignment_;
 };
 
 // Special case of a fusion consisting only of instructions that can be
@@ -52,9 +49,8 @@ class MemcpyFusion : public FusionInterface {
 // (e.g. dynamic-slice in a while loop).
 class DynamicMemcpyFusion : public FusionInterface {
  public:
-  DynamicMemcpyFusion(const HloFusionAnalysis& analysis,
-                      const BufferAssignment* buffer_assignment)
-      : analysis_(analysis), buffer_assignment_(buffer_assignment) {}
+  explicit DynamicMemcpyFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
@@ -70,7 +66,6 @@ class DynamicMemcpyFusion : public FusionInterface {
 
  private:
   const HloFusionAnalysis& analysis_;
-  const BufferAssignment* buffer_assignment_;
 };
 
 }  // namespace gpu

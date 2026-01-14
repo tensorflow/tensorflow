@@ -104,7 +104,8 @@ CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
       out_desc.compute_type,
       se::gpu::GetBlasComputationType(
           gemm_config.precision_algorithm, gemm_config.lhs_layout.dtype,
-          gemm_config.output_layout.dtype, gemm_config.compute_precision));
+          gemm_config.output_layout.dtype, gemm_config.compute_precision,
+          target_config().device_description.gpu_compute_capability()));
 
   se::blas::BlasSupport* blas = stream_executor()->AsBlas();
   if (blas == nullptr) {
@@ -158,6 +159,8 @@ absl::Status CublasBackend::ApplyConfig(HloInstruction& instr,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
+  backend_config.set_autotune_workspace_size(
+      gemm_key.autotune_workspace_size());
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();
 }

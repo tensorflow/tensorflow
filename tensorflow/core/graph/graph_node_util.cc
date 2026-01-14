@@ -25,9 +25,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
+std::string SummarizeNode(const Node& node) {
+  return SummarizeNodeDef(node.def());
+}
 
-string FormatNodeForError(const Node& node) {
+std::string FormatNodeForError(const Node& node) {
   return FormatNodeDefForError(node.def());
 }
 
@@ -41,9 +43,10 @@ absl::Status AttachDef(const absl::Status& status, const Node& node,
   return AttachDef(status, node.def(), allow_multiple_formatted_node);
 }
 
-absl::btree_set<string> GetMergedNames(const std::vector<string>& from_names,
-                                       const std::vector<string>& to_names) {
-  absl::btree_set<string> merged_names;
+absl::btree_set<std::string> GetMergedNames(
+    const std::vector<std::string>& from_names,
+    const std::vector<std::string>& to_names) {
+  absl::btree_set<std::string> merged_names;
   merged_names.insert(from_names.begin(), from_names.end());
   merged_names.insert(to_names.begin(), to_names.end());
   return merged_names;

@@ -184,7 +184,7 @@ cc_library(
         "//xla/service:hlo_runner_pjrt",
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/service:platform_util",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/lib/core:status_test_util",
@@ -232,7 +232,6 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -244,7 +243,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -369,12 +367,14 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
         "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
@@ -451,8 +451,8 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:stream_pool",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -520,10 +520,10 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:executable",
         "//xla/service:hlo_module_config",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
@@ -801,9 +801,12 @@ xla_test(
     name = "conditional_test",
     srcs = ["conditional_test.cc"],
     shard_count = 2,
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
+        ":literal_test_util",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:error_spec",
@@ -812,11 +815,14 @@ xla_test(
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1505,7 +1511,6 @@ xla_test(
     ],
     shard_count = 40,
     tags = [
-        "cuda-only",
         "optonly",
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -1538,7 +1543,6 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
-        "cuda-only",
         "optonly",
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -1572,7 +1576,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 40,
     tags = [
-        "cuda-only",
         "optonly",
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -1610,7 +1613,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 40,
     tags = [
-        "cuda-only",
         "optonly",
         "test_migrated_to_hlo_runner_pjrt",
     ],
@@ -1675,7 +1677,6 @@ xla_test(
     backends = ["gpu"],
     shard_count = 25,
     tags = [
-        "cuda-only",
         "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
@@ -1761,7 +1762,6 @@ xla_test(
     name = "convolution_cudnn_test",
     timeout = "long",
     srcs = ["convolution_cudnn_test.cc"],
-    tags = ["cuda-only"],  # No int8
     backends = [
         "v100",
         "a100",
@@ -2214,20 +2214,22 @@ xla_test(
         "cpu",
         "interpreter",
     ],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":hlo_test_base",
-        ":test_utils",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2918,10 +2920,6 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
-        ],
     },
     backends = [
         "gpu",
@@ -2973,9 +2971,6 @@ xla_test(
         "gpu": [
             "multi_gpu",
         ],
-        "nvgpu_any": [
-            "no_oss",
-        ],
     },
     backends = ["gpu"],
     deps = [
@@ -2998,7 +2993,7 @@ xla_test(
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
         "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
@@ -3017,10 +3012,6 @@ xla_test(
     backend_tags = {
         "gpu": [
             "multi_gpu",
-        ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
         ],
     },
     backends = [
@@ -3044,10 +3035,6 @@ xla_test(
     backend_tags = {
         "gpu": [
             "multi_gpu",
-        ],
-        "nvgpu_any": [
-            "broken",
-            "no_oss",
         ],
     },
     backends = [
@@ -3537,7 +3524,7 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
@@ -3608,22 +3595,15 @@ xla_test(
 xla_test(
     name = "reshape_motion_test",
     srcs = ["reshape_motion_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":client_library_test_base",
-        ":literal_test_util",
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
-        "//xla:array2d",
-        "//xla:array4d",
-        "//xla:literal",
-        "//xla:reference_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/testlib:test_helpers",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -3677,7 +3657,7 @@ xla_test(
         "//xla/service:generic_transfer_manager",
         "//xla/service:shaped_buffer",
         "//xla/service:stream_pool",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
@@ -3871,13 +3851,15 @@ xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
     real_hardware_only = True,
-    shard_count = 3,
+    shard_count = 50,
     tags = [
         "optonly",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         ":client_library_test_runner_mixin",
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array",
         "//xla:array2d",
@@ -4154,7 +4136,6 @@ cc_library(
     hdrs = ["hlo_test_base_with_mlir_context.h"],
     deps = [
         ":hlo_test_base",
-        "//xla/hlo/analysis:symbolic_expr",
         "@llvm-project//mlir:IR",
     ],
 )

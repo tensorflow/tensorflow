@@ -182,9 +182,9 @@ absl::Status CSRSparseMatrixTranspose<Device, T>::operator()(
 
   // Set the output row pointers to zero, in case we hit any empty
   // input batches.
-  functor::SetZeroFunctor<Device, int32> set_zero;
+  functor::SetZeroFunctor<Device, int32_t> set_zero;
   const Device& d = ctx->eigen_device<Device>();
-  set_zero(d, output_row_ptr_t.flat<int32>());
+  set_zero(d, output_row_ptr_t.flat<int32_t>());
 
   functor::CSRSparseMatrixTransposeComponent<Device, T> transpose_component;
   for (int i = 0; i < batch_size; ++i) {
@@ -255,8 +255,8 @@ struct CSRSparseMatrixTransposeComponent<CPUDevice, T> {
 
 template <typename T>
 struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
-  Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& x,
-                    CSRComponent<T>* y) {
+  absl::Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& x,
+                          CSRComponent<T>* y) {
     TF_RETURN_IF_ERROR(ValidateTransposeInputs(x, *y));
     GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
@@ -277,7 +277,7 @@ struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
         x.col_ind.data() /*csrColInd*/, y->values.data() /*cscVal*/,
         y->col_ind.data() /*cscRowInd*/, y->row_ptr.data() /*cscColPtr*/,
         copyValues);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

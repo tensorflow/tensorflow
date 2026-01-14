@@ -44,13 +44,9 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
                        &GrpcCoordinationServiceImpl::method##Handler, false); \
   } while (0)
   ENQUEUE_REQUEST(RegisterTask);
-  ENQUEUE_REQUEST(WaitForAllTasks);
   ENQUEUE_REQUEST(ShutdownTask);
   ENQUEUE_REQUEST(ResetTask);
   ENQUEUE_REQUEST(Heartbeat);
-  ENQUEUE_REQUEST(ReportErrorToTask);
-  ENQUEUE_REQUEST(ReportErrorToService);
-  ENQUEUE_REQUEST(GetTaskState);
   ENQUEUE_REQUEST(WatchJobState);
   ENQUEUE_REQUEST(InsertKeyValue);
   ENQUEUE_REQUEST(GetKeyValue);

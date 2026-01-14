@@ -294,7 +294,7 @@ TEST_P(LoadedExecutableImplTest, Analysis) {
 
   TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
                           executable->GetCostAnalysis());
-  EXPECT_THAT(cost_analysis.map(), Not(IsEmpty()));
+  EXPECT_FALSE(cost_analysis.IsEmpty());
 }
 
 TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {

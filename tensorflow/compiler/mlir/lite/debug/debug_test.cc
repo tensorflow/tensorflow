@@ -103,20 +103,21 @@ class InitPassManagerTest : public testing::Test {
     context_.loadAllAvailableDialects();
 
     mlir::OpBuilder builder(&context_);
-    module_ = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
+    module_ = mlir::ModuleOp::create(builder, builder.getUnknownLoc());
 
     builder.setInsertionPointToStart(module_->getBody());
-    auto func = builder.create<mlir::func::FuncOp>(  //
-        builder.getUnknownLoc(), "main", builder.getFunctionType({}, {}));
+    auto func = mlir::func::FuncOp::create(builder,  //
+                                           builder.getUnknownLoc(), "main",
+                                           builder.getFunctionType({}, {}));
     func->setAttr("tfl.func", builder.getUnitAttr());
     builder.setInsertionPointToStart(func.addEntryBlock());
     llvm::SmallVector<int> shape{1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    builder.create<mlir::arith::ConstantOp>(
-        builder.getUnknownLoc(),
+    mlir::arith::ConstantOp::create(
+        builder, builder.getUnknownLoc(),
         mlir::DenseIntElementsAttr::get(
             mlir::RankedTensorType::get(shape.size(), builder.getI32Type()),
             shape));
-    builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+    mlir::func::ReturnOp::create(builder, builder.getUnknownLoc());
   }
 
   absl::Status GetDumpDir(std::string* dump_dir) {

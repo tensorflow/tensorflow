@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -544,7 +543,7 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 }
 
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
-                                 const TransposeSpec& spec,
+                                 const PackedTransposeDescription& spec,
                                  absl::Span<const int64_t> output_block_tile,
                                  int64_t num_shmem_groups,
                                  MLIRContext* mlir_context)
@@ -677,8 +676,8 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     auto* root_tuple = fusion.fused_expression_root();
     for (auto root : side_output_roots_) {
       auto indexing = ComposeIndexingMaps(
-          input_indexing,
-          GetBitcastMap(spec_.input_shape(), root->shape(), mlir_context_));
+          input_indexing, GetBitcastMap(spec_.original_input_shape(),
+                                        root->shape(), mlir_context_));
       indexing.Simplify();
       side_output_indices.push_back(ApplyIndexing(
           indexing, thread_and_block_ids, symbol_values, nested_b));
@@ -865,7 +864,7 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
 
   // Actual indexing.
   auto canonical_input_shape_to_real_shape = GetBitcastMap(
-      spec_.canonical_input_shape, spec_.input_shape(), mlir_context);
+      spec_.canonical_input_shape, spec_.original_input_shape(), mlir_context);
   // When we compose, the constraints w.r.t. to the input dimension sizes will
   // be added.
   auto input_indexing = ComposeIndexingMaps(
@@ -1001,8 +1000,9 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   canonical_output_indexing.Simplify();
 
   // Actual indexing.
-  auto canonical_output_shape_to_real_shape = GetBitcastMap(
-      spec_.canonical_output_shape, spec_.output_shape(), mlir_context);
+  auto canonical_output_shape_to_real_shape =
+      GetBitcastMap(spec_.canonical_output_shape, spec_.original_output_shape(),
+                    mlir_context);
   // When we compose, the constraints w.r.t. to the output dimension sizes will
   // be added.
   auto output_indexing = ComposeIndexingMaps(
@@ -1013,8 +1013,7 @@ IndexingMap PackedTranspose::GetOutputIndexing(
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
     const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
-  auto spec = GetTransposeSpec(
-      Cast<HloTransposeInstruction>(analysis.tiled_transpose().instr));
+  PackedTransposeDescription spec(analysis.tiled_transpose());
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
     return std::make_unique<PackedTranspose>(

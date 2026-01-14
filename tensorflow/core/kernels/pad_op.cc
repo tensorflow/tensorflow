@@ -400,38 +400,38 @@ TF_CALL_uint8(REGISTER_GPU_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Pad")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tpaddings")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>);
+                        PadOp<CPUDevice, int32_t, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Pad")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tpaddings")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>);
+                        PadOp<CPUDevice, int32_t, int64_t>);
 REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tpaddings")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>);
+                        PadOp<CPUDevice, int32_t, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("PadV2")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tpaddings")
                             .HostMemory("input")
                             .HostMemory("paddings")
                             .HostMemory("constant_values")
                             .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>);
+                        PadOp<CPUDevice, int32_t, int64_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

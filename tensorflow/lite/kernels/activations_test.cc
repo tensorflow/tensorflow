@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 
@@ -574,18 +575,17 @@ TEST_P(TanhOpTest, Tanh) {
 }
 
 TEST_P(TanhOpTest, TanhFloat16) {
-  FloatActivationsOpModel<Eigen::half> m(
-      GetRegistration(), BuiltinOperator_TANH,
-      /*input=*/{TensorType_FLOAT16, {1, 2, 4, 1}});
+  FloatActivationsOpModel<half> m(GetRegistration(), BuiltinOperator_TANH,
+                                  /*input=*/{TensorType_FLOAT16, {1, 2, 4, 1}});
   m.SetInput({
-      Eigen::half(0),
-      Eigen::half(-6),
-      Eigen::half(2),
-      Eigen::half(4),
-      Eigen::half(3),
-      Eigen::half(-2),
-      Eigen::half(10),
-      Eigen::half(1),
+      half(0),
+      half(-6),
+      half(2),
+      half(4),
+      half(3),
+      half(-2),
+      half(10),
+      half(1),
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
@@ -1210,18 +1210,17 @@ TEST_P(LogisticOpTest, SigmoidFloat32) {
 }
 
 TEST_P(LogisticOpTest, SigmoidFloat16) {
-  FloatActivationsOpModel<Eigen::half> m(
-      GetRegistration(), BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_FLOAT16, {1, 2, 4, 1}});
+  FloatActivationsOpModel<half> m(GetRegistration(), BuiltinOperator_LOGISTIC,
+                                  /*input=*/{TensorType_FLOAT16, {1, 2, 4, 1}});
   m.SetInput({
-      Eigen::half{-1.2f},
-      Eigen::half{-6.0f},
-      Eigen::half{2.0f},
-      Eigen::half{4.0f},
-      Eigen::half{3.0f},
-      Eigen::half{-2.0f},
-      Eigen::half{10.0f},
-      Eigen::half{1.0f},
+      half{-1.2f},
+      half{-6.0f},
+      half{2.0f},
+      half{4.0f},
+      half{3.0f},
+      half{-2.0f},
+      half{10.0f},
+      half{1.0f},
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(

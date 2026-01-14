@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/shape_util.h"
@@ -31,9 +32,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-GpuCollectives* GpuCollectives::Default() {
+GpuCollectives* GpuCollectives::Default(absl::string_view platform_name) {
   absl::StatusOr<Collectives*> collectives =
-      CollectivesRegistry::Default("gpu");
+      CollectivesRegistry::Default(platform_name);
   CHECK_OK(collectives) << "Failed to get GPU collectives";  // Crash OK
 
   if (auto* gpu_collectives = tsl::down_cast<GpuCollectives*>(*collectives)) {

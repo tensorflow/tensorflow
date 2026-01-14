@@ -35,6 +35,11 @@ hwloc_topology_t GetHWLocTopology() {
       LOG(ERROR) << "Call to hwloc_topology_init() failed";
       return;
     }
+    if (hwloc_topology_set_flags(hwloc_topology_handle,
+                                 HWLOC_TOPOLOGY_FLAG_DONT_CHANGE_BINDING)) {
+      LOG(ERROR) << "Call to hwloc_topology_set_flags() failed";
+      return;
+    }
     if (hwloc_topology_load(hwloc_topology_handle)) {
       LOG(ERROR) << "Call to hwloc_topology_load() failed";
       return;
@@ -157,7 +162,7 @@ void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
       LOG(ERROR) << "Failed to find hwloc NUMA node " << node;
     }
   }
-  return ::tsl::port::AlignedMalloc(size, minimum_alignment);
+  return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
 }
 
 void NUMAFree(void* ptr, size_t size) {

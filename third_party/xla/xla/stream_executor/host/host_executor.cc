@@ -85,7 +85,7 @@ DeviceAddressBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   // This should probably be kept in sync with
   // tsl::Allocator::kAllocatorAlignment.
   return DeviceAddressBase(
-      tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+      tsl::port::AlignedMalloc(size, static_cast<std::align_val_t>(64)), size);
 }
 
 void HostExecutor::Deallocate(DeviceAddressBase* mem) {
@@ -148,8 +148,8 @@ absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(
 }
 
 absl::StatusOr<std::unique_ptr<MemoryAllocator>>
-HostExecutor::CreateMemoryAllocator(MemoryType type) {
-  if (type == MemoryType::kHost) {
+HostExecutor::CreateMemoryAllocator(MemorySpace type) {
+  if (type == MemorySpace::kHost) {
     return std::make_unique<GenericMemoryAllocator>(
         [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
           void* ptr = new char[size];

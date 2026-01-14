@@ -49,24 +49,24 @@ class SubgraphTest : public ::testing::Test {
 
   ~SubgraphTest() override {}
 
-  void ExpectOK(const string& gdef_ascii) {
+  void ExpectOK(const std::string& gdef_ascii) {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef_));
     GraphConstructorOptions opts;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef_, g_.get()));
   }
 
-  Node* FindNode(const string& name) {
+  Node* FindNode(const std::string& name) {
     for (Node* n : g_->nodes()) {
       if (n->name() == name) return n;
     }
     return nullptr;
   }
 
-  bool HasNode(const string& name) { return FindNode(name) != nullptr; }
+  bool HasNode(const std::string& name) { return FindNode(name) != nullptr; }
 
-  void ExpectNodes(const string& nodes) {
+  void ExpectNodes(const std::string& nodes) {
     int count = 0;
-    std::vector<string> actual_nodes;
+    std::vector<std::string> actual_nodes;
     for (Node* n : g_->nodes()) {
       if (n->IsOp()) {
         count++;
@@ -77,9 +77,9 @@ class SubgraphTest : public ::testing::Test {
 
     LOG(INFO) << "Nodes present: " << absl::StrJoin(actual_nodes, " ");
 
-    std::vector<string> expected_nodes = str_util::Split(nodes, ',');
+    std::vector<std::string> expected_nodes = str_util::Split(nodes, ',');
     std::sort(expected_nodes.begin(), expected_nodes.end());
-    for (const string& s : expected_nodes) {
+    for (const std::string& s : expected_nodes) {
       Node* n = FindNode(s);
       EXPECT_TRUE(n != nullptr) << s;
       if (n->type_string() == "_Send" || n->type_string() == "_Recv") {
@@ -92,7 +92,8 @@ class SubgraphTest : public ::testing::Test {
         << "\nExpected: " << absl::StrJoin(expected_nodes, ",");
   }
 
-  bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
+  bool HasEdge(const std::string& src, int src_out, const std::string& dst,
+               int dst_in) {
     for (const Edge* e : g_->edges()) {
       if (e->src()->name() == src && e->src_output() == src_out &&
           e->dst()->name() == dst && e->dst_input() == dst_in)
@@ -100,20 +101,20 @@ class SubgraphTest : public ::testing::Test {
     }
     return false;
   }
-  bool HasControlEdge(const string& src, const string& dst) {
+  bool HasControlEdge(const std::string& src, const std::string& dst) {
     return HasEdge(src, Graph::kControlSlot, dst, Graph::kControlSlot);
   }
 
-  string Subgraph(const string& fed_str, const string& fetch_str,
-                  const string& targets_str,
-                  bool use_function_convention = false) {
+  std::string Subgraph(const std::string& fed_str, const std::string& fetch_str,
+                       const std::string& targets_str,
+                       bool use_function_convention = false) {
     Graph* subgraph = new Graph(OpRegistry::Global());
     CopyGraph(*g_, subgraph);
-    std::vector<string> fed =
+    std::vector<std::string> fed =
         str_util::Split(fed_str, ',', str_util::SkipEmpty());
-    std::vector<string> fetch =
+    std::vector<std::string> fetch =
         str_util::Split(fetch_str, ',', str_util::SkipEmpty());
-    std::vector<string> targets =
+    std::vector<std::string> targets =
         str_util::Split(targets_str, ',', str_util::SkipEmpty());
 
     subgraph::RewriteGraphMetadata metadata;
@@ -355,7 +356,7 @@ void BM_SubgraphHelper(::testing::benchmark::State& state,
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     Node* last_node = nullptr;
     for (int i = 0; i < num_nodes; i++) {
-      string name = absl::StrCat("N", i);
+      std::string name = absl::StrCat("N", i);
       if (i > 0) {
         last_node = ops::UnaryOp("Op", last_node, b.opts().WithName(name));
       } else {
@@ -365,12 +366,12 @@ void BM_SubgraphHelper(::testing::benchmark::State& state,
     TF_CHECK_OK(GraphDefBuilderToGraph(b, &g));
   }
 
-  std::vector<string> fed;
+  std::vector<std::string> fed;
   if (num_nodes > 1000) {
     fed.push_back(absl::StrCat("N", num_nodes - 1000));
   }
-  std::vector<string> fetch;
-  std::vector<string> targets = {absl::StrCat("N", num_nodes - 1)};
+  std::vector<std::string> fetch;
+  std::vector<std::string> targets = {absl::StrCat("N", num_nodes - 1)};
 
   for (auto s : state) {
     Graph* subgraph = new Graph(OpRegistry::Global());

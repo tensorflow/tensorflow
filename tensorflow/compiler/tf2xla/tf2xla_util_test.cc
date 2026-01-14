@@ -15,25 +15,39 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/cc/ops/data_flow_ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/list_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/no_op.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/version.h"
 
@@ -492,8 +506,7 @@ TEST(PropagateConstIntoFunctionalNodes, RewriteTensorListWithConstMember) {
   const FunctionDef* bwd_body = fld.Find("bwd_body_tl_rewrite_0");
   ASSERT_NE(bwd_body, nullptr);
   std::unique_ptr<FunctionBody> bwd_fbody;
-  TF_CHECK_OK(
-      FunctionDefToBodyHelper(*bwd_body, AttrSlice(), &fld, &bwd_fbody));
+  CHECK_OK(FunctionDefToBodyHelper(*bwd_body, AttrSlice(), &fld, &bwd_fbody));
   auto node_name_index = bwd_fbody->graph->BuildNodeNameIndex();
   const Node* identity = node_name_index.at("identity");
   ASSERT_NE(identity, nullptr);

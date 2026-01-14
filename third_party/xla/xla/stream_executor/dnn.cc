@@ -691,8 +691,7 @@ std::vector<int64_t> BatchDescriptor::full_dims(
   std::vector<int64_t> bdyx_dims(ndims() + 2);
   bdyx_dims[0] = count();
   bdyx_dims[1] = feature_map_count();
-  std::copy(spatial_size().begin(), spatial_size().end(),
-            bdyx_dims.begin() + 2);
+  absl::c_copy(spatial_size(), bdyx_dims.begin() + 2);
   return ReorderDims(bdyx_dims, DataLayout::kBatchDepthYX, layout);
 }
 
@@ -831,8 +830,7 @@ std::vector<int64_t> FilterDescriptor::full_dims(
   std::vector<int64_t> oiyx_dims(ndims() + 2);
   oiyx_dims[0] = output_feature_map_count();
   oiyx_dims[1] = input_feature_map_count();
-  std::copy(input_filter_dims().begin(), input_filter_dims().end(),
-            oiyx_dims.begin() + 2);
+  absl::c_copy(input_filter_dims(), oiyx_dims.begin() + 2);
   return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
 }
 

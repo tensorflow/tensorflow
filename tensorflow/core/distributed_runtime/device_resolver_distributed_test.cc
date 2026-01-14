@@ -34,7 +34,8 @@ using ::testing::UnorderedElementsAre;
 
 // Create a fake 'Device' whose only interesting attribute is a non-default
 // DeviceLocality and incarnation.
-std::unique_ptr<Device> NewDevice(const string& type, const string& name) {
+std::unique_ptr<Device> NewDevice(const std::string& type,
+                                  const std::string& name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}

@@ -707,6 +707,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   return platform_version;
 }
 
+absl::string_view GetPlatformVersion(PJRT_TopologyDescription* c_topology,
+                                     const PJRT_Api* api) {
+  PJRT_TopologyDescription_PlatformVersion_Args args;
+  args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = c_topology;
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_TopologyDescription_PlatformVersion(&args), api);
+  return absl::string_view(args.platform_version, args.platform_version_size);
+}
+
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
   PJRT_Client_PlatformName_Args args;
   args.client = client;

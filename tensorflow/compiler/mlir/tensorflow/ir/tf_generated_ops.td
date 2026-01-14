@@ -11497,6 +11497,26 @@ representation of that entry.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_PostProcessPredictionOp : TF_Op<"PostProcessPrediction", []> {
+  let summary = [{
+Performs post-processing on prediction inputs. This op has no tensor outputs.
+  }];
+
+  let description = [{
+Send an rpc to the external service that builds rpc payload based on prediction result.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
+    Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+
+    StrAttr:$op_config
+  );
+
+  let results = (outs);
+}
+
 def TF_PowOp : TF_Op<"Pow", [Pure, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";

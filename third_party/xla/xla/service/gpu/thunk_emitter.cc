@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -108,6 +109,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/ffi/attribute_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -146,11 +148,11 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/triton_call.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -160,11 +162,13 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/platform.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -429,12 +433,13 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditional(
   }
   TF_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
-  bool branch_index_is_bool = instr->operand(0)->shape().element_type() == PRED;
 
-  return GetThunkSequence(std::make_unique<ConditionalThunk>(
+  auto placeholder = GetThunkSequence(std::make_unique<ConditionalThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      slice, std::move(branch_thunks), branch_index_is_bool));
+      ShapedSlice{slice, instr->operand(0)->shape()},
+      std::move(branch_thunks)));
+  return placeholder;
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
@@ -519,21 +524,20 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
     const HloCustomCallInstruction* instr) {
-  std::vector<BufferAllocation::Slice> operand_slices;
+  std::vector<ShapedSlice> operand_slices;
   operand_slices.reserve(instr->operand_count());
   for (const HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        GetAllocationSliceForHlo(operand, {}));
+    ASSIGN_OR_RETURN(ShapedSlice slice, GetShapedSliceForHlo(operand, {}));
     operand_slices.push_back(slice);
   }
 
   // The first and the last element in the result tuple for a convolution are
   // always the result and the scratch buffer. It may have auxiliary results in
   // addition to the main result.
-  std::vector<BufferAllocation::Slice> result_slices;
+  std::vector<ShapedSlice> result_slices;
   for (int i = 0; i < instr->shape().tuple_shapes().size() - 1; i++) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                        GetAllocationSliceForHlo(instr, {i}));
+    ASSIGN_OR_RETURN(ShapedSlice result_slice,
+                     GetShapedSliceForHlo(instr, {i}));
     result_slices.push_back(result_slice);
   }
 
@@ -672,8 +676,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunk(
       HloPrintOptions::Fingerprint().set_print_backend_config(true));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
-      blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax, workspace_buffer);
+      blas_lt_epilogue, algorithm, config.autotune_workspace_size(), a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
   return GetThunkSequence(std::move(thunk));
 }
 
@@ -767,46 +771,37 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
       HloPrintOptions::Fingerprint().set_print_backend_config(true));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
       std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
-      blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
-      c_scale, d_scale, d_amax, workspace_buffer);
+      blas_lt_epilogue, algorithm, config.autotune_workspace_size(), a, b, c, d,
+      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
   return GetThunkSequence(std::move(thunk));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionReorderThunk(
     const HloCustomCallInstruction* instr) {
   bool has_bias = instr->operand_count() > 1;
-  Shape shape = has_bias ? instr->shape().tuple_shapes(0) : instr->shape();
-  if (shape.dimensions().size() != 5 || shape.dimensions(4) != 32) {
-    return Internal("Unexpected shape for convolution reorder: %s",
-                    instr->ToString());
-  }
-  ConvolutionFilterDimensions filter_dimensions;
-  filter_dimensions.set_output_feature_map_count(shape.dimensions(0));
-  filter_dimensions.set_input_feature_map_count(shape.dimensions(1) * 32);
-  filter_dimensions.set_input_filter_height(shape.dimensions(2));
-  filter_dimensions.set_input_filter_width(shape.dimensions(3));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice filter_input,
-                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(ShapedSlice filter_input,
+                      GetShapedSliceForHlo(instr->operand(0)));
 
-  BufferAllocation::Slice filter_output;
+  ShapedSlice filter_output;
   std::optional<ConvolutionReorderThunk::BiasBuffers> biases;
   if (has_bias) {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr, {0}));
+    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr, {0}));
 
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_input,
-                        GetAllocationSliceForHlo(instr->operand(1)));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice bias_output,
-                        GetAllocationSliceForHlo(instr, {1}));
+    TF_ASSIGN_OR_RETURN(ShapedSlice bias_input,
+                        GetShapedSliceForHlo(instr->operand(1)));
+    TF_ASSIGN_OR_RETURN(ShapedSlice bias_output,
+                        GetShapedSliceForHlo(instr, {1}));
     biases = {{bias_input, bias_output}};
   } else {
-    TF_ASSIGN_OR_RETURN(filter_output, GetAllocationSliceForHlo(instr));
+    TF_ASSIGN_OR_RETURN(filter_output, GetShapedSliceForHlo(instr));
   }
 
-  auto thunk = std::make_unique<ConvolutionReorderThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      std::move(filter_dimensions), filter_input, filter_output, biases);
+  ASSIGN_OR_RETURN(auto thunk,
+                   ConvolutionReorderThunk::Create(
+                       Thunk::ThunkInfo::WithProfileAnnotation(
+                           instr, ir_emitter_context_->GetNextThunkId()),
+                       filter_input, filter_output, biases));
   return GetThunkSequence(std::move(thunk));
 }
 
@@ -922,8 +917,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPtxCustomCall(
 
 absl::StatusOr<BufferAllocation::Slice> ThunkEmitter::GetAllocationSliceForHlo(
     const HloInstruction* instr, const ShapeIndex& index) const {
-  return xla::gpu::GetAllocationSlice(ir_emitter_context_->buffer_assignment(),
-                                      instr, index);
+  return ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, index);
+}
+
+absl::StatusOr<ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
+    const HloInstruction* instr, const ShapeIndex& index) const {
+  ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                   GetAllocationSliceForHlo(instr, index));
+  ASSIGN_OR_RETURN(
+      Shape shape,
+      ir_emitter_context_->buffer_assignment().GetShapeForUniqueSlice(instr,
+                                                                      index));
+  return ShapedSlice{slice, shape};
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceRadixSort(
@@ -1125,17 +1130,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
   TF_RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
   TF_RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
-                      GetAllocationSliceForHlo(operands[0]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
-                      GetAllocationSliceForHlo(operands[1]));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
-                      GetAllocationSliceForHlo(instr, {0}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
-                      GetAllocationSliceForHlo(instr, {1}));
-
-  const Shape b_shape = operands[1]->shape();
-  const PrimitiveType elem_ty = b_shape.element_type();
+  ASSIGN_OR_RETURN(ShapedSlice a_slice, GetShapedSliceForHlo(operands[0]));
+  ASSIGN_OR_RETURN(ShapedSlice b_slice, GetShapedSliceForHlo(operands[1]));
+  ASSIGN_OR_RETURN(ShapedSlice result_slice, GetShapedSliceForHlo(instr, {0}));
+  ASSIGN_OR_RETURN(ShapedSlice temp_slice, GetShapedSliceForHlo(instr, {1}));
 
   TriangularSolveOptions backend_config;
   auto& backend_config_str = instr->raw_backend_config_string();
@@ -1148,30 +1146,19 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTriangularSolveCustomCall(
 
   // Triangular solve is in-place on 'b', so copy 'b' to the output
   // if they aren't the same buffer.
-  if (b_slice != result_slice) {
+  if (b_slice.slice != result_slice.slice) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             instr, ir_emitter_context_->GetNextThunkId()),
         /*source_buffer=*/b_slice,
         /*destination_buffer=*/result_slice,
-        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape)));
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_slice.shape)));
   }
 
-  int64_t m = b_shape.dimensions(b_shape.dimensions().size() - 2);
-  int64_t n = b_shape.dimensions(b_shape.dimensions().size() - 1);
-  int64_t batch_size = std::accumulate(
-      b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
-      [](int64_t a, int64_t b) { return a * b; });
-  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_ty);
-  int64_t a_batch_stride =
-      backend_config.left_side() ? m * m * elem_size : n * n * elem_size;
-  int64_t b_batch_stride = m * n * elem_size;
   thunks.push_back(std::make_unique<TriangularSolveThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      backend_config,
-      /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
-      batch_size, m, n, a_batch_stride, b_batch_stride));
+      backend_config, a_slice, result_slice, temp_slice));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {
@@ -1341,7 +1328,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     }
 
     kernel_modules_.push_back(std::move(result.llvm_module));
-    return {{kernel_name, launch_dimensions, result.cluster_dim,
+    return {{kernel_name, launch_dimensions, /*cluster_dim=*/std::nullopt,
              result.shmem_bytes}};
   };
 
@@ -1359,7 +1346,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
-      entry->cluster_dim, entry->shmem_bytes, entry->tma_metadata));
+      /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(
@@ -1439,8 +1426,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopy(
   return GetThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      /*source_buffer=*/src_buffer,
-      /*destination_buffer=*/dst_buffer,
+      /*source_buffer=*/ShapedSlice{src_buffer, instr->operand(0)->shape()},
+      /*destination_buffer=*/ShapedSlice{dst_buffer, instr->shape()},
       /*mem_size=*/src_buffer.size()));
 }
 
@@ -1565,12 +1552,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and
     // outputs is the same.
-    TF_RET_CHECK(
-        LayoutUtil::LayoutsInShapesEqual(keys_shape, sort->operand(i)->shape(),
-                                         Layout::Equal().IgnoreMemorySpace()));
+    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
+        keys_shape, sort->operand(i)->shape(),
+        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
     TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
         keys_shape, ShapeUtil::GetSubshape(sort->shape(), shape_index),
-        Layout::Equal().IgnoreMemorySpace()));
+        Layout::Equal().IgnoreMemorySpace().IgnoreElementSize()));
 
     BufferAllocation::Slice destination_buffer;
     BufferAllocation::Slice source_address;
@@ -1590,9 +1577,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               sort, ir_emitter_context_->GetNextThunkId()),
-          /*source_buffer=*/source_address,
-          /*destination_buffer=*/destination_buffer,
-          /*mem_size=*/
+          /*source_buffer=*/
+          ShapedSlice{source_address, sort->operand(i)->shape()},
+          /*destination_buffer=*/
+          ShapedSlice{destination_buffer, sort->operand(i)->shape()},
           ShapeUtil::ByteSizeOf(sort->operand(i)->shape())));
     }
   }
@@ -1677,10 +1665,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
                                                           : normal_shape_idx));
 
     const int64_t src_memory_space = operand_shape.layout().memory_space();
+    Shape result_buffer_shape = (result_shape.IsTuple())
+                                    ? result_shape.tuple_shapes(oprd_idx)
+                                    : result_shape;
+
     const int64_t dst_memory_space =
-        (result_shape.IsTuple())
-            ? result_shape.tuple_shapes(0).layout().memory_space()
-            : result_shape.layout().memory_space();
+        result_buffer_shape.layout().memory_space();
 
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
                         GetAllocationSliceForHlo(operand));
@@ -1691,8 +1681,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
       thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
-          /*source_buffer=*/source_slice,
-          /*destination_buffer=*/result_slice,
+          /*source_buffer=*/ShapedSlice{source_slice, operand_shape},
+          /*destination_buffer=*/
+          ShapedSlice{result_slice, result_buffer_shape},
           /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
       // Signal that start thunk not created with nullptr.
       GetCollectivesAsyncEvents().try_emplace(instr, nullptr);
@@ -2098,8 +2089,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDegeneratedCollectiveThunk(
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/buffers[i].source_buffer,
-        /*destination_buffer=*/buffers[i].destination_buffer,
+        /*source_buffer=*/ShapedSlice{buffers[i].source_buffer, shape},
+        /*destination_buffer=*/
+        ShapedSlice{buffers[i].destination_buffer, shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
   if (thunks.size() == 1) {
@@ -2234,8 +2226,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
     auto thunk = std::make_unique<DeviceToHostCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
         /*copy_start_instr=*/copy_start_instr);
@@ -2245,8 +2237,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
     auto thunk = std::make_unique<HostToDeviceCopyThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-        /*source_buffer=*/src_buffer,
-        /*destination_buffer=*/dst_buffer,
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
         /*copy_start_instr=*/copy_start_instr);

@@ -63,8 +63,8 @@ class XlaLegalizeTargetsTest : public testing::Test {
 };
 
 TEST_F(XlaLegalizeTargetsTest, CreatesConversionTargets) {
-  auto const_int = builder_.create<mlir::arith::ConstantIntOp>(
-      builder_.getUnknownLoc(), builder_.getI32Type(), /*value=*/10);
+  auto const_int = mlir::arith::ConstantIntOp::create(
+      builder_, builder_.getUnknownLoc(), builder_.getI32Type(), /*value=*/10);
 
   ConversionTarget target =
       GetDefaultLegalConversionTargets(context_, /*legalize_chlo=*/false);
@@ -72,8 +72,8 @@ TEST_F(XlaLegalizeTargetsTest, CreatesConversionTargets) {
 }
 
 TEST_F(XlaLegalizeTargetsTest, AllowsCHLODialect) {
-  auto const_int = builder_.create<chlo::ConstantOp>(
-      builder_.getUnknownLoc(), builder_.getI32TensorAttr({42}));
+  auto const_int = chlo::ConstantOp::create(builder_, builder_.getUnknownLoc(),
+                                            builder_.getI32TensorAttr({42}));
 
   ConversionTarget target =
       GetDefaultLegalConversionTargets(context_, /*legalize_chlo=*/true);
@@ -82,8 +82,8 @@ TEST_F(XlaLegalizeTargetsTest, AllowsCHLODialect) {
 }
 
 TEST_F(XlaLegalizeTargetsTest, DontAllowCHLODialect) {
-  auto const_int = builder_.create<chlo::ConstantOp>(
-      builder_.getUnknownLoc(), builder_.getI32TensorAttr({42}));
+  auto const_int = chlo::ConstantOp::create(builder_, builder_.getUnknownLoc(),
+                                            builder_.getI32TensorAttr({42}));
 
   ConversionTarget target =
       GetDefaultLegalConversionTargets(context_, /*legalize_chlo=*/false);

@@ -1,6 +1,7 @@
 tensorflow/compiler/xla/backends/cpu/nanort/package_groups.bzl:
 tensorflow/compiler/xla/backends/cpu/package_groups.bzl:
 tensorflow/compiler/xla/internal/package_groups.bzl:
+tensorflow/compiler/xla/megascale/package_groups.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
@@ -156,5 +157,4 @@ xla/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 xla/third_party/tensorrt/tensorrt_configure.bzl:
 xla/third_party/tensorrt/workspace.bzl:
 xla/third_party/xla_googletest_wrapper/include/gmock/gmock.h:
-xla/third_party/xla_googletest_wrapper/include/gtest/gtest.h:
 xla/third_party/zlib.BUILD:

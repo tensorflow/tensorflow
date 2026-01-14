@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
@@ -273,7 +272,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "num_warps":"8",
-        "output_tiles":[{"sizes":["128","64"]}],
+        "output_tiles":[{"sizes":["128","32"]}],
         "num_ctas":1,
         "num_stages":4,
         "is_tma_allowed":false}}}
@@ -286,7 +285,7 @@ gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf
       "kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{
         "num_warps":"8",
-        "output_tiles":[{"sizes":["64","256"]}],
+        "output_tiles":[{"sizes":["32","256"]}],
         "num_ctas":1,
         "num_stages":4,
         "is_tma_allowed":false}}}
@@ -397,7 +396,7 @@ ENTRY main {
         "kind":"__triton",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["1","256000"]}],
-          "num_warps":"32",
+          "num_warps":"16",
           "num_ctas":"1",
           "num_stages":"1"}}}
 })",
@@ -521,7 +520,7 @@ ENTRY main {
       "kind":"__triton",
       "block_level_fusion_config":{
         "output_tiles":[{"sizes":["1","1","1","16384"]}],
-        "num_warps":"32",
+        "num_warps":"16",
         "num_ctas":"1",
         "num_stages":"1"}}}
 }

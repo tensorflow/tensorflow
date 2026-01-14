@@ -28,7 +28,7 @@ limitations under the License.
 namespace tensorflow::internal {
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
+absl::StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -54,10 +54,10 @@ StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
 
     TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     se::dnn::ProfileResult profile_result;
-    Status cudnn_launch_status =
+    absl::Status cudnn_launch_status =
         actually_do_autotune
             ? launch_func(allocator_used, runner, &profile_result)
-            : OkStatus();
+            : absl::OkStatus();
     if (!actually_do_autotune) {
       // Make the result valid according to `is_valid`.
       profile_result.set_algorithm(desc);

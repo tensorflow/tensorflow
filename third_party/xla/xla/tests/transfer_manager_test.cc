@@ -34,7 +34,7 @@ limitations under the License.
 #include "xla/service/stream_pool.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tsl/platform/statusor.h"

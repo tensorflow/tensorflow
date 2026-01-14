@@ -66,8 +66,8 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
     std::string spec_string;
     CHECK_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
-                          "gpu_specs", spec_file_name),
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                          "backends/gpu/target_config/specs", spec_file_name),
         &spec_string));
     EXPECT_TRUE(
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));

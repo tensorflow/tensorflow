@@ -68,7 +68,7 @@ bool WorkerCacheLogger::RetrieveLogs(int64_t step_id, StepStats* ss) {
   return false;
 }
 
-void WorkerCacheLogger::Save(const string& device, int64_t step_id,
+void WorkerCacheLogger::Save(const std::string& device, int64_t step_id,
                              NodeExecStats* ns) {
   mutex_lock l(mu_);
   StepLog* sl = &log_map_[step_id];
@@ -84,33 +84,31 @@ void WorkerCacheLogger::Save(const string& device, int64_t step_id,
 
 void WorkerCacheLogger::RecordRecvTensor(int64_t step_id, int64_t start_usecs,
                                          int64_t end_usecs,
-                                         const string& tensor_name,
-                                         const string& src_device,
-                                         const string& dst_device,
+                                         const std::string& tensor_name,
+                                         const std::string& src_device,
+                                         const std::string& dst_device,
                                          int64_t bytes) {
   RecordDataTransfer(step_id, start_usecs, end_usecs, tensor_name, src_device,
                      dst_device, bytes, "", "RecvTensor");
 }
 
-void WorkerCacheLogger::RecordDataTransfer(int64_t step_id, int64_t start_usecs,
-                                           int64_t end_usecs,
-                                           const string& tensor_name,
-                                           const string& src_device,
-                                           const string& dst_device,
-                                           int64_t bytes, const string& details,
-                                           const string& transfer_method_name) {
+void WorkerCacheLogger::RecordDataTransfer(
+    int64_t step_id, int64_t start_usecs, int64_t end_usecs,
+    const std::string& tensor_name, const std::string& src_device,
+    const std::string& dst_device, int64_t bytes, const std::string& details,
+    const std::string& transfer_method_name) {
   NodeExecStats* ns = new NodeExecStats;
   ns->set_node_name(transfer_method_name);
   int64_t elapsed_usecs = end_usecs - start_usecs;
   if (details.empty()) {
     auto byte_string = absl::StrCat("[", bytes, "B] ");
     if (bytes >= 0.1 * 1048576.0) {
-      byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
+      byte_string = absl::StrFormat("[%.1fMB] ", bytes / 1048576.0);
     }
     float mbs_rate = (8.0 * static_cast<float>(bytes)) / elapsed_usecs;
     auto rate_string = (mbs_rate >= 1000.0)
-                           ? strings::Printf("[%.1fGb/s] ", mbs_rate / 1000.0)
-                           : strings::Printf("[%fMb/s] ", mbs_rate);
+                           ? absl::StrFormat("[%.1fGb/s] ", mbs_rate / 1000.0)
+                           : absl::StrFormat("[%fMb/s] ", mbs_rate);
     auto label = strings::StrCat(byte_string, rate_string, tensor_name,
                                  " from ", src_device, " to ", dst_device);
     ns->set_timeline_label(label);

@@ -951,11 +951,15 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [
   let summary = "External const op.";
 
   let description = [{
-    External const op holds a `buffer_index` which points to a constant
-    in the flatbuffer.
+    External const op that can hold :
+    - `buffer_index` which points to a constant in the flatbuffer.
+    - `external_buffer` which contains metadata for external buffer outside flatbuffer.
   }];
 
-  let arguments = (ins I32Attr:$buffer_index);
+  let arguments = (ins
+    OptionalAttr<I32Attr>:$buffer_index,
+    OptionalAttr<TFL_ExternalBufferAttr>:$external_buffer
+  );
 
   let results = (outs AnyTensor:$output);
 }

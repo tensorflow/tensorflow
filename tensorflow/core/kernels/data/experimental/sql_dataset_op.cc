@@ -72,7 +72,7 @@ class SqlDatasetOp : public DatasetOpKernel {
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
     OP_REQUIRES(ctx, driver_name == "sqlite",
-                errors::InvalidArgument(tensorflow::strings::Printf(
+                errors::InvalidArgument(absl::StrFormat(
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));

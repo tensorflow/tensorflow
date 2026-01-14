@@ -1,6 +1,5 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
-load("//third_party:repo.bzl", "tf_vendored")
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
@@ -169,18 +168,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f644ad3ac88b3b0208a82742938bca35235865d6ca64950dac58b166877eb2a5",
-        strip_prefix = "XNNPACK-1b918df9d1744ae40725254f4baa592ed05c912e",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/1b918df9d1744ae40725254f4baa592ed05c912e.zip"),
+        sha256 = "08976c0ba6495775f78d738adbcc60a567b5826774f23d3c403486c70ff79772",
+        strip_prefix = "XNNPACK-183297df5c945236cbc4bb1f625f9f2008bfc564",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/183297df5c945236cbc4bb1f625f9f2008bfc564.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "fb4f8180171d035a08432b086194121f627d00a76d58cebaad57d7a87ad40dbd",
-        strip_prefix = "kleidiai-7a3a609a3278106df7157bdd27b8f0e75ab00b60",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/7a3a609a3278106df7157bdd27b8f0e75ab00b60.zip"),
+        sha256 = "5e922c9afb7a0c881fc4359b58488f3faa840e8435de1a2207a6525935ed83c2",
+        strip_prefix = "kleidiai-63205aa90afa6803d8f58bc3081b69288e9f1906",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/63205aa90afa6803d8f58bc3081b69288e9f1906.zip"),
     )
 
     tf_http_archive(
@@ -410,16 +409,8 @@ def _tf_repositories():
         },
     )
 
-    # Use XLA's googletest wrapper which provides EXPECT_OK and ASSERT_OK macros.
-    # This wrapper adds those macros to the open-source gmock/gmock.h header,
-    # matching the behavior of internal builds.
-    tf_vendored(
-        name = "com_google_googletest",
-        path = "third_party/xla/third_party/xla_googletest_wrapper",
-    )
-
     tf_http_archive(
-        name = "com_google_googletest_upstream",
+        name = "com_google_googletest",
         # Use the commit on 2025/6/09:
         # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
@@ -428,6 +419,8 @@ def _tf_repositories():
         #   - avoid dependencies on @fuchsia_sdk,
         #   - refer to re2 as @com_googlesource_code_re2,
         #   - refer to abseil as @com_google_absl.
+        #   - add status assert macros for consistency with internal gmock (see
+        #     README.add-status-macros.md).
         #
         # To update the patch, run:
         # $ cd ~
@@ -440,7 +433,11 @@ def _tf_repositories():
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/tensorflow.
-        patch_file = ["@local_xla//third_party/googletest:googletest.patch"],
+        patch_file = [
+            "@local_xla//third_party/googletest:googletest.patch",
+            "@local_xla//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
+            "@local_xla//third_party/googletest:0002-Rename-dependencies-for-workspace.bzl-build.patch",
+            ],
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
     )
 

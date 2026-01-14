@@ -37,7 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -152,35 +152,6 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
     HloInstruction* while_op, absl::flat_hash_set<int64_t>& used_tuple_indices,
     std::optional<absl::flat_hash_map<int32_t, int32_t>>
         dead_to_surviving_index = std::nullopt) {
-  auto copy_remaining_original_arrays =
-      [&](const HloInstruction* src_instruction,
-          HloInstruction* dest_instruction,
-          const absl::flat_hash_map<int64_t, int64_t>& old_to_new_tuple_idx) {
-        std::shared_ptr<OriginalValue> original_value =
-            src_instruction->original_value();
-        if (!original_value) {
-          return;
-        }
-
-        const int64_t src_tuple_size =
-                          src_instruction->shape().tuple_shapes().size(),
-                      dest_tuple_size =
-                          dest_instruction->shape().tuple_shapes().size();
-        std::shared_ptr<OriginalValue> old_original_value =
-            src_instruction->original_value();
-        std::shared_ptr<xla::OriginalValue> new_original_value =
-            std::make_shared<xla::OriginalValue>(dest_instruction->shape());
-        for (const auto& [old_idx, new_idx] : old_to_new_tuple_idx) {
-          if (old_idx < 0 || old_idx >= src_tuple_size || new_idx < 0 ||
-              new_idx >= dest_tuple_size) {
-            return;
-          }
-          new_original_value->mutable_tree()->CopySubtreeFrom(
-              old_original_value->tree(), {old_idx}, {new_idx});
-        }
-        dest_instruction->set_original_value(new_original_value);
-      };
-
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64_t> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                             used_tuple_indices.end());
@@ -306,9 +277,8 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
 
-  copy_remaining_original_arrays(while_init, new_while_init,
-                                 old_to_new_tuple_idx);
-  copy_remaining_original_arrays(while_op, new_while_op, old_to_new_tuple_idx);
+  CopyOriginalValue(while_init, new_while_init, old_to_new_tuple_idx);
+  CopyOriginalValue(while_op, new_while_op, old_to_new_tuple_idx);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -875,7 +845,8 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   };
 
   // Returns a new tuple without the elements of constant_tuple_indices.
-  auto remove_constant_elems = [&](HloInstruction* instr) {
+  auto remove_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -886,10 +857,24 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
                 while_shape.tuple_shapes(i), instr, i)));
       }
     }
-    return HloInstruction::CreateTuple(tuple_elems);
+    std::unique_ptr<HloInstruction> new_tuple =
+        HloInstruction::CreateTuple(tuple_elems);
+    if (instr->original_value()) {
+      auto new_ov = std::make_shared<OriginalValue>(new_tuple->shape());
+      int64_t new_i = 0;
+      for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+        if (!constant_tuple_indices.count(i)) {
+          CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+              instr->original_value()->tree(), {i}, {new_i++}));
+        }
+      }
+      new_tuple->set_original_value(new_ov);
+    }
+    return new_tuple;
   };
 
-  auto add_constant_elems = [&](HloInstruction* instr) {
+  auto add_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -952,6 +937,17 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
+  if (while_op->original_value()) {
+    auto new_ov = std::make_shared<OriginalValue>(new_while_op->shape());
+    int64_t new_i = 0;
+    for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+      if (!constant_tuple_indices.count(i)) {
+        CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+            while_op->original_value()->tree(), {i}, {new_i++}));
+      }
+    }
+    new_while_op->set_original_value(new_ov);
+  }
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);

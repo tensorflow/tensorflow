@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 

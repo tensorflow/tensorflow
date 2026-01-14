@@ -42,15 +42,12 @@ class TpuExecutorInterface : public stream_executor::StreamExecutorCommon {
   class TemporaryDeviceAddress {
    public:
     virtual ~TemporaryDeviceAddress() {}
-    virtual stream_executor::DeviceAddressBase AsDeviceMemoryBase() const = 0;
+    virtual stream_executor::DeviceAddressBase AsDeviceAddress() const = 0;
   };
 
-  using TemporaryDeviceMemory ABSL_DEPRECATE_AND_INLINE() =
-      TemporaryDeviceAddress;
-
   virtual absl::StatusOr<std::unique_ptr<TemporaryDeviceAddress>>
-  CreateTemporaryDeviceMemory(int64_t memory_space, int64_t byte_offset,
-                              int64_t size) {
+  CreateTemporaryDeviceAddress(int64_t memory_space, int64_t byte_offset,
+                               int64_t size) {
     LOG(FATAL) << "Unimplemented.";
   }
 

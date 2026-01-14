@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <variant>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"

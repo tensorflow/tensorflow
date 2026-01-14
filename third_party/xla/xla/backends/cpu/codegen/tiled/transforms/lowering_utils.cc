@@ -44,8 +44,9 @@ mlir::VectorType GetVectorType(mlir::ShapedType type) {
 mlir::TypedValue<mlir::VectorType> ReadTensorToVector(mlir::OpBuilder& builder,
                                                       mlir::Value input) {
   if (input.getType().isIntOrFloat()) {
-    return builder.create<mlir::vector::FromElementsOp>(
-        input.getLoc(), mlir::VectorType::get({}, input.getType()), input);
+    return mlir::vector::FromElementsOp::create(
+        builder, input.getLoc(), mlir::VectorType::get({}, input.getType()),
+        input);
   }
 
   auto input_tensor =
@@ -65,9 +66,9 @@ mlir::RankedTensorType GetTensorType(mlir::ShapedType type) {
 mlir::TypedValue<mlir::RankedTensorType> WriteVectorToTensor(
     mlir::OpBuilder& builder, mlir::Value input) {
   if (input.getType().isIntOrFloat()) {
-    return builder.create<mlir::tensor::FromElementsOp>(
-        input.getLoc(), mlir::RankedTensorType::get({}, input.getType()),
-        input);
+    return mlir::tensor::FromElementsOp::create(
+        builder, input.getLoc(),
+        mlir::RankedTensorType::get({}, input.getType()), input);
   }
 
   auto input_vector = mlir::cast<mlir::TypedValue<mlir::VectorType>>(input);

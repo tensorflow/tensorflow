@@ -12,6 +12,7 @@ limitations under the License.
 
 #include "bindings/c/Attributes.h"
 
+#include <cstdint>
 #include <optional>
 
 #include "mhlo/IR/hlo_ops.h"

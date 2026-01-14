@@ -49,7 +49,6 @@ class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
         spmd::GetDefaultCollectiveOpsCreator(num_devices, /*num_replicas=*/1);
-    collective_ops_creator.create_cross_partition_all_gather = nullptr;
 
     HloModuleConfig config = GetModuleConfigForTest();
     config.set_use_spmd_partitioning(true);

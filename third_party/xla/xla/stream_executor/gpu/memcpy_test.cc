@@ -33,7 +33,7 @@ TEST(MemcpyTest, PinnedHostMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto d_ptr,
                           executor->HostMemoryAllocate(sizeof(int)));
-  DeviceAddressBase d_mem(d_ptr->opaque(), sizeof(int));
+  DeviceAddressBase d_mem(d_ptr->address().opaque(), sizeof(int));
 
   int h_ptr;
   TF_ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));

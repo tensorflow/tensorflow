@@ -42,7 +42,8 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
                           xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
-  xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  stream_executor::StreamExecutorAddressAllocator allocator(platform,
+                                                            executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
   auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(

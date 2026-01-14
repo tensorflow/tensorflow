@@ -168,8 +168,8 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
                             .Device(DEVICE_GPU)
                             .HostMemory("values")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        PackOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("T"),
+                        PackOp<CPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -135,8 +135,8 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
       // mapped to X and Z dimension.
       std::iter_swap(permute.begin() + input_rank - 1,
                      permute.begin() + input_rank - 2);
-      auto permutation_tensor_op = rewriter.create<arith::ConstantOp>(
-          bmm_op->getLoc(), permuation_tensor_type,
+      auto permutation_tensor_op = arith::ConstantOp::create(
+          rewriter, bmm_op->getLoc(), permuation_tensor_type,
           DenseElementsAttr::get(permuation_tensor_type, permute));
 
       auto input_shape = input_type.getShape();
@@ -181,9 +181,8 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
             RankedTensorType::get(permuted_shape, input_type.getElementType());
       }
 
-      return rewriter.create<TFL::TransposeOp>(
-          bmm_op->getLoc(), output_type, input,
-          permutation_tensor_op.getResult());
+      return TFL::TransposeOp::create(rewriter, bmm_op->getLoc(), output_type,
+                                      input, permutation_tensor_op.getResult());
     };
 
     Value input_lhs = bmm_op.getX();
@@ -198,10 +197,11 @@ struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
         !bmm_op.getAdjY() ? create_z_x_transpose_op(input_rhs) : input_rhs;
 
     Type output_type = bmm_op.getResult().getType();
-    auto no_input = rewriter.create<TFL::NoValueOp>(
-        bmm_op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
-    auto fc_op = rewriter.create<TFL::FullyConnectedOp>(
-        bmm_op->getLoc(), ArrayRef<Type>{output_type},
+    auto no_input =
+        TFL::NoValueOp::create(rewriter, bmm_op->getLoc(),
+                               rewriter.getNoneType(), rewriter.getUnitAttr());
+    auto fc_op = TFL::FullyConnectedOp::create(
+        rewriter, bmm_op->getLoc(), ArrayRef<Type>{output_type},
         /*input=*/output_lhs, /*filter=*/output_rhs, /*bias=*/no_input,
         /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
         /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
@@ -257,13 +257,14 @@ struct ConvertBatchMatMulOpToReduceSum
       cY = rhs_shape.size() - 1;
     }
 
-    auto reduce_dim_op = rewriter.create<TFL::ConstOp>(
-        bmm_op->getLoc(),
+    auto reduce_dim_op = TFL::ConstOp::create(
+        rewriter, bmm_op->getLoc(),
         DenseIntElementsAttr::get(
             RankedTensorType::get({1}, rewriter.getI32Type()), {cY}));
-    auto sum_op = rewriter.create<TFL::SumOp>(
-        bmm_op->getLoc(), bmm_op.getType(), bmm_op.getY(), reduce_dim_op,
-        /*keep_dims=*/rewriter.getBoolAttr(true));
+    auto sum_op =
+        TFL::SumOp::create(rewriter, bmm_op->getLoc(), bmm_op.getType(),
+                           bmm_op.getY(), reduce_dim_op,
+                           /*keep_dims=*/rewriter.getBoolAttr(true));
     rewriter.replaceOp(bmm_op, sum_op);
     return success();
   };
@@ -368,19 +369,21 @@ struct FuseRhsTransposeIntoBatchMatMulOp
     new_reshape_input_shape.push_back(
         rhs_contracting_dimensions.SizesArray().front());
 
-    Value new_reshape_shape_value = rewriter.create<arith::ConstantOp>(
-        bmm_op->getLoc(),
+    Value new_reshape_shape_value = arith::ConstantOp::create(
+        rewriter, bmm_op->getLoc(),
         GetI32ElementsAttr(new_reshape_input_shape, &rewriter));
-    auto new_reshape_value = rewriter.create<TFL::ReshapeOp>(
-        bmm_op->getLoc(), transpose_op.getInput(), new_reshape_shape_value);
+    auto new_reshape_value = TFL::ReshapeOp::create(rewriter, bmm_op->getLoc(),
+                                                    transpose_op.getInput(),
+                                                    new_reshape_shape_value);
 
     // Replace the BatchMatMulOp with a FullyConnectedOp, if the RHS of BMM has
     // no broadcasting dimensions. I.e. RHS of BMM is of Rank 2.
     if (rhs_dimensions_info.batch_dimensions().AxesArray().empty()) {
-      auto no_input = rewriter.create<TFL::NoValueOp>(
-          bmm_op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
-      auto fc_op = rewriter.create<TFL::FullyConnectedOp>(
-          bmm_op->getLoc(), ArrayRef<Type>{bmm_op.getType()},
+      auto no_input = TFL::NoValueOp::create(rewriter, bmm_op->getLoc(),
+                                             rewriter.getNoneType(),
+                                             rewriter.getUnitAttr());
+      auto fc_op = TFL::FullyConnectedOp::create(
+          rewriter, bmm_op->getLoc(), ArrayRef<Type>{bmm_op.getType()},
           /*input=*/bmm_op.getX(), /*filter=*/new_reshape_value,
           /*bias=*/no_input,
           /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
@@ -391,9 +394,10 @@ struct FuseRhsTransposeIntoBatchMatMulOp
     } else {
       // Replace the BatchMatMulOp with a BatchMatMulOp with adj_y = true and
       // transpose fused into RHS.
-      auto bmm_op_with_adj_y = rewriter.create<TFL::BatchMatMulOp>(
-          bmm_op->getLoc(), bmm_op.getType(), bmm_op.getX(), new_reshape_value,
-          bmm_op.getAdjX(), /*adj_y=*/true, mlir::BoolAttr());
+      auto bmm_op_with_adj_y = TFL::BatchMatMulOp::create(
+          rewriter, bmm_op->getLoc(), bmm_op.getType(), bmm_op.getX(),
+          new_reshape_value, bmm_op.getAdjX(), /*adj_y=*/true,
+          mlir::BoolAttr());
       rewriter.replaceOp(bmm_op, {bmm_op_with_adj_y.getResult()});
     }
 

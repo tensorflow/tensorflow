@@ -81,7 +81,7 @@ absl::Status Concat(OpKernelContext* context,
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
     if (std::is_same<Device, GPUDevice>::value) {
       ConcatGPU<T>(context, inputs_flat, output, &output_flat);
-      return OkStatus();
+      return absl::OkStatus();
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     ConcatCPU<T>(context->device(), inputs_flat, &output_flat);
@@ -198,9 +198,9 @@ absl::Status SplitCPU(OpKernelContext* context, const Tensor& input,
 
 // Handles the general case, on GPU.
 template <typename T>
-Status SplitGPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64_t>& sizes,
-                std::vector<Tensor>* outputs) {
+absl::Status SplitGPU(OpKernelContext* context, const Tensor& input,
+                      const absl::Span<const int64_t>& sizes,
+                      std::vector<Tensor>* outputs) {
   // TODO(olston, apassos): Implement this.
   LOG(FATAL) << "Not yet implemented";  // Crash ok
 }

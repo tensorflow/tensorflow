@@ -40,10 +40,12 @@ limitations under the License.
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
+#include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -89,6 +91,27 @@ ENTRY main {
   ROOT %dot.0 = f32[64,64]{1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })";
 
+const char kScaledDotFusionHlo[] = R"(
+HloModule module
+
+fusion_computation {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  p0_scale = f32[1024,8] parameter(2)
+  p1_scale = f32[8,1024] parameter(3)
+  ROOT r = f32[1024,1024] scaled-dot(p0, p1, p0_scale, p1_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  p0_scale = f32[1024,8] parameter(2)
+  p1_scale = f32[8,1024] parameter(3)
+  ROOT r = f32[1024,1024] fusion(p0, p1, p0_scale, p1_scale),
+    kind=kCustom, calls=fusion_computation
+})";
+
 const char kUnsupportedFusionHlo[] = R"(
   HloModule module
   computation {
@@ -130,6 +153,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
   static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
       const se::DeviceDescription& device_description) {
     auto pipeline = std::make_unique<HloPassPipeline>("fission_pipeline");
+    pipeline->AddPass(std::make_unique<ScaledDotRewriter>());
     pipeline->AddPass(std::make_unique<DotAlgorithmRewriter>());
     for (GemmRewriterOptions::DType dtype :
          {GemmRewriterOptions::DType::kFp8Only,
@@ -286,6 +310,14 @@ INSTANTIATE_TEST_SUITE_P(
              "\"kind\":\"__custom_fusion\"",
          },
          /*expected_backend_name=*/"CustomKernel_fission"},
+        {"ScaledDotFusion_Cublas",
+         kScaledDotFusionHlo,
+         &FissionTest::GetCublasRewriterPipeline,
+         &FissionTest::CreateCublasBackend,
+         /*expected_module_substrings=*/
+         {"custom_call_target=\"__cublas$gemm\"",
+          "\"selected_algorithm\":\"-1\""},
+         /*expected_backend_name=*/"Cublas_fission"},
     }),
     [](const ::testing::TestParamInfo<FissionTest::ParamType>& info) {
       return info.param.test_name;

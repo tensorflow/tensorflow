@@ -677,13 +677,12 @@ class ComposeUniformQuantizedConvolutionOp
         CreateI8F32UniformQuantizedType(
             uniform_quantize_call_op.getLoc(), *rewriter.getContext(),
             input_scale_value, input_zero_point_value);
-    auto input_uniform_quantize_op =
-        rewriter.create<stablehlo::UniformQuantizeOp>(
-            uniform_quantize_call_op.getLoc(),
-            /*result=*/
-            mlir::cast<TensorType>(input_value.getType())
-                .clone(input_quantized_element_type),
-            /*operand=*/input_value);
+    auto input_uniform_quantize_op = stablehlo::UniformQuantizeOp::create(
+        rewriter, uniform_quantize_call_op.getLoc(),
+        /*result=*/
+        mlir::cast<TensorType>(input_value.getType())
+            .clone(input_quantized_element_type),
+        /*operand=*/input_value);
 
     rewriter.replaceAllUsesWith(input_i8_to_f32_convert_op.getResult(),
                                 input_uniform_quantize_op.getResult());
@@ -754,8 +753,8 @@ class ComposeUniformQuantizedConvolutionOp
             /*quantization_dimension=*/3);
 
     // Create a new constant op for the filter in i8.
-    auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
-        filter_op->getLoc(),
+    auto quantized_filter_constant_op = stablehlo::ConstantOp::create(
+        rewriter, filter_op->getLoc(),
         /*output=*/
         filter_i8_value_attr.getType().clone(filter_quantized_element_type),
         /*value=*/filter_i8_value_attr);
@@ -797,18 +796,16 @@ class ComposeUniformQuantizedConvolutionOp
 
     SmallVector<Type> new_conv_output_types = {
         output_uniform_quantized_tensor_type};
-    auto new_conv_op_with_output_type =
-        rewriter.create<stablehlo::ConvolutionOp>(
-            op.getLoc(), new_conv_output_types, op.getOperands(),
-            op->getAttrs());
+    auto new_conv_op_with_output_type = stablehlo::ConvolutionOp::create(
+        rewriter, op.getLoc(), new_conv_output_types, op.getOperands(),
+        op->getAttrs());
 
     rewriter.replaceAllUsesWith(op.getResult(),
                                 new_conv_op_with_output_type.getResult());
 
-    auto new_output_dequant_op =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            rewriter.getUnknownLoc(),
-            /*operand=*/new_conv_op_with_output_type);
+    auto new_output_dequant_op = stablehlo::UniformDequantizeOp::create(
+        rewriter, rewriter.getUnknownLoc(),
+        /*operand=*/new_conv_op_with_output_type);
 
     auto output_uniform_dequantize_call_op = cast<func::CallOp>(
         *output_uniform_quantize_call_op.getResult(0).user_begin());
@@ -1035,13 +1032,12 @@ class ComposeUniformQuantizedDotGeneralOp
             input_scale_value, input_zero_point_value);
 
     Value input_value = input_uniform_quantize_call_pattern->GetInputValue();
-    auto input_uniform_quantize_op =
-        rewriter.create<stablehlo::UniformQuantizeOp>(
-            input_i8_to_f32_convert_op.getLoc(),
-            /*result=*/
-            mlir::cast<TensorType>(input_value.getType())
-                .clone(input_uniform_quantized_type),
-            /*operand=*/input_value);
+    auto input_uniform_quantize_op = stablehlo::UniformQuantizeOp::create(
+        rewriter, input_i8_to_f32_convert_op.getLoc(),
+        /*result=*/
+        mlir::cast<TensorType>(input_value.getType())
+            .clone(input_uniform_quantized_type),
+        /*operand=*/input_value);
 
     rewriter.replaceAllUsesWith(input_i8_to_f32_convert_op.getResult(),
                                 input_uniform_quantize_op.getResult());
@@ -1116,8 +1112,8 @@ class ComposeUniformQuantizedDotGeneralOp
             quantization_dimension);
 
     // Create a new constant op for the filter in i8.
-    auto quantized_filter_constant_op = rewriter.create<stablehlo::ConstantOp>(
-        filter_constant_op.getLoc(),
+    auto quantized_filter_constant_op = stablehlo::ConstantOp::create(
+        rewriter, filter_constant_op.getLoc(),
         /*output=*/
         mlir::cast<TensorType>(filter_constant_op.getResult().getType())
             .clone(filter_uniform_quantized_type),
@@ -1157,8 +1153,8 @@ class ComposeUniformQuantizedDotGeneralOp
             output_uniform_quantize_call_op.getLoc(), *rewriter.getContext(),
             output_scale_value, output_zero_point_value);
 
-    auto new_dot_general_op = rewriter.create<stablehlo::DotGeneralOp>(
-        op.getLoc(), /*resultType0=*/
+    auto new_dot_general_op = stablehlo::DotGeneralOp::create(
+        rewriter, op.getLoc(), /*resultType0=*/
         mlir::cast<TensorType>(op.getResult().getType())
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
@@ -1168,10 +1164,9 @@ class ComposeUniformQuantizedDotGeneralOp
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 
-    auto new_output_dequant_op =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            output_uniform_dequantize_call_op.getLoc(),
-            /*operand=*/new_dot_general_op);
+    auto new_output_dequant_op = stablehlo::UniformDequantizeOp::create(
+        rewriter, output_uniform_dequantize_call_op.getLoc(),
+        /*operand=*/new_dot_general_op);
 
     rewriter.replaceAllUsesWith(output_uniform_dequantize_call_op.getResult(0),
                                 new_output_dequant_op.getResult());
@@ -1423,13 +1418,12 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             input1_scale_value, input1_zero_point_value);
 
     Value input1_value = input1_uniform_quantize_call_pattern->GetInputValue();
-    auto input1_uniform_quantize_op =
-        rewriter.create<stablehlo::UniformQuantizeOp>(
-            input1_uniform_quantize_call_op.getLoc(),
-            /*result=*/
-            mlir::cast<TensorType>(input1_value.getType())
-                .clone(input1_uniform_quantized_type),
-            /*operand=*/input1_value);
+    auto input1_uniform_quantize_op = stablehlo::UniformQuantizeOp::create(
+        rewriter, input1_uniform_quantize_call_op.getLoc(),
+        /*result=*/
+        mlir::cast<TensorType>(input1_value.getType())
+            .clone(input1_uniform_quantized_type),
+        /*operand=*/input1_value);
 
     rewriter.replaceAllUsesWith(input1_zero_point_subtract_op.getResult(),
                                 input1_uniform_quantize_op.getResult());
@@ -1462,13 +1456,12 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             input2_scale_value, input2_zero_point_value);
 
     Value input2_value = input2_uniform_quantize_call_pattern->GetInputValue();
-    auto input2_uniform_quantize_op =
-        rewriter.create<stablehlo::UniformQuantizeOp>(
-            input2_uniform_quantize_call_op.getLoc(),
-            /*result=*/
-            mlir::cast<TensorType>(input2_value.getType())
-                .clone(input2_uniform_quantized_type),
-            /*operand=*/input2_value);
+    auto input2_uniform_quantize_op = stablehlo::UniformQuantizeOp::create(
+        rewriter, input2_uniform_quantize_call_op.getLoc(),
+        /*result=*/
+        mlir::cast<TensorType>(input2_value.getType())
+            .clone(input2_uniform_quantized_type),
+        /*operand=*/input2_value);
 
     rewriter.replaceAllUsesWith(input2_zero_point_subtract_op.getResult(),
                                 input2_uniform_quantize_op.getResult());
@@ -1512,8 +1505,8 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
             output_uniform_quantize_call_op.getLoc(), *rewriter.getContext(),
             output_scale_value, output_zero_point_value);
 
-    auto new_dot_general_op = rewriter.create<stablehlo::DotGeneralOp>(
-        op.getLoc(), /*resultType0=*/
+    auto new_dot_general_op = stablehlo::DotGeneralOp::create(
+        rewriter, op.getLoc(), /*resultType0=*/
         mlir::cast<TensorType>(op.getResult().getType())
             .clone(output_uniform_quantized_type),
         /*lhs=*/op.getLhs(), /*rhs=*/op.getRhs(),
@@ -1523,10 +1516,9 @@ class ComposeUniformQuantizedDotGeneralOpWithTwoQuantizedActivations
 
     rewriter.replaceAllUsesWith(op.getResult(), new_dot_general_op.getResult());
 
-    auto new_output_dequant_op =
-        rewriter.create<stablehlo::UniformDequantizeOp>(
-            output_uniform_dequantize_call_op.getLoc(),
-            /*operand=*/new_dot_general_op);
+    auto new_output_dequant_op = stablehlo::UniformDequantizeOp::create(
+        rewriter, output_uniform_dequantize_call_op.getLoc(),
+        /*operand=*/new_dot_general_op);
 
     rewriter.replaceAllUsesWith(output_uniform_dequantize_call_op.getResult(0),
                                 new_output_dequant_op.getResult());

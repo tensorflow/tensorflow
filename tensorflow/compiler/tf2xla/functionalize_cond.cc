@@ -16,30 +16,49 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
-#include <stack>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/match.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
-#include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
-#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "xla/union_find.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
@@ -1138,7 +1157,7 @@ StateMap::CondId FunctionalizeCond::StateAlongEdge(const Edge* e) {
     StateMap::CondState state;
     if (id != nullptr) state = *id;
     OutputTensor predicate;
-    TF_CHECK_OK(GetSwitchPredicate(*src, &predicate));
+    CHECK_OK(GetSwitchPredicate(*src, &predicate));
     if (e->IsControlEdge()) {
       // In gradients of tf.cond(), in each branch, we have a NoOp node as
       // control pivot. These NoOp nodes have control dependency from Switch

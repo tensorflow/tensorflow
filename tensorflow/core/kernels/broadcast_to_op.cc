@@ -149,11 +149,11 @@ TF_CALL_float8_e4m3fn(REGISTER_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("BroadcastTo")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("shape")
                             .HostMemory("output"),
-                        BroadcastToOp<CPUDevice, int32>);
+                        BroadcastToOp<CPUDevice, int32_t>);
 #endif
 #if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
 REGISTER_KERNEL_BUILDER(Name("BroadcastTo")

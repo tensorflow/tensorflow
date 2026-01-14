@@ -29,13 +29,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/event.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
-// TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceMemory.
+// TODO(b/400541410): Refactor and Merge this with MaybeOwningDeviceAddress.
 
 // GpuDeviceMemory represents either an owned or unowned GPU memory. It
 // owns GPU memory if an allocator is provided. When the object goes output of
@@ -47,11 +47,11 @@ class GpuDeviceMemory {
   GpuDeviceMemory& operator=(GpuDeviceMemory&& other) = default;
 
   // Creates non-owning GPU device memory from a raw data pointer.
-  explicit GpuDeviceMemory(stream_executor::DeviceMemoryBase buffer)
+  explicit GpuDeviceMemory(stream_executor::DeviceAddressBase buffer)
       : buffer_(buffer) {}
 
   // Creates owning GPU device memory from an owned data pointer.
-  explicit GpuDeviceMemory(stream_executor::OwningDeviceMemory buffer)
+  explicit GpuDeviceMemory(stream_executor::ScopedDeviceAddress<uint8_t> buffer)
       : owning_buffer_(std::move(buffer)), buffer_(*owning_buffer_) {}
 
   ShapedBuffer AsShapedBuffer(const Shape& on_device_shape,
@@ -62,19 +62,19 @@ class GpuDeviceMemory {
 
   // Allocates raw owning memory.
   static absl::StatusOr<GpuDeviceMemory> Allocate(
-      se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size);
+      se::DeviceAddressAllocator* allocator, int device_ordinal, size_t size);
 
   static absl::StatusOr<GpuDeviceMemory> Allocate(
-      se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
+      se::DeviceAddressAllocator* allocator, int device_ordinal, size_t size,
       int64_t memory_space);
 
-  stream_executor::DeviceMemoryBase buffer() const { return buffer_; }
+  stream_executor::DeviceAddressBase buffer() const { return buffer_; }
   size_t size_bytes() const { return buffer_.size(); }
   bool owns_data() const { return !owning_buffer_.is_null(); }
 
  private:
-  stream_executor::OwningDeviceMemory owning_buffer_;
-  se::DeviceMemoryBase buffer_;
+  stream_executor::ScopedDeviceAddress<uint8_t> owning_buffer_;
+  se::DeviceAddressBase buffer_;
 };
 
 // Class that represents a GPU buffer. It optionally owns the buffer. It also

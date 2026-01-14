@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_TESTS_HLO_TEST_BASE_WITH_MLIR_CONTEXT_H_
 
 #include "mlir/IR/MLIRContext.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

@@ -50,15 +50,15 @@ TEST(PhiloxRandomTest, SkipMatchTest) {
   constexpr int count = 1024;
   constexpr int skip_count = 2048;
 
-  uint64 test_seed = GetTestSeed();
-  std::vector<uint32> v1(count);
+  uint64_t test_seed = GetTestSeed();
+  std::vector<uint32_t> v1(count);
   {
     PhiloxRandom gen(test_seed);
     gen.Skip(skip_count / 4);
     FillRandoms<TrivialPhiloxDistribution>(gen, &v1[0], v1.size());
   }
 
-  std::vector<uint32> v2(count + skip_count);
+  std::vector<uint32_t> v2(count + skip_count);
   {
     PhiloxRandom gen(test_seed);
     FillRandoms<TrivialPhiloxDistribution>(gen, &v2[0], v2.size());

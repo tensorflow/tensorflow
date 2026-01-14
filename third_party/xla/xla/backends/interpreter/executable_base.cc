@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
@@ -55,8 +55,7 @@ namespace interpreter {
 
 InterpreterExecutableBase::InterpreterExecutableBase(
     std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module), /*hlo_profile_printer_data=*/nullptr,
-                 /*hlo_profile_index_map=*/nullptr) {}
+    : Executable(std::move(hlo_module)) {}
 
 absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
@@ -74,13 +73,13 @@ absl::StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
     device_ordinal = 0;
   }
   for (auto& argument : arguments) {
-    const ShapeTree<MaybeOwningDeviceMemory>& buffers = argument.Buffers();
+    const ShapeTree<MaybeOwningDeviceAddress>& buffers = argument.Buffers();
     argument_buffers.push_back(ShapedBuffer(buffers.shape(),
                                             /*device_ordinal=*/device_ordinal));
     auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != buffers.end(); ++in_it, ++out_it) {
-      out_it->second = in_it->second.AsDeviceMemoryBase();
+      out_it->second = in_it->second.AsDeviceAddress();
     }
   }
 
@@ -180,7 +179,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
           -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
-          const MaybeOwningDeviceMemory& original_input =
+          const MaybeOwningDeviceAddress& original_input =
               (*arguments)[alias->parameter_number].Buffers().element(
                   alias->parameter_index);
           if (!original_input.HasOwnership()) {
@@ -215,7 +214,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
     if (alias) {
       TF_RET_CHECK(alias->parameter_number < arguments->size());
       ExecutionInput& input = (*arguments)[alias->parameter_number];
-      MaybeOwningDeviceMemory* device_memory =
+      MaybeOwningDeviceAddress* device_memory =
           input.MutableBuffer(alias->parameter_index);
       if (auto owning = device_memory->Release()) {
         se::DeviceAddressBase device_memory_base = owning->Release();

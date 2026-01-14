@@ -318,10 +318,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   auto compute_type = cfg.compute_type;
   if (!compute_type) {  // obtain compute_type unless provided by the user
-    TF_ASSIGN_OR_RETURN(compute_type,
-                        gpu::GetBlasComputationType(
-                            cfg.precision_algorithm, lhs_layout.dtype,
-                            output_layout.dtype, cfg.compute_precision));
+    TF_ASSIGN_OR_RETURN(
+        compute_type,
+        gpu::GetBlasComputationType(
+            cfg.precision_algorithm, lhs_layout.dtype, output_layout.dtype,
+            cfg.compute_precision,
+            parent_->GetDeviceDescription().gpu_compute_capability()));
   }
 
   // FP8 matmuls have a fast accumulation mode that is less precise than the

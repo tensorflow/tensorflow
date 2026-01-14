@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/fusion_dispatch_pipeline.h"
 
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"

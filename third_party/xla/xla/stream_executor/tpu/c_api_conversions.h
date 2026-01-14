@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -117,8 +117,8 @@ struct TpuEmbeddingEngineParametersData {
 
 std::unique_ptr<TpuEmbeddingEngineParametersData> Create(int num_tables);
 
-xla::MaybeOwningDeviceMemory FromC(
-    SE_MaybeOwningDeviceMemory* se_mem,
+xla::MaybeOwningDeviceAddress FromC(
+    SE_MaybeOwningDeviceAddress* se_mem,
     stream_executor::DeviceAddressAllocator* allocator);
 
 // DeviceAddressAllocator
@@ -128,11 +128,13 @@ stream_executor::DeviceAddressAllocator* FromC(
     const SE_DeviceAddressAllocator& c_allocator);
 
 // OwningDeviceAddress
-SE_MaybeOwningDeviceMemory ToC(stream_executor::OwningDeviceAddress* mem);
+SE_MaybeOwningDeviceAddress ToC(
+    stream_executor::ScopedDeviceAddress<uint8_t>* mem);
 // mem.HasOwnership() may be true if the buffer is aliased and shouldn't be
 // released. 'aliased' should be true in this case. 'aliased' has no effect if
 // 'mem' is unowned.
-SE_MaybeOwningDeviceMemory ToC(xla::MaybeOwningDeviceMemory& mem, bool aliased);
+SE_MaybeOwningDeviceAddress ToC(xla::MaybeOwningDeviceAddress& mem,
+                                bool aliased);
 
 // HloModule
 XLA_HloModule ToC(const xla::HloModule& module);

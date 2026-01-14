@@ -34,6 +34,9 @@ from tensorflow.python.platform import tf_logging as logging
 
 # pylint: disable=g-import-not-at-top
 try:
+  # Disable loading HDF5 plugins from a default path and prevent ZDI-CAN-25480.
+  # Importing h5py prior to importing tensorflow will restore the old behavior.
+  os.environ['HDF5_PLUGIN_PATH'] = 'disable'
   import h5py
   HDF5_OBJECT_HEADER_LIMIT = 64512
 except ImportError:

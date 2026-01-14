@@ -15,21 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 
-#include "absl/memory/memory.h"
+#include <algorithm>
+#include <memory>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
+#include "absl/types/span.h"
+#include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -260,7 +271,7 @@ TEST_F(CompilabilityCheckUtilTest, CheckFunctionalWhileNode) {
   GraphDef graph_def;
   TF_EXPECT_OK(builder.ToGraphDef(&graph_def));
   std::unique_ptr<Graph> graph(new Graph(flib_def_.get()));
-  TF_CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  CHECK_OK(GraphDefBuilderToGraph(builder, graph.get()));
 
   auto while_node_it = std::find_if(
       graph->nodes().begin(), graph->nodes().end(),

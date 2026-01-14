@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/tpu_functional_ops.h"
 #include "tensorflow/cc/ops/tpu_replication_ops.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -124,11 +124,11 @@ Node* FromNodeDef(absl::string_view name, absl::string_view node_type,
   }
 
   NodeDef node_def;
-  TF_CHECK_OK(builder.Finalize(&node_def));
+  CHECK_OK(builder.Finalize(&node_def));
 
   absl::Status s;
   Node* node = graph.AddNode(node_def, &s);
-  TF_CHECK_OK(s);
+  CHECK_OK(s);
   return node;
 }
 
@@ -547,12 +547,12 @@ TEST(UnsupportedOpTest,
   builder.Attr("dtypes", DT_FLOAT);
   builder.Attr("shapes", 1);
   NodeDef node_def;
-  TF_CHECK_OK(builder.Finalize(&node_def));
+  CHECK_OK(builder.Finalize(&node_def));
   absl::Status s;
   Node* node_InfeedDequeueTuple = (*root.graph()).AddNode(node_def, &s);
   node_InfeedDequeueTuple->set_requested_device(
       "/device:TPU_REPLICATED_CORE:0");
-  TF_CHECK_OK(s);
+  CHECK_OK(s);
   ASSERT_NE(node_InfeedDequeueTuple, nullptr);
 
   Graph graph(OpRegistry::Global());

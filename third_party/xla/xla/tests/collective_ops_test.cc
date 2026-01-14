@@ -435,7 +435,7 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   auto device_assn = MakeDeviceAssn(devices);
 
   HloRunnerInterface::ReplicatedExecuteOptions opts;
-  opts.num_replicas = devices.size();
+  opts.num_devices = devices.size();
   opts.use_threads = true;
   opts.arguments.push_back(&input_literal);
 

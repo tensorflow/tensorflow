@@ -298,12 +298,12 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
 TFTPU_CAPI_EXPORT void TpuExecutable_FreeXlaShapeIndexArray(
     XLA_ShapeIndex* array);
 
-// This frees the SE_MaybeOwningDeviceMemory* array allocated when se_output is
+// This frees the SE_MaybeOwningDeviceAddress* array allocated when se_output is
 // returned by TpuExecutable_ExecuteAsyncOnStream.
 // Note that this only frees the heap-allocated array itself, and does not
 // free any of the underlying device memory.
-TFTPU_CAPI_EXPORT void TpuExecutable_FreeMaybeOwningDeviceMemoryArray(
-    SE_MaybeOwningDeviceMemory* array);
+TFTPU_CAPI_EXPORT void TpuExecutable_FreeMaybeOwningDeviceAddressArray(
+    SE_MaybeOwningDeviceAddress* array);
 
 TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
                                                  const char** fingerprint,
@@ -479,7 +479,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeXlaShapeIndexArray);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceAddressArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Serialize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutableSerialize_GetByteSize);

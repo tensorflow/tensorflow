@@ -733,9 +733,9 @@ mlir::LogicalResult InsertDTensorLayoutOps(
     mlir::Type value_type = GetSubtypeOrSelf(merged_layout.first);
 
     if (auto type = mlir::dyn_cast<mlir::TensorType>(value_type)) {
-      auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-          merged_layout.first.getLoc(), merged_layout.first, layout_attr,
-          mlir::TF::ShapeAttr::get(builder.getContext(), type));
+      auto layout_op = mlir::TF::DTensorLayout::create(
+          builder, merged_layout.first.getLoc(), merged_layout.first,
+          layout_attr, mlir::TF::ShapeAttr::get(builder.getContext(), type));
       llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
       merged_layout.first.replaceAllUsesExcept(layout_op.getOutput(),
                                                exception);
@@ -1234,30 +1234,26 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
       mlir::TF::ShapeAttr global_shape = mlir::TF::ShapeAttr::get(
           builder.getContext(),
           mlir::cast<mlir::TensorType>(yield_op->getOperand(i).getType()));
-      mlir::TF::RelayoutOp first_relayout =
-          builder.create<mlir::TF::RelayoutOp>(
-              op.getLoc(), yield_op->getOperand(i).getType(),
-              yield_op->getOperand(i), input_layout.ToString());
-      mlir::TF::DTensorLayout first_layout_op =
-          builder.create<mlir::TF::DTensorLayout>(
-              op.getLoc(), first_relayout.getOutput(),
-              mlir::dtensor::LayoutAttr::get(builder.getContext(),
-                                             input_layout),
-              global_shape);
+      mlir::TF::RelayoutOp first_relayout = mlir::TF::RelayoutOp::create(
+          builder, op.getLoc(), yield_op->getOperand(i).getType(),
+          yield_op->getOperand(i), input_layout.ToString());
+      mlir::TF::DTensorLayout first_layout_op = mlir::TF::DTensorLayout::create(
+          builder, op.getLoc(), first_relayout.getOutput(),
+          mlir::dtensor::LayoutAttr::get(builder.getContext(), input_layout),
+          global_shape);
       yield_op->setOperand(i, first_layout_op.getOutput());
 
       // Insert the second relayout op after the loop itself.
       builder.setInsertionPointAfter(op);
       mlir::TF::DTensorLayout second_layout_op =
-          builder.create<mlir::TF::DTensorLayout>(
-              op.getLoc(), op->getResult(i),
+          mlir::TF::DTensorLayout::create(
+              builder, op.getLoc(), op->getResult(i),
               mlir::dtensor::LayoutAttr::get(builder.getContext(),
                                              input_layout),
               global_shape);
-      mlir::TF::RelayoutOp second_relayout =
-          builder.create<mlir::TF::RelayoutOp>(
-              op.getLoc(), second_layout_op.getOutput().getType(),
-              second_layout_op.getOutput(), output_layout.ToString());
+      mlir::TF::RelayoutOp second_relayout = mlir::TF::RelayoutOp::create(
+          builder, op.getLoc(), second_layout_op.getOutput().getType(),
+          second_layout_op.getOutput(), output_layout.ToString());
       op->getResult(i).replaceAllUsesExcept(
           second_relayout.getOutput(), llvm::SmallPtrSet<mlir::Operation*, 1>{
                                            second_layout_op.getOperation()});

@@ -151,26 +151,26 @@ StatusOr<mlir::Value> GetDeviceSeed(const Layout& layout, mlir::Operation* op) {
   mlir::Attribute const_attr =
       mlir::DenseIntElementsAttr::get(const_type, multipliers);
   mlir::Value multiplier =
-      builder.create<mlir::TF::ConstOp>(cluster.getLoc(), const_attr)
+      mlir::TF::ConstOp::create(builder, cluster.getLoc(), const_attr)
           .getOutput();
 
   const mlir::RankedTensorType one_by_one =
       mlir::RankedTensorType::get({1, 1}, builder.getIntegerType(32));
 
-  mlir::Value seed = builder.create<mlir::TF::MatMulOp>(
-      cluster.getLoc(), one_by_one, mesh_coordinates, multiplier);
+  mlir::Value seed = mlir::TF::MatMulOp::create(
+      builder, cluster.getLoc(), one_by_one, mesh_coordinates, multiplier);
 
   // Largest prime in 16 bits.
   mlir::Value prime = CreateIntScalarConst(
       /*value=*/65521, builder, cluster.getLoc(), /*use_int64=*/false);
 
   mlir::Value seed_plus_prime =
-      builder
-          .create<mlir::TF::AddV2Op>(cluster.getLoc(), one_by_one, seed, prime)
+      mlir::TF::AddV2Op::create(builder, cluster.getLoc(), one_by_one, seed,
+                                prime)
           .getZ();
 
-  mlir::TF::SqueezeOp squeeze = builder.create<mlir::TF::SqueezeOp>(
-      cluster.getLoc(),
+  mlir::TF::SqueezeOp squeeze = mlir::TF::SqueezeOp::create(
+      builder, cluster.getLoc(),
       mlir::RankedTensorType::get({}, builder.getIntegerType(32)),
       seed_plus_prime, builder.getI64ArrayAttr({0, 1}));
 
@@ -207,11 +207,12 @@ StatusOr<mlir::Value> ComputeNewSeed(mlir::OpBuilder& builder,
   mlir::Type seed_type =
       mlir::cast<mlir::TensorType>(op_seed.getType()).getElementType();
 
-  device_id_seed = builder.create<mlir::TF::CastOp>(
-      location, mlir::RankedTensorType::get({}, seed_type), device_id_seed);
+  device_id_seed = mlir::TF::CastOp::create(
+      builder, location, mlir::RankedTensorType::get({}, seed_type),
+      device_id_seed);
 
-  mlir::Value seed_xor =
-      builder.create<mlir::TF::BitwiseXorOp>(location, op_seed, device_id_seed);
+  mlir::Value seed_xor = mlir::TF::BitwiseXorOp::create(
+      builder, location, op_seed, device_id_seed);
   return seed_xor;
 }
 
@@ -240,8 +241,8 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV1(const Layout& layout,
 
   auto new_shape_value = Int64Const(builder, location, new_random_shape);
   // TODO(zhonglinhan) : check different input for StatelessRandomUniformInt
-  auto local_random = builder.create<RandomOp>(location, new_random_type,
-                                               new_shape_value, seed_xor);
+  auto local_random = RandomOp::create(builder, location, new_random_type,
+                                       new_shape_value, seed_xor);
   op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();
@@ -272,9 +273,9 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2(const Layout& layout,
 
   auto new_shape_value = Int64Const(builder, location, new_random_shape);
 
-  auto local_random = builder.create<RandomOp>(
-      location, new_random_type, new_shape_value, seed_xor,
-      random_op.getCounter(), random_op.getAlg());
+  auto local_random =
+      RandomOp::create(builder, location, new_random_type, new_shape_value,
+                       seed_xor, random_op.getCounter(), random_op.getAlg());
   op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();
@@ -305,10 +306,10 @@ StatusOr<mlir::Operation*> CreatedShardedLocalRandomOpV2Range(
 
   auto new_shape_value = Int64Const(builder, location, new_random_shape);
 
-  auto local_random = builder.create<RandomOp>(
-      location, new_random_type, new_shape_value, seed_xor,
-      random_op.getCounter(), random_op.getAlg(), random_op.getMinval(),
-      random_op.getMaxval());
+  auto local_random =
+      RandomOp::create(builder, location, new_random_type, new_shape_value,
+                       seed_xor, random_op.getCounter(), random_op.getAlg(),
+                       random_op.getMinval(), random_op.getMaxval());
   op->getResult(0).replaceAllUsesWith(local_random.getOutput());
   op->erase();
   return local_random.getOperation();

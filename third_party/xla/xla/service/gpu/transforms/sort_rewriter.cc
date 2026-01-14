@@ -28,8 +28,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/cub_sort_thunk.h"
-#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,8 +47,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 namespace m = match;
@@ -227,12 +224,44 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
       sort_analysis->sort_order, sort_key_type, sort_value_type};
 }
 
-// Create runner for CUB sort operation.
-absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> CreateRunner(
-    const SortComputationAnalysis& sort_analysis,
-    absl::string_view platform_name) {
-  return CubSortRunnerInterface::Create(
-      sort_analysis.key_type, sort_analysis.value_type, platform_name);
+// Returns whether the sort operation is supported by CUB.
+bool AreOperandTypesSupportedByCub(
+    const SortComputationAnalysis& sort_analysis) {
+  PrimitiveType key_type = sort_analysis.key_type;
+  std::optional<PrimitiveType> value_type = sort_analysis.value_type;
+  if (!value_type.has_value()) {
+    switch (key_type) {
+      case BF16:
+      case F16:
+      case F32:
+      case F64:
+      case S8:
+      case S16:
+      case S32:
+      case S64:
+      case U8:
+      case U16:
+      case U32:
+      case U64:
+        return true;
+      default:
+        return false;
+    }
+  }
+  auto value_bitwidth = primitive_util::BitWidth(*value_type);
+  switch (key_type) {
+    case U8:
+    case U16:
+    case U32:
+    case U64:
+    case F32:
+      return value_bitwidth == 16 || value_bitwidth == 32 ||
+             value_bitwidth == 64;
+    case S32:
+      return value_bitwidth == 32;
+    default:
+      return false;
+  }
 }
 
 // Restore the result shape after sorting a pair of tensors.
@@ -456,7 +485,7 @@ bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
     VLOG(2) << "Only simple compare computations are supported";
     return false;
   }
-  if (!CreateRunner(*sort_analysis, platform_name).ok()) {
+  if (!AreOperandTypesSupportedByCub(*sort_analysis)) {
     VLOG(2) << "Unsupported operand types (no compiled CUB kernels): "
             << PrimitiveType_Name(sort_analysis->key_type) << " "
             << (sort_analysis->value_type.has_value()
@@ -475,22 +504,6 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     HloSortInstruction* sort_op) {
   // Get the sort tensor index and direction.
   SortComputationAnalysis sort_analysis = AnalyzeSortOp(*sort_op).value();
-
-  // Get scratch size requirements from CUB.
-  const Shape& operand_shape = sort_op->operand(0)->shape();
-  int64_t batch_size = Product(operand_shape.dimensions()) /
-                       operand_shape.dimensions(sort_op->sort_dimension());
-
-  TF_ASSIGN_OR_RETURN(auto runner, CreateRunner(sort_analysis, platform_name_));
-  TF_ASSIGN_OR_RETURN(
-      int64_t scratch_size,
-      runner->GetScratchSize(Product(operand_shape.dimensions()), batch_size));
-
-  // Align and increase scratch size to fit the offsets.
-  if (batch_size > 1) {
-    scratch_size += sizeof(int) - scratch_size % sizeof(int);
-    scratch_size += (batch_size + 1) * sizeof(int);
-  }
 
   // Values are only present if sorting a pair of tensors.
   HloInstruction* keys;
@@ -519,13 +532,17 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     shapes.push_back(values->shape());
     operands.push_back(values);
   }
-  shapes.push_back(ShapeUtil::MakeShape(U8, {scratch_size}));
+  // The last shape corresponds to the scratch buffer. In this pass we put 1 as
+  // the scratch size, but later the actual size will be set by the
+  // AssignCubScratchSize pass.
+  shapes.push_back(ShapeUtil::MakeShape(U8, {/*scratch_size=*/1}));
   Shape call_shape = ShapeUtil::MakeTupleShape(absl::MakeSpan(shapes));
 
   // Build the custom call instruction.
   HloInstruction* custom_call =
       sort_op->AddInstruction(HloInstruction::CreateCustomCall(
-          call_shape, absl::MakeSpan(operands), kCubDeviceRadixSortTarget));
+          call_shape, absl::MakeSpan(operands),
+          kCubDeviceRadixSortUnassignedScratchSizeTarget));
 
   xla::SortOptions backend_config;
   backend_config.set_descending(sort_analysis.descending);
@@ -586,5 +603,4 @@ absl::StatusOr<bool> SortRewriter::RunImpl(
   return changed;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

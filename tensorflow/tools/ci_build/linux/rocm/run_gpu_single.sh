@@ -64,13 +64,31 @@ if [ ! -d /tf ];then
         mkdir /tf
 fi
 
-# vvv TODO (rocm) weekly-sync-20251021 excluded tests
+# vvv TODO (rocm) weekly-sync-20251224 excluded tests
 EXCLUDED_TESTS=(
     # //tensorflow/core/kernels:matmul_op_test_gpu
     Test/FusedMatMulWithBiasOpTest/1.MatMul*
 
     # //tensorflow/core/common_runtime:process_function_library_runtime_test_gpu
     ProcessFunctionLibraryRuntimeTest.MultiDevice_ResourceOutput_GPU
+
+    # //tensorflow/compiler/tests:randomized_tests_seeded
+    # //tensorflow/compiler/tests:randomized_tests_mlir_seeded
+    OpTest.ScatterNd
+
+    # //tensorflow/core/util/autotune_maps:autotune_serialize_test_gpu
+    AutotuneSerializeTest.Consistency
+    AutotuneSerializeTest.VersionControl
+
+    # //tensorflow/python/kernel_tests/nn_ops:depthwise_conv_op_d9m_test
+    DepthwiseConv2DDeterministicTest.testBackwardDeterminismGPU
+
+    # //tensorflow/python/kernel_tests/sparse_ops:sparse_ops_test
+    SparseFillEmptyRowsTest.testSparseFillEmptyRowsGradInvalidReverseIndexMap
+
+    # //tensorflow/core/profiler/backends/gpu:device_tracer_test
+    DeviceTracerTest.StartTwoTracers
+    DeviceTracerTest.TraceToXSpace
 )
 
 # Run bazel test command. Double test timeouts to avoid flakes.

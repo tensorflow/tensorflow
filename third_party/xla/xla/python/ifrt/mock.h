@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -236,6 +237,7 @@ class MockDevice : public Device {
   MOCK_METHOD(bool, IsAddressable, (), (const, final));
   MOCK_METHOD(int, ProcessIndex, (), (const, final));
   MOCK_METHOD(DeviceId, Id, (), (const, final));
+  MOCK_METHOD(absl::string_view, PlatformName, (), (const, final));
   MOCK_METHOD(absl::string_view, Kind, (), (const, final));
   MOCK_METHOD((const AttributeMap&), Attributes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<Memory*>, DefaultMemory, (), (const, final));

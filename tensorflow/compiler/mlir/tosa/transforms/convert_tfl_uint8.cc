@@ -264,7 +264,8 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
     // Convert intermediate tensor.
     for (auto &op : bb) {
       if (llvm::dyn_cast<tosa::ConstOp>(&op)) {
-        continue;  // Skip if the operation is a tosa::ConstOp
+        // Skip tosa const ops created during rescaling. 
+        continue;
       }
 
       for (Value output_val : op.getResults()) {
@@ -354,6 +355,13 @@ void ConvertUint8ToInt8::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto &ctx = getContext();
   mlir::func::FuncOp func = getOperation();
+
+  func.walk([&](Operation *op) {
+    if (isa<TosaOp>(op)){
+      // Run this before calling convert_graph_uint8_tensor as rescaling introduces tosa ops
+      op->emitError("tosa operations are not expected in this pass. Run tosa-convert-tfl-uint8 before tosa-legalize-tfl");
+    }
+  });
 
   // Convert uint8 const tensor. const needs to be handled specifically.
   patterns.add<ConvertUint8QConstOp>(&ctx);

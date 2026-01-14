@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
@@ -68,17 +67,18 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -109,7 +109,7 @@ namespace xla {
 class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  public:
   TfrtGpuCopyToDeviceStream(int64_t channel_id, se::Stream* stream,
-                            se::DeviceMemoryBase dst,
+                            se::DeviceAddressBase dst,
                             tsl::AsyncValueRef<std::unique_ptr<se::Event>> done)
       : CopyToDeviceStream(dst.size(), /*granule_bytes=*/1),
         channel_id_(channel_id),
@@ -145,7 +145,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
       return Future<>(done_.GetError());
     }
 
-    se::DeviceMemoryBase dst(
+    se::DeviceAddressBase dst(
         reinterpret_cast<std::byte*>(dst_.opaque()) + current_bytes_,
         dst_.size() - current_bytes_);
 
@@ -189,7 +189,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  private:
   int64_t channel_id_;
   se::Stream* stream_;
-  se::DeviceMemoryBase dst_;
+  se::DeviceAddressBase dst_;
 
   // Async value will become available after we'll submit the last memcpy
   // operation, and the event will be recorded on the stream.
@@ -770,21 +770,25 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         if (result_is_tuple) {
           for (int i = 0; i < output_buffers.size(); ++i) {
             ScopedShapedBuffer tuple_buffer = output.TakeSubTree({i});
-            stream_executor::DeviceMemoryBase* elem =
+            stream_executor::DeviceAddressBase* elem =
                 tuple_buffer.buffers().mutable_element({});
             VLOG(3) << "untuple: output_buffers[" << i
                     << "].emplace: " << elem->opaque();
-            output_buffers[i].emplace(stream_executor::OwningDeviceMemory(
-                *elem, device->local_device_id().value(), client->allocator()));
-            *elem = se::DeviceMemoryBase();
+            output_buffers[i].emplace(
+                stream_executor::ScopedDeviceAddress<uint8_t>(
+                    *elem, device->local_device_id().value(),
+                    client->allocator()));
+            *elem = se::DeviceAddressBase();
           }
         } else {
           CHECK_EQ(output_buffers.size(), 1);
           auto* elem = output.buffers().mutable_element({});
           VLOG(3) << "output_buffers[0].emplace: " << elem->opaque();
-          output_buffers.front().emplace(stream_executor::OwningDeviceMemory(
-              *elem, device->local_device_id().value(), client->allocator()));
-          *elem = se::DeviceMemoryBase();
+          output_buffers.front().emplace(
+              stream_executor::ScopedDeviceAddress<uint8_t>(
+                  *elem, device->local_device_id().value(),
+                  client->allocator()));
+          *elem = se::DeviceAddressBase();
         }
 
         // Set the scheduled event to concrete to indicate that the scheduling
@@ -901,19 +905,20 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         std::vector<ExecutionInput> inputs;
         if (parameter_is_tupled_arguments) {
           inputs.emplace_back(
-              ShapeTree<MaybeOwningDeviceMemory>(&parameter_shapes->front()));
+              ShapeTree<MaybeOwningDeviceAddress>(&parameter_shapes->front()));
           ExecutionInput& input = inputs.back();
           for (int i = 0; i < tracked_buffers.size(); ++i) {
             VLOG(4) << "tupled input[" << i
                     << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {i}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
-                           tracked_buffers[i]->buffer()->buffer(),
-                           device->local_hardware_id().value(),
-                           client->allocator())));
+                  {i},
+                  MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
+                      tracked_buffers[i]->buffer()->buffer(),
+                      device->local_hardware_id().value(),
+                      client->allocator())));
             } else {
-              input.SetBuffer({i}, MaybeOwningDeviceMemory(
+              input.SetBuffer({i}, MaybeOwningDeviceAddress(
                                        tracked_buffers[i]->buffer()->buffer()));
             }
           }
@@ -923,16 +928,16 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             VLOG(4) << "untupled input[" << i
                     << "]: " << tracked_buffers[i]->buffer()->buffer().opaque();
             inputs.emplace_back(
-                ShapeTree<MaybeOwningDeviceMemory>(&(*parameter_shapes)[i]));
+                ShapeTree<MaybeOwningDeviceAddress>(&(*parameter_shapes)[i]));
             ExecutionInput& input = inputs.back();
             if (buffer_is_donated[i]) {
               input.SetUnownedBuffer(
-                  {}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+                  {}, MaybeOwningDeviceAddress(se::ScopedDeviceAddress<uint8_t>(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
                           client->allocator())));
             } else {
-              input.SetBuffer({}, MaybeOwningDeviceMemory(
+              input.SetBuffer({}, MaybeOwningDeviceAddress(
                                       tracked_buffers[i]->buffer()->buffer()));
             }
           }

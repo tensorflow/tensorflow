@@ -99,6 +99,11 @@ class ConstraintExpression {
   // constraints.
   bool IsSatisfiedBy(absl::Span<const int64_t> dim_values) const;
 
+  // Prints unsatisfied constraints which are not satisfied by the provided
+  // `dim_values`.
+  void PrintUnsatisfiedConstraints(absl::Span<const int64_t> dim_values,
+                                   std::ostream& out) const;
+
   std::string ToString() const;
 
   void Print(std::ostream& out) const;

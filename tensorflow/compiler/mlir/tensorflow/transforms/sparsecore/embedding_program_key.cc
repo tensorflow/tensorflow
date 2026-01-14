@@ -213,13 +213,13 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder,
   }
 
   builder->setInsertionPointAfter(before_op);
-  auto launch = builder->create<tf_device::LaunchOp>(
-      before_op->getLoc(), builder->getStringAttr(host_device),
-      launch_result_types);
+  auto launch = tf_device::LaunchOp::create(*builder, before_op->getLoc(),
+                                            builder->getStringAttr(host_device),
+                                            launch_result_types);
   launch.getBody().push_back(launch_block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
-  builder->create<tf_device::ReturnOp>(before_op->getLoc(), launch_results);
+  tf_device::ReturnOp::create(*builder, before_op->getLoc(), launch_results);
 
   return launch;
 }

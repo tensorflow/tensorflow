@@ -248,7 +248,7 @@ FixedUnigramSampler::FixedUnigramSampler(int64_t range, float distortion,
 }
 
 absl::Status FixedUnigramSampler::SetDistributionSampler(
-    Env* env, const string& vocab_file) {
+    Env* env, const std::string& vocab_file) {
   TF_RETURN_IF_ERROR(LoadFromFile(env, vocab_file, distortion_));
   if (!TF_PREDICT_TRUE(FixedUnigramSampler::range() == weights_.size()))
     return (errors::InvalidArgument("range is ", FixedUnigramSampler::range(),
@@ -287,18 +287,18 @@ void FixedUnigramSampler::FillReservedIds(int32_t num_reserved_ids) {
 }
 
 absl::Status FixedUnigramSampler::LoadFromFile(Env* env,
-                                               const string& vocab_file,
+                                               const std::string& vocab_file,
                                                float distortion) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
 
   io::InputBuffer in(file.get(), 262144 /*bytes*/);
-  string line;
+  std::string line;
   int32_t word_id = weights_.size();
   while (in.ReadLine(&line).ok()) {
     // The vocabulary file should be in csv like format, with the last
     // field the weight associated with the word.
-    std::vector<string> cols = str_util::Split(line, ',');
+    std::vector<std::string> cols = str_util::Split(line, ',');
     if (cols.empty()) continue;
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {

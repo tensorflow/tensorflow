@@ -70,7 +70,7 @@ Value BuildIntConstOp(ImplicitLocOpBuilder& builder,
                       ConversionPatternRewriter& rewriter, int64_t const_value,
                       Type type) {
   Value result_const =
-      builder.create<TF::ConstOp>(rewriter.getIntegerAttr(type, const_value));
+      TF::ConstOp::create(builder, rewriter.getIntegerAttr(type, const_value));
   return result_const;
 }
 
@@ -115,8 +115,8 @@ LogicalResult NormalizeIndexVector(Operation* parent_op, Value& indices,
     new_start_indices_shape.push_back(1);
     indices_type = RankedTensorType::get(new_start_indices_shape,
                                          indices_type.getElementType());
-    indices = rewriter.create<mhlo::ReshapeOp>(parent_op->getLoc(),
-                                               indices_type, indices);
+    indices = mhlo::ReshapeOp::create(rewriter, parent_op->getLoc(),
+                                      indices_type, indices);
   } else if (index_vector_dim != indices_type.getRank() - 1) {
     // If index_vector_dim isn't the last dimension in indices then it isn't
     // supported yet.
@@ -197,8 +197,8 @@ Value InsertTranspose(Value value, int batch_dim, int feature_dim,
                                     default_batch_dim, default_feature_dim,
                                     default_spatial_dim_start, num_spatial_dims,
                                     type, rewriter);
-  return rewriter.create<mhlo::TransposeOp>(value.getLoc(), type, value,
-                                            permutation);
+  return mhlo::TransposeOp::create(rewriter, value.getLoc(), type, value,
+                                   permutation);
 }
 
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
@@ -206,10 +206,10 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   if (auto shaped_type = mlir::dyn_cast<RankedTensorType>(val.getType())) {
     ShapedType new_type =
         RankedTensorType::get(shaped_type.getShape(), new_ele_type);
-    return rewriter.create<TFL::CastOp>(loc, new_type, val);
+    return TFL::CastOp::create(rewriter, loc, new_type, val);
   }
-  return rewriter.create<TFL::CastOp>(
-      loc, UnrankedTensorType::get(new_ele_type), val);
+  return TFL::CastOp::create(rewriter, loc,
+                             UnrankedTensorType::get(new_ele_type), val);
 }
 
 // Replaces `region`'s terminator to TFL::Yield.

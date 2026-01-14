@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla::gpu {
 
@@ -40,6 +39,7 @@ void CreateTritonXlaPipeline(
   pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass());
 
   pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
+  pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
 
   auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
@@ -67,30 +67,23 @@ void CreateTritonXlaPipeline(
 void CreateTritonCudaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::CudaComputeCapability& cuda_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
+    int num_ctas, int num_stages);
 
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
     int num_ctas, int num_stages);
 
-void CreateTritonPipeline(
-    mlir::OpPassManager* pm,
-    const stream_executor::GpuComputeCapability& gpu_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
+void CreateTritonPipeline(mlir::OpPassManager* pm,
+                          const stream_executor::GpuComputeCapability& gpu_cc,
+                          int num_warps, int num_ctas, int num_stages) {
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
-                                    num_stages, out_cluster_info);
+                                    num_stages);
   }
 
   CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,
                            num_ctas, num_stages);
-  // There is no clusters in ROCm for now.
-  out_cluster_info.clusterDimX = 1;
-  out_cluster_info.clusterDimY = 1;
-  out_cluster_info.clusterDimZ = 1;
 }
 
 }  // namespace xla::gpu

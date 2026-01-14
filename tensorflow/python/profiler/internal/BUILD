@@ -108,6 +108,7 @@ tf_python_pybind_extension(
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
+        "@local_xla//xla/python/profiler/internal:traceme_state",
         "@local_xla//xla/python/profiler/internal:traceme_wrapper",
         "@pybind11",
     ],

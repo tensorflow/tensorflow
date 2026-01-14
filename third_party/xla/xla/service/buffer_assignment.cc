@@ -578,6 +578,36 @@ absl::StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   return result;
 }
 
+absl::StatusOr<Shape> BufferAssignment::GetShapeForUniqueSlice(
+    const HloInstruction* instruction, const ShapeIndex& index) const {
+  VLOG(3) << "Trying to find shape for unique slice for " << instruction->name()
+          << " [" << index << "]";
+  std::optional<Shape> result;
+  for (const HloValue* value :
+       dataflow_analysis().GetValueSet(instruction, index).values()) {
+    VLOG(3) << "Examining value " << *value;
+    if (HasAllocation(*value)) {
+      VLOG(3) << "Has allocation";
+      if (result == std::nullopt) {
+        result = value->shape();
+      } else if (result != value->shape()) {
+        return FailedPrecondition(
+            "Shape for instruction %s at index %s cannot "
+            "be determined at compile-time.",
+            instruction->name(), index.ToString());
+      }
+    } else {
+      VLOG(3) << "No allocation";
+    }
+  }
+  if (result == std::nullopt) {
+    return FailedPrecondition(
+        "BufferAllocation::Slice not assigned for instruction %s at index %s",
+        instruction->name(), index.ToString());
+  }
+  return *result;
+}
+
 absl::StatusOr<BufferAllocation::Slice>
 BufferAssignment::GetUniqueTopLevelSlice(
     const HloInstruction* instruction) const {

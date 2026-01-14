@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_xla//xla/tsl:tsl.bzl", "clean_dep")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_dep")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 licenses(["notice"])  # 3-Clause BSD
 

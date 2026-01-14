@@ -193,7 +193,6 @@ tf_cuda_only_cc_test(
     size = "small",
     srcs = ["autotune_serialize_test.cc"],
     features = ["-layering_check"],
-    tags = ["cuda-only"],
     deps = [
         ":autotune_serialize",
         ":conv_autotune_maps",

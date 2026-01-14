@@ -180,7 +180,8 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
       /*context=*/nullptr,  // Shares the same long-living context.
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
   auto [promise, future] = CompileFuture::MakePromise();
-  tsl::Env::Default()->SchedClosure(
+  tsl::Env::Default()->StartDetachedThread(
+      tsl::ThreadOptions(), /*name=*/"MultiThreadedAtomProgramCompiler",
       WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
                               compile_options = std::move(compile_options),
                               promise = std::move(promise)]() mutable {

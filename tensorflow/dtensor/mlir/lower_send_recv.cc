@@ -90,8 +90,8 @@ void PropagateDeviceIdToClusters(mlir::ModuleOp module) {
 
   module.walk([&](mlir::tf_device::ClusterOp op) {
     mlir::OpBuilder builder(&op.GetBody().front());
-    builder.create<mlir::TF::IdentityOp>(main_func.getLoc(),
-                                         device_id->getType(), *device_id);
+    mlir::TF::IdentityOp::create(builder, main_func.getLoc(),
+                                 device_id->getType(), *device_id);
   });
 }
 

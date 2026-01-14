@@ -204,7 +204,7 @@ std::string ResourceMgr::DebugString() const {
   std::vector<std::string> text;
   text.reserve(lines.size());
   for (const Line& line : lines) {
-    text.push_back(strings::Printf(
+    text.push_back(absl::StrFormat(
         "%-20s | %-40s | %-40s | %-s", line.container->c_str(),
         line.type.c_str(), line.resource->c_str(), line.detail.c_str()));
   }

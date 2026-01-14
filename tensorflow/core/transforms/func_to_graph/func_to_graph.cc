@@ -102,7 +102,7 @@ absl::Status FuncToGraph(GraphFuncOp func) {
   }
 
   OpBuilder builder(func);
-  auto graph = builder.create<GraphOp>(func.getLoc(), version);
+  auto graph = GraphOp::create(builder, func.getLoc(), version);
 
   // Remove the terminator.
   func.SingleBlock::getBody()->getTerminator()->erase();

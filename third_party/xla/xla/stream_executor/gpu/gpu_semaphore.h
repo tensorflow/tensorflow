@@ -42,7 +42,7 @@ class GpuSemaphore {
   explicit operator bool() const { return bool{ptr_}; }
 
   GpuSemaphoreState& operator*() {
-    return *static_cast<GpuSemaphoreState*>(ptr_->opaque());
+    return *static_cast<GpuSemaphoreState*>(ptr_->address().opaque());
   }
   DeviceAddress<GpuSemaphoreState> device();
 

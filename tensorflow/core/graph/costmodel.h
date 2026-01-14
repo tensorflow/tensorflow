@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
-typedef std::unordered_map<absl::string_view, int32, StringPieceHasher>
+typedef std::unordered_map<absl::string_view, int32_t, StringPieceHasher>
     NodeNameToCostIdMap;
 
 class StepStats;
@@ -95,7 +95,7 @@ class CostModel {
   void RecordCount(const Node* node, int num_count);
 
   // Returns how many times "node" has been executed.
-  int32 TotalCount(const Node* node) const;
+  int32_t TotalCount(const Node* node) const;
 
   // Records that "output_slot" of "node" has produced tensors of
   // aggregated "bytes".
@@ -184,7 +184,7 @@ class CostModel {
   void IncrementUpdateTimes();
 
   // Get the times that the cost model is updated.
-  int32 GetUpdateTimes() const;
+  int32_t GetUpdateTimes() const;
 
  private:
   static Bytes MinTensorMemoryUsage(const TensorShapeProto& tensor_shape,
@@ -197,13 +197,13 @@ class CostModel {
 
   // Nodes and Edges whose count is < this value
   // get type/byte estimates of 0.
-  int32 min_count_ = 0;
+  int32_t min_count_ = 0;
 
   // The number of times the cost model is updated.
-  int32 update_times_ = 0;
+  int32_t update_times_ = 0;
 
   // Number of times each Node has been executed.
-  std::vector<int32> count_;
+  std::vector<int32_t> count_;
   // Cumulative execution time.
   std::vector<Microseconds> time_;
   // Cumulative Bytes output on each channel.

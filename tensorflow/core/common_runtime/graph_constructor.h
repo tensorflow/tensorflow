@@ -89,7 +89,7 @@ struct ImportGraphDefOptions {
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
   // named "animals/bunny" in *g. Must not be already used as a node name or
   // prefix in the graph.
-  string prefix;
+  std::string prefix;
 
   // If true, imported node names will be modified if their name already exists
   // in the graph. If false, conflicting names will be treated as an error. Note
@@ -125,7 +125,7 @@ struct ImportGraphDefOptions {
   // Note that to avoid creating many redundant control edges, ImportGraphDef()
   // won't add control edges to nodes that will inherit the dependencies from
   // other nodes in `gdef`.
-  std::vector<string> control_dependencies;
+  std::vector<std::string> control_dependencies;
 
   // Tensors in `gdef` that will be returned via the ImportGraphDefResults
   // output parameter of `ImportGraphDef()`. If this list is non-empty, the
@@ -151,7 +151,7 @@ struct ImportGraphDefOptions {
   // Unlike `return_tensors`, `input_map` has no effect on the nodes
   // returned. `return_nodes` must be empty if `skip_mapped_nodes` is true.
   // TODO(skyewm): make this work with `skip_mapped_nodes` if there's a need.
-  std::vector<string> return_nodes;
+  std::vector<std::string> return_nodes;
 
   // If true, checks that all colocation constraints are nodes in the GraphDef.
   bool validate_colocation_constraints = true;
@@ -165,7 +165,7 @@ struct ImportGraphDefOptions {
   // python API.
 
   // Try to set default execution device for this grapth.
-  string default_device;
+  std::string default_device;
 
   // If true, propagates a node's assigned device. By default the runtime
   // will recompute the assigned device every time.

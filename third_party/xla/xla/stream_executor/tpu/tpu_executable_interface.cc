@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
@@ -106,7 +106,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
           -> absl::Status {
         if (alias && alias->must_alias()) {
           VLOG(1) << alias->ToString();
-          const MaybeOwningDeviceMemory& original_input =
+          const MaybeOwningDeviceAddress& original_input =
               (*arguments)[alias->parameter_number].Buffers().element(
                   alias->parameter_index);
           if (!original_input.HasOwnership()) {
@@ -152,7 +152,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     if (alias) {
       TF_RET_CHECK(alias->parameter_number < arguments->size());
       ExecutionInput& input = (*arguments)[alias->parameter_number];
-      MaybeOwningDeviceMemory* device_memory =
+      MaybeOwningDeviceAddress* device_memory =
           input.MutableBuffer(alias->parameter_index);
       if (auto owning = device_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
@@ -212,7 +212,7 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   std::vector<se::DeviceAddressBase> memory_bases;
   memory_bases.reserve(arguments.size());
   for (auto& argument : arguments) {
-    memory_bases.push_back(argument.Buffer({}).AsDeviceMemoryBase());
+    memory_bases.push_back(argument.Buffer({}).AsDeviceAddress());
   }
   se::Stream* stream = run_options->stream();
 
@@ -240,16 +240,16 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       // data from fast memory instead of fresh data in large memory.
       auto it = arguments[parameter].MutableBuffers()->find({index});
       CHECK(it != arguments[parameter].MutableBuffers()->end());
-      CHECK(!it->second.AsDeviceMemoryBase().is_null());
+      CHECK(!it->second.AsDeviceAddress().is_null());
       CHECK(offset);
       bool is_prefetch_output_alias =
           absl::c_any_of(result.Result().buffers(), [&](auto index_addr_pair) {
             return index_addr_pair.second.IsSameAs(
-                it->second.AsDeviceMemoryBase());
+                it->second.AsDeviceAddress());
           });
       cross_program_prefetch_addrs.emplace_back(
           is_prefetch_output_alias ? stream_executor::DeviceAddressBase()
-                                   : it->second.AsDeviceMemoryBase());
+                                   : it->second.AsDeviceAddress());
       cross_program_prefetch_offsets.emplace_back(
           is_prefetch_output_alias ? std::numeric_limits<uint32_t>::max()
                                    : *offset);

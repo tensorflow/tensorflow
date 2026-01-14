@@ -147,3 +147,19 @@ module {
 // CHECK-NOT: math.rsqrt
 // CHECK: %[[RSQRT_CALL:.*]] = call @local_xla.rsqrt.f64
 // CHECK: return %[[RSQRT_CALL]]
+
+// -----
+
+// Use a vector length of 3 as we know that will never be supported.
+func.func @rsqrt_unsupported_vector_size(%arg0: vector<3xf32>) -> vector<3xf32> {
+  // CHECK: %[[IN0:.*]] = vector.extract %arg0[0]
+  // CHECK: %[[RSQRT0:.*]] = call @local_xla.rsqrt.f32(%[[IN0]])
+  // CHECK: %[[IN1:.*]] = vector.extract %arg0[1]
+  // CHECK: %[[RSQRT1:.*]] = call @local_xla.rsqrt.f32(%[[IN1]])
+  // CHECK: %[[IN2:.*]] = vector.extract %arg0[2]
+  // CHECK: %[[RSQRT2:.*]] = call @local_xla.rsqrt.f32(%[[IN2]])
+  // CHECK: %[[RESULT:.*]] = vector.from_elements %[[RSQRT0]], %[[RSQRT1]], %[[RSQRT2]]
+  %ret = math.rsqrt %arg0 : vector<3xf32>
+  // CHECK: return %[[RESULT]]
+  return %ret : vector<3xf32>
+}

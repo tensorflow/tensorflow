@@ -33,12 +33,13 @@ class Tanh : public Intrinsic<Tanh> {
   static std::vector<std::vector<Type>> SupportedVectorTypes() {
     // F16 via upcast to F32.
     return {
-        {Type::S(xla::F16)},    {Type::V(xla::F16, 8)}, {Type::V(xla::F16, 16)},
-        {Type::S(xla::F32)},
-
-        {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)}, {Type::V(xla::F32, 16)},
-        {Type::S(xla::F64)},    {Type::V(xla::F64, 2)}, {Type::V(xla::F64, 4)},
-        {Type::V(xla::F64, 8)},
+        {Type::S(xla::F16)},     {Type::V(xla::F16, 2)},
+        {Type::V(xla::F16, 4)},  {Type::V(xla::F16, 8)},
+        {Type::V(xla::F16, 16)}, {Type::S(xla::F32)},
+        {Type::V(xla::F32, 2)},  {Type::V(xla::F32, 4)},
+        {Type::V(xla::F32, 8)},  {Type::V(xla::F32, 16)},
+        {Type::S(xla::F64)},     {Type::V(xla::F64, 2)},
+        {Type::V(xla::F64, 4)},  {Type::V(xla::F64, 8)},
     };
   }
   static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,

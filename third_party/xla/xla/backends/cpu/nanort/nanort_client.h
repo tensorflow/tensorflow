@@ -39,7 +39,7 @@ class NanoRtClient {
           ExecutableBuildOptions());
 
   // Exports the given NanoRtExecutable to an AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       NanoRtExecutable* executable);
 };
 

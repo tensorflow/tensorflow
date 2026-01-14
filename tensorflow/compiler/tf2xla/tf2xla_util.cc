@@ -15,19 +15,36 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
-#include <functional>
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
 #include <queue>
 #include <random>
 #include <set>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -35,13 +52,16 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
@@ -1025,7 +1045,7 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
     // Look into forward While body function and check if TensorListPushBack op
     // has a Const input.
     NameAttrList fwd_body_attr;
-    TF_CHECK_OK(GetNodeAttr(fwd_while->def(), "body", &fwd_body_attr));
+    CHECK_OK(GetNodeAttr(fwd_while->def(), "body", &fwd_body_attr));
     const FunctionDef* fwd_body = fld->Find(fwd_body_attr.name());
     if (!fwd_body) {
       return errors::InvalidArgument("Cannot find function ",
@@ -1033,7 +1053,7 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
                                      fwd_while->DebugString());
     }
     std::unique_ptr<FunctionBody> fwd_fbody;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
+    CHECK_OK(FunctionDefToBodyHelper(
         *fwd_body, AttrSlice(&fwd_body_attr.attr()), fld, &fwd_fbody));
 
     // Find the TensorListPushBack node; it's one of fwd_arg's successors.
@@ -1051,7 +1071,7 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
 
     // Get input for the TensorListPushBack node.
     Node* input_node;
-    TF_CHECK_OK(tl_push_nodes[0]->input_node(1, &input_node));
+    CHECK_OK(tl_push_nodes[0]->input_node(1, &input_node));
     if (input_node->type_string() != "Const") {
       // Input for the TensorList is not Const node.
       continue;
@@ -1062,7 +1082,7 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
     // Rewrite backward While body function, replace usages of
     // TensorListPopBack with a Const node.
     NameAttrList bwd_body_attr;
-    TF_CHECK_OK(GetNodeAttr(bwd_while->def(), "body", &bwd_body_attr));
+    CHECK_OK(GetNodeAttr(bwd_while->def(), "body", &bwd_body_attr));
     const FunctionDef* bwd_body = fld->Find(bwd_body_attr.name());
     if (!bwd_body) {
       return errors::InvalidArgument("Cannot find function ",
@@ -1070,7 +1090,7 @@ absl::Status RewriteTensorListWithConstElement(Graph* g,
                                      bwd_while->DebugString());
     }
     std::unique_ptr<FunctionBody> bwd_fbody;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
+    CHECK_OK(FunctionDefToBodyHelper(
         *bwd_body, AttrSlice(&bwd_body_attr.attr()), fld, &bwd_fbody));
 
     // Find the TensorListPopBack node; it's one of bwd_arg's successors.

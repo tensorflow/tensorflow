@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,8 @@
 #include "llvm/Support/Casting.h"
 #include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/profiling/device_time_measurement.h"
+#include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
@@ -55,6 +58,7 @@
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 using ::testing::_;
@@ -232,7 +236,7 @@ TEST_F(LoadedExecutableTest, Execute) {
   exec_options.fill_status = true;
 
   IfrtResponse execute_response;
-  IfrtResponse check_future_response;
+  IfrtResponse fetch_execute_result_response;
 
   ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
                                             loaded_executable_execute_response {
@@ -277,12 +281,13 @@ TEST_F(LoadedExecutableTest, Execute) {
                                               }
                                             }
                                           )pb",
-                                          &check_future_response));
+                                          &fetch_execute_result_response));
   EXPECT_CALL(*session_,
-              Enqueue(Pointee(Partially(EquivToProto(R"pb(check_future_request {
-                                                            future_handle: 2000
-                                                          })pb")))))
-      .WillOnce(MockClientSessionReturnResponse(check_future_response));
+              Enqueue(Pointee(Partially(EquivToProto(
+                  R"pb(loaded_executable_fetch_execute_result_request {
+                         result_status_handle: 2000
+                       })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(fetch_execute_result_response));
 
   DeviceListRef devices = BasicDeviceList::Create({&device});
 
@@ -333,21 +338,23 @@ TEST_F(LoadedExecutableTest, Execute) {
       Enqueue(IfrtRequestOfType(IfrtRequest::kLoadedExecutableExecuteRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, execute_response));
   EXPECT_CALL(*session_,
-              Enqueue(IfrtRequestOfType(IfrtRequest::kCheckFutureRequest)))
-      .WillOnce(
-          MockClientCaptureAndReturn(&requests_queue, check_future_response));
+              Enqueue(IfrtRequestOfType(
+                  IfrtRequest::kLoadedExecutableFetchExecuteResultRequest)))
+      .WillOnce(MockClientCaptureAndReturn(&requests_queue,
+                                           fetch_execute_result_response));
 
   TF_ASSERT_OK_AND_ASSIGN(
       result, executable.Execute(absl::MakeSpan(args), exec_options, devices));
 
   auto execute_req = requests_queue.Pop().loaded_executable_execute_request();
-  auto check_future_req = requests_queue.Pop().check_future_request();
+  auto fetch_execute_result_req =
+      requests_queue.Pop().loaded_executable_fetch_execute_result_request();
 
   EXPECT_THAT(
       result.status.Await(),
       absl_testing::StatusIs(absl::StatusCode::kUnknown, "injected error"));
   EXPECT_EQ(execute_req.result_status_handle(),
-            check_future_req.future_handle());
+            fetch_execute_result_req.result_status_handle());
 
   ASSERT_THAT(result.outputs, SizeIs(2));
   ASSERT_THAT(execute_req.result_array_handle(), SizeIs(2));
@@ -359,6 +366,79 @@ TEST_F(LoadedExecutableTest, Execute) {
                 ->GetHandleUnknownIfBeingDonated()
                 ->handle,
             execute_req.result_array_handle()[1]);
+}
+
+TEST_F(LoadedExecutableTest, DeviceTime) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
+
+  MockClient client;
+
+  IfrtResponse response;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        loaded_executable_metadata_response {
+          parameter_shardings {}
+          output_shardings {}
+          output_layouts_list {}
+        }
+      )pb",
+      &response));
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(loaded_executable_metadata_request {
+                                    loaded_executable_handle: 1234
+                                  })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  LoadedExecutable executable(
+      &client, rpc_helper_, /*handle=*/1234, /*name=*/"foo",
+      /*num_devices=*/1, /*devices=*/{}, /*addressable_devices=*/{},
+      /*fingerprint=*/"fingerprint",
+      /*ready_future=*/tsl::Future<>(absl::OkStatus()),
+      /*loaded_host_callbacks=*/{}, /*loaded_host_callback_handles=*/{});
+
+  xla::ifrt::LoadedExecutable::ExecuteOptions exec_options;
+  exec_options.fill_status = true;
+
+  IfrtResponse execute_response;
+  IfrtResponse fetch_execute_result_response;
+
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        loaded_executable_execute_response { status_handle: 2000 }
+      )pb",
+      &execute_response));
+  EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
+                             R"pb(loaded_executable_execute_request {
+                                    loaded_executable_handle: 1234
+                                  })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(execute_response));
+
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(
+        loaded_executable_fetch_execute_result_response {
+          device_time { key: "tpu" value: 1234.0 }
+        }
+      )pb",
+      &fetch_execute_result_response));
+  EXPECT_CALL(*session_,
+              Enqueue(Pointee(Partially(EquivToProto(
+                  R"pb(loaded_executable_fetch_execute_result_request {
+                         result_status_handle: 2000
+                       })pb")))))
+      .WillOnce(MockClientSessionReturnResponse(fetch_execute_result_response));
+
+  auto device_time = xla::CreateDeviceTimeMeasurement();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable.Execute({}, exec_options, std::nullopt));
+  EXPECT_OK(result.status.Await());
+
+  EXPECT_THAT(device_time->GetTotalDuration(
+                  xla::DeviceTimeMeasurement::DeviceType::kTpu),
+              absl::Microseconds(1234.0));
 }
 
 }  // namespace

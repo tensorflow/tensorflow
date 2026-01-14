@@ -108,15 +108,15 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
   OpBuilder builder(&island.GetBody(), island.GetBody().begin());
   tf_executor::YieldOp yield = island.GetYield();
   if (yield.getNumOperands() == 0) {
-    builder.create<TF::NoOp>(island.getLoc(), TypeRange{}, ValueRange{});
+    TF::NoOp::create(builder, island.getLoc(), TypeRange{}, ValueRange{});
   } else if (yield.getNumOperands() == 1) {
     Value operand = yield.getOperand(0);
-    auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
-                                                   operand.getType(), operand);
+    auto identity = TF::IdentityOp::create(builder, island.getLoc(),
+                                           operand.getType(), operand);
     yield.setOperand(0, identity.getOutput());
   } else {
-    auto identity_n = builder.create<TF::IdentityNOp>(
-        island.getLoc(), yield.getOperandTypes(), yield.getOperands());
+    auto identity_n = TF::IdentityNOp::create(
+        builder, island.getLoc(), yield.getOperandTypes(), yield.getOperands());
     for (const auto& it : llvm::enumerate(identity_n.getResults()))
       yield.setOperand(it.index(), it.value());
   }
@@ -128,15 +128,15 @@ tf_executor::IslandOp CreateIsland(TypeRange result_types,
                                    const Location& loc, Operation& sub_op,
                                    tf_executor::IslandOp original_island) {
   OpBuilder builder(original_island);
-  auto island = builder.create<tf_executor::IslandOp>(
-      loc, result_types, control_type, mlir::ValueRange{});
+  auto island = tf_executor::IslandOp::create(builder, loc, result_types,
+                                              control_type, mlir::ValueRange{});
   island.getBody().push_back(new Block);
   Block* block = &island.getBody().back();
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
   sub_op.replaceAllUsesWith(island.getOutputs());
   sub_op.moveBefore(block, block->begin());
-  island_builder.create<tf_executor::YieldOp>(loc, sub_op.getResults());
+  tf_executor::YieldOp::create(island_builder, loc, sub_op.getResults());
   return island;
 }
 

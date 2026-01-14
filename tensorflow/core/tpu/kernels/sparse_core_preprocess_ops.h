@@ -34,15 +34,15 @@ namespace tensorflow {
 // Struct to describe an embedding lookup input data.
 struct EmbeddingLookupInput {
   // Which replica it belongs.
-  int32 replica_id;
+  int32_t replica_id;
   // Token id.
-  int32 token_id;
+  int32_t token_id;
   // Sample id.
-  int32 sample_id;
+  int32_t sample_id;
   // Gain.
   float gain;
 
-  EmbeddingLookupInput(int32 replica_id, int32 token_id, int32 sample_id,
+  EmbeddingLookupInput(int32_t replica_id, int32_t token_id, int32_t sample_id,
                        float gain)
       : replica_id(replica_id),
         token_id(token_id),
@@ -56,9 +56,9 @@ absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
 
 // Compute the row id list before padding.
 absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
-                                        int32 total_id_count,
-                                        int32 sample_count,
-                                        int32* row_ids_before_padding,
+                                        int32_t total_id_count,
+                                        int32_t sample_count,
+                                        int32_t* row_ids_before_padding,
                                         std::vector<int> shape_strides = {});
 
 class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
@@ -101,7 +101,7 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
+  virtual void CalculateHeadroom(int32_t this_max_ids, int32_t this_max_uniques,
                                  tstring program_key,
                                  int64_t max_ids_per_partition,
                                  int64_t max_unique_ids_per_partition,
@@ -138,7 +138,7 @@ class StoreMinibatchStatisticsInFdoOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
+  virtual void CalculateHeadroom(int32_t this_max_ids, int32_t this_max_uniques,
                                  tstring program_key,
                                  int64_t max_ids_per_partition,
                                  int64_t max_unique_ids_per_partition) {}
@@ -165,10 +165,11 @@ class ConvertToListOfSparseCoreCooTensorsOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  void WriteToOutputTensor(int32* row_ids, int32* col_ids, float* gains,
-                           int32* row_ids_tensor_ptr, int32* col_ids_tensor_ptr,
-                           float* gains_tensor_ptr, int32_t begin_index,
-                           int32_t end_index, int32_t sc_id,
+  void WriteToOutputTensor(int32_t* row_ids, int32_t* col_ids, float* gains,
+                           int32_t* row_ids_tensor_ptr,
+                           int32_t* col_ids_tensor_ptr, float* gains_tensor_ptr,
+                           int32_t begin_index, int32_t end_index,
+                           int32_t sc_id,
                            std::optional<std::vector<float>> gains_rescale);
   int sample_count_;
   int num_sc_per_chip_;

@@ -72,14 +72,10 @@ typedef struct SE_DeviceAddressBase {
   uint64_t payload;
 } SE_DeviceAddressBase;
 
-typedef SE_DeviceAddressBase SE_DeviceMemoryBase;
-
 typedef struct SE_ScopedDeviceAddress {
   SE_DeviceAddressBase wrapped;
   int device_ordinal;
 } SE_ScopedDeviceAddress;
-
-typedef SE_ScopedDeviceAddress SE_ScopedDeviceMemory;
 
 typedef struct SE_AllocatorStats {
   int64_t num_allocs;
@@ -116,8 +112,6 @@ typedef struct SE_DeviceAddressAllocator {
   SE_AllocateFn allocate;
   SE_DeallocateFn deallocate;
 } SE_DeviceAddressAllocator;
-
-typedef SE_DeviceAddressAllocator SE_DeviceMemoryAllocator;
 
 typedef struct SE_DeviceDescription {
   char* device_vendor;
@@ -175,14 +169,14 @@ typedef struct SE_ExecutableRunOptions {
 typedef struct SE_ExecutableSerializationHandle
     SE_ExecutableSerializationHandle;
 
-typedef struct SE_MaybeOwningDeviceMemory {
+typedef struct SE_MaybeOwningDeviceAddress {
   SE_DeviceAddressBase memory;
   bool owned;
 
   // Set if owned
   int device_ordinal;
   SE_DeviceAddressAllocator allocator;
-} SE_MaybeOwningDeviceMemory;
+} SE_MaybeOwningDeviceAddress;
 
 typedef struct IntList {
   union {
@@ -277,10 +271,10 @@ typedef struct XLA_Literal {
   XLA_Shape shape;
 } XLA_Literal;
 
-typedef struct XLA_MaybeOwningDeviceMemoryShapeTree {
+typedef struct XLA_MaybeOwningDeviceAddressShapeTree {
   XLA_Shape shape;
-  SE_MaybeOwningDeviceMemory* buffers;
-} XLA_MaybeOwningDeviceMemoryShapeTree;
+  SE_MaybeOwningDeviceAddress* buffers;
+} XLA_MaybeOwningDeviceAddressShapeTree;
 
 typedef struct XLA_ShapeIndex {
   int64_t indices[8];
@@ -288,7 +282,7 @@ typedef struct XLA_ShapeIndex {
 } XLA_ShapeIndex;
 
 typedef struct SE_ExecutionInput {
-  XLA_MaybeOwningDeviceMemoryShapeTree shape_tree;
+  XLA_MaybeOwningDeviceAddressShapeTree shape_tree;
   XLA_ShapeIndex* unowned_indices;
   int unowned_indices_size;
   XLA_Shape dynamic_shape;
@@ -296,7 +290,7 @@ typedef struct SE_ExecutionInput {
 
 typedef struct SE_ExecutionOutput {
   XLA_ShapedBuffer result;
-  SE_MaybeOwningDeviceMemory* to_be_released;
+  SE_MaybeOwningDeviceAddress* to_be_released;
   int to_be_released_size;
   XLA_ShapeIndex* aliased_indices;
   int aliased_indices_size;

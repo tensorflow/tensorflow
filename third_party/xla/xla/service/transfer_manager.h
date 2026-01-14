@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -215,7 +215,7 @@ class TransferManager {
                                         const ShapedBuffer& device_buffer);
   absl::Status WriteRootTupleIndexTable(
       se::Stream* stream,
-      const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree);
+      const ShapeTree<MaybeOwningDeviceAddress>& buffer_tree);
 
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory

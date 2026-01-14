@@ -1006,9 +1006,6 @@ tf_py_strict_test(
     name = "collective_ops_test",
     size = "small",
     srcs = ["collective_ops_test.py"],
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":array_ops",
         ":collective_ops",
@@ -1037,7 +1034,6 @@ tf_py_strict_test(
     srcs = ["collective_ops_xla_test.py"],
     tags = [
         "no_pip",
-        "cuda-only",
         "no_windows",
         "nomac",
     ],
@@ -3594,9 +3590,6 @@ cuda_py_strict_test(
     srcs = ["nn_fused_batchnorm_d9m_test.py"],
     main = "nn_fused_batchnorm_d9m_test.py",
     shard_count = 4,
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":nn_grad",
         ":nn_impl",
@@ -3618,9 +3611,6 @@ cuda_py_strict_test(
     srcs = ["nn_fused_batchnorm_test.py"],
     main = "nn_fused_batchnorm_test.py",
     shard_count = 24,
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":array_ops",
         ":gradient_checker",
@@ -3765,7 +3755,6 @@ cuda_py_strict_test(
     main = "special_math_ops_test.py",
     shard_count = 10,
     tags = [
-        "cuda-only",
         "no_windows_gpu",
     ],
     deps = [

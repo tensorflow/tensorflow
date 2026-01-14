@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -80,7 +81,8 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
 
-const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
+const CollectiveDeviceListBase& GetCollectiveDeviceList(
+    const HloInstruction* hlo);
 
 const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
     const HloInstruction* hlo);
@@ -129,24 +131,28 @@ GetParticipatingDevicesGroups(const HloInstruction* collective);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    const CollectiveDeviceList& collective_device_list,
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceList& collective_device_list,
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
 
 // Same as above, with collective group mode determined by the collective
 // instruction.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, const DeviceAssignment& device_assignment);
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment);
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, int replica_count, int partition_count);
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo, int replica_count,
+                                  int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -295,27 +301,6 @@ inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
 // Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
 constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
-
-// This frontend attribute conveys the following information:
-// (1) _xla_send_recv_validation="invalid": the runtime should skip sending or
-// receiving data when the instruction is executed.
-// (2) the absent of the attribute: the runtime should faithfully perform the
-// Send or Recv operation when the instruction is executed.
-// (3) _xla_send_recv_validation={list-of-bounds}: the list-of-bounds
-// corresponds to the value of _xla_send_recv_source_target_pairs, and specifies
-// the execution instances for which the runtime should faithfully perform the
-// Send or Recv operation. Here is an example:
-//   _xla_send_recv_source_target_pairs={{0,1}, {1,2}}
-//   _xla_send_recv_validation={{2,3}, {5,7}}
-// The Send or Recv instruction with the above two attributes have the
-// following semantics:
-// The communication between device 0 and 1 will only send or receive data
-// for execution instances 2 and 3 of the instruction on devices 0 and 1.
-// For execution instances 0, 1, and beyond 3, the runtime should skip sending
-// or receiving any data.
-// Similarly, the communication between device 1 and 2 will only send or
-// receive data on execution instances 5 and 7.
-constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
 
 // Attribute to indicate that collective operations should be issued on a
 // dedicated p2p stream. This is a hint and there is no guarantee that this will

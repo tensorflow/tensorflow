@@ -100,7 +100,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 };
 
 // This class represents the result of a CPU AOT compilation.
-class CpuAotCompilationResult : public AotCompilationResult {
+class CpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> Create(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
@@ -110,39 +110,19 @@ class CpuAotCompilationResult : public AotCompilationResult {
       TargetMachineOptionsProto target_machine_options =
           TargetMachineOptionsProto());
 
-  [[deprecated(
-      "HloProfilePrinterData is not used anymore. Use the other Create "
-      "method instead.")]] static absl::
-      StatusOr<std::unique_ptr<CpuAotCompilationResult>>
-      Create(const HloModule* hlo_module,
-             const BufferAssignment* buffer_assignment,
-             absl::string_view function_name,
-             std::vector<ObjFileProto> obj_files,
-             std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
-             std::unique_ptr<FunctionLibrary> function_library,
-             std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-             TargetMachineOptionsProto target_machine_options =
-                 TargetMachineOptionsProto()) {
-    return Create(hlo_module, buffer_assignment, function_name,
-                  std::move(obj_files), std::move(symbols), thunks,
-                  std::move(function_library), target_machine_options);
-  }
-
   ~CpuAotCompilationResult() override = default;
 
   absl::StatusOr<std::string> SerializeAsString() const override {
     return proto_.SerializeAsString();
   }
 
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      [[maybe_unused]] Compiler* compiler,
-      const se::StreamExecutor* stream_exec) &&
-      override;
+  absl::StatusOr<std::unique_ptr<Executable>>
+      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 
-  std::unique_ptr<HloModule> consume_optimized_module() override {
-    return std::move(module_);
+  std::shared_ptr<HloModule> shared_optimized_module() override {
+    return module_;
   }
 
   const CompilationResultProto& proto() const { return proto_; }
@@ -211,7 +191,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
         function_library_(std::move(function_library)) {}
 
   CompilationResultProto proto_;
-  std::unique_ptr<HloModule> module_;
+  std::shared_ptr<HloModule> module_;
   std::optional<size_t> temp_allocation_index_;
   std::vector<BufferAllocationInfo> buffer_allocation_infos_;
 

@@ -68,8 +68,10 @@ cc_library(
         "//xla/tools:run_hlo_module_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -587,11 +589,10 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "xnn_fusion_benchmark_test",
-    srcs = ["xnn_fusion_benchmark_test.cc"],
+    name = "ynn_fusion_benchmark_test",
+    srcs = ["ynn_fusion_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
     fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
-    linkstatic = 1,  # required to override pthreadpool symbols
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",

@@ -519,7 +519,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         } else if (options.add_token_input_output) {
           // Add a dummy token if the inner computation takes a token but the
           // custom call doesn't have a token argument.
-          args.push_back(builder.create<mlir::stablehlo::CreateTokenOp>(loc));
+          args.push_back(mlir::stablehlo::CreateTokenOp::create(builder, loc));
         }
 
         input_args.reserve(result.input_mapping.size());
@@ -530,7 +530,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
       // Call the lowered function.
       auto call =
-          builder.create<mlir::func::CallOp>(loc, main_func, input_args);
+          mlir::func::CallOp::create(builder, loc, main_func, input_args);
 
       // Unpack the result tuple (`options.always_return_tuple` is true). If
       // `has_tuple_input_output` is true, the first result is a token type.
@@ -548,7 +548,7 @@ class XlaCallModuleOp : public XlaOpKernel {
             mlir::Value token = results.back();
             if (!token.use_empty()) {
               token.replaceAllUsesWith(
-                  builder.create<mlir::stablehlo::CreateTokenOp>(loc));
+                  mlir::stablehlo::CreateTokenOp::create(builder, loc));
             }
             results.pop_back();
           }

@@ -89,9 +89,9 @@ void MoveTailWritesAfterReplicate(
 
   OpBuilder builder(replicate_op);
   // Clone this old replicate op but with new result types.
-  auto new_replicate_op = builder.create<tf_device::ReplicateOp>(
-      replicate_op->getLoc(), new_result_types, replicate_op->getOperands(),
-      replicate_op->getAttrs());
+  auto new_replicate_op = tf_device::ReplicateOp::create(
+      builder, replicate_op->getLoc(), new_result_types,
+      replicate_op->getOperands(), replicate_op->getAttrs());
 
   // Move region to the new op.
   new_replicate_op.getRegion().takeBody(replicate_op.getRegion());

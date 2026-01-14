@@ -51,7 +51,7 @@ For example, some
 be written as follows:
 
 ```
-// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-%{PTX} %s
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../backends/gpu/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-%{PTX} %s
 
 HloModule Test, is_scheduled=true
 fused_computation {

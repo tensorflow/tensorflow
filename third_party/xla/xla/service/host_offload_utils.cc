@@ -353,5 +353,88 @@ bool IsMoveToDeviceWithDynamicSlice(const HloInstruction* instr) {
   return false;
 }
 
+namespace {
+
+// Recursively finds GTE indices used in DS/DUS index operands.
+absl::flat_hash_set<int64_t> FindTupleIndicesInOperand(
+    const HloInstruction* operand) {
+  absl::flat_hash_set<int64_t> indices;
+
+  if (operand->opcode() == HloOpcode::kGetTupleElement) {
+    indices.insert(operand->tuple_index());
+  } else if (operand->opcode() == HloOpcode::kCopy &&
+             operand->operand_count() == 1) {
+    auto copy_indices = FindTupleIndicesInOperand(operand->operand(0));
+    indices.insert(copy_indices.begin(), copy_indices.end());
+  } else if (operand->opcode() == HloOpcode::kAdd ||
+             operand->opcode() == HloOpcode::kSubtract ||
+             operand->opcode() == HloOpcode::kMultiply ||
+             operand->opcode() == HloOpcode::kDivide) {
+    for (int i = 0; i < operand->operand_count(); ++i) {
+      auto op_indices = FindTupleIndicesInOperand(operand->operand(i));
+      indices.insert(op_indices.begin(), op_indices.end());
+    }
+  }
+
+  return indices;
+}
+
+}  // namespace
+
+absl::Status MarkDynamicVariables(HloInstruction* while_loop) {
+  if (while_loop->opcode() != HloOpcode::kWhile) {
+    return absl::OkStatus();
+  }
+
+  if (!while_loop->while_body()) {
+    return absl::OkStatus();
+  }
+
+  bool has_host_offloading = false;
+  for (const HloInstruction* instr : while_loop->while_body()->instructions()) {
+    if (IsMoveToHostWithDynamicUpdateSlice(instr) ||
+        IsMoveToDeviceWithDynamicSlice(instr)) {
+      has_host_offloading = true;
+      break;
+    }
+  }
+  if (!has_host_offloading) {
+    return absl::OkStatus();
+  }
+
+  WhileLoopBackendConfig config;
+  TF_ASSIGN_OR_RETURN(config,
+                      while_loop->backend_config<WhileLoopBackendConfig>());
+
+  config.clear_dynamic_variable_tuple_indices();
+
+  std::set<int64_t> dynamic_slice_indices;
+
+  for (auto* instr : while_loop->while_body()->instructions()) {
+    if (instr->opcode() == HloOpcode::kDynamicUpdateSlice ||
+        instr->opcode() == HloOpcode::kDynamicSlice) {
+      int first_index_operand =
+          (instr->opcode() == HloOpcode::kDynamicUpdateSlice)
+              ? Cast<HloDynamicUpdateSliceInstruction>(instr)
+                    ->first_index_operand_number()
+              : Cast<HloDynamicSliceInstruction>(instr)
+                    ->first_index_operand_number();
+
+      for (int i = first_index_operand; i < instr->operand_count(); ++i) {
+        auto* index_op = instr->operand(i);
+        auto op_indices = FindTupleIndicesInOperand(index_op);
+        dynamic_slice_indices.insert(op_indices.begin(), op_indices.end());
+      }
+    }
+  }
+
+  for (int64_t tuple_idx : dynamic_slice_indices) {
+    config.add_dynamic_variable_tuple_indices(tuple_idx);
+  }
+
+  TF_RETURN_IF_ERROR(while_loop->set_backend_config(config));
+  return absl::OkStatus();
+}
+
 }  // namespace host_offload_utils
 }  // namespace xla

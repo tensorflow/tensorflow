@@ -89,9 +89,10 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -250,6 +251,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm::IRBuilderBase* builder() { return &b_; }
 
+  llvm::Module* module() { return module_; }
+
   // Generate the code for the computation passed in the constructor, if it
   // wasn't already generated previously.
   // As well as generting the code for the function, emits code for global
@@ -360,7 +363,7 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       llvm::Function * emitted_function,
       IrEmitter(&ir_emitter_context, llvm_module, /*is_nested=*/true)
           .CodegenNestedComputation(computation));
@@ -458,7 +461,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
     return function;
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       EmitConstants(module_, ir_emitter_context_, nested_computation));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
@@ -519,7 +522,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
   }
   bindings_.EmitBasePointersForHlos(io_hlos, non_io_hlos);
 
-  TF_RETURN_IF_ERROR(nested_computation.root_instruction()->Accept(this));
+  RETURN_IF_ERROR(nested_computation.root_instruction()->Accept(this));
   b_.SetInsertPoint(ret_instr);
 
   // Function epilogue: copy the output value back.
@@ -573,7 +576,7 @@ absl::Status IrEmitter::EmitTargetElementLoop(
   if (hlo.shape().IsTuple()) {
     std::vector<llvm_ir::IrArray> target_arrays =
         ConstructIrArrayForOutputs(hlo);
-    TF_RETURN_IF_ERROR(
+    RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return absl::OkStatus();
@@ -596,13 +599,13 @@ absl::StatusOr<KernelThunkInfo> BuildKernelThunkForNonFusionOp(
     IrEmitter& ir_emitter, const LaunchDimensions& launch_dimensions) {
   std::string suggested_kernel_name(hlo->name());
 
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      emitters::KernelArguments::Create(
-                          buffer_assignment, GetDefaultBufferAlignment(), hlo));
+  ASSIGN_OR_RETURN(auto kernel_arguments,
+                   emitters::KernelArguments::Create(
+                       buffer_assignment, GetDefaultBufferAlignment(), hlo));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       llvm::Function * kernel,
       BuildKernelPrototype(llvm_module, gpu_device_info, suggested_kernel_name,
                            sanitized_kernel_name, kernel_arguments,
@@ -854,6 +857,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   VLOG(2) << absl::StreamFormat("%s launch dims: %d blocks, %d threads/block",
                                 op_name, num_blocks, kThreadsPerBlock);
   ThunkSequence thunks;
+  bool emit_iota_operands = true;
   auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
@@ -863,14 +867,17 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    TF_ASSIGN_OR_RETURN(
-        KernelThunkInfo kernel_thunk_info,
-        BuildKernelThunkForNonFusionOp(
-            llvm_module, sort, ir_emitter_context->buffer_assignment(),
-            ir_emitter_context->GetNextThunkId(),
-            ir_emitter_context->gpu_device_info(),
-            ir_emitter_context->GetSanitizedUniqueName(op_name), ir_emitter,
-            launch_dimensions));
+    bool is_fusion = sort->parent()->IsFusionComputation();
+    const HloInstruction* hlo_with_buffers =
+        is_fusion ? sort->parent()->FusionInstruction() : sort;
+    ASSIGN_OR_RETURN(KernelThunkInfo kernel_thunk_info,
+                     BuildKernelThunkForNonFusionOp(
+                         llvm_module, hlo_with_buffers,
+                         ir_emitter_context->buffer_assignment(),
+                         ir_emitter_context->GetNextThunkId(),
+                         ir_emitter_context->gpu_device_info(),
+                         ir_emitter_context->GetSanitizedUniqueName(op_name),
+                         ir_emitter, launch_dimensions));
     thunks.push_back(std::move(kernel_thunk_info.thunk));
 
     // The first `operand_count()` elements of `ir_arrays` are the input
@@ -878,13 +885,13 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
     // outputs, so we need to pass only the outputs to the in-place sort kernel.
     auto output_arrays_span =
         absl::Span<const llvm_ir::IrArray>(kernel_thunk_info.ir_arrays)
-            .subspan(sort->operand_count());
+            .subspan(hlo_with_buffers->operand_count());
 
     auto* comparator = sort->called_computations().front();
     auto* builder = ir_emitter.builder();
-    return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, output_arrays_span, llvm_ir::IrName(op_name),
-        xor_masks, ir_emitter.builder(), launch_dimensions,
+    auto result = llvm_ir::EmitSortInPlace(
+        sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
+        xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
         tile_size, kUnrollFactor,
@@ -893,6 +900,8 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
                                        llvm_module, *comparator, operands,
                                        output);
         });
+    emit_iota_operands = false;
+    return result;
   };
   std::vector<int64_t> xor_masks;
   for (int64_t stage = 0; stage < num_stages; ++stage) {
@@ -905,17 +914,17 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
+          RETURN_IF_ERROR(emit_kernel(xor_masks));
           xor_masks.clear();
         }
-        TF_RETURN_IF_ERROR(emit_kernel({xor_mask}));
+        RETURN_IF_ERROR(emit_kernel({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
+    RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
   return thunks;
 }
@@ -935,7 +944,7 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
 
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
       BuildKernelThunkForNonFusionOp(
           llvm_module, hlo, ir_emitter_context->buffer_assignment(),
@@ -1061,10 +1070,10 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
   };
 
   const Shape& data_shape = hlo->shape().tuple_shapes(0);
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
-                                         launch_dimensions,
-                                         ir_emitter.builder(), {kUnrollFactor})
-                         .EmitLoop(ir_name, index_ty));
+  RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+                                      launch_dimensions, ir_emitter.builder(),
+                                      {kUnrollFactor})
+                      .EmitLoop(ir_name, index_ty));
   return thunk_sequence;
 }
 
@@ -1083,7 +1092,7 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
       input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
   llvm::Type* index_ty = GetIndexTypeForKernel(
       hlo, launch_dimensions.launch_bound(), ir_emitter.builder());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
       BuildKernelThunkForNonFusionOp(
           llvm_module, hlo, ir_emitter_context->buffer_assignment(),
@@ -1199,10 +1208,10 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
     return absl::OkStatus();
   };
 
-  TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
-                                         launch_dimensions,
-                                         ir_emitter.builder(), {kUnrollFactor})
-                         .EmitLoop(ir_name, index_ty));
+  RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
+                                      launch_dimensions, ir_emitter.builder(),
+                                      {kUnrollFactor})
+                      .EmitLoop(ir_name, index_ty));
   return thunk_sequence;
 }
 
@@ -1216,7 +1225,7 @@ absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
   auto& b = *ir_emitter.builder();
   // Emit a kernel to increment the global state for Philox RNG
   // algorithm.
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
       BuildKernelThunkForNonFusionOp(
           llvm_module, hlo, ir_emitter_context->buffer_assignment(),

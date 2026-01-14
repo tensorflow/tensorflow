@@ -92,8 +92,8 @@ void AllocToArgPass::runOnOperation() {
         // buffer.
         rewriter.setInsertionPoint(allocOp);
         Value arg = funcOp.getArguments().back();
-        Value collapsedArg = rewriter.create<memref::CollapseShapeOp>(
-            loc, arg, expandOp.getReassociationIndices());
+        Value collapsedArg = memref::CollapseShapeOp::create(
+            rewriter, loc, arg, expandOp.getReassociationIndices());
 
         // Replace alloc and its expansion.
         rewriter.replaceOp(allocOp, collapsedArg);

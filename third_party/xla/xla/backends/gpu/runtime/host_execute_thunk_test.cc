@@ -83,9 +83,8 @@ CreateHostExecuteStartThunk(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
                       client.Compile(host_computation));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AotCompilationResult> aot_compilation_result,
-      client.Export(executable.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
+                      client.Export(executable.get()));
 
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
       tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(

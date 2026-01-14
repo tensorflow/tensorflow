@@ -293,7 +293,7 @@ DotDimensionIndexMapping ComputeDimensionIndexMapping(
                                   output_to_lhs_indices, output_to_rhs_indices};
 }
 
-std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
+CollectiveDeviceList GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
   int64_t group_size = 1;
   for (int64_t i : replication_dims) {
@@ -312,7 +312,7 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
         }
         partition_groups[group_id].push_back(partition);
       });
-  return partition_groups;
+  return CollectiveDeviceList(partition_groups);
 }
 
 // Returns true iff all of the following conditions are simultaneously true:
@@ -2595,9 +2595,19 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingImpl(
     if (!other.sharding().ReplicateOnLastTileDim() || !device_group_match) {
       other = other.Reshard(target_sharding);
     }
+
+    DimensionVector dims_to_replicate = other_grouped->group_dims;
+    for (auto it = dims_to_replicate.begin(); it != dims_to_replicate.end();) {
+      if (*it >= other.base_shape().dimensions().size()) {
+        it = dims_to_replicate.erase(it);
+      } else {
+        ++it;
+      }
+    }
+
     partially_replicated_other =
         other.Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-            other.sharding(), other_grouped->group_dims));
+            other.sharding(), dims_to_replicate));
     top_level_sharding_to_reset.emplace_back(
         partially_replicated_other, partially_replicated_other.sharding());
     partially_replicated_other.set_sharding(other_grouped->sharding);
@@ -3385,18 +3395,16 @@ bool PrioritizeContractingDimensionsPartitioning(
        other_non_contracting_dims) {
     ag_replication_dims.push_back(lhs_matching_iterations ? dim.rhs : dim.lhs);
   }
+
   auto all_gather_subgroups =
       GetPartitionGroupsForReplication(other_sharding, ag_replication_dims);
   auto reduce_scatter_subgroups = GetPartitionGroupsForReplication(
       outer_output_tmp_sharding, output_slice_dims);
   const double all_gather_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
-      all_gather_bytes,
-      CollectiveDeviceList(visitor->CreateReplicaGroups(all_gather_subgroups)));
+      all_gather_bytes, all_gather_subgroups);
   const double reduce_scatter_time_in_ms =
-      visitor->GetCommunicationTimeInMilliSec(
-          reduce_scatter_bytes,
-          CollectiveDeviceList(
-              visitor->CreateReplicaGroups(reduce_scatter_subgroups)));
+      visitor->GetCommunicationTimeInMilliSec(reduce_scatter_bytes,
+                                              reduce_scatter_subgroups);
 
   Shape other_original_shape = other_hlo->shape();
   *other_hlo->mutable_shape() =

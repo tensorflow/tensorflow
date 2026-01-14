@@ -2,6 +2,7 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts", "cuda_gpu_architectures")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 # CUDA toolkit version as tuple (e.g. '(11, 1)').
 _cuda_version = %{cuda_version}
@@ -311,7 +312,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
 
     # Compile host and device code into library.
     lib = name + "_lib"
-    native.cc_library(
+    cc_library(
         name = lib,
         hdrs = hdrs,
         copts = _rdc_copts() + copts,
@@ -336,7 +337,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
 
     # Compile the source file into a library.
     dlink = name + "_dlink"
-    native.cc_library(
+    cc_library(
         name = dlink,
         srcs = [dlink_cc],
         textual_hdrs = [dlink_hdrs],
@@ -371,7 +372,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     )
 
     # Create cc target from archive.
-    native.cc_library(
+    cc_library(
         name = name,
         srcs = [merged],
         hdrs = hdrs,

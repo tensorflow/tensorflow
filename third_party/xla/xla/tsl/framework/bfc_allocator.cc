@@ -1116,11 +1116,15 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
-  LOG(INFO) << "Total bytes in pool: " << *stats_.pool_bytes
-            << " memory_limit_: " << memory_limit_
-            << " available bytes: " << (memory_limit_ - *stats_.pool_bytes)
+  LOG(INFO) << "Total size in pool: "
+            << strings::HumanReadableNumBytes(*stats_.pool_bytes)
+            << " memory_limit_: "
+            << strings::HumanReadableNumBytes(memory_limit_)
+            << " available size: "
+            << strings::HumanReadableNumBytes(memory_limit_ -
+                                              *stats_.pool_bytes)
             << " curr_region_allocation_bytes_: "
-            << curr_region_allocation_bytes_;
+            << strings::HumanReadableNumBytes(curr_region_allocation_bytes_);
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 

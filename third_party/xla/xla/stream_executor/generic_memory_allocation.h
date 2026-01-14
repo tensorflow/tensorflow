@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 
 namespace stream_executor {
@@ -39,8 +40,9 @@ class GenericMemoryAllocation final : public MemoryAllocation {
     }
   }
 
-  void* opaque() const final { return ptr_; }
-  uint64_t size() const final { return size_; }
+  DeviceAddressBase address() const final {
+    return DeviceAddressBase(ptr_, size_);
+  }
 
  private:
   void* ptr_ = nullptr;

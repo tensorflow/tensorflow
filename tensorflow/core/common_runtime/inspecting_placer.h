@@ -59,7 +59,7 @@ struct IOColocationGroups {
   // group_devices[i] contains possible devices for group with id i.
   std::vector<PossibleDevices> group_devices;
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 class InspectingPlacer {

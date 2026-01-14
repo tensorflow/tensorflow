@@ -315,6 +315,73 @@ TEST_F(CopyFusionTest, BuildUpdateSliceDescriptor) {
   EXPECT_EQ(offset.byte_stride, 8 * 8 * sizeof(float));
 }
 
+TEST_F(CopyFusionTest, BuildDescriptorWithDynamicVariable) {
+  constexpr char kModuleWithDynamicVariable[] = R"(
+    dynamic_slice {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c1 = s32[] constant(1)
+
+      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1)
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      dynamic_idx = s32[] get-tuple-element(p0), index=2
+      val = s32[1,1,8] constant({{{1,2,3,4,5,6,7,8}}})
+
+      updated = s32[4,8,8] fusion(input, val, dynamic_idx), kind=kLoop, calls=dynamic_slice,
+          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+      next_dynamic_idx = s32[] add(dynamic_idx, c1)
+
+      ROOT result = (s32[], s32[4,8,8], s32[])
+          tuple(next_ivar, updated, next_dynamic_idx)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8], s32[]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8], s32[]) tuple(c0, input, c0)
+      ROOT while = (s32[], s32[4,8,8], s32[]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"},
+                          "dynamic_variable_tuple_indices":["2"]}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleWithDynamicVariable));
+
+  auto descriptor = DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
+      GetFusion(module.get()));
+
+  ASSERT_TRUE(descriptor.has_value());
+  EXPECT_THAT(descriptor->src_dynamic_offsets, ::testing::IsEmpty());
+  EXPECT_EQ(descriptor->src_byte_static_offset, 0);
+
+  ASSERT_THAT(descriptor->dst_dynamic_offsets, ::testing::SizeIs(1));
+  const auto& offset = descriptor->dst_dynamic_offsets[0];
+  EXPECT_EQ(descriptor->dst_byte_static_offset, 32);
+  EXPECT_EQ(offset.while_loop->name(), "while");
+  EXPECT_EQ(offset.induction_variable->name(), "dynamic_idx");
+  EXPECT_EQ(offset.offset->name(), "p2");
+  EXPECT_EQ(offset.dimension_size, 4);
+  EXPECT_EQ(offset.byte_stride, 8 * 8 * sizeof(float));
+}
+
 TEST_F(CopyFusionTest, PackedSubByteTypesAreNotSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     dynamic_slice {

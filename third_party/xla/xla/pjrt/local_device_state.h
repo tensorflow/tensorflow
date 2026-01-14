@@ -168,7 +168,7 @@ class LocalDeviceState {
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
   virtual absl::Status ThenMemcpyDeviceToDevice(
       se::Stream* transfer_stream, se::Stream* dst_stream,
-      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
+      se::DeviceAddressBase src_buffer, se::DeviceAddressBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_MAYBE_OWNING_H_
 #define XLA_MAYBE_OWNING_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -75,6 +76,31 @@ class MaybeOwning final {
   }
 
   bool OwnsPtr() const { return kOwningBitMask & ptr_and_owning_bit_; }
+
+  friend bool operator==(const MaybeOwning& mo, std::nullptr_t) {
+    // A MaybeOwning is considered null if its internal pointer is null.
+    // The get() method correctly removes the mask and returns the raw pointer.
+    return mo.get() == nullptr;
+  }
+
+  friend bool operator==(std::nullptr_t, const MaybeOwning& mo) {
+    // Maintain symmetry for the comparison order
+    return mo.get() == nullptr;
+  }
+
+  friend bool operator!=(const MaybeOwning& mo, std::nullptr_t) {
+    return mo.get() != nullptr;
+  }
+
+  friend bool operator!=(std::nullptr_t, const MaybeOwning& mo) {
+    return mo.get() != nullptr;
+  }
+
+  explicit operator bool() const {
+    // The class is considered 'true' if the underlying pointer is not null.
+    // We use the existing get() method, which correctly handles the mask.
+    return get() != nullptr;
+  }
 
  private:
   enum : uint64_t {

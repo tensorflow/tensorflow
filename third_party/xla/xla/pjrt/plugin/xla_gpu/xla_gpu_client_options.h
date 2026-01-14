@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 
 namespace xla {
@@ -39,6 +40,10 @@ struct GpuClientOptions {
   std::optional<std::string> platform_name = std::nullopt;
 
   bool should_stage_host_to_device_transfers = true;
+
+  // Optional factory for a host memory allocator to use for transfer. Used only
+  // if `should_stage_host_to_device_transfers` is true.
+  HostMemoryAllocator::Factory host_memory_allocator_factory;
 
   // kv_store must be non-null if num_nodes > 1.
   std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;

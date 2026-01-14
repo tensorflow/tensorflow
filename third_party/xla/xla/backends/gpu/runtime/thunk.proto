@@ -22,6 +22,7 @@ import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/backends/gpu/runtime/shaped_slice.proto";
 import "xla/core/host_offloading/host_offloading_executable.proto";
 import "xla/ffi/attribute_map.proto";
+import "xla/ffi/execution_state.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
@@ -52,9 +53,86 @@ message ThunkMetadataListProto {
   repeated ThunkMetadataProto thunk_metadata = 1;
 }
 
+enum ThunkKindProto {
+  THUNK_KIND_UNSPECIFIED = 0;
+  THUNK_KIND_ALL_GATHER = 1;
+  THUNK_KIND_ALL_GATHER_DONE = 2;
+  THUNK_KIND_ALL_GATHER_START = 3;
+  THUNK_KIND_ALL_REDUCE = 4;
+  THUNK_KIND_ALL_REDUCE_DONE = 5;
+  THUNK_KIND_ALL_REDUCE_START = 6;
+  THUNK_KIND_ALL_TO_ALL = 7;
+  THUNK_KIND_ALL_TO_ALL_DONE = 8;
+  THUNK_KIND_ALL_TO_ALL_START = 9;
+  THUNK_KIND_BUFFERS_DEBUG_CHECKSUM = 10;
+  THUNK_KIND_BUFFERS_DEBUG_FLOAT_CHECK = 11;
+  THUNK_KIND_COLLECTIVE_BROADCAST = 12;
+  THUNK_KIND_COLLECTIVE_BROADCAST_DONE = 13;
+  THUNK_KIND_COLLECTIVE_BROADCAST_START = 14;
+  THUNK_KIND_COLLECTIVE_KERNEL = 15;
+  THUNK_KIND_COLLECTIVE_METADATA = 16;
+  THUNK_KIND_COLLECTIVE_PERMUTE = 17;
+  THUNK_KIND_COLLECTIVE_PERMUTE_DONE = 18;
+  THUNK_KIND_COLLECTIVE_PERMUTE_START = 19;
+  THUNK_KIND_COMMAND_BUFFER = 20;
+  THUNK_KIND_CONDITIONAL = 21;
+  THUNK_KIND_CONVOLUTION = 22;
+  THUNK_KIND_CONVOLUTION_REORDER = 23;
+  THUNK_KIND_COPY = 24;
+  THUNK_KIND_COPY_DONE = 25;
+  THUNK_KIND_CU_DNN = 26;
+  THUNK_KIND_CUB_SORT = 27;
+  THUNK_KIND_CUBLAS_LT_MATMUL = 28;
+  THUNK_KIND_CUSTOM_CALL = 29;
+  THUNK_KIND_CUSTOM_KERNEL = 30;
+  THUNK_KIND_DYNAMIC_SLICE = 31;
+  THUNK_KIND_FFT = 32;
+  THUNK_KIND_GEMM = 33;
+  THUNK_KIND_GROUP_DONE = 34;
+  THUNK_KIND_GROUP_START = 35;
+  THUNK_KIND_HOST_EXECUTE_DONE = 36;
+  THUNK_KIND_HOST_EXECUTE_START = 37;
+  THUNK_KIND_HOST_RECV = 38;
+  THUNK_KIND_HOST_RECV_DONE = 39;
+  THUNK_KIND_HOST_SEND = 40;
+  THUNK_KIND_HOST_SEND_DONE = 41;
+  THUNK_KIND_INFEED = 42;
+  THUNK_KIND_KERNEL = 43;
+  THUNK_KIND_MEMSET32_BIT_VALUE = 44;
+  THUNK_KIND_MEMZERO = 45;
+  THUNK_KIND_NORM = 46;
+  THUNK_KIND_NVSHMEM_ALL_REDUCE_DONE = 47;
+  THUNK_KIND_NVSHMEM_ALL_REDUCE_START = 48;
+  THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE = 49;
+  THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_DONE = 50;
+  THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_START = 51;
+  THUNK_KIND_NVSHMEM_RECV = 52;
+  THUNK_KIND_NVSHMEM_RECV_DONE = 53;
+  THUNK_KIND_NVSHMEM_SEND = 54;
+  THUNK_KIND_NVSHMEM_SEND_DONE = 55;
+  THUNK_KIND_OUTFEED = 56;
+  THUNK_KIND_PARTITION_ID = 57;
+  THUNK_KIND_RAGGED_ALL_TO_ALL = 58;
+  THUNK_KIND_RAGGED_ALL_TO_ALL_DONE = 59;
+  THUNK_KIND_RAGGED_ALL_TO_ALL_START = 60;
+  THUNK_KIND_RECV = 61;
+  THUNK_KIND_RECV_DONE = 62;
+  THUNK_KIND_REDUCE_SCATTER = 63;
+  THUNK_KIND_REDUCE_SCATTER_DONE = 64;
+  THUNK_KIND_REDUCE_SCATTER_START = 65;
+  THUNK_KIND_REPLICA_ID = 66;
+  THUNK_KIND_SELECT_K = 67;
+  THUNK_KIND_SEND = 68;
+  THUNK_KIND_SEND_DONE = 69;
+  THUNK_KIND_SEQUENTIAL = 70;
+  THUNK_KIND_TRIANGULAR_SOLVE = 71;
+  THUNK_KIND_WAIT_FOR_STREAMS = 72;
+  THUNK_KIND_WHILE = 73;
+}
+
 message CopyThunkProto {
-  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 2;
+  ShapedSliceProto source_buffer = 1;
+  ShapedSliceProto destination_buffer = 2;
   int64 mem_size = 3;
 }
 
@@ -71,9 +149,8 @@ message DeviceToDeviceCopyThunkProto {
 }
 
 message ConditionalThunkProto {
-  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 1;
+  ShapedSliceProto branch_index_buffer = 1;
   repeated SequentialThunkProto branch_thunks = 2;
-  bool branch_index_is_bool = 3;
 }
 
 message WhileThunkProto {
@@ -111,15 +188,9 @@ message WaitForStreamsThunkProto {
 
 message TriangularSolveThunkProto {
   xla.TriangularSolveOptions options = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto b_buffer = 3;
-  xla.buffer_assignment.BufferAllocationSliceProto temp_buffer = 4;
-  xla.PrimitiveType type = 5;
-  int64 batch_size = 6;
-  int64 m = 7;
-  int64 n = 8;
-  int64 a_batch_stride = 9;
-  int64 b_batch_stride = 10;
+  ShapedSliceProto a_buffer = 2;
+  ShapedSliceProto b_buffer = 3;
+  ShapedSliceProto temp_buffer = 4;
 }
 
 message ReplicaIdThunkProto {
@@ -184,14 +255,14 @@ message DynamicSliceThunkProto {
   repeated OptionalDynamicSliceOffsetsProto offsets = 3;
   repeated OptionalShapeProto orig_shapes = 4;
   repeated OptionalShapeProto sliced_shapes = 5;
-  repeated OptionalInt64Proto offset_byte_sizes = 6;
+  repeated OptionalPrimitiveType offset_primitive_types = 6;
   optional OffsetAsFunctionOfIndvarModulesMetadataProto
       offset_as_function_of_indvar_modules_metadata = 7;
   repeated BufferAllocationProto fake_allocations = 8;
 }
 
 message MemzeroThunkProto {
-  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+  ShapedSliceProto dest_buffer = 1;
 }
 
 message Memset32BitValueThunkProto {
@@ -232,6 +303,7 @@ message CublasLtMatmulThunkProto {
   optional xla.buffer_assignment.BufferAllocationSliceProto d_scale = 14;
   optional xla.buffer_assignment.BufferAllocationSliceProto d_amax = 15;
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
+  int64 autotune_workspace_size = 17;
 }
 
 message CubSortThunkProto {
@@ -260,16 +332,15 @@ message NormThunkProto {
 
 message ConvolutionThunkProto {
   GpuConvDescriptorProto conv_descriptor = 1;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto operand_buffers = 2;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto result_buffers = 3;
+  repeated ShapedSliceProto operand_buffers = 2;
+  repeated ShapedSliceProto result_buffers = 3;
   xla.buffer_assignment.BufferAllocationSliceProto scratch_buffer = 4;
 }
 
 message ConvolutionReorderThunkProto {
-  ConvolutionFilterDimensions filter_dimensions = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto filter_input = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto filter_output = 3;
-  optional ConvolutionReorderBiasBuffers biases = 4;
+  ShapedSliceProto filter_input = 1;
+  ShapedSliceProto filter_output = 2;
+  optional ConvolutionReorderBiasBuffers biases = 3;
 }
 
 message FftThunkProto {
@@ -291,12 +362,109 @@ message CustomCallThunkProto {
   // The name of the called computation. It needs to match the HloCompuation in
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
+  optional xla.ffi.ExecutionStateProto execution_state = 8;
 }
 
 message CustomKernelThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
   repeated bool written = 2;
   CustomKernelProto custom_kernel = 3;
+}
+
+message CollectiveBufferProto {
+  int64 element_count = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 3;
+  int64 source_memory_space = 4;
+  int64 destination_memory_space = 5;
+}
+
+message CollectiveConfigProto {
+  repeated PrimitiveType operand_element_type = 1;
+  repeated ReplicaGroup replica_groups = 2;
+  CollectiveOpGroupMode group_mode = 3;
+  bool use_symmetric_buffer = 4;
+}
+
+message CollectiveThunkProto {
+  ThunkKindProto thunk_kind = 1;
+  AsyncStreamKind async_stream_kind = 2;
+  uint64 async_events_unique_id = 3;
+}
+
+message AllGatherStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+}
+
+enum ReductionKindProto {
+  REDUCTION_KIND_UNSPECIFIED = 0;
+  REDUCTION_KIND_SUM = 1;
+  REDUCTION_KIND_PRODUCT = 2;
+  REDUCTION_KIND_MIN = 3;
+  REDUCTION_KIND_MAX = 4;
+}
+
+message AllReduceStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+
+  ReductionKindProto reduction_kind = 4;
+  bool is_multimem_enabled = 5;
+  int32 shmem_bytes = 6;
+  string kernel_name = 7;
+  bool collective_kernel_enabled = 8;
+  bool is_async = 9;
+}
+
+message AllToAllStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+
+  bool has_split_dimension = 4;
+  bool p2p_memcpy_enabled = 5;
+}
+
+message RaggedAllToAllStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+
+  int64 num_total_updates = 4;
+  int64 num_input_rows = 5;
+  int64 num_row_elements = 6;
+  bool one_shot_kernel_enabled = 7;
+}
+
+message CollectivePermuteStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  repeated CollectiveBufferProto buffers = 2;
+
+  CollectiveConfigProto collective_config = 3;
+  repeated SourceTarget source_target_pairs = 4;
+
+  AsyncStreamKind async_stream_kind = 5;
+  bool p2p_memcpy_enabled = 6;
+}
+
+message SendThunkProto {
+  uint64 async_events_unique_id = 1;
+  CollectiveBufferProto buffer = 2;
+
+  CollectiveConfigProto collective_config = 3;
+  repeated SourceTarget source_target_pairs = 4;
+
+  AsyncStreamKind async_stream_kind = 5;
+  string instruction_name = 6;
+}
+
+message CollectiveDoneThunkProto {
+  ThunkKindProto thunk_kind = 1;
+  AsyncStreamKind async_stream_kind = 2;
+  optional uint64 async_events_unique_id = 3;
 }
 
 message ThunkProto {
@@ -337,6 +505,13 @@ message ThunkProto {
     HostRecvThunkProto host_recv_thunk = 34;
     HostRecvDoneThunkProto host_recv_done_thunk = 35;
     CustomKernelThunkProto custom_kernel_thunk = 36;
+    CollectiveDoneThunkProto collective_done_thunk = 37;
+    AllGatherStartThunkProto all_gather_start_thunk = 38;
+    AllReduceStartThunkProto all_reduce_start_thunk = 39;
+    AllToAllStartThunkProto all_to_all_start_thunk = 40;
+    RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 41;
+    CollectivePermuteStartThunkProto collective_permute_start_thunk = 42;
+    SendThunkProto send_thunk = 43;
   }
 }
 

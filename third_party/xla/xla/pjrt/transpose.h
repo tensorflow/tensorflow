@@ -50,7 +50,9 @@ class TransposePlan {
   // dims: the input shape, in elements.
   // permutation: for each output dimension, gives the number of the
   //   corresponding input dimension. Must be a permutation of [0..dims.size())
-  // input_layout: either byte strides or an input tiling.
+  // input_tiling: optional input tiling.
+  // input_striding: optional input byte strides.
+  // output_tiling: optional output tiling.
   //
   // A Striding represents the strides of the input array in bytes. (N.B. not
   // elements).
@@ -71,7 +73,9 @@ class TransposePlan {
   // tiled dimensions. This is acceptable because in the intended use case for
   // this code we expect at most 2 tiled dimensions on input and output.
   //
-  // The input may have either a striding or a tiling but not both.
+  // The input may have both a tiling and a striding. If both are present,
+  // the striding determines the strides between tiles (in bytes).
+  //
   //
   // num_threads: is the number of threads requested. The actual number of
   //   threads used may be smaller if there isn't enough work per thread.
@@ -94,14 +98,19 @@ class TransposePlan {
     size_t elem_size_in_bytes;
     absl::Span<int64_t const> dims;
     absl::Span<int64_t const> permutation;
-    std::variant<Tiling, Striding> input_layout = Tiling{};
-    Tiling output_tiling;
+    std::optional<Tiling> input_tiling = std::nullopt;
+    std::optional<Striding> input_striding = std::nullopt;
+    std::optional<Tiling> output_tiling = std::nullopt;
     Transformation transformation = Transformation::kNone;
     int num_threads = 1;
+
+    // DEPRECATED: Use input_tiling or input_striding instead.
+    // This field is only present for backward compatibility.
+    // TODO(phawkins): remove me.
+    std::optional<std::variant<Tiling, Striding>> input_layout = std::nullopt;
   };
 
-  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(
-      const Options& options);
+  static absl::StatusOr<std::unique_ptr<TransposePlan>> Create(Options options);
 
   TransposePlan();
   ~TransposePlan();
@@ -138,33 +147,50 @@ class TransposePlan {
  protected:
   // Methods protected so they can be accessed by tests.
 
-  // Removes any size-1 dimensions.
-  static void RemoveTrivialDimensions(
-      absl::InlinedVector<int64_t, 4>& a_dims,
-      absl::InlinedVector<int64_t, 4>& permutation,
-      absl::InlinedVector<int64_t, 4>& lda,
-      absl::InlinedVector<int64_t, 4>& lda_tile,
-      absl::InlinedVector<int64_t, 4>& a_tiling,
-      absl::InlinedVector<int64_t, 4>& b_tiling);
+  struct Loop {
+    // Dimension number in A from which this loop originated. This is mostly
+    // for debugging the plan.
+    int dim_in_a;
 
-  // Collapses together dimensions that are adjacent both in `dims` and
-  // `permutation`.
-  static void CoalesceDimensions(absl::InlinedVector<int64_t, 4>& a_dims,
-                                 absl::InlinedVector<int64_t, 4>& permutation,
-                                 absl::InlinedVector<int64_t, 4>& lda,
-                                 absl::InlinedVector<int64_t, 4>& lda_tile,
-                                 absl::InlinedVector<int64_t, 4>& a_tiling,
-                                 absl::InlinedVector<int64_t, 4>& b_tiling);
+    // If true, the loop iterates over the interior of a tile.
+    // For an untiled dimension, this is always false. For a tiled dimension,
+    // we will have two loops: one over the tile exteriors and one over the tile
+    // interiors.
+    bool tile_interior;
+
+    // Size of the iteration space.
+    int64_t dim_size;
+
+    // Size of the tiles, if this a tiled dimension.
+    int64_t tile_size;
+
+    int64_t lda;  // Stride in A for this loop.
+    int64_t ldb;  // Stride in B for this loop.
+
+    // Is this the innermost (stride 1) dimension in A or B? These dimensions
+    // are special for the kernels.
+    bool is_inner_dim_in_a;
+    bool is_inner_dim_in_b;
+
+    // Number of parallel threads to use for this loop.
+    int64_t parallelism;
+
+    bool operator==(const Loop& other) const;
+  };
+
+  // Exposed for testing.
+  static void RemoveTrivialLoops(std::vector<Loop>& loops);
+  static void CoalesceLoops(std::vector<Loop>& loops);
 
  private:
   // Performs plan initialization that cannot fail.
   void Initialize();
 
-  void BuildPlanNodes(absl::Span<int64_t const> inverse_permutation,
-                      int thread_id, std::vector<Node>& output_nodes);
+  void BuildPlanNodes(int thread_id, std::vector<Node>& output_nodes);
 
-  std::vector<int> ChooseParallelizationStrategy(
-      absl::Span<int64_t const> inverse_permutation);
+  // Chooses a parallelism for each loop. Returns the total number of parallel
+  // work units.
+  int ChooseParallelizationStrategy();
 
   // The signature of ExecuteTyped uses char* pointers because we perform
   // address calculations with strides in bytes; the strides need not be
@@ -199,10 +225,10 @@ class TransposePlan {
   absl::InlinedVector<int64_t, 4> permutation_;
 
   // Leading-dimension sizes (byte strides) of each dimension.
-  absl::InlinedVector<int64_t, 4> lda_;
-  absl::InlinedVector<int64_t, 4> lda_tile_;
-  absl::InlinedVector<int64_t, 4> ldb_;
-  absl::InlinedVector<int64_t, 4> ldb_tile_;
+  absl::InlinedVector<int64_t, 4> lda_;       // Strides for tiles
+  absl::InlinedVector<int64_t, 4> lda_tile_;  // Strides for tile interiors
+  absl::InlinedVector<int64_t, 4> ldb_;       // Strides for tiles
+  absl::InlinedVector<int64_t, 4> ldb_tile_;  // Strides for tile interiors
 
   // Tile sizes in each dimension. Has size equal to the number of dimensions.
   // A 1 entry means that dimension is not tiled.
@@ -212,14 +238,8 @@ class TransposePlan {
   bool b_is_tiled_;
 
   // Order to traverse dimensions, from slowest-varying to fastest-varying.
-  struct Loop {
-    // The integers are dimension numbers in A.
-    int dim_in_a;
-    // If true, the loop iterates over the interior of a tile.
-    bool tile_interior;
-  };
+
   std::vector<Loop> loop_order_;
-  std::vector<int> loop_parallelism_;
 
   // Root nodes of the plan, i.e., pointing to the outermost loops in the loop
   // nest. The outer vector is indexed on the thread ID.
@@ -236,6 +256,10 @@ class TransposePlan {
   // cache blocking and need not be equal between input and output.
   int outer_block_elems_a_ = 4;
   int outer_block_elems_b_ = 4;
+
+  // Strides used by an inner transpose kernel. Unused for memcpy kernels.
+  int64_t sentinel_lda_ = -1;
+  int64_t sentinel_ldb_ = -1;
 
   // Transformations to apply to the input before transposition.
   // Currently the only supported transformation is EF57 conversion, which is
@@ -257,9 +281,9 @@ struct TransposePlanCacheKey {
   size_t elem_size_in_bytes;
   absl::InlinedVector<int64_t, 4> dims;
   absl::InlinedVector<int64_t, 4> permutation;
-  bool input_layout_is_tiling;
-  absl::InlinedVector<int64_t, 4> input_layout;
-  absl::InlinedVector<int64_t, 4> output_tiling;
+  std::optional<absl::InlinedVector<int64_t, 4>> input_tiling;
+  std::optional<absl::InlinedVector<int64_t, 4>> input_striding;
+  std::optional<absl::InlinedVector<int64_t, 4>> output_tiling;
   TransposePlan::Transformation transformation;
   int num_threads;
 

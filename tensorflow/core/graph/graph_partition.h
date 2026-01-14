@@ -31,19 +31,19 @@ namespace tensorflow {
 struct PartitionOptions {
   // A function that returns a location for the execution of a given
   // Node.
-  typedef std::function<string(const Node*)> NodeToLocFunc;
+  typedef std::function<std::string(const Node*)> NodeToLocFunc;
   NodeToLocFunc node_to_loc = nullptr;
 
   // A function that returns a unique graph node name with the given
   // prefix.
-  typedef std::function<string(const string&)> NewNameFunc;
+  typedef std::function<std::string(const std::string&)> NewNameFunc;
   NewNameFunc new_name = nullptr;
 
   // A function that returns the incarnation of a device given the
   // device's fullname. If not found, GetIncarnationFunc should return
   // kIllegalIncarnation.
-  static constexpr uint64 kIllegalIncarnation = 0;
-  typedef std::function<uint64(const string&)> GetIncarnationFunc;
+  static constexpr uint64_t kIllegalIncarnation = 0;
+  typedef std::function<uint64_t(const std::string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;
 
   // If specified, flib_def defines a function library that should be
@@ -79,7 +79,7 @@ struct PartitionOptions {
 
   // Optional customized function to compute the "tensor_name" attr value of
   // Send/Recv ops inserted during partitioning.
-  std::function<string(const Edge*)> get_tensor_name_attr = nullptr;
+  std::function<std::string(const Edge*)> get_tensor_name_attr = nullptr;
 
   // If true, the `Partition()` function can make destructive changes to the
   // passed-in `Graph`.
@@ -96,13 +96,14 @@ struct PartitionOptions {
 //
 // Stores the partitions in *partitions.
 absl::Status Partition(const PartitionOptions& opts, Graph* input,
-                       std::unordered_map<string, GraphDef>* partitions);
+                       std::unordered_map<std::string, GraphDef>* partitions);
 
 // Add control edges to the partitions to control the ordering
 // and timing of the recv nodes based on the start times calculated
 // using some scheduling algorithm.
-absl::Status AddControlEdges(const PartitionOptions& opts,
-                             std::unordered_map<string, GraphDef>* partitions);
+absl::Status AddControlEdges(
+    const PartitionOptions& opts,
+    std::unordered_map<std::string, GraphDef>* partitions);
 
 }  // namespace tensorflow
 

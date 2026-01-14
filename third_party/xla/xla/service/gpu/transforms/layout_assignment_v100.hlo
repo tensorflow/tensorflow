@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/v100.txtpb --split-input-file | FileCheck %s
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/v100.txtpb --split-input-file | FileCheck %s
 
 // CHECK: fused_transpose
 // CHECK-NEXT: f16[3,3,16,32]{3,2,1,0} parameter(0)

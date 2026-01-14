@@ -39,9 +39,9 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     const OpDef& sig, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const FunctionLibraryDefinition& flib_def, GraphDef* gdef,
-    std::vector<string>* send_keys, std::vector<string>* recv_keys) {
-  const string& target = options.target;
-  const string& func_name = sig.name();
+    std::vector<std::string>* send_keys, std::vector<std::string>* recv_keys) {
+  const std::string& target = options.target;
+  const std::string& func_name = sig.name();
   const FunctionDef* func_def = flib_def.Find(sig.name());
   if (func_def == nullptr) {
     return errors::InvalidArgument("Function ", func_name,
@@ -90,7 +90,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
 
     // src_incarnation = 1 works because the transfer is across the same device.
     // TODO(rohanj): Find the src_incarnation for the remote device and set it.
-    const string& key = Rendezvous::CreateKey(
+    const std::string& key = Rendezvous::CreateKey(
         target, 1 /* src_incarnation */, target, in.name(), FrameAndIter(0, 0));
     send_keys->push_back(key);
     ++i;
@@ -140,7 +140,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
 
     g.AddEdge(function_node, i, output_node, 0);
 
-    const string& key =
+    const std::string& key =
         Rendezvous::CreateKey(target, 1 /* src_incarnation */, target,
                               out.name(), FrameAndIter(0, 0));
     recv_keys->push_back(key);
@@ -180,7 +180,7 @@ ClusterFunctionLibraryRuntime::~ClusterFunctionLibraryRuntime() {
 }
 
 void ClusterFunctionLibraryRuntime::Instantiate(
-    const string& function_name, const FunctionLibraryDefinition& lib_def,
+    const std::string& function_name, const FunctionLibraryDefinition& lib_def,
     AttrSlice attrs, const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::LocalHandle* handle,
     FunctionLibraryRuntime::DoneCallback done) {
@@ -192,7 +192,7 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   WorkerInterface* wi = worker_cache->GetOrCreateWorker(target);
 
   if (wi == nullptr) {
-    std::vector<string> workers;
+    std::vector<std::string> workers;
     worker_session_->worker_cache()->ListWorkers(&workers);
     done(errors::InvalidArgument(
         "Could not find worker with target: ", target,
@@ -202,8 +202,8 @@ void ClusterFunctionLibraryRuntime::Instantiate(
 
   // Make RPC and obtain a graph handle.
   GraphDef gdef;
-  auto* send_keys = new std::vector<string>;
-  auto* recv_keys = new std::vector<string>;
+  auto* send_keys = new std::vector<std::string>;
+  auto* recv_keys = new std::vector<std::string>;
   auto construct_graph_fn = [&](const FunctionLibraryDefinition* lib_def) {
     const FunctionDef* fdef = lib_def->Find(function_name);
     const OpDef& sig = fdef->signature();
@@ -285,7 +285,7 @@ void ClusterFunctionLibraryRuntime::Run(
     args[i].AsProtoTensorContent(send->mutable_tensor());
     i++;
   }
-  const std::vector<string>& recv_keys = function_data->recv_keys;
+  const std::vector<std::string>& recv_keys = function_data->recv_keys;
   for (const auto& recv_key : recv_keys) {
     req->add_recv_key(recv_key);
   }
@@ -308,7 +308,7 @@ void ClusterFunctionLibraryRuntime::Run(
         if (!local_status->ok()) {
           return;
         }
-        std::map<string, TensorProto*> mapped_recvs;
+        std::map<std::string, TensorProto*> mapped_recvs;
         for (auto& recv : *resp->mutable_recv()) {
           mapped_recvs[recv.name()] = recv.mutable_tensor();
         }
@@ -363,7 +363,7 @@ void ClusterFunctionLibraryRuntime::Run(
 }
 
 void ClusterFunctionLibraryRuntime::CleanUp(
-    uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+    uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {

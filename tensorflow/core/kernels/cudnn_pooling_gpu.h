@@ -39,9 +39,9 @@ class DnnPooling3dOp {
  public:
   static void Compute(OpKernelContext* context,
                       se::dnn::PoolingMode pooling_mode,
-                      const std::array<int64, 3>& size,
-                      const std::array<int64, 3>& stride,
-                      const std::array<int64, 3>& padding,
+                      const std::array<int64_t, 3>& size,
+                      const std::array<int64_t, 3>& stride,
+                      const std::array<int64_t, 3>& padding,
                       TensorFormat data_format, const Tensor& tensor_in,
                       Tensor* output);
 };
@@ -53,10 +53,10 @@ class DnnPooling3dGradOp {
  public:
   static void Compute(OpKernelContext* context,
                       se::dnn::PoolingMode pooling_mode,
-                      const std::array<int64, 3>& window,
-                      const std::array<int64, 3>& stride,
-                      const std::array<int64, 3>& padding,
-                      const std::array<int64, 3>& output_size,
+                      const std::array<int64_t, 3>& window,
+                      const std::array<int64_t, 3>& stride,
+                      const std::array<int64_t, 3>& padding,
+                      const std::array<int64_t, 3>& output_size,
                       TensorFormat data_format, const Tensor& out_backprop,
                       const TensorShape& tensor_in_shape,
                       const Tensor* tensor_in, const Tensor* tensor_out,

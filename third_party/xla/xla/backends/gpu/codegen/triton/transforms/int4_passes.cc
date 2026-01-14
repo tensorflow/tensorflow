@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -173,15 +172,15 @@ class I4ToI8Converter : public TypeConverter {
 // Divides a value by an integer constant.
 Value div(ConversionPatternRewriter& r, Value value, int64_t constant) {
   auto const_attr = r.getIntegerAttr(value.getType(), constant);
-  auto const_op = r.template create<ma::ConstantOp>(value.getLoc(), const_attr);
-  return r.template create<ma::DivSIOp>(value.getLoc(), value, const_op);
+  auto const_op = ma::ConstantOp::create(r, value.getLoc(), const_attr);
+  return ma::DivSIOp::create(r, value.getLoc(), value, const_op);
 }
 
 // Divides a value by an integer constant.
 Value ceilDiv(ConversionPatternRewriter& r, Value value, int64_t constant) {
   auto const_attr = r.getIntegerAttr(value.getType(), constant);
-  auto const_op = r.template create<ma::ConstantOp>(value.getLoc(), const_attr);
-  return r.template create<ma::CeilDivSIOp>(value.getLoc(), value, const_op);
+  auto const_op = ma::ConstantOp::create(r, value.getLoc(), const_attr);
+  return ma::CeilDivSIOp::create(r, value.getLoc(), value, const_op);
 }
 
 // Returns the integer value of a constant op.

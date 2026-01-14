@@ -143,6 +143,9 @@ class LoadedExecutable final
     int64_t size_of_generated_code_in_bytes;
   };
 
+  tsl::Future<> FetchExecuteResult(uint64_t status_handle,
+                                   std::optional<uint64_t> device_time_key);
+
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
 

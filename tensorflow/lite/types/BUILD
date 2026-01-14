@@ -28,4 +28,8 @@ cc_library(
         "fp16.h",
         "half.h",
     ],
+    # copybara:uncomment_begin(google-only)
+    # compatible_with = ["//buildenv/target:non_prod"],
+    # copybara:uncomment_end
+    deps = ["@FP16"],
 )

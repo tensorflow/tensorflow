@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -146,7 +147,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
   };
   absl::StatusOr<DescriptorsTuple> GetMatrixDescriptors(
       se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
-      se::DeviceAddressBase out_buf) const;
+      se::DeviceAddressBase out_buf,
+      const se::GpuComputeCapability& gpu_version) const;
 };
 
 // Run the given GEMM instruction `gemm` subject to the configuration

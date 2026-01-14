@@ -160,8 +160,8 @@ mlir::LogicalResult OptimizeAllReduceAndSum(mlir::Operation* op,
   mlir::OpBuilder builder(op);
   builder.setInsertionPointAfterValue(op->getResult(0));
   mlir::TF::DTensorAllReduceOp all_reduce =
-      builder.create<mlir::TF::DTensorAllReduceOp>(
-          op->getLoc(), op->getResult(0).getType(), op->getResult(0),
+      mlir::TF::DTensorAllReduceOp::create(
+          builder, op->getLoc(), op->getResult(0).getType(), op->getResult(0),
           group_assignment, builder.getStringAttr(std::string(kReduceOpAdd)),
           builder.getStringAttr(first_reduction_op.getDeviceType()));
 
@@ -394,8 +394,8 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
 
   // Create a singe reduction operation that reduces the result of the locally
   // added tensor.
-  auto new_all_reduce = builder.create<mlir::TF::DTensorAllReduceOp>(
-      all_reduce.getLoc(), while_output.getType(), while_output,
+  auto new_all_reduce = mlir::TF::DTensorAllReduceOp::create(
+      builder, all_reduce.getLoc(), while_output.getType(), while_output,
       cloned_group_assignment->getResult(0),
       builder.getStringAttr(std::string(kReduceOpAdd)),
       builder.getStringAttr(all_reduce.getDeviceType()));

@@ -53,8 +53,6 @@ using tensorflow::GetKeyValueDirRequest;
 using tensorflow::GetKeyValueDirResponse;
 using tensorflow::GetKeyValueRequest;
 using tensorflow::GetKeyValueResponse;
-using tensorflow::GetTaskStateRequest;
-using tensorflow::GetTaskStateResponse;
 using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
 using tensorflow::IncrementKeyValueRequest;
@@ -65,18 +63,12 @@ using tensorflow::PollForErrorRequest;
 using tensorflow::PollForErrorResponse;
 using tensorflow::RegisterTaskRequest;
 using tensorflow::RegisterTaskResponse;
-using tensorflow::ReportErrorToServiceRequest;
-using tensorflow::ReportErrorToServiceResponse;
-using tensorflow::ReportErrorToTaskRequest;
-using tensorflow::ReportErrorToTaskResponse;
 using tensorflow::ResetTaskRequest;
 using tensorflow::ResetTaskResponse;
 using tensorflow::ShutdownTaskRequest;
 using tensorflow::ShutdownTaskResponse;
 using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
-using tensorflow::WaitForAllTasksRequest;
-using tensorflow::WaitForAllTasksResponse;
 using tensorflow::WatchJobStateRequest;
 using tensorflow::WatchJobStateResponse;
 
@@ -134,16 +126,6 @@ class GrpcCoordinationClient : public CoordinationClient {
         &target_);
   }
 
-  void WaitForAllTasksAsync(const WaitForAllTasksRequest* request,
-                            WaitForAllTasksResponse* response,
-                            tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/WaitForAllTasks",
-        *request, response, std::move(done), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
-  }
-
   void ShutdownTaskAsync(tsl::CallOptions* call_opts,
                          const ShutdownTaskRequest* request,
                          ShutdownTaskResponse* response,
@@ -176,37 +158,6 @@ class GrpcCoordinationClient : public CoordinationClient {
         response, std::move(done), call_opts, /*threadpool=*/nullptr,
         /*max_retries=*/3,
         /*fail_fast=*/true, &target_);
-  }
-
-  void ReportErrorToTaskAsync(tsl::CallOptions* call_opts,
-                              const ReportErrorToTaskRequest* request,
-                              ReportErrorToTaskResponse* response,
-                              tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToTask",
-        *request, response, std::move(done), call_opts,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
-  }
-
-  void ReportErrorToServiceAsync(const ReportErrorToServiceRequest* request,
-                                 ReportErrorToServiceResponse* response,
-                                 tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ReportErrorToService",
-        *request, response, std::move(done), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
-  }
-
-  void GetTaskStateAsync(const GetTaskStateRequest* request,
-                         GetTaskStateResponse* response,
-                         tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/GetTaskState", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
   }
 
   void WatchJobStateAsync(tsl::CallOptions* call_opts,
@@ -329,76 +280,7 @@ class GrpcCoordinationClient : public CoordinationClient {
   std::unique_ptr<GrpcCoordinationClientThread> client_thread_;
 };
 
-class GrpcCoordinationClientCache : public CoordinationClientCache {
- public:
-  explicit GrpcCoordinationClientCache(
-      std::shared_ptr<tsl::GrpcChannelCache> channel_cache)
-      : next_round_robin_assignment_(0),
-        channel_cache_(channel_cache),
-        threads_(4) {}
-
-  ~GrpcCoordinationClientCache() override = default;
-
-  CoordinationClient* GetClient(const std::string& target) override {
-    absl::MutexLock l(clients_mu_);
-    auto it = clients_.find(target);
-    if (it == clients_.end()) {
-      tsl::SharedGrpcChannelPtr channel =
-          channel_cache_->FindWorkerChannel(target);
-      if (channel == nullptr) {
-        VLOG(2) << "Coordination client for target " << target << " not found.";
-      }
-      int assigned_index = AssignClientToThread(target);
-      auto coord_client = std::make_unique<GrpcCoordinationClient>(
-          channel, threads_[assigned_index].completion_queue(), target);
-      it = clients_.emplace(target, std::move(coord_client)).first;
-    }
-    return it->second.get();
-  }
-
-  std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const std::string& target) override {
-    tsl::SharedGrpcChannelPtr channel =
-        channel_cache_->FindWorkerChannel(target);
-    if (channel == nullptr) {
-      VLOG(2) << "Coordination client for target " << target << " not found.";
-    }
-    return std::make_unique<GrpcCoordinationClient>(channel, target);
-  }
-
- private:
-  absl::Mutex assignment_mu_;
-  std::unordered_map<std::string, size_t> target_assignments_
-      ABSL_GUARDED_BY(assignment_mu_);
-  size_t next_round_robin_assignment_ ABSL_GUARDED_BY(assignment_mu_);
-
-  size_t AssignClientToThread(const std::string& target) {
-    // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performance
-    absl::MutexLock l(assignment_mu_);
-    auto it = target_assignments_.find(target);
-    if (it == target_assignments_.end()) {
-      it = target_assignments_
-               .insert(std::make_pair(
-                   target, (next_round_robin_assignment_++) % threads_.size()))
-               .first;
-    }
-    return it->second;
-  }
-
-  std::shared_ptr<tsl::GrpcChannelCache> channel_cache_;
-  mutable absl::Mutex clients_mu_;
-  std::unordered_map<std::string, std::unique_ptr<CoordinationClient>> clients_
-      ABSL_GUARDED_BY(clients_mu_);
-  std::vector<GrpcCoordinationClientThread> threads_;
-};
-
 }  // namespace
-
-CoordinationClientCache* NewGrpcCoordinationClientCache(
-    std::shared_ptr<tsl::GrpcChannelCache> channel_cache) {
-  return new GrpcCoordinationClientCache(channel_cache);
-}
 
 CoordinationClient* NewGrpcCoordinationClient(
     std::shared_ptr<::grpc::Channel> channel) {

@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -354,45 +355,38 @@ TEST(ReverseOpTest, Int16MultiDimensions) {
 
 // float16 tests.
 TEST(ReverseOpTest, Float16OneDimension) {
-  ReverseOpModel<Eigen::half> model({TensorType_FLOAT16, {4}},
-                                    {TensorType_INT32, {1}});
-  model.PopulateTensor<Eigen::half>(
-      model.input(),
-      {Eigen::half(1), Eigen::half(2), Eigen::half(3), Eigen::half(4)});
+  ReverseOpModel<half> model({TensorType_FLOAT16, {4}},
+                             {TensorType_INT32, {1}});
+  model.PopulateTensor<half>(model.input(),
+                             {half(1), half(2), half(3), half(4)});
   model.PopulateTensor<int32_t>(model.axis(), {0});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({Eigen::half(4), Eigen::half(3), Eigen::half(2),
-                                Eigen::half(1)}));
+              ElementsAreArray({half(4), half(3), half(2), half(1)}));
 }
 
 TEST(ReverseOpTest, Float16MultiDimensions) {
-  ReverseOpModel<Eigen::half> model({TensorType_FLOAT16, {4, 3, 2}},
-                                    {TensorType_INT32, {1}});
-  model.PopulateTensor<Eigen::half>(
+  ReverseOpModel<half> model({TensorType_FLOAT16, {4, 3, 2}},
+                             {TensorType_INT32, {1}});
+  model.PopulateTensor<half>(
       model.input(),
-      {Eigen::half(1),  Eigen::half(2),  Eigen::half(3),  Eigen::half(4),
-       Eigen::half(5),  Eigen::half(6),  Eigen::half(7),  Eigen::half(8),
-       Eigen::half(9),  Eigen::half(10), Eigen::half(11), Eigen::half(12),
-       Eigen::half(13), Eigen::half(14), Eigen::half(15), Eigen::half(16),
-       Eigen::half(17), Eigen::half(18), Eigen::half(19), Eigen::half(20),
-       Eigen::half(21), Eigen::half(22), Eigen::half(23), Eigen::half(24)});
+      {half(1),  half(2),  half(3),  half(4),  half(5),  half(6),
+       half(7),  half(8),  half(9),  half(10), half(11), half(12),
+       half(13), half(14), half(15), half(16), half(17), half(18),
+       half(19), half(20), half(21), half(22), half(23), half(24)});
   model.PopulateTensor<int32_t>(model.axis(), {1});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({Eigen::half(5),  Eigen::half(6),  Eigen::half(3),
-                        Eigen::half(4),  Eigen::half(1),  Eigen::half(2),
-                        Eigen::half(11), Eigen::half(12), Eigen::half(9),
-                        Eigen::half(10), Eigen::half(7),  Eigen::half(8),
-                        Eigen::half(17), Eigen::half(18), Eigen::half(15),
-                        Eigen::half(16), Eigen::half(13), Eigen::half(14),
-                        Eigen::half(23), Eigen::half(24), Eigen::half(21),
-                        Eigen::half(22), Eigen::half(19), Eigen::half(20)}));
+      ElementsAreArray({half(5),  half(6),  half(3),  half(4),  half(1),
+                        half(2),  half(11), half(12), half(9),  half(10),
+                        half(7),  half(8),  half(17), half(18), half(15),
+                        half(16), half(13), half(14), half(23), half(24),
+                        half(21), half(22), half(19), half(20)}));
 }
 
 // bfloat16 tests.

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -36,6 +37,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
@@ -249,6 +252,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42, b=0
   se::DeviceAddress<int32_t> a =
@@ -268,7 +272,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
@@ -606,6 +611,7 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   auto stream = stream_executor->CreateStream().value();
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Device buffers: a, b, c
   se::DeviceAddress<int32_t> a =
@@ -651,7 +657,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
 
   // Executor C: c = b (memcpy)
   CommandBufferCmdSequence seq_c;
-  seq_c.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_b, byte_length);
+  seq_c.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_c, shape}, ShapedSlice{slice_b, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor exec_c,
       CommandBufferCmdExecutor::Create(std::move(seq_c), serialize));
@@ -721,6 +728,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   // Prepare device memory for three buffers.
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
+
   se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length);
   se::DeviceAddress<int32_t> b =
@@ -744,7 +753,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
 
   // Inner child: c = a (device-to-device memcpy)
   CommandBufferCmdSequence inner_seq;
-  inner_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_a, byte_length);
+  inner_seq.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_c, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor inner_executor,
       CommandBufferCmdExecutor::Create(std::move(inner_seq), serialize));
@@ -754,7 +764,8 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   middle_seq.Emplace<ChildCmd>(std::move(inner_executor));
   // Add a couple of extra commands that don't affect `c`.
   middle_seq.Emplace<Memset32Cmd>(slice_b, /*bit_pattern=*/3);
-  middle_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_b, byte_length);
+  middle_seq.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_b, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor middle_executor,
       CommandBufferCmdExecutor::Create(std::move(middle_seq), serialize));
@@ -763,7 +774,7 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   CommandBufferCmdSequence outer_seq;
   outer_seq.Emplace<ChildCmd>(std::move(middle_executor));
   // Add a couple more commands at the outer level that still don't affect `c`.
-  outer_seq.Emplace<MemzeroCmd>(slice_b);
+  outer_seq.Emplace<MemzeroCmd>(ShapedSlice{slice_b, shape});
   outer_seq.Emplace<EmptyCmd>();
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor outer_executor,

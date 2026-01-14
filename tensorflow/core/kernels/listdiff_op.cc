@@ -48,7 +48,7 @@ class ListDiffOp : public OpKernel {
     const auto Ty = y.vec<T>();
     const size_t y_size = Ty.size();
 
-    OP_REQUIRES(context, x_size < std::numeric_limits<int32>::max(),
+    OP_REQUIRES(context, x_size < std::numeric_limits<int32_t>::max(),
                 errors::InvalidArgument("x too large for int32 indexing"));
 
     std::unordered_set<T> y_set;

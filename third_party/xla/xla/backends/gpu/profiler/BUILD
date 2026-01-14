@@ -68,9 +68,6 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = [
-        "cuda-only",
-    ],
     deps = [
         ":kernel_name_tracer",
         "//xla/backends/gpu/runtime:command_buffer_cmd",

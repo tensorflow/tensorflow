@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -72,7 +73,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -88,6 +89,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -238,6 +240,10 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 
   GpuExecutableThunkPassBufferAllocator allocator(next_idx);
 
+  // TODO(b/461380690): Remove this once we have a better way to distinguish
+  // between compiler-generated and runtime-loaded GPU executables.
+  absl::StatusOr<ThunkProto> thunk_proto = params.executable->ToProto();
+
   TF_RETURN_IF_ERROR(RunThunkPasses(
       params.debug_options, params.device_description, params.executable.get(),
       params.debug_module.get(), allocator));
@@ -251,7 +257,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(allocator.MutableAllocations()), std::move(params.alias_info),
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
-      std::move(params.module_stats)));
+      std::move(params.module_stats), std::move(thunk_proto)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -268,7 +274,8 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
     std::vector<ConstantInfo> constants,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-    bool enable_debug_info_manager, ModuleStats module_stats)
+    bool enable_debug_info_manager, ModuleStats module_stats,
+    absl::StatusOr<ThunkProto> thunk_proto)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -288,7 +295,8 @@ GpuExecutable::GpuExecutable(
           debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(constants)),
       output_info_(std::move(output_info)),
-      enable_debug_info_manager_(enable_debug_info_manager) {
+      enable_debug_info_manager_(enable_debug_info_manager),
+      thunk_proto_(std::move(thunk_proto)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -453,9 +461,13 @@ absl::Status ExecuteThunksImpl(
           collective_max_nchannels, p2p_max_nchannels));
 
   CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests};
+    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                        &multimem_registry, executor,
+                                        &buffer_allocations};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     TF_RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
@@ -481,6 +493,8 @@ absl::Status ExecuteThunksImpl(
                 : false));
   }
 
+  TF_RETURN_IF_ERROR(multimem_registry.Build());
+
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
         executor,
@@ -490,6 +504,7 @@ absl::Status ExecuteThunksImpl(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
+        &multimem_registry,
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count()};
 
@@ -930,8 +945,8 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
             << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
-      MaybeOwningDeviceMemory* maybe_owning_memory =
-          [&]() -> xla::MaybeOwningDeviceMemory* {
+      MaybeOwningDeviceAddress* maybe_owning_memory =
+          [&]() -> xla::MaybeOwningDeviceAddress* {
         // ScopedBuffer is never an owned buffer.
         if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
                 arguments)) {
@@ -1062,7 +1077,14 @@ absl::Status GpuExecutable::ExecuteThunks(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_;
+        const BufferAllocation& allocation =
+            buffer_assignment_->GetAllocation(i);
+        const char* allocation_type =
+            allocation.is_entry_computation_parameter() ? "parameter"
+            : allocation.maybe_live_out()               ? "live-out"
+                                                        : "temp";
+        VLOG(5) << "Gpu address changed for module " << module_name_
+                << ", allocation " << i << " (" << allocation_type << ")";
       }
     }
   }
@@ -1223,7 +1245,10 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   *proto.mutable_gpu_compute_capability() = gpu_version_.ToProto();
 
-  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunks_->ToProto());
+  // TODO(b/461380690): Generate the proto on-the-fly once we have a better way
+  // to distinguish between compiler-generated and runtime-loaded GPU
+  // executables.
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunk_proto_);
 
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();

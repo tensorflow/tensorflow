@@ -67,7 +67,7 @@ LogicalResult FoldOperation(OpBuilder& builder, Operation* op,
   results.clear();
   builder.setInsertionPointAfter(op);
   for (const auto& result_value : result_values) {
-    results.push_back(builder.create<TF::ConstOp>(op->getLoc(), result_value));
+    results.push_back(TF::ConstOp::create(builder, op->getLoc(), result_value));
   }
   return success();
 }

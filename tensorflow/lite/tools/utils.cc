@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <random>
 #include <string>
+#include <type_traits>
 
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive

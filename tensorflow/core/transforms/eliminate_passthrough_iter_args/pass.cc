@@ -133,8 +133,8 @@ struct EliminateForPassthroughIterArgs
   static ForRegionOp RebuildOp(const llvm::BitVector &indices, ForRegionOp op,
                                IRRewriter &rewriter) {
     rewriter.setInsertionPoint(op);
-    auto new_op = rewriter.create<ForRegionOp>(
-        op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
+    auto new_op = ForRegionOp::create(
+        rewriter, op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
         op.getCtl().getType(), op.getStart(), op.getLimit(), op.getDelta(),
         FilterByIndex(op.getInit(), indices), op.getCtls(),
         op.getBodyAttrsAttr(), op.getRegionAttrsAttr());
@@ -163,8 +163,8 @@ struct EliminateWhileLikePassthroughIterArgs
                                      WhileLikeRegionOp op,
                                      IRRewriter &rewriter) {
     rewriter.setInsertionPoint(op);
-    auto new_op = rewriter.create<WhileLikeRegionOp>(
-        op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
+    auto new_op = WhileLikeRegionOp::create(
+        rewriter, op.getLoc(), FilterByIndex(op.getOuts().getTypes(), indices),
         op.getCtl().getType(), FilterByIndex(op.getInit(), indices),
         op.getCtls(), op.getParallelIterationsAttr(), op.getCondAttrsAttr(),
         op.getBodyAttrsAttr(), op.getCondRegionAttrsAttr(),

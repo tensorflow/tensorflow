@@ -39,17 +39,35 @@ TEST(ConvolutionReorderThunkTest, ProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
     thunk_info { profile_annotation: "test" execution_stream_id: 0 }
     convolution_reorder_thunk {
-      filter_dimensions {
-        output_feature_map_count: 1
-        input_feature_map_count: 2
-        input_filter_height: 3
-        input_filter_width: 4
+      filter_input {
+        slice { buffer_allocation_index: 0 offset: 0 size: 1024 }
+        shape {}
       }
-      filter_input { buffer_allocation_index: 0 offset: 0 size: 1024 }
-      filter_output { buffer_allocation_index: 1 offset: 0 size: 512 }
+      filter_output {
+        slice { buffer_allocation_index: 1 offset: 0 size: 512 }
+        shape {
+          element_type: F32
+          dimensions: 1
+          dimensions: 2
+          dimensions: 3
+          dimensions: 4
+          dimensions: 32
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
+        }
+      }
       biases {
-        bias_input { buffer_allocation_index: 2 offset: 0 size: 256 }
-        bias_output { buffer_allocation_index: 3 offset: 0 size: 128 }
+        bias_input {
+          slice { buffer_allocation_index: 2 offset: 0 size: 256 }
+          shape {}
+        }
+        bias_output {
+          slice { buffer_allocation_index: 3 offset: 0 size: 128 }
+          shape {}
+        }
       }
     }
   )pb");

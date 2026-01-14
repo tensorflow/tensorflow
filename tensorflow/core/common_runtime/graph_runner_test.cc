@@ -64,8 +64,8 @@ TEST(GraphRunnerTest, DeepCopy) {
   Tensor p2_data(DT_FLOAT, TensorShape({}));
   p1_data.scalar<float>()() = 1.0f;
   p2_data.scalar<float>()() = 2.0f;
-  std::vector<std::pair<string, Tensor>> inputs = {{"p1:0", p1_data},
-                                                   {"p2:0", p2_data}};
+  std::vector<std::pair<std::string, Tensor>> inputs = {{"p1:0", p1_data},
+                                                        {"p2:0", p2_data}};
 
   // Create and destroy the GraphRunner, and ensure that the outputs are
   // consumable beyond the lifetime of GraphRunner.
@@ -102,8 +102,8 @@ TEST(GraphRunnerTest, FeedAndFetch) {
   Tensor p2_data(DT_FLOAT, TensorShape({}));
   p1_data.scalar<float>()() = 1.0f;
   p2_data.scalar<float>()() = 2.0f;
-  std::vector<std::pair<string, Tensor>> inputs = {{"p1:0", p1_data},
-                                                   {"p2:0", p2_data}};
+  std::vector<std::pair<std::string, Tensor>> inputs = {{"p1:0", p1_data},
+                                                        {"p2:0", p2_data}};
 
   GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;

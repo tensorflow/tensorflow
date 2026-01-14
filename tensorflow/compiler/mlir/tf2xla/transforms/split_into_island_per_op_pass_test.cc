@@ -53,12 +53,11 @@ class SplitIntoIslandPerOpPass : public ::testing::Test {
     llvm::SmallVector<mlir::Type, 1> island_result_types;
     island_result_types.push_back(op_builder_.getF64Type());
 
-    mlir::Operation* yield_op = op_builder_.create<mlir::tf_executor::YieldOp>(
-        op_state.location, mlir::ValueRange{});
-    mlir::tf_executor::IslandOp island_op =
-        op_builder_.create<mlir::tf_executor::IslandOp>(
-            op_state.location, island_result_types, mlir::ValueRange{},
-            mlir::ArrayRef<mlir::NamedAttribute>{});
+    mlir::Operation* yield_op = mlir::tf_executor::YieldOp::create(
+        op_builder_, op_state.location, mlir::ValueRange{});
+    mlir::tf_executor::IslandOp island_op = mlir::tf_executor::IslandOp::create(
+        op_builder_, op_state.location, island_result_types, mlir::ValueRange{},
+        mlir::ArrayRef<mlir::NamedAttribute>{});
     island_op.getBody().push_back(new mlir::Block);
     island_op.getBody().back().push_back(yield_op);
     return island_op;
@@ -126,13 +125,13 @@ TEST_F(SplitIntoIslandPerOpPass, IslandOpTwoOpsSplitsIntoTwoIslands) {
   islandOp.getBody().back().push_front(inner_op_2);
   // Code relies on a parent with a fetch op containing the island op.
   mlir::tf_executor::GraphOp parent_graph_op =
-      op_builder_.create<mlir::tf_executor::GraphOp>(
-          mlir::UnknownLoc::get(&context_),
+      mlir::tf_executor::GraphOp::create(
+          op_builder_, mlir::UnknownLoc::get(&context_),
           mlir::TypeRange{op_builder_.getF64Type()});
   parent_graph_op.getRegion().push_back(new mlir::Block);
   parent_graph_op.push_back(islandOp);
   mlir::tf_executor::FetchOp fetch_op =
-      op_builder_.create<mlir::tf_executor::FetchOp>(parent_graph_op.getLoc());
+      mlir::tf_executor::FetchOp::create(op_builder_, parent_graph_op.getLoc());
   parent_graph_op.GetBody().push_back(fetch_op);
 
   SplitIsland(islandOp, control_type);

@@ -80,6 +80,11 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
            Capability().cuda_compute_capability()->IsAtLeastHopper();
   }
 
+  bool IsAmpereAndHigher() {
+    return Capability().IsCuda() &&
+           Capability().cuda_compute_capability()->IsAtLeastAmpere();
+  }
+
  protected:
   std::unique_ptr<HloRunner> hlo_runner_;
   std::unique_ptr<HloRunner> reference_hlo_runner_;

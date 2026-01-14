@@ -98,6 +98,18 @@ class AbstractTrackedDeviceBuffer {
         "WaitUntilBufferReadyOnStream is only implemented for GPU.");
   }
 
+  // TODO(parkers): definition events are fixed, so we should just store them
+  // directly.
+  // Returns true if there is an error in any of the events.
+  virtual bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
+    LOG(FATAL) << "TODO IMPLEMENT: AddDefinitionEventsToSet.";
+    return false;
+  }
+
+  virtual void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
+    LOG(FATAL) << "TODO IMPLEMENT: AddUsageEventsToSet.";
+  }
+
  protected:
   void ReleaseDeviceMemory() {
     raw_buffer_ = tsl::RCReference<CommonPjRtRawBuffer>();

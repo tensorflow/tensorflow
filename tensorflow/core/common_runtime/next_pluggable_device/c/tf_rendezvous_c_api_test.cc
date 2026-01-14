@@ -58,7 +58,7 @@ Tensor CreateTestTensor() {
   Tensor t(DT_INT8, TensorShape({10, 20}));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<int8>()(a, b) = static_cast<int8>((a + 1) * (b + 1));
+      t.matrix<int8_t>()(a, b) = static_cast<int8_t>((a + 1) * (b + 1));
     }
   }
   return t;
@@ -68,7 +68,8 @@ class FakeAllocator : public Allocator {
  public:
   std::string Name() override { return "fake"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
-    return port::AlignedMalloc(num_bytes, alignment);
+    return tsl::port::AlignedMalloc(num_bytes,
+                                    static_cast<std::align_val_t>(alignment));
   }
   void DeallocateRaw(void* ptr) override { return port::AlignedFree(ptr); }
 };
@@ -112,8 +113,9 @@ class FakeDeviceManager : public DeviceMgr {
   bool ContainsDevice(int64_t device_incarnation) const override {
     return false;
   }
-  void ClearContainers(absl::Span<const string> containers) const override {}
-  int NumDeviceType(const string& type) const override { return 0; }
+  void ClearContainers(
+      absl::Span<const std::string> containers) const override {}
+  int NumDeviceType(const std::string& type) const override { return 0; }
   int NumDevices() const override { return 0; }
   Device* HostCPU() const override { return nullptr; }
 
@@ -127,7 +129,7 @@ class TestDeviceContext : public DeviceContext {
                              Tensor* device_tensor, StatusCallback done,
                              bool sync_dst_compute) const override {
     Tensor test_tensor = CreateTestTensor();
-    test::ExpectTensorEqual<int8>(test_tensor, *cpu_tensor);
+    test::ExpectTensorEqual<int8_t>(test_tensor, *cpu_tensor);
     done(absl::OkStatus());
   }
 
@@ -191,7 +193,7 @@ TEST(RendezvousCAPI, DeviceToHost) {
                         });
   callback_done.WaitForNotification();
   Tensor test_tensor = CreateTestTensor();
-  test::ExpectTensorEqual<int8>(test_tensor, result);
+  test::ExpectTensorEqual<int8_t>(test_tensor, result);
 
   Destroy(thunk);
   delete thunk;

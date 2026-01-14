@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.pb.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"

@@ -187,6 +187,10 @@ void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
   EXPECT_EQ(vec.size(), kNumElements);
   EXPECT_THAT(vec, Each(DistanceFrom(0, Lt(0.001))));
 
+  auto space = std::make_unique<tensorflow::profiler::XSpace>();
+  collector->Export(space.get(), CuptiTracer::GetTimestamp());
+  EXPECT_GE(space->planes_size(), 1);
+
   if (enable_pm_sampling) {
     // Expect 4 * elems / (32 elemn / warp) +- 5% double instructions
     // (if they were sampled)

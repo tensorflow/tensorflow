@@ -15,9 +15,11 @@ limitations under the License.
 #include "tensorflow/core/summary/summary_file_writer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 

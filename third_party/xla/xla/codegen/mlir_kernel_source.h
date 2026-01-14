@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/codegen/kernel_source.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -45,8 +44,7 @@ class MlirKernelSource final : public KernelSource {
   // context.
   MlirKernelSource(std::unique_ptr<mlir::MLIRContext> mlir_context,
                    mlir::OwningOpRef<mlir::ModuleOp> module)
-      : mlir_context_(std::move(mlir_context)),
-        module_(std::move(module)) {}
+      : mlir_context_(std::move(mlir_context)), module_(std::move(module)) {}
 
   // Construct a MLIR kernel source from a module but don't take any ownership
   // of the MLIR context.

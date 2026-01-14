@@ -110,7 +110,7 @@ jobs:
           PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@v6.0.0
+        uses: actions/checkout@v6.0.1
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
@@ -235,7 +235,7 @@ jobs:
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@v5.0.0
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
           path: ${{ env.XSPACE_FILE }}

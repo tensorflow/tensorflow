@@ -107,11 +107,11 @@ class Node {
   NodeDef* mutable_def();
 
   // input and output types
-  int32 num_inputs() const;
+  int32_t num_inputs() const;
   DataType input_type(int32_t i) const;
   const DataTypeVector& input_types() const;
 
-  int32 num_outputs() const;
+  int32_t num_outputs() const;
   DataType output_type(int32_t o) const;
   const DataTypeVector& output_types() const;
 
@@ -139,14 +139,14 @@ class Node {
 
   // Sets 'original_node_names' field of this node's DebugInfo proto to
   // 'names'.
-  void set_original_node_names(const std::vector<string>& names);
-  void set_original_func_names(const std::vector<string>& names);
+  void set_original_node_names(const std::vector<std::string>& names);
+  void set_original_func_names(const std::vector<std::string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
 
   // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
-  const protobuf::RepeatedPtrField<string>& requested_inputs() const;
+  const protobuf::RepeatedPtrField<std::string>& requested_inputs() const;
 
   // Get the neighboring nodes via edges either in or out of this node.  This
   // includes control edges.
@@ -220,7 +220,7 @@ class Node {
     UpdateProperties();
   }
 
-  void AddAttr(const std::string& name, std::vector<string>&& val) {
+  void AddAttr(const std::string& name, std::vector<std::string>&& val) {
     MoveAttrValue(std::move(val), AddAttrHelper(name));
     UpdateProperties();
   }
@@ -278,7 +278,7 @@ class Node {
   // update the node's full type information (if present).
   absl::Status ShrinkTypeInfo(
       const absl::flat_hash_map<int, int>& index_mapping,
-      const string& type_attr_name, bool update_full_type);
+      const std::string& type_attr_name, bool update_full_type);
 
   // Called after an incident non-control edge has changed. Does nothing if not
   // all input edges are defined.
@@ -383,8 +383,8 @@ class Node {
 // Stores debug information associated with the Node.
 struct NodeDebugInfo {
   const std::string name;
-  std::vector<string> original_node_names;
-  std::vector<string> original_func_names;
+  std::vector<std::string> original_node_names;
+  std::vector<std::string> original_func_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
@@ -407,7 +407,7 @@ struct InputTensor {
   // A hash function for InputTensors. Nodes are hashed based on their pointer
   // value.
   struct Hash {
-    uint64 operator()(InputTensor const& s) const;
+    uint64_t operator()(InputTensor const& s) const;
   };
 };
 
@@ -428,7 +428,7 @@ struct OutputTensor {
   // A hash function for OutputTensors. Nodes are hashed based on their pointer
   // value.
   struct Hash {
-    uint64 operator()(OutputTensor const& s) const;
+    uint64_t operator()(OutputTensor const& s) const;
   };
 };
 
@@ -803,7 +803,7 @@ class Graph {
                                WhileContext** result);
 
   // Builds a node name to node pointer index for all nodes in the graph.
-  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
+  std::unordered_map<std::string, Node*> BuildNodeNameIndex() const;
 
   absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
     return const_arg_indices_cache_;
@@ -906,16 +906,16 @@ class Graph {
 
   // A table of the unique assigned device names.  Indices do NOT correspond
   // to node IDs.  Index 0 is always the empty string.
-  std::vector<string> device_names_;
+  std::vector<std::string> device_names_;
 
   // Maps unique device names to indices within device_names_[i].
-  std::unordered_map<string, int> device_names_map_;
+  std::unordered_map<std::string, int> device_names_map_;
 
   // All the while contexts owned by this graph, keyed by frame name,
   // corresponding to all the while loops contained in this graph (including
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
-  std::map<string, WhileContext> while_ctxs_;
+  std::map<std::string, WhileContext> while_ctxs_;
 
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.

@@ -21,9 +21,9 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tools/safe_cast.h"
-#include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tflite_migration {
@@ -92,13 +92,13 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
   // Quantize the values.
   int indices[kPerChannelMaxDim];
   tensorflow::TensorShape unextended_shape;
-  TF_CHECK_OK(tensorflow::TensorShapeUtils::MakeShape(absl::MakeSpan(dimension),
-                                                      &unextended_shape));
+  CHECK_OK(tensorflow::TensorShapeUtils::MakeShape(absl::MakeSpan(dimension),
+                                                   &unextended_shape));
   tensorflow::TensorShape shape;
   for (int i = 0; i < kPerChannelMaxDim - unextended_shape.dims(); ++i) {
-    TF_CHECK_OK(shape.AddDimWithStatus(1));
+    CHECK_OK(shape.AddDimWithStatus(1));
   }
-  TF_CHECK_OK(shape.AppendShapeWithStatus(unextended_shape));
+  CHECK_OK(shape.AppendShapeWithStatus(unextended_shape));
   channel_dim_index += kPerChannelMaxDim - unextended_shape.dims();
 
   for (indices[0] = 0; indices[0] < shape.dim_size(0); indices[0]++) {

@@ -27,8 +27,8 @@ limitations under the License.
 namespace {
 
 struct LoggingDevice {
-  tensorflow::string device_name;
-  tensorflow::string underlying_device;
+  std::string device_name;
+  std::string underlying_device;
   // Set to true whenever a TensorHandle is copied onto the device
   bool* arrived_flag;
   // Set to true whenever an operation is executed
@@ -59,9 +59,10 @@ void LoggedTensorDeallocator(void* data) {
   delete reinterpret_cast<LoggedTensor*>(data);
 }
 
-TFE_TensorHandle* MakeLoggedTensorHandle(
-    TFE_Context* context, const tensorflow::string& logging_device_name,
-    std::unique_ptr<LoggedTensor> t, TF_Status* status) {
+TFE_TensorHandle* MakeLoggedTensorHandle(TFE_Context* context,
+                                         const std::string& logging_device_name,
+                                         std::unique_ptr<LoggedTensor> t,
+                                         TF_Status* status) {
   auto dtype = TFE_TensorHandleDataType(t->tensor);
   TFE_CustomDeviceTensorHandleMethods handle_methods;
   handle_methods.num_dims = &LoggedTensorNumDims;

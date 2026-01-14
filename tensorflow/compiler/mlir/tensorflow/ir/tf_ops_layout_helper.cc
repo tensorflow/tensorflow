@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {

@@ -183,7 +183,7 @@ std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
   auto const_attr = DenseElementsAttr::get(const_type, vec);
 
   auto const_op =
-      rewriter.create<arith::ConstantOp>(loc, const_type, const_attr);
+      arith::ConstantOp::create(rewriter, loc, const_type, const_attr);
   return const_op.getResult();
 }
 
@@ -207,8 +207,8 @@ std::optional<mlir::Value> ConvertDequantizeOp(
     auto const_attr =
         DenseElementsAttr::get(const_type, static_cast<float>(zeropoint[0]));
 
-    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
-                                                       const_attr);
+    auto const_op = arith::ConstantOp::create(rewriter, op->getLoc(),
+                                              const_type, const_attr);
     zp_val = const_op.getResult();
   } else {
     SmallVector<int64_t> shape;
@@ -224,8 +224,8 @@ std::optional<mlir::Value> ConvertDequantizeOp(
     auto const_attr =
         DenseElementsAttr::get(const_type, static_cast<float>(scale[0]));
 
-    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
-                                                       const_attr);
+    auto const_op = arith::ConstantOp::create(rewriter, op->getLoc(),
+                                              const_type, const_attr);
     scale_val = const_op.getResult();
   } else {
     SmallVector<int64_t> shape;
@@ -237,16 +237,17 @@ std::optional<mlir::Value> ConvertDequantizeOp(
   if (!zp_val || !scale_val) return std::nullopt;
 
   auto op1_cast_in =
-      rewriter.create<TFL::CastOp>(op->getLoc(), output_type, input_value);
+      TFL::CastOp::create(rewriter, op->getLoc(), output_type, input_value);
 
-  auto op2_sub_op1 = rewriter.create<TFL::SubOp>(
-      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val.value(),
+  auto op2_sub_op1 = TFL::SubOp::create(
+      rewriter, op->getLoc(), output_type, op1_cast_in.getResult(),
+      zp_val.value(),
       /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
 
-  return rewriter
-      .create<TFL::MulOp>(
-          op->getLoc(), output_type, op2_sub_op1.getResult(), scale_val.value(),
-          /*fused_activation_function=*/rewriter.getStringAttr("NONE"))
+  return TFL::MulOp::create(
+             rewriter, op->getLoc(), output_type, op2_sub_op1.getResult(),
+             scale_val.value(),
+             /*fused_activation_function=*/rewriter.getStringAttr("NONE"))
       .getResult();
 }
 
@@ -313,8 +314,8 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
 
       auto const_type = tensorflow::GetTypeFromTFTensorShape(
           output_type.getShape(), qtype.getStorageType());
-      auto const_op = rewriter.create<arith::ConstantOp>(
-          op->getLoc(), const_type, qconst_op.getValue());
+      auto const_op = arith::ConstantOp::create(
+          rewriter, op->getLoc(), const_type, qconst_op.getValue());
 
       auto new_value =
           ConvertDequantizeOp(rewriter, op, output_type, const_op.getResult(),

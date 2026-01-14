@@ -45,7 +45,7 @@ template <typename T>
 absl::StatusOr<stream_executor::DeviceAddressBase> AllocateInitializedMemory(
     CudaExecutor* executor, size_t size, size_t offset, T value) {
   stream_executor::DeviceAddressBase device_memory = executor->Allocate(
-      size + offset, static_cast<int64_t>(stream_executor::MemoryType::kP2P));
+      size + offset, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
   if (device_memory.opaque() == nullptr) {
     return absl::InternalError("Failed to allocate memory.");
   }
@@ -79,6 +79,21 @@ StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
       PlatformManager::PlatformWithName(stream_executor::GpuPlatformName())
           .value();
   return platform->ExecutorForDevice(device_ordinal).value();
+}
+
+TEST(CudaExecutorMultiGpuTest, PeerAccess) {
+  std::vector<CudaExecutor*> executors = {
+      static_cast<CudaExecutor*>(GetGpuExecutor(0)),
+      static_cast<CudaExecutor*>(GetGpuExecutor(1))};
+
+  if (!executors[0]->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires multicast support.";
+  }
+  EXPECT_TRUE(executors[0]->CanEnablePeerAccessTo(0));
+  EXPECT_TRUE(executors[0]->CanEnablePeerAccessTo(1));
+  EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(0));
+  EXPECT_TRUE(executors[1]->CanEnablePeerAccessTo(1));
+  EXPECT_FALSE(executors[0]->CanEnablePeerAccessTo(100));
 }
 
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryResubscriptionFails) {
@@ -130,7 +145,6 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemorySubscribeMoreDevices) {
   EXPECT_THAT(multicast_memory->SubscribeDevice(2),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "All devices are already subscribed."));
-  ;
 }
 
 TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryUsingNonVmmMemory) {

@@ -44,8 +44,8 @@ LogicalResult SmuggleOp(Operation* op, PatternRewriter& rewriter) {
       rewriter.getNamedAttr("call_target_name", op->getName().getIdentifier());
   SmallVector<NamedAttribute> attrs{op->getAttrs()};
   attrs.push_back(call_target);
-  auto custom_call = rewriter.create<mlir::stablehlo::CustomCallOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(), attrs);
+  auto custom_call = mlir::stablehlo::CustomCallOp::create(
+      rewriter, op->getLoc(), op->getResultTypes(), op->getOperands(), attrs);
   rewriter.replaceOp(op, custom_call.getResults());
   return success();
 }

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/*r Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -43,7 +42,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -68,7 +66,6 @@ using tensorflow::CoordinationServiceConfig;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
 using xla::TestDevice;
-using xla::TestDeviceList;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -81,12 +78,12 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
   return kv;
 }
 
-CoordinationServiceConfig GetCoordinationServiceConfig(int num_tasks) {
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
-  CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
-  job->set_name("worker");
-  job->set_num_tasks(num_tasks);
+CoordinationService::Config GetCoordinationServiceConfig(int num_tasks) {
+  CoordinationService::Config config;
+  CoordinatedJob job;
+  job.set_name("worker");
+  job.set_num_tasks(num_tasks);
+  config.coordinated_job_list.push_back(std::move(job));
   return config;
 }
 
@@ -106,16 +103,6 @@ class TestCoordinationClient : public CoordinationClient {
     done(absl::OkStatus());
   }
 
-  void ReportErrorToTaskAsync(tsl::CallOptions* call_opts,
-                              const ReportErrorToTaskRequest* request,
-                              ReportErrorToTaskResponse* response,
-                              tsl::StatusCallback done) override {
-    absl::MutexLock l(mu_);
-    status_ = absl::Status(static_cast<absl::StatusCode>(request->error_code()),
-                           request->error_message());
-    done(absl::OkStatus());
-  }
-
 #define UNIMPLEMENTED(method)                                              \
   void method##Async(const method##Request* request,                       \
                      method##Response* response, tsl::StatusCallback done) \
@@ -123,10 +110,7 @@ class TestCoordinationClient : public CoordinationClient {
     done(absl::UnimplementedError(#method "Async"));                       \
   }
 
-  UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
-  UNIMPLEMENTED(ReportErrorToService);
-  UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(IncrementKeyValue);
@@ -156,50 +140,26 @@ class TestCoordinationClient : public CoordinationClient {
   absl::Status status_ ABSL_GUARDED_BY(mu_);
 };
 
-class TestCoordinationClientCache : public CoordinationClientCache {
- public:
-  void AddTask(const std::string& target, CoordinationClient* client) {
-    clients_.emplace(target, client);
-  }
-
-  CoordinationClient* GetClient(const std::string& target) override {
-    auto it = clients_.find(target);
-    if (it == clients_.end()) return nullptr;
-    return it->second;
-  }
-
-  std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const std::string& target) override {
-    LOG(ERROR) << "GetOwnedClient is not supported.";
-    return nullptr;
-  }
-
- private:
-  std::unordered_map<std::string, CoordinationClient*> clients_;
-};
-
 class CoordinationBarrierTest : public ::testing::Test {
  protected:
-  CoordinationBarrierTest() {
+  explicit CoordinationBarrierTest(bool recoverable = false) {
     // Set up fake cluster with 3 tasks.
     const int num_tasks = 3;
-    auto client_cache = std::make_unique<TestCoordinationClientCache>();
     for (int i = 0; i < num_tasks; ++i) {
       CoordinatedTask task;
       task.set_job_name("worker");
       task.set_task_id(i);
+      task.set_recoverable(recoverable);
 
       auto client = std::make_unique<TestCoordinationClient>();
-      client_cache->AddTask(absl::StrCat("/job:worker/replica:0/task:", i),
-                            client.get());
-
       tasks_.push_back(task);
       clients_.push_back(std::move(client));
     }
-    CoordinationServiceConfig config = GetCoordinationServiceConfig(num_tasks);
+    CoordinationService::Config config =
+        GetCoordinationServiceConfig(num_tasks);
 
-    coord_service_ = CoordinationService::Create(tsl::Env::Default(), config,
-                                                 std::move(client_cache));
+    coord_service_ =
+        std::make_unique<CoordinationService>(tsl::Env::Default(), config);
     // Register the tasks.
     for (int i = 0; i < num_tasks; ++i) {
       absl::Status s =
@@ -256,40 +216,30 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 
   // Set up coordination service.
   void EnableCoordinationService(
-      bool has_service_to_client_connection = true,
       bool enable_shutdown_barrier = false,
       bool enable_register_barrier = false,
       bool set_worker_job_recoverable = false,
       bool allow_new_incarnation_to_reconnect = false) {
-    CoordinationServiceConfig config =
+    CoordinationService::Config config =
         GetCoordinationServiceConfig(/*num_tasks=*/2);
-    auto client_cache = std::make_unique<TestCoordinationClientCache>();
-    if (has_service_to_client_connection) {
-      client_cache->AddTask("/job:worker/replica:0/task:0", &client_0_);
-      client_cache->AddTask("/job:worker/replica:0/task:1", &client_1_);
-    } else {
-      client_cache = nullptr;
-    }
-    config.set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
-                                       absl::Milliseconds(1));
+    config.heartbeat_timeout = kHeartbeatTimeout;
     if (set_worker_job_recoverable) {
-      config.mutable_recoverable_jobs()->Add("worker");
+      task_0_.set_recoverable(true);
+      task_1_.set_recoverable(true);
     }
     if (enable_shutdown_barrier) {
-      config.set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
-                                                absl::Milliseconds(1));
+      config.shutdown_barrier_timeout = kShutdownBarrierTimeout;
     }
     if (enable_register_barrier) {
-      config.set_cluster_register_with_barrier(true);
-      config.set_cluster_register_timeout_in_ms(absl::Seconds(1) /
-                                                absl::Milliseconds(1));
+      config.cluster_register_with_barrier = true;
+      config.cluster_register_timeout = absl::Seconds(1);
     }
     if (allow_new_incarnation_to_reconnect) {
-      config.set_allow_new_incarnation_to_reconnect(true);
+      config.allow_new_incarnation_to_reconnect = true;
     }
     // Init service.
-    coord_service_ = CoordinationService::Create(tsl::Env::Default(), config,
-                                                 std::move(client_cache));
+    coord_service_ =
+        std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
 
   CoordinatedTask task_0_;
@@ -319,19 +269,8 @@ TEST_F(CoordinateTwoTasksTest, TestStandaloneService) {
   task_2.set_task_id(2);
 
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  absl::Notification wait_for_all;
-  coord_service_->WaitForAllTasks(task_0_, {}, [&](absl::Status s) {
-    ASSERT_OK(s);
-    wait_for_all.Notify();
-  });
   // Not all tasks have registered, so must not be notified here.
-  ASSERT_FALSE(wait_for_all.HasBeenNotified());
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  coord_service_->WaitForAllTasks(task_1_, {},
-                                  [&](absl::Status s) { ASSERT_OK(s); });
-  // All tasks have registered.
-  wait_for_all.WaitForNotification();
-
   ASSERT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_2, IncarnationId(0)),
@@ -342,89 +281,19 @@ TEST_F(CoordinateTwoTasksTest, TestStandaloneService) {
               StatusIs(absl::StatusCode::kAborted));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_1_, IncarnationId(0)),
               StatusIs(absl::StatusCode::kAborted));
-  // Error is propagated to other tasks.
-  EXPECT_THAT(client_0_.GetStatus(), StatusIs(absl::StatusCode::kAborted));
-}
-
-TEST(CoordinationServiceTest, TestCoordinatedJobs) {
-  CoordinatedTask chief;
-  chief.set_job_name("chief");
-  chief.set_task_id(0);
-  CoordinatedTask task_0;
-  task_0.set_job_name("worker");
-  task_0.set_task_id(0);
-  CoordinatedTask task_1;
-  task_1.set_job_name("worker");
-  task_1.set_task_id(1);
-  CoordinatedTask evaluator;
-  evaluator.set_job_name("evaluator");
-  evaluator.set_task_id(0);
-
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
-  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
-  chief_job->set_name("chief");
-  chief_job->set_num_tasks(1);
-  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
-  worker_job->set_name("worker");
-  worker_job->set_num_tasks(2);
-
-  auto client_cache = std::make_unique<TestCoordinationClientCache>();
-  TestCoordinationClient ci;
-  client_cache->AddTask("/job:chief/replica:0/task:0", &ci);
-  TestCoordinationClient wi0;
-  client_cache->AddTask("/job:worker/replica:0/task:0", &wi0);
-  TestCoordinationClient wi1;
-  client_cache->AddTask("/job:worker/replica:0/task:1", &wi1);
-  TestCoordinationClient ei;
-  client_cache->AddTask("/job:evaluator/replica:0/task:0", &ei);
-  std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  std::move(client_cache));
-
-  // Each coordinated task registers and waits for other tasks.
-  absl::Notification register_chief;
-  ASSERT_OK(coord_service->RegisterTask(chief, IncarnationId(0)));
-  coord_service->WaitForAllTasks(chief, {}, [&](absl::Status s) {
-    ASSERT_OK(s);
-    register_chief.Notify();
-  });
-  absl::Notification register_task0;
-  ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
-  coord_service->WaitForAllTasks(task_0, {}, [&](absl::Status s) {
-    ASSERT_OK(s);
-    register_task0.Notify();
-  });
-  absl::Notification register_task1;
-  ASSERT_OK(coord_service->RegisterTask(task_1, IncarnationId(0)));
-  coord_service->WaitForAllTasks(task_1, {}, [&](absl::Status s) {
-    ASSERT_OK(s);
-    register_task1.Notify();
-  });
-  // All tasks in the coordinated jobs have registered.
-  register_chief.WaitForNotification();
-  register_task0.WaitForNotification();
-  register_task1.WaitForNotification();
-
-  // Registering the evaluator task is unexpected
-  absl::Status status =
-      coord_service->RegisterTask(evaluator, IncarnationId(0));
-
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 // RegisterTask() may succeed in the service, but the agent response times out.
 // In this case, the agent would retry Connect() and should succeed if it has
 // the same incarnation.
 TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  /*cache=*/nullptr);
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
 
@@ -437,14 +306,13 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
 
 TEST(CoordinationServiceTest,
      RegisterTask_AlreadyConnectedDifferentIncarnation_Fails) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  /*cache=*/nullptr);
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
 
@@ -458,14 +326,13 @@ TEST(CoordinationServiceTest,
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
-  CoordinationServiceConfig config =
+  CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  /*cache=*/nullptr);
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
   // Arbitrarily set task to be in error.
@@ -495,7 +362,7 @@ TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
 
 TEST_F(CoordinateTwoTasksTest,
        ErrorPollingRequestsGotCancelledErrorUponServiceShutdown) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   std::vector<absl::Status> statuses;
@@ -518,7 +385,7 @@ TEST_F(CoordinateTwoTasksTest,
 
 TEST_F(CoordinateTwoTasksTest,
        HeartbeatTimeoutWithoutServerToClientConnection) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
@@ -534,7 +401,7 @@ TEST_F(CoordinateTwoTasksTest,
 
 TEST_F(CoordinateTwoTasksTest,
        HeartbeatTimeoutErrorCanPropagateThroughErrorPolling) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // Use notifications to guarantee the ordering of operations across threads.
@@ -565,7 +432,7 @@ TEST_F(CoordinateTwoTasksTest,
 
 TEST_F(CoordinateTwoTasksTest,
        HeartbeatTimeoutErrorFromOneTaskCanPropagateThroughErrorPolling) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // Use notifications to guarantee the ordering of operations across threads.
@@ -603,7 +470,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, ReportedErrorCanPropagateThroughErrorPolling) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   std::vector<absl::Status> statuses;
@@ -630,8 +497,6 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
       task_1_, IncarnationId(tsl::random::New64()));
 
   EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
-  // Aborted error is also propagated to other tasks in cluster.
-  EXPECT_THAT(client_0_.GetStatus(), StatusIs(absl::StatusCode::kAborted));
 }
 
 tensorflow::CoordinatedTaskStateInfo info(
@@ -907,12 +772,10 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
 }
 
 TEST(CoordinationServiceTest, TryGetKeyValue) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
-  auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  std::move(client_cache));
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
 
   // Try to get nonexistent key.
   absl::StatusOr<std::string> result =
@@ -931,12 +794,10 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
 }
 
 TEST(CoordinationServiceTest, IncrementKeyValue) {
-  const CoordinationServiceConfig config =
+  const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1);
-  auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  std::move(client_cache));
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   ASSERT_OK(coord_service->InsertKeyValue("test_key", "1"));
   ASSERT_OK(coord_service->IncrementKeyValue("test_key", 3));
   ASSERT_OK_AND_ASSIGN(std::string result_0,
@@ -1028,127 +889,6 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 }  // namespace
-
-// Verify that coordination service can gather each task's device info and
-// propagate the aggregated cluster device info correctly.
-TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
-  const CoordinationServiceConfig config =
-      GetCoordinationServiceConfig(/*num_tasks=*/3);
-  CoordinatedTask task_0;
-  task_0.set_job_name("worker");
-  task_0.set_task_id(0);
-  CoordinatedTask task_1;
-  task_1.set_job_name("worker");
-  task_1.set_task_id(1);
-  CoordinatedTask task_2;
-  task_2.set_job_name("worker");
-  task_2.set_task_id(2);
-  absl::Status status = absl::OkStatus();
-  auto client_cache = std::make_unique<TestCoordinationClientCache>();
-  std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  std::move(client_cache));
-  absl::Notification n;
-  // Map fake devices to each task.
-  DeviceInfo local_devices_0;
-  DeviceInfo local_devices_1;
-  DeviceInfo local_devices_2;
-  local_devices_0.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task0_device0"));
-  local_devices_0.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task0_device1"));
-  local_devices_1.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task1_device0"));
-  local_devices_2.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task2_device0"));
-
-  // Each task sends its device info.
-  DeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [&](absl::Status s) { ASSERT_OK(s); });
-  coord_service->WaitForAllTasks(task_1, local_devices_1,
-                                 [&](absl::Status s) { ASSERT_OK(s); });
-  coord_service->WaitForAllTasks(task_2, local_devices_2, [&](absl::Status s) {
-    ASSERT_OK(s);
-    // Gather the cluster device info.
-    coord_service->state_mu_.AssertHeld();
-    cluster_devices = coord_service->ListClusterDevices();
-    n.Notify();
-  });
-  n.WaitForNotification();
-
-  DeviceInfo expected_cluster_devices;
-  auto expected_devices = expected_cluster_devices.mutable_device();
-  expected_devices->Add(local_devices_0.device().begin(),
-                        local_devices_0.device().end());
-  expected_devices->Add(local_devices_1.device().begin(),
-                        local_devices_1.device().end());
-  expected_devices->Add(local_devices_2.device().begin(),
-                        local_devices_2.device().end());
-  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
-}
-
-// Task devices should not be added twice if same task calls WaitForAllDevices()
-// twice.
-TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
-  const CoordinationServiceConfig config =
-      GetCoordinationServiceConfig(/*num_tasks=*/2);
-  CoordinatedTask task_0;
-  task_0.set_job_name("worker");
-  task_0.set_task_id(0);
-  CoordinatedTask task_1;
-  task_1.set_job_name("worker");
-  task_1.set_task_id(1);
-  absl::Status status = absl::OkStatus();
-  absl::Status initial_wait_for_all_tasks_status;
-  auto client_cache = std::make_unique<TestCoordinationClientCache>();
-  std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  std::move(client_cache));
-  absl::Notification n;
-  // Map fake devices to each task.
-  DeviceInfo local_devices_0;
-  DeviceInfo local_devices_1;
-  local_devices_0.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task0_device0"));
-  local_devices_0.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task0_device1"));
-  local_devices_1.mutable_device()->Add()->PackFrom(
-      CreateTestDevice("task1_device0"));
-  // Task0 sends device info.
-  DeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(
-      task_0, local_devices_0,
-      [&initial_wait_for_all_tasks_status](absl::Status s) {
-        initial_wait_for_all_tasks_status = s;
-      });
-
-  // Task0 sends device info again.
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [](absl::Status s) { ASSERT_OK(s); });
-  coord_service->WaitForAllTasks(task_1, local_devices_1,
-                                 [coord_service = coord_service.get(),
-                                  &cluster_devices, &n](absl::Status s) {
-                                   ASSERT_OK(s);
-                                   // Gather the cluster device info.
-                                   coord_service->state_mu_.AssertHeld();
-                                   cluster_devices =
-                                       coord_service->ListClusterDevices();
-                                   n.Notify();
-                                 });
-  n.WaitForNotification();
-
-  // No duplicates found.
-  DeviceInfo expected_cluster_devices;
-  auto expected_devices = expected_cluster_devices.mutable_device();
-  expected_devices->Add(local_devices_0.device().begin(),
-                        local_devices_0.device().end());
-  expected_devices->Add(local_devices_1.device().begin(),
-                        local_devices_1.device().end());
-  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
-  EXPECT_THAT(initial_wait_for_all_tasks_status,
-              StatusIs(absl::StatusCode::kCancelled));
-}
 
 TEST_F(CoordinationBarrierTest, Barrier) {
   const std::string barrier_id = "barrier_id";
@@ -1866,8 +1606,8 @@ TEST_F(CoordinateTwoTasksTest, Reset_HeartbeatsAreAcceptedForAGracePeriod) {
 }
 
 TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
@@ -1887,8 +1627,8 @@ TEST_F(CoordinateTwoTasksTest, Reset_FailsOngoingBarrier) {
 }
 
 TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
   absl::Notification n;
@@ -1910,8 +1650,8 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
 }
 
 TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   absl::Status barrier_status;
   absl::Notification barrier_n;
@@ -1936,8 +1676,8 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_FailsOngoingBarrier) {
 }
 
 TEST_F(CoordinateTwoTasksTest, ShutdownWithBarrier_BarrierSucceeds) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/true);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
@@ -1960,8 +1700,8 @@ TEST_F(CoordinateTwoTasksTest, ShutdownWithBarrier_BarrierSucceeds) {
 
 TEST_F(CoordinateTwoTasksTest,
        ShutdownWithBarrier_BarrierFails_TaskDisconnectsOtherTaskIsAlerted) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/true);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
@@ -1984,16 +1724,12 @@ TEST_F(CoordinateTwoTasksTest,
               StatusIs(absl::StatusCode::kAborted));
   EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_1_),
               StatusIs(absl::StatusCode::kAborted));
-
-  // Other task is alerted that shutdown has been initiated without it.
-  absl::Status other_task_status = client_1_.GetStatus();
-  EXPECT_THAT(other_task_status, StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(CoordinateTwoTasksTest,
        ShutdownWithBarrier_BarrierFailsWithoutClientConnection_SetTaskToError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/true);
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status barrier_status;
@@ -2020,7 +1756,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, BarrierFailsIfTaskIsInError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
@@ -2043,7 +1779,7 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfTaskIsInError) {
 
 TEST_F(CoordinateTwoTasksTest,
        BarrierWithParticipatingTasksFailsIfTaskIsStale) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
@@ -2064,7 +1800,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // Use notifications to guarantee the ordering of operations across threads.
@@ -2107,7 +1843,7 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
 }
 
 TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfTaskIsStale) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Notification n0;
@@ -2130,27 +1866,11 @@ TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfTaskIsStale) {
   EXPECT_THAT(barrier_status, StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/false,
-                            /*set_worker_job_recoverable=*/false);
-
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-
-  ASSERT_OK(coord_service_->ReportTaskError(task_0_,
-                                            absl::InternalError("test_error")));
-
-  // For unrecoverable task, error propagates to all connected tasks.
-  EXPECT_THAT(client_1_.GetStatus(), StatusIs(absl::StatusCode::kInternal));
-}
-
 TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/false,
-                            /*set_worker_job_recoverable=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/false,
+      /*set_worker_job_recoverable=*/true);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
@@ -2165,10 +1885,10 @@ TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
 
 TEST_F(CoordinateTwoTasksTest,
        RecoverableTaskWithErrorPollingWillNotPropagateError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/false,
-                            /*set_worker_job_recoverable=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/false,
+      /*set_worker_job_recoverable=*/true);
   // These callbacks may be invoked after this test (e.g. cancellations during
   // coord service dtor), so we use shared pointers to extend their lifetimes
   // beyond the test to avoid use-after-free errors.
@@ -2191,29 +1911,30 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
-  CoordinationServiceConfig config;
-  config.set_service_type(kCoordinationServiceType);
+  CoordinationService::Config config;
   // Workers are recoverable, chief is not.
-  config.mutable_recoverable_jobs()->Add("worker");
   CoordinatedTask chief;
   chief.set_job_name("chief");
   chief.set_task_id(0);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
+  task_0.set_recoverable(true);
   CoordinatedTask task_1;
   task_1.set_job_name("worker");
   task_1.set_task_id(1);
-  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
-  chief_job->set_name("chief");
-  chief_job->set_num_tasks(1);
-  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
-  worker_job->set_name("worker");
-  worker_job->set_num_tasks(2);
+  task_1.set_recoverable(true);
+  CoordinatedJob chief_job;
+  chief_job.set_name("chief");
+  chief_job.set_num_tasks(1);
+  config.coordinated_job_list.push_back(chief_job);
+  CoordinatedJob worker_job;
+  worker_job.set_name("worker");
+  worker_job.set_num_tasks(2);
+  config.coordinated_job_list.push_back(worker_job);
 
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(tsl::Env::Default(), config,
-                                  /*cache=*/nullptr);
+      std::make_unique<CoordinationService>(tsl::Env::Default(), config);
 
   // Each coordinated task registers and polls for errors.
   ASSERT_OK(coord_service->RegisterTask(chief, IncarnationId(0)));
@@ -2257,10 +1978,10 @@ TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
 
 TEST_F(CoordinateTwoTasksTest,
        RecoverableTaskReportErrorResetAndRegisterAgain) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/false,
-                            /*set_worker_job_recoverable=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/false,
+      /*set_worker_job_recoverable=*/true);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
@@ -2282,11 +2003,11 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/false,
-                            /*set_worker_job_recoverable=*/false,
-                            /*allow_new_incarnation_to_reconnect=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/false,
+      /*set_worker_job_recoverable=*/false,
+      /*allow_new_incarnation_to_reconnect=*/true);
 
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
 
@@ -2296,27 +2017,8 @@ TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
   TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
 }
 
-TEST_F(CoordinateTwoTasksTest,
-       DoNotAllowPollForErrorIfHasServiceToClientConnection) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/true);
-  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
-  std::vector<absl::Status> statuses;
-  statuses.reserve(2);
-
-  for (const CoordinatedTask& task : {task_0_, task_1_}) {
-    coord_service_->PollForErrorAsync(
-        task, [&](const absl::Status& status) { statuses.push_back(status); });
-  }
-
-  // The error polling requests will get immediate error because there is
-  // service to client connection.
-  EXPECT_EQ(statuses.size(), 2);
-  EXPECT_THAT(statuses, Each(StatusIs(absl::StatusCode::kInternal)));
-}
-
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfNotInCluster) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   CoordinatedTask task_not_in_cluster;
   absl::Status s;
 
@@ -2328,7 +2030,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfNotInCluster) {
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskNotRegistered) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   absl::Status s;
 
   coord_service_->PollForErrorAsync(
@@ -2340,7 +2042,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskNotRegistered) {
 
 TEST_F(CoordinateTwoTasksTest,
        AllowPollForErrorWithinGracePeriodIfTaskHasShutDown) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   absl::Status s;
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
@@ -2359,7 +2061,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskHasShutDown) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   absl::Status s;
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
@@ -2378,7 +2080,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskHasShutDown) {
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorAfterReset) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   absl::Status s;
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->ResetTask(task_0_));
@@ -2393,7 +2095,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorAfterReset) {
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorWhenInErrorState) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   absl::Status s;
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->ReportTaskError(task_0_,
@@ -2405,7 +2107,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorWhenInErrorState) {
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskIsStale) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // No heartbeat for a while, leader consider the task as stale.
@@ -2422,7 +2124,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskIsStale) {
 
 TEST_F(CoordinateTwoTasksTest,
        CanPropagateTaskRegistrationErrorThroughErrorPolling) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   absl::Status s0;
@@ -2440,7 +2142,7 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  EnableCoordinationService();
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   std::vector<absl::Status> statuses;
@@ -2465,9 +2167,9 @@ TEST_F(CoordinateTwoTasksTest, LatePollingTaskCanGetError) {
 
 TEST_F(CoordinateTwoTasksTest,
        RegisterWithBarrier_OldHeartbeat_RestartedTasksCanReconnect) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/true);
   // Service restarted.
   // Old task 0 sends an unexpected heartbeat, which should fail.
   ASSERT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_ - 1),
@@ -2488,9 +2190,9 @@ TEST_F(CoordinateTwoTasksTest,
 
 TEST_F(CoordinateTwoTasksTest,
        RegisterWithBarrier_RestartBeforeBarrier_Succeeds) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/true);
   absl::Status task0_status = absl::InternalError("uninitialized_status");
   absl::Status restarted_task0_status =
       absl::InternalError("uninitialized_status");
@@ -2514,9 +2216,9 @@ TEST_F(CoordinateTwoTasksTest,
 }
 
 TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_RestartAfterBarrier_Fails) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/true);
   absl::Status task0_status = absl::InternalError("uninitialized_status");
   // Task 0 registers first.
   coord_service_->RegisterTaskAsync(
@@ -2544,16 +2246,19 @@ TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_RestartAfterBarrier_Fails) {
 }
 
 TEST_F(CoordinateTwoTasksTest, RegisterWithBarrier_Timeout) {
-  EnableCoordinationService(/*has_service_to_client_connection=*/false,
-                            /*enable_shutdown_barrier=*/false,
-                            /*enable_register_barrier=*/true);
+  EnableCoordinationService(
+      /*enable_shutdown_barrier=*/false,
+      /*enable_register_barrier=*/true);
   // Task 0 joins without task 1. Times out eventually as this function is
   // blocking.
   EXPECT_THAT(coord_service_->RegisterTask(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kDeadlineExceeded));
 }
 
-using GetAliveTasksTest = CoordinationBarrierTest;
+class GetAliveTasksTest : public CoordinationBarrierTest {
+ public:
+  GetAliveTasksTest() : CoordinationBarrierTest(true) {}
+};
 
 TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
   // This test has three tasks successfully call GetAliveTasks.

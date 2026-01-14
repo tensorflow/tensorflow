@@ -173,7 +173,7 @@ class TfrtSession : public tensorflow::Session {
   }
 
   absl::Status Create(GraphDef&& graph) override {
-    absl::MutexLock lock(&session_state_lock_);
+    absl::MutexLock lock(session_state_lock_);
     return CreateLocked(std::move(graph));
   }
 
@@ -279,7 +279,7 @@ class TfrtSession : public tensorflow::Session {
   }
 
   absl::Status Extend(GraphDef&& graph) override {
-    absl::MutexLock lock(&session_state_lock_);
+    absl::MutexLock lock(session_state_lock_);
     return ExtendLocked(std::move(graph));
   }
 
@@ -299,7 +299,7 @@ class TfrtSession : public tensorflow::Session {
       std::vector<Tensor>* outputs,
       const thread::ThreadPoolOptions& thread_pool_options) {
     {
-      absl::MutexLock lock(&session_state_lock_);
+      absl::MutexLock lock(session_state_lock_);
       if (session_state_ == SessionState::kInitialized) {
         return errors::Unavailable("Session not created yet.");
       }
@@ -401,7 +401,7 @@ class TfrtSession : public tensorflow::Session {
   // NOTE: This API is still experimental and may change.
   absl::Status MakeCallable(const CallableOptions& callable_options,
                             CallableHandle* out_handle) override {
-    absl::MutexLock lock(&callables_lock_);
+    absl::MutexLock lock(callables_lock_);
     *out_handle = next_callable_handle_++;
     assert(callables_.find(*out_handle) == callables_.end());
     callables_[*out_handle] = {callable_options};
@@ -436,7 +436,7 @@ class TfrtSession : public tensorflow::Session {
       const thread::ThreadPoolOptions& thread_pool_options) override {
     Callable callable;
     {
-      absl::MutexLock lock(&callables_lock_);
+      absl::MutexLock lock(callables_lock_);
       auto it = callables_.find(handle);
       if (it == callables_.end())
         return errors::InvalidArgument("No such callable handle: ", handle);
@@ -466,7 +466,7 @@ class TfrtSession : public tensorflow::Session {
   /// session.
   /// NOTE: This API is still experimental and may change.
   absl::Status ReleaseCallable(CallableHandle handle) override {
-    absl::MutexLock lock(&callables_lock_);
+    absl::MutexLock lock(callables_lock_);
     auto it = callables_.find(handle);
     if (it == callables_.end())
       return errors::InvalidArgument("No such callable handle: ", handle);
@@ -475,7 +475,7 @@ class TfrtSession : public tensorflow::Session {
   }
 
   absl::Status Close() override {
-    absl::MutexLock lock(&session_state_lock_);
+    absl::MutexLock lock(session_state_lock_);
     session_state_ = SessionState::kClosed;
     return absl::OkStatus();
   }
@@ -721,7 +721,7 @@ class TfrtSessionFactory::ThreadPoolManager {
           "TFRT session does not yet support session local thread pool");
     }
 
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     auto it = named_thread_pools_.find(name);
     // The thread pool with the given name already exists.
@@ -842,7 +842,7 @@ absl::Status TfrtSessionFactory::NewSession(const SessionOptions& options,
 
   *out_session = nullptr;
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
@@ -873,13 +873,13 @@ static TfrtSessionFactory* session_factory = nullptr;
 
 tfrt_stub::Runtime* TfrtSessionFactory::GetRuntime() {
   DCHECK(session_factory != nullptr);
-  absl::MutexLock lock(&session_factory->mutex_);
+  absl::MutexLock lock(session_factory->mutex_);
   return session_factory->runtime_;
 }
 
 absl::Status InitializeTfrtSession(const TfrtSessionOptions& options) {
   DCHECK(session_factory != nullptr);
-  absl::MutexLock lock(&session_factory->mutex_);
+  absl::MutexLock lock(session_factory->mutex_);
   DCHECK(!session_factory->IsInitialized());
   return UpdateTfrtSessionOptionsLocked(options);
 }

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -214,7 +215,9 @@ class ThunkEmitter {
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
-      const HloInstruction* hlo, const ShapeIndex& index = {}) const;
+      const HloInstruction* instr, const ShapeIndex& index = {}) const;
+  absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
+      const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
   CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
     return ir_emitter_context_->collectives_async_events();

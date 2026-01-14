@@ -51,6 +51,9 @@ absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
   if (device_kind == "NVIDIA H100 80GB HBM3") {
     return 80LL * kGB;
   }
+  if (device_kind == "NVIDIA H200") {
+    return 141LL * kGB;
+  }
   if (device_kind == "NVIDIA B200") {
     return 192LL * kGB;
   }

@@ -46,18 +46,17 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/tensor_map.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 
 // TODO(ezhulenev): Remove this once transitive dependencies are fixed.
 #include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
-
-// Identifies the memory space where an allocation resides.
-enum class MemoryType { kDevice = 0, kUnified, kCollective, kP2P, kHost = 5 };
 
 /// The StreamExecutor is a single-device abstraction for:
 //
@@ -109,7 +108,7 @@ class StreamExecutor {
 
   // Creates a MemoryAllocator for the given type.
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocator>>
-  CreateMemoryAllocator(MemoryType type) {
+  CreateMemoryAllocator(MemorySpace memory_space) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -179,7 +178,7 @@ class StreamExecutor {
       uint64_t size) = 0;
 
   // Returns the memory space of the given pointer.
-  virtual absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) {
+  virtual absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) {
     return absl::UnimplementedError("Not implemented");
   }
 
@@ -235,6 +234,9 @@ class StreamExecutor {
   // Returns whether it's possible to enable peer access from this
   // StreamExecutor to memory allocated by another.
   virtual bool CanEnablePeerAccessTo(StreamExecutor* other) = 0;
+
+  // Same as above, but takes the device ordinal of the other device.
+  virtual bool CanEnablePeerAccessTo(int other_device_ordinal) { return false; }
 
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be

@@ -130,16 +130,6 @@ class HloSharding {
                        metadata);
   }
 
-  explicit HloSharding(NamedSharding named_sharding)
-      : replicated_(false),
-        maximal_(false),
-        tuple_(false),
-        manual_(false),
-        unknown_(false),
-        unreduced_(false),
-        replicate_on_last_tile_dim_(false),
-        named_sharding_(std::move(named_sharding)) {}
-
   // Creates a subgroup sharding with device-level tile assignment, the
   // sharding type of each subgroup is defined by subgroup_types. When creating
   // the HloSharding, subgroup dims of the same type will be merged.
@@ -493,21 +483,42 @@ class HloSharding {
   // REQUIRES: !IsReplicated() && !IsTuple()
   const TileAssignment& tile_assignment() const { return tile_assignment_; }
 
+  const NamedSharding& named_sharding() const {
+    CHECK(UseNamedShardingLeaf());
+    return named_sharding_.value();
+  }
+
   // Returns the number of dimensions.
-  int64_t num_dimensions() const { return tile_assignment().num_dimensions(); }
+  int64_t num_dimensions() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->num_dimensions();
+    }
+    return tile_assignment().num_dimensions();
+  }
 
   // Returns number of shards in the given dimension.
   int64_t dimension(int64_t dim_index) const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->dimension(dim_index);
+    }
     return tile_assignment().dim(dim_index);
   }
 
   // Returns all sharding dimensions.
   absl::Span<const int64_t> dimensions() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->dimensions();
+    }
     return tile_assignment().dimensions();
   }
 
   // Returns the total number of devices used by sharding.
-  int64_t num_devices() const { return tile_assignment().num_elements(); }
+  int64_t num_devices() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->num_devices();
+    }
+    return tile_assignment().num_elements();
+  }
 
   // Gets the subgroup types array.
   // REQUIRES: !IsTuple()
@@ -534,9 +545,8 @@ class HloSharding {
   // Gets the total number of tiles including subgroups and partial replication.
   int64_t TotalNumTiles() const;
   // Gets the number of tiles. If it has partial replication, this will not
-  // equal the device count.
+  // equal the device count. This method is not defined for tuple shardings.
   int64_t NumTiles() const;
-  int64_t NumTilesLeaf() const;
   // Like NumTiles() but considers only some specific dimensions passed as
   // argument
   int64_t NumTiles(absl::Span<const int64_t> dims) const;
@@ -576,17 +586,8 @@ class HloSharding {
   }
 
   // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
+  // This method is not defined for tuple shardings.
   int64_t TiledDataRank() const {
-    CHECK(IsTiled());
-    int64_t rank = tile_assignment_.num_dimensions();
-    if (ReplicateOnLastTileDim()) {
-      rank--;
-    }
-    rank -= subgroup_types_.size();
-    return rank;
-  }
-  int64_t TiledDataRankLeaf() const {
-    DCHECK(!IsTuple());
     CHECK(IsTiledLeaf());
     int64_t rank = tile_assignment_.num_dimensions();
     if (ReplicateOnLastTileDim()) {
@@ -668,9 +669,15 @@ class HloSharding {
 
   const ShardGroup& GetShardGroup() const { return shard_group_; }
 
-  std::optional<NamedSharding> named_sharding() const {
-    return named_sharding_;
-  }
+  explicit HloSharding(NamedSharding named_sharding)
+      : replicated_(false),
+        maximal_(false),
+        tuple_(false),
+        manual_(false),
+        unknown_(false),
+        unreduced_(false),
+        replicate_on_last_tile_dim_(false),
+        named_sharding_(std::move(named_sharding)) {}
 
  private:
   explicit HloSharding(bool manual, bool replicated, bool unknown,

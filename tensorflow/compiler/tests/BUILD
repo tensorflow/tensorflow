@@ -1788,7 +1788,6 @@ tf_xla_py_strict_test(
     srcs = ["unary_ops_test.py"],
     shard_count = 20,
     tags = [
-        "cuda-only",
         "no_aarch64",  # TODO(b/348125886)
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2861,7 +2860,6 @@ tf_cuda_cc_test(
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "cuda-only",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
@@ -2882,7 +2880,6 @@ tf_cuda_cc_test(
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-        "cuda-only",  # ROCmSoftwarePlatform #958
         "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
@@ -2902,13 +2899,12 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "@local_xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

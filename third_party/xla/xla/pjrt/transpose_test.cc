@@ -23,14 +23,17 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
+#include "absl/random/random.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -39,94 +42,115 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
-#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
 class TestTransposePlan : public TransposePlan {
  public:
-  using TransposePlan::CoalesceDimensions;
-  using TransposePlan::RemoveTrivialDimensions;
+  using Loop = TransposePlan::Loop;
+  using TransposePlan::CoalesceLoops;
+  using TransposePlan::RemoveTrivialLoops;
 };
 
-TEST(TransposeTest, RemoveTrivialDimensions) {
-  absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
-  absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
-  absl::InlinedVector<int64_t, 4> lda = {2, 5, 7, 100, 3, 0, 1};
-  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
-                                             input_tiling, output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(0, 1, 2, 4, 3));
+TEST(TransposeTest, RemoveTrivialLoops) {
+  using Loop = TestTransposePlan::Loop;
+  std::vector<Loop> loops;
+  // Exterior loop, trivial (size 1)
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/1,
+                       /*tile_size=*/1});
+  // Exterior loop, trivial (dim_size == tile_size, 1 tile)
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/10,
+                       /*tile_size=*/10});
+  // Exterior loop, non-trivial
+  loops.push_back(Loop{/*dim_in_a=*/2, /*tile_interior=*/false, /*dim_size=*/10,
+                       /*tile_size=*/2});
+  // Interior loop, trivial (size 1)
+  loops.push_back(Loop{/*dim_in_a=*/3, /*tile_interior=*/true, /*dim_size=*/10,
+                       /*tile_size=*/1});
+  // Interior loop, non-trivial
+  loops.push_back(Loop{/*dim_in_a=*/4, /*tile_interior=*/true, /*dim_size=*/10,
+                       /*tile_size=*/10});
+  // Trivial loop (size 1) but preserved because it is inner dim
+  loops.push_back(Loop{/*dim_in_a=*/5, /*tile_interior=*/false, /*dim_size=*/1,
+                       /*tile_size=*/1, /*lda=*/1, /*ldb=*/1,
+                       /*is_inner_dim_in_a=*/true,
+                       /*is_inner_dim_in_b=*/false});
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 3, 2, 1, 0};
-  lda = {2, 5, 100, 0, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::RemoveTrivialDimensions(dims, perm, lda, lda_tile,
-                                             input_tiling, output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 3, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(4, 3, 2, 1, 0));
+  TestTransposePlan::RemoveTrivialLoops(loops);
+
+  ASSERT_EQ(loops.size(), 3);
+  // Expect loop 2 (Exterior non-trivial)
+  EXPECT_EQ(loops[0].dim_in_a, 2);
+  EXPECT_EQ(loops[0].tile_interior, false);
+  // Expect loop 4 (Interior non-trivial)
+  EXPECT_EQ(loops[1].dim_in_a, 4);
+  EXPECT_EQ(loops[1].tile_interior, true);
+  // Expect loop 5 (Trivial but preserved)
+  EXPECT_EQ(loops[2].dim_in_a, 5);
+  EXPECT_EQ(loops[2].is_inner_dim_in_a, true);
 }
 
-TEST(TransposeTest, CoalesceDimensions) {
-  absl::InlinedVector<int64_t, 4> dims = {4, 5, 1, 3, 1, 2, 5};
-  absl::InlinedVector<int64_t, 4> perm = {0, 2, 1, 4, 3, 6, 5};
-  absl::InlinedVector<int64_t, 4> lda = {50, 30, 30, 10, 10, 5, 1};
-  absl::InlinedVector<int64_t, 4> lda_tile = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> input_tiling = {1, 1, 1, 1, 1, 1, 1};
-  absl::InlinedVector<int64_t, 4> output_tiling = {1, 1, 1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 5, 1, 3, 1, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(0, 2, 1, 4, 3, 6, 5));
-  EXPECT_THAT(lda, testing::ElementsAre(50, 30, 30, 10, 10, 5, 1));
+TEST(TransposeTest, CoalesceLoops) {
+  using Loop = TestTransposePlan::Loop;
+  std::vector<Loop> loops;
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 1, 2, 3, 0};
-  lda = {150, 30, 10, 5, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 30, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(2, 1, 0));
-  EXPECT_THAT(lda, testing::ElementsAre(150, 5, 1));
+  // Case 1: Compatible untiled loops
+  // Outer: size 4, stride 20 (inner size 5 * inner stride 4)
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
+  // Inner: size 5, stride 4
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
+                       /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {0, 1, 2, 3, 4};
-  lda = {150, 30, 10, 5, 1};
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(600));
-  EXPECT_THAT(perm, testing::ElementsAre(0));
-  EXPECT_THAT(lda, testing::ElementsAre(1));
+  TestTransposePlan::CoalesceLoops(loops);
 
-  dims = {4, 5, 3, 2, 5};
-  perm = {4, 1, 2, 3, 0};
-  lda = {150, 30, 10, 7, 1};  // Non-standard stridings prevent coalescing.
-  lda_tile = {1, 1, 1, 1, 1};
-  input_tiling = {1, 1, 1, 1, 1};
-  output_tiling = {1, 1, 1, 1, 1};
-  TestTransposePlan::CoalesceDimensions(dims, perm, lda, lda_tile, input_tiling,
-                                        output_tiling);
-  EXPECT_THAT(dims, testing::ElementsAre(4, 15, 2, 5));
-  EXPECT_THAT(perm, testing::ElementsAre(3, 1, 2, 0));
-  EXPECT_THAT(lda, testing::ElementsAre(150, 10, 7, 1));
+  ASSERT_EQ(loops.size(), 1);
+  EXPECT_EQ(loops[0].dim_size, 20);
+  EXPECT_EQ(loops[0].tile_size, 1);
+  EXPECT_EQ(loops[0].lda, 4);
+  EXPECT_EQ(loops[0].ldb, 80);
+
+  // Case 2: Incompatible strides
+  loops.clear();
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/21,
+                       /*ldb=*/400});  // lda mismatch
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/false, /*dim_size=*/5,
+                       /*tile_size=*/1, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  EXPECT_EQ(loops.size(), 2);
+
+  // Case 3: Compatible tiled interior
+  loops.clear();
+  // Outer interior: tile_size 4, lda 16
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/true, /*dim_size=*/100,
+                       /*tile_size=*/4, /*lda=*/16, /*ldb=*/320});
+  // Inner interior: tile_size 4, lda 4
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/100,
+                       /*tile_size=*/4, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  ASSERT_EQ(loops.size(), 1);
+  EXPECT_EQ(loops[0].tile_size, 16);
+  EXPECT_EQ(loops[0].tile_interior, true);
+
+  // Case 4: Mismatched tile_interior status (should not coalesce)
+  loops.clear();
+  loops.push_back(Loop{/*dim_in_a=*/0, /*tile_interior=*/false, /*dim_size=*/4,
+                       /*tile_size=*/1, /*lda=*/20, /*ldb=*/400});
+  loops.push_back(Loop{/*dim_in_a=*/1, /*tile_interior=*/true, /*dim_size=*/5,
+                       /*tile_size=*/5, /*lda=*/4, /*ldb=*/80});
+
+  TestTransposePlan::CoalesceLoops(loops);
+  EXPECT_EQ(loops.size(), 2);
 }
 
 TEST(TransposeTest, InvalidTilings) {
@@ -138,7 +162,7 @@ TEST(TransposeTest, InvalidTilings) {
   options.permutation = perm;
   std::vector<int64_t> input_tiling = {8, 128};
   std::vector<int64_t> output_tiling = {4};
-  options.input_layout = TransposePlan::Tiling{input_tiling};
+  options.input_tiling = TransposePlan::Tiling{input_tiling};
   options.output_tiling = TransposePlan::Tiling{output_tiling};
   auto plan = TransposePlan::Create(options);
   EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
@@ -156,8 +180,6 @@ TEST(TransposeTest, LargeDimensions) {
   options.elem_size_in_bytes = 8;
   options.dims = dims;
   options.permutation = permutation;
-  options.input_layout = TransposePlan::Tiling{};
-  options.output_tiling = TransposePlan::Tiling{};
   options.transformation = TransposePlan::Transformation::kNone;
   TF_EXPECT_OK(TransposePlan::Create(options).status());
 }
@@ -192,50 +214,58 @@ bool BumpIndices(absl::Span<int64_t const> shape, absl::Span<int64_t> indices) {
   return false;
 }
 
+// Helper to pad tiling to match shape rank. (Suffix alignment).
+std::vector<int64_t> PadTiling(absl::Span<int64_t const> shape,
+                               absl::Span<int64_t const> tiling) {
+  CHECK_LE(tiling.size(), shape.size());
+  std::vector<int64_t> full_tiling(shape.size(), 1);
+  absl::c_copy(tiling, full_tiling.end() - tiling.size());
+  return full_tiling;
+}
+
+std::vector<int64_t> ComputeDefaultStrides(
+    absl::Span<int64_t const> shape, absl::Span<int64_t const> full_tiling,
+    int elem_size_bytes) {
+  CHECK_EQ(full_tiling.size(), shape.size());
+  std::vector<int64_t> strides(shape.size());
+  int64_t stride = elem_size_bytes;
+  for (int64_t t : full_tiling) {
+    stride *= t;
+  }
+
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    strides[i] = stride;
+    stride *= CeilOfRatio(shape[i], full_tiling[i]);
+  }
+  return strides;
+}
+
 // Converts a multidimensional index `indices` into an array with `shape` and
 // tiling `tiling` into a linear offset into a buffer.
+// `striding` is the stride between tiles in bytes.
 int64_t IndexToLinearIndex(absl::Span<int64_t const> shape,
-                           absl::Span<int64_t const> tiling,
-                           absl::Span<int64_t const> indices) {
-  CHECK_LE(tiling.size(), shape.size());
+                           absl::Span<int64_t const> full_tiling,
+                           absl::Span<int64_t const> indices,
+                           absl::Span<int64_t const> striding,
+                           int elem_size_bytes) {
+  CHECK_EQ(full_tiling.size(), shape.size());
   CHECK_EQ(shape.size(), indices.size());
+  CHECK_EQ(shape.size(), striding.size());
+
   int64_t stride = 1;
   int64_t offset = 0;
 
-  auto index_it = indices.rbegin();
-  auto tile_it = tiling.rbegin();
-  for (; tile_it != tiling.rend(); ++index_it, ++tile_it) {
-    offset += (*index_it % *tile_it) * stride;
-    stride *= *tile_it;
+  // Strides within a tiling are always the default strides.
+  for (int i = shape.size() - 1; i >= 0; --i) {
+    offset += (indices[i] % full_tiling[i]) * stride;
+    stride *= full_tiling[i];
   }
-  index_it = indices.rbegin();
-  tile_it = tiling.rbegin();
-  auto shape_it = shape.rbegin();
-  for (; tile_it != tiling.rend(); ++index_it, ++shape_it, ++tile_it) {
-    offset += (*index_it / *tile_it) * stride;
-    stride *= CeilOfRatio(*shape_it, *tile_it);
-  }
-  for (; shape_it != shape.rend(); ++index_it, ++shape_it) {
-    offset += *index_it * stride;
-    stride *= *shape_it;
+  // Strides outside a tiling are the input strides.
+  for (size_t i = 0; i < shape.size(); ++i) {
+    int64_t outer_idx = indices[i] / full_tiling[i];
+    offset += outer_idx * (striding[i] / elem_size_bytes);
   }
   return offset;
-}
-
-// Slow reference code that converts an array from an untiled layout into a
-// tiled layout.
-template <typename T>
-std::vector<T> TileArray(const Array<T>& in, absl::Span<int64_t const> tiling) {
-  std::vector<T> out(SizeOfTiledArray(in.dimensions(), tiling), -1);
-  if (in.num_elements() == 0) {
-    return out;
-  }
-  std::vector<int64_t> indices(in.num_dimensions(), 0);
-  do {
-    int64_t i = IndexToLinearIndex(in.dimensions(), tiling, indices);
-    out.at(i) = in(indices);
-  } while (BumpIndices(in.dimensions(), absl::MakeSpan(indices)));
-  return out;
 }
 
 // Reference implementation: transpose using Eigen.
@@ -291,25 +321,70 @@ void TransposeUsingEigen(const T* input, T* output,
   }
 }
 
+template <typename T>
+void FillRandom(absl::Span<T> input) {
+  absl::BitGen gen;
+  for (auto& val : input) {
+    if constexpr (std::is_same_v<T, absl::int128>) {
+      val = absl::MakeInt128(absl::Uniform<uint64_t>(gen),
+                             absl::Uniform<uint64_t>(gen));
+    } else {
+      using U = std::make_unsigned_t<T>;
+      val = absl::bit_cast<T>(absl::Uniform<U>(gen));
+    }
+  }
+}
+
+// Reference implementation of transpose that handles tiling and striding.
+template <typename T>
+void ReferenceTranspose(absl::Span<int64_t const> dims,
+                        absl::Span<int64_t const> permutation,
+                        absl::Span<int64_t const> input_tiling,
+                        absl::Span<int64_t const> input_striding,
+                        absl::Span<int64_t const> output_tiling,
+                        absl::Span<int64_t const> output_striding,
+                        absl::Span<const T> input, absl::Span<T> output) {
+  std::vector<int64_t> output_dims = Permute(dims, permutation);
+  std::vector<int64_t> indices(dims.size(), 0);
+  std::vector<int64_t> output_indices(dims.size());
+
+  do {
+    int64_t input_linear_idx = IndexToLinearIndex(dims, input_tiling, indices,
+                                                  input_striding, sizeof(T));
+    T val = input[input_linear_idx];
+
+    for (size_t i = 0; i < dims.size(); ++i) {
+      output_indices[i] = indices[permutation[i]];
+    }
+    int64_t output_linear_idx = IndexToLinearIndex(
+        output_dims, output_tiling, output_indices, output_striding, sizeof(T));
+    output[output_linear_idx] = val;
+  } while (BumpIndices(dims, absl::MakeSpan(indices)));
+}
+
 struct TransposeTestCase {
   TransposeTestCase(std::vector<int64_t> dims, std::vector<int64_t> permutation,
                     std::vector<int64_t> input_tiling = {},
-                    std::vector<int64_t> output_tiling = {})
+                    std::vector<int64_t> output_tiling = {},
+                    std::vector<int64_t> input_striding = {})
       : dims(std::move(dims)),
         permutation(std::move(permutation)),
         input_tiling(std::move(input_tiling)),
+        input_striding(std::move(input_striding)),
         output_tiling(std::move(output_tiling)) {}
 
   std::vector<int64_t> dims;
   std::vector<int64_t> permutation;
   std::vector<int64_t> input_tiling;
+  std::vector<int64_t> input_striding;
   std::vector<int64_t> output_tiling;
 
   std::string ToString() const {
     return absl::StrFormat(
-        "[%s],perm=[%s],tiling=[%s]/[%s]", absl::StrJoin(dims, ","),
-        absl::StrJoin(permutation, ","), absl::StrJoin(input_tiling, ","),
-        absl::StrJoin(output_tiling, ","));
+        "[%s],perm=[%s],tiling=[%s]/[%s],striding=[%s]",
+        absl::StrJoin(dims, ","), absl::StrJoin(permutation, ","),
+        absl::StrJoin(input_tiling, ","), absl::StrJoin(output_tiling, ","),
+        input_striding.empty() ? "none" : absl::StrJoin(input_striding, ","));
   }
 };
 
@@ -320,6 +395,7 @@ std::ostream& operator<<(std::ostream& os, const TransposeTestCase& test) {
 
 std::vector<TransposeTestCase> GetTransposeTestCases() {
   std::vector<TransposeTestCase> cases = {
+      TransposeTestCase(/*dims=*/{}, /*permutation=*/{}),
       TransposeTestCase(/*dims=*/{1}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{4}, /*permutation=*/{0}),
       TransposeTestCase(/*dims=*/{27}, /*permutation=*/{0}),
@@ -376,6 +452,12 @@ std::vector<TransposeTestCase> GetTransposeTestCases() {
                         /*input_tiling=*/{2, 4}),
       TransposeTestCase(/*dims=*/{12, 7}, /*permutation=*/{1, 0},
                         /*input_tiling=*/{}, /*output_tiling=*/{5, 2}),
+      TransposeTestCase(/*dims=*/{4, 6}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{2, 3},
+                        /*output_tiling=*/{}, /*input_striding=*/{512, 128}),
+      TransposeTestCase(/*dims=*/{13, 9}, /*permutation=*/{1, 0},
+                        /*input_tiling=*/{2, 3},
+                        /*output_tiling=*/{}, /*input_striding=*/{0, 0}),
       TransposeTestCase(/*dims=*/{128, 224, 224, 3},
                         /*permutation=*/{3, 1, 2, 0},
                         /*input_tiling=*/{},
@@ -396,29 +478,63 @@ class TransposeTest : public ::testing::TestWithParam<TransposeTestCase> {
     options.elem_size_in_bytes = sizeof(T);
     options.dims = test.dims;
     options.permutation = test.permutation;
-    options.input_layout = TransposePlan::Tiling{test.input_tiling};
-    options.output_tiling = TransposePlan::Tiling{test.output_tiling};
+    if (!test.input_striding.empty()) {
+      options.input_striding = TransposePlan::Striding{test.input_striding};
+    }
+    if (!test.input_tiling.empty()) {
+      options.input_tiling = TransposePlan::Tiling{test.input_tiling};
+    }
+    if (!test.output_tiling.empty()) {
+      options.output_tiling = TransposePlan::Tiling{test.output_tiling};
+    }
     options.transformation = TransposePlan::Transformation::kNone;
     options.num_threads = parallelism;
     TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
     VLOG(1) << plan->ToString();
-    xla::Array<T> untiled_input(test.dims);
-    untiled_input.FillIota(0);
-    xla::Array<T> expected_untiled_output(output_dims);
-    TransposeUsingEigen(untiled_input.data(), expected_untiled_output.data(),
-                        test.dims, output_dims, test.permutation);
 
-    auto tiled_input = TileArray(untiled_input, test.input_tiling);
-    auto expected_tiled_output =
-        TileArray(expected_untiled_output, test.output_tiling);
+    // Allocate sufficiently large buffers.
+    // We can use SizeOfTiledArray for output which is always tiled/dense.
+    int64_t output_size =
+        SizeOfTiledArray(plan->OutputDims(), test.output_tiling);
+    std::vector<T> output(output_size, -1);
 
-    std::vector<T> output(
-        SizeOfTiledArray(plan->OutputDims(), test.output_tiling), -1);
-    plan->Execute(
-        tiled_input.data(), output.data(),
-        [&](std::function<void()> fn) { threadpool.Schedule(std::move(fn)); });
+    std::vector<int64_t> input_striding = test.input_striding;
+    std::vector<int64_t> input_tiling = PadTiling(test.dims, test.input_tiling);
+    if (input_striding.empty()) {
+      input_striding =
+          ComputeDefaultStrides(test.dims, input_tiling, sizeof(T));
+    }
+    int64_t input_tile_size = absl::c_accumulate(input_tiling, int64_t{1},
+                                                 std::multiplies<int64_t>());
 
-    EXPECT_EQ(expected_tiled_output, output);
+    std::vector<int64_t> output_tiling =
+        PadTiling(output_dims, test.output_tiling);
+    std::vector<int64_t> output_striding =
+        ComputeDefaultStrides(output_dims, output_tiling, sizeof(T));
+
+    int64_t input_size = 1;
+    if (!test.dims.empty()) {
+      std::vector<int64_t> max_indices = test.dims;
+      for (int i = 0; i < test.dims.size(); ++i) {
+        max_indices[i] = RoundDownTo(max_indices[i], input_tiling[i]);
+      }
+      input_size = IndexToLinearIndex(test.dims, input_tiling, max_indices,
+                                      input_striding, sizeof(T)) +
+                   input_tile_size;
+    }
+    std::vector<T> input(input_size);
+    FillRandom<T>(absl::MakeSpan(input));
+    std::vector<T> expected_output(output_size, -1);
+
+    ReferenceTranspose<T>(test.dims, test.permutation, input_tiling,
+                          input_striding, output_tiling, output_striding, input,
+                          absl::MakeSpan(expected_output));
+
+    plan->Execute(input.data(), output.data(), [&](std::function<void()> fn) {
+      threadpool.Schedule(std::move(fn));
+    });
+
+    EXPECT_EQ(output, expected_output);
   }
 };
 
@@ -448,7 +564,7 @@ TEST(TransposeTest, NegativeStrides1D) {
   options.dims = dims;
   options.permutation = permutation;
   std::vector<int64_t> strides = {-int64_t{sizeof(int32_t)}};
-  options.input_layout = TransposePlan::Striding{strides};
+  options.input_striding = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + (n - 1), output.data());
   EXPECT_EQ(expected, output);
@@ -475,7 +591,7 @@ TEST(TransposeTest, NegativeStrides2D) {
   options.permutation = permutation;
   std::vector<int64_t> strides = {4 * sizeof(int16_t),
                                   -int64_t{sizeof(int16_t)}};
-  options.input_layout = TransposePlan::Striding{strides};
+  options.input_striding = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + 3, output.data());
   EXPECT_EQ(expected, output);
@@ -546,8 +662,6 @@ void BM_Transpose(const TransposeTestCase& bm, int parallelism,
   options.elem_size_in_bytes = sizeof(T);
   options.dims = bm.dims;
   options.permutation = bm.permutation;
-  options.input_layout = TransposePlan::Tiling{};
-  options.output_tiling = TransposePlan::Tiling{};
   options.transformation = TransposePlan::Transformation::kNone;
   options.num_threads = parallelism;
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
