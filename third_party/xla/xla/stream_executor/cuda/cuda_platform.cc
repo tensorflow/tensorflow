@@ -46,6 +46,7 @@ namespace {
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInit() {
+  LOG(ERROR) << "InternalInit";
   absl::Status status =
       cuda::ToStatus(cuInit(0 /* = flags */), "Failed call to cuInit");
   if (!status.ok()) {
@@ -64,42 +65,60 @@ static absl::Status InternalInit() {
 }
 
 static absl::Status PlatformInitialize() {
+  LOG(ERROR) << "PlatformInitialize";
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but PlatformInitialize may be called many times.
   static absl::Status* initialization_status = [] {
+    LOG(ERROR) << "PlatformInitialize: new absl::Status(InternalInit())";
     return new absl::Status(InternalInit());
   }();
+  LOG(ERROR) << "PlatformInitialize: return *initialization_status"
+             << *initialization_status;
   return *initialization_status;
 }
 
 }  // namespace
 
-CudaPlatform::CudaPlatform() : name_("CUDA") {}
+CudaPlatform::CudaPlatform() : name_("CUDA") {
+  LOG(ERROR) << "CudaPlatform::CudaPlatform";
+}
 
 CudaPlatform::~CudaPlatform() {
+  LOG(ERROR) << "CudaPlatform::~CudaPlatform";
   nvmlReturn_t shutdown_result = nvmlShutdown();
   if (shutdown_result != NVML_SUCCESS) {
     LOG(ERROR) << "NVML shutdown failed with " << shutdown_result;
   }
+  LOG(ERROR) << "CudaPlatform::~CudaPlatform: done";
 }
 
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
+  LOG(ERROR) << "CudaPlatform::VisibleDeviceCount";
   // Initialized in a thread-safe manner the first time this is run.
   static const int num_devices = [] {
+    LOG(ERROR) << "CudaPlatform::VisibleDeviceCount: new []";
     if (!PlatformInitialize().ok()) {
+      LOG(ERROR)
+          << "CudaPlatform::VisibleDeviceCount: -1!PlatformInitialize().o";
       return -1;
     }
     int device_count = 0;
     auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
+    LOG(ERROR) << "CudaPlatform::VisibleDeviceCount: status: " << status
+               << " device_count: " << device_count;
     if (!status.ok()) {
       LOG(ERROR) << "could not retrieve CUDA device count: " << status;
       return 0;
     }
+    LOG(ERROR) << "CudaPlatform::VisibleDeviceCount: return device_count: "
+               << device_count;
 
     return device_count;
   }();
+  LOG(ERROR) << "CudaPlatform::VisibleDeviceCount: return num_devices: "
+             << num_devices;
   return num_devices;
 }
 
