@@ -149,11 +149,6 @@ absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
 GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                                   const DeviceAssignment& device_assignment);
 
-// Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(const HloInstruction* hlo, int replica_count,
-                                  int partition_count);
-
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
