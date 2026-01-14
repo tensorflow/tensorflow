@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -250,7 +251,9 @@ bool DotStrengthReduction::InstructionMatchesPattern(
 
   // If GemmFusion cannot handle this dot, we should strength-reduce it so that
   // it can be handled by the fusion pipeline.
-  return !legacy_triton::CanTritonHandleGEMM(*dot, compute_capability_);
+  return !IsTritonSupportedInstruction(*instruction, compute_capability_,
+                                       /*is_fused_computation=*/false)
+              .CanFuse();
 }
 
 }  // namespace gpu

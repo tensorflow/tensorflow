@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <iterator>
 #include <string>
 #include <variant>
 #include <vector>
@@ -48,31 +49,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-bool IsTritonSupportedDataType(PrimitiveType type,
-                               const se::GpuComputeCapability& gpu_version) {
-  switch (type) {
-    case PRED:
-    case S4:
-    case S8:
-    case S16:
-    case S32:
-    case S64:
-    case F16:
-    case F32:
-    case F64:
-      return true;
-    case F8E5M2:
-    case F8E4M3FN:
-      return gpu_version.IsCuda();
-    case BF16:
-      return gpu_version.IsCuda() ||
-             (gpu_version.IsRocm() &&
-              gpu_version.rocm_compute_capability()->has_bf16_dtype_support());
-    default:
-      return false;
-  }
-}
 
 // Set of unary elementwise ops that are genuinely supported by Triton.
 absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
@@ -746,6 +722,58 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                                               HloOpcodeString(instr.opcode())));
 }
 
+std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
+    PrimitiveType element_type) {
+  std::vector<HloOpcode> ret = {HloOpcode::kConvert};
+  if (element_type == PrimitiveType::PRED) {
+    ret.push_back(HloOpcode::kNot);
+    return ret;
+  }
+  ret.push_back(HloOpcode::kAbs);
+  ret.push_back(HloOpcode::kNegate);
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
+      element_type == PrimitiveType::F64) {
+    absl::c_copy(std::vector<HloOpcode>{HloOpcode::kCos, HloOpcode::kExp,
+                                        HloOpcode::kExpm1, HloOpcode::kFloor,
+                                        HloOpcode::kCeil, HloOpcode::kLog,
+                                        HloOpcode::kLog1p, HloOpcode::kRsqrt,
+                                        HloOpcode::kSin, HloOpcode::kSqrt,
+                                        HloOpcode::kCbrt, HloOpcode::kTan,
+                                        HloOpcode::kTanh, HloOpcode::kErf},
+                 std::back_inserter(ret));
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
+    PrimitiveType element_type) {
+  if (element_type == PrimitiveType::PRED) {
+    return {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor,
+            HloOpcode::kCompare};
+  }
+  std::vector<HloOpcode> ret = {HloOpcode::kAdd,      HloOpcode::kCompare,
+                                HloOpcode::kMaximum,  HloOpcode::kMinimum,
+                                HloOpcode::kMultiply, HloOpcode::kSubtract};
+  if (element_type == PrimitiveType::F32 ||
+      element_type == PrimitiveType::BF16 ||
+      element_type == PrimitiveType::F16 ||
+      element_type == PrimitiveType::F64) {
+    ret.push_back(HloOpcode::kAtan2);
+    ret.push_back(HloOpcode::kPower);
+    if (element_type != PrimitiveType::F16) {
+      ret.push_back(HloOpcode::kDivide);
+    }
+  }
+  return ret;
+}
+
+std::vector<HloOpcode> TritonSupportedTernaryElementwiseUpToFloatNormalization(
+    PrimitiveType element_type) {
+  return {HloOpcode::kSelect, HloOpcode::kClamp};
+}
+
 }  // namespace
 
 namespace internal {
@@ -792,6 +820,69 @@ absl::Status EnsureTritonSupportsComputeCapability(
   return absl::OkStatus();
 }
 
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               const se::GpuComputeCapability& gpu_version) {
+  switch (type) {
+    case PRED:
+    case S4:
+    case S8:
+    case S16:
+    case S32:
+    case S64:
+    case F16:
+    case F32:
+    case F64:
+      return true;
+    case F8E5M2:
+    case F8E4M3FN:
+      return gpu_version.IsCuda();
+    case BF16:
+      return gpu_version.IsCuda() ||
+             (gpu_version.IsRocm() &&
+              gpu_version.rocm_compute_capability()->has_bf16_dtype_support());
+    default:
+      return false;
+  }
+}
+
+CodegenDecision IsTritonSupportedDynamicSlice(
+    const HloDynamicSliceInstruction& instr) {
+  for (const HloInstruction* index_operand : instr.index_operands()) {
+    switch (index_operand->shape().element_type()) {
+      case S8:
+      case S16:
+      case S32:
+        break;  // supported
+      default:
+        return CodegenDecision::Forbid(
+            "Dynamic slice is only supported with S8, S16, or S32 indices.");
+    }
+  }
+
+  // Similar to normal slice, we cannot slice a non-major-most dimension as
+  // that would introduce non-contiguous strides under tiling. The existing
+  // check against this in GetRequirementsIfSupportedOrder is not suitable for
+  // dynamic slices, so we instead check for this here.
+  const HloInstruction* input = instr.operand(0);
+  Layout in_layout = input->shape().layout();
+  int64_t majormost_dim_id =
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
+
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
+    if (i == majormost_dim_id) {
+      continue;
+    }
+    if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+      return CodegenDecision::Forbid(
+          "Unsupported dynamic slice on non-major-most dimension.");
+    }
+  }
+
+  // TODO(b/343143854): Check the subtleties of which dynamic slices are
+  // supported, for example that a fragmented dimension cannot be sliced.
+  return CodegenDecision::Allow();
+}
+
 CodegenDecision IsTritonSupportedInstruction(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version) {
   CodegenDecision decision =
@@ -832,6 +923,22 @@ bool IsTritonFusedComputation(const HloComputation& computation) {
          fusion->backend_config<gpu::GpuBackendConfig>()
                  ->fusion_backend_config()
                  .kind() == kTritonGemmFusionKind;
+}
+
+bool IsTritonSupportedElementwiseUpToFloatNormalization(
+    HloOpcode opcode, PrimitiveType element_type) {
+  return absl::c_linear_search(
+             TritonSupportedUnaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedBinaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode) ||
+         absl::c_linear_search(
+             TritonSupportedTernaryElementwiseUpToFloatNormalization(
+                 element_type),
+             opcode);
 }
 
 }  // namespace gpu
