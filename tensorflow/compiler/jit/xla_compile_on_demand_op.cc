@@ -267,15 +267,17 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
                             *ctx, inputs, *constant_indices_or,
                             variable_indices, &variables, &args));
 
-    PjRtDeviceCompiler* pjrt_device_compiler;
-    xla::PjRtLoadedExecutable* pjrt_executable;
-    OP_REQUIRES_OK(ctx, Compile(args, ctx, &pjrt_device_compiler, &profiler,
-                                &result, &pjrt_executable));
+    PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
+    xla::PjRtLoadedExecutable* pjrt_executable = nullptr;
+    absl::Status status = Compile(args, ctx, &pjrt_device_compiler, &profiler,
+                                  &result, &pjrt_executable);
     // Hold the reference to the XLA device compiler and profiler during
     // evaluation. (We could probably free them sooner because the ResourceMgr
     // will retain references, but this is more obviously correct.)
+    // We must also ensure these pointers are freed even if compilation fails.
     core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
     core::ScopedUnref profiler_ref(profiler);
+    OP_REQUIRES_OK(ctx, status);
 
     VLOG(2) << "Compiled op with PJRT: " << ctx->status();
     VLOG(2) << "result != nullptr: " << (result != nullptr);
@@ -301,15 +303,17 @@ void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
                                                     variables, &variable_args));
     }
 
-    XlaDeviceCompiler* xla_device_compiler;
-    xla::LocalExecutable* executable;
-    OP_REQUIRES_OK(ctx, Compile(args, ctx, &xla_device_compiler, &profiler,
-                                &result, &executable));
+    XlaDeviceCompiler* xla_device_compiler = nullptr;
+    xla::LocalExecutable* executable = nullptr;
+    absl::Status status = Compile(args, ctx, &xla_device_compiler, &profiler,
+                                  &result, &executable);
     // Hold the reference to the XLA device compiler and profiler during
     // evaluation. (We could probably free them sooner because the ResourceMgr
     // will retain references, but this is more obviously correct.)
+    // We must also ensure these pointers are freed even if compilation fails.
     core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
     core::ScopedUnref profiler_ref(profiler);
+    OP_REQUIRES_OK(ctx, status);
 
     // Locks are acquired again when populating the `ctx` outputs.
     OP_REQUIRES_OK(
