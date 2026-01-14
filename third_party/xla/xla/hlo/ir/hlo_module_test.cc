@@ -333,6 +333,32 @@ TEST(HloModuleTest, CloneWithNewConfig) {
             m1.config().device_memory_size());
 }
 
+TEST(HloModuleTest, ClonePreservesStackFrameIndex) {
+  HloModule m1("temp_module", HloModuleConfig());
+  HloSchedule schedule(&m1);
+  CreateComputation(m1, "TestComputation1", true, schedule);
+  CHECK_OK(m1.set_schedule(schedule));
+
+  StackFrameIndexProto stack_frame_index;
+  stack_frame_index.add_file_names("file1.cc");
+  stack_frame_index.add_function_names("func1");
+  auto* file_location = stack_frame_index.add_file_locations();
+  file_location->set_file_name_id(1);
+  file_location->set_function_name_id(1);
+  file_location->set_line(10);
+  file_location->set_column(5);
+  auto* stack_frame = stack_frame_index.add_stack_frames();
+  stack_frame->set_file_location_id(1);
+  stack_frame->set_parent_frame_id(0);
+  m1.set_stack_frame_index(stack_frame_index);
+
+  std::unique_ptr<HloModule> m2 = m1.Clone(kCloneSuffix);
+
+  EXPECT_TRUE(m2->stack_frame_index().has_value());
+  EXPECT_THAT(m2->stack_frame_index().value(),
+              tsl::proto_testing::EqualsProto(stack_frame_index));
+}
+
 TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
   HloModule m1("temp_module", HloModuleConfig());
   HloSchedule schedule(&m1);

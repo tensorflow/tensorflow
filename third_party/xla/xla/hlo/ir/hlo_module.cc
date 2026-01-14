@@ -1444,6 +1444,9 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   // The canonical module id should be the same as the unique id from the
   // module. We don't want to copy the id from the other metadata.
   module->metadata()->set_canonical_module_id(module->unique_id());
+  if (stack_frame_index().has_value()) {
+    module->set_stack_frame_index(stack_frame_index().value());
+  }
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module);
     for (HloComputation* computation : computations()) {
