@@ -62,7 +62,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8 stack_frame_id=1}
+// CHECK-SAME: metadata={op_name="name(anothername)" stack_frame_id=1}
 
 // -----
 

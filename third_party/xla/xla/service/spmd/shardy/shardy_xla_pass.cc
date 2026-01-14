@@ -135,6 +135,8 @@ absl::Status createFromProtoAndReplaceComputations(
   // Remove the old computations, which are currently dead.
   CHECK_OK(HloDCE().Run(module));
 
+  module->set_stack_frame_index(proto.stack_frame_index());
+
   return absl::OkStatus();
 }
 
