@@ -76,9 +76,6 @@ void AbslStringify(Sink& sink, CommandType type) {
   sink.Append(CommandTypeString(type));
 }
 
-// Returns true if command type corresponds to a collective operation.
-bool IsCollectiveCommand(CommandType type);
-
 //===----------------------------------------------------------------------===//
 // Command
 //===----------------------------------------------------------------------===//
@@ -250,11 +247,6 @@ class Command {
   // priority.
   se::StreamPriority priority_ = se::StreamPriority::Default;
 };
-
-// Returns true if command is a collective one.
-inline bool IsCollectiveCommand(const Command& cmd) {
-  return IsCollectiveCommand(cmd.command_type());
-}
 
 //===----------------------------------------------------------------------===//
 // Asynchronous commands

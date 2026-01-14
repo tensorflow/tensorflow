@@ -29,18 +29,4 @@ std::string CommandTypeString(CommandType type) {
   }
 }
 
-bool IsCollectiveCommand(CommandType type) {
-  switch (type) {
-    case CommandType::kAllGatherCmd:
-    case CommandType::kAllReduceCmd:
-    case CommandType::kAllToAllCmd:
-    case CommandType::kReduceScatterCmd:
-    case CommandType::kCollectiveBroadcastCmd:
-    case CommandType::kCollectivePermuteCmd:
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace xla::gpu
