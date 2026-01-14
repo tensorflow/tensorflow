@@ -77,6 +77,11 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
     tsl::protobuf::util::MessageDifferencer diff;
     diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
         "device_memory_size"));
+    // TODO: b/461785716 - Add the execution unit descriptions to spec protos.
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "scalar_unit_description"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "matrix_unit_description"));
     diff.set_message_field_comparison(
         tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;

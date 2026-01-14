@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
-#include <cstdint>
-
-#include "absl/container/flat_hash_map.h"
-#include "xla/primitive_util.h"
+#include "xla/stream_executor/cuda/cuda_core_info_table.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -26,37 +23,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
-stream_executor::ExecutionUnitDescription MakeTensorCoreCapability(
-    int32_t units_per_core,
-    const absl::flat_hash_map<int32_t, int32_t>& bitwidth_to_ops_per_clock,
-    const absl::flat_hash_map<int32_t, float>& bitwidth_to_clock_rate_ghz) {
-  stream_executor::ExecutionUnitDescription caps;
-  xla::primitive_util::FloatingPointTypeForEach([&](auto type) {
-    int bitwidth = primitive_util::BitWidth(type);
-    if (!bitwidth_to_clock_rate_ghz.contains(bitwidth)) {
-      return;
-    }
-    caps.SetRateInfo(
-        type, stream_executor::ExecutionUnitDescription::RateInfo{
-                  /*units_per_core=*/units_per_core,
-                  /*clock_rate_ghz=*/bitwidth_to_clock_rate_ghz.at(bitwidth),
-                  /*ops_per_clock=*/bitwidth_to_ops_per_clock.at(bitwidth)});
-  });
-  xla::primitive_util::IntegralTypeForEach([&](auto type) {
-    // TCs only handle 8 bit ints.
-    if (xla::primitive_util::Is8BitIntegralType(type)) {
-      caps.SetRateInfo(type,
-                       stream_executor::ExecutionUnitDescription::RateInfo{
-                           /*units_per_core=*/units_per_core,
-                           /*clock_rate_ghz=*/bitwidth_to_clock_rate_ghz.at(8),
-                           /*ops_per_clock=*/bitwidth_to_ops_per_clock.at(8)});
-    }
-  });
-  return caps;
-}
-}  // namespace
 
 stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
     stream_executor::GpuComputeCapability cc) {
@@ -95,7 +61,6 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
   b.set_shared_memory_per_core(228 * 1024);
   b.set_threads_per_core_limit(2048);
   b.set_core_count(132);
-  b.set_fpus_per_core(128);
   b.set_block_dim_limit_x(2'147'483'647);
   b.set_block_dim_limit_y(65535);
   b.set_block_dim_limit_z(65535);
@@ -108,12 +73,10 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
   b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
   b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
 
-  b.set_matrix_unit_description(MakeTensorCoreCapability(
-      /*units_per_core=*/4,
-      /*bitwidth_to_ops_per_clock=*/
-      {{64, 32}, {32, 256}, {16, 512}, {8, 1024}},
-      /*bitwidth_to_clock_rate_ghz=*/
-      {{64, 1.98}, {32, 1.83}, {16, 1.83}, {8, 1.83}}));
+  b.set_fpus_per_core(
+      stream_executor::gpu::GetFpusPerCore(*cc.cuda_compute_capability()));
+  stream_executor::gpu::FillExecutionUnitDesc(*cc.cuda_compute_capability(),
+                                              b.clock_rate_ghz(), b);
   return b;
 }
 
