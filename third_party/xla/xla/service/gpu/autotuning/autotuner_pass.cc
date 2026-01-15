@@ -137,8 +137,8 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(new AutotunerPass(
-      std::move(autotuner), should_autotune, std::move(key_value_store),
-      debug_options.xla_gpu_shard_autotuning()));
+      std::move(autotuner), std::move(should_autotune),
+      std::move(key_value_store), debug_options.xla_gpu_shard_autotuning()));
 }
 
 absl::StatusOr<bool> AutotunerPass::RunImpl(

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/fingerprint.h"
 
-using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
+using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
 
 namespace xla {
 
