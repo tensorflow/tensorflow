@@ -2,8 +2,6 @@ edition = "2023";
 
 package xla;
 
-import "google/protobuf/any.proto";
-
 option java_package = "org.openxla";
 option java_multiple_files = true;
 option java_outer_classname = "PjrtAbiVersion";

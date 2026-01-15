@@ -45,7 +45,7 @@ tf_proto_library(
 tf_proto_library(
     name = "pjrt_abi_version_proto",
     srcs = ["pjrt_abi_version.proto"],
-    protodeps = ["@com_google_protobuf//:any_proto"],
+    protodeps = [],
     visibility = ["//visibility:public"],
 )
 
