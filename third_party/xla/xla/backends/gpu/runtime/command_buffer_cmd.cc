@@ -61,7 +61,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -86,6 +85,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -2126,8 +2126,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
 Command::BufferUseVector AllReduceCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }
@@ -2194,8 +2196,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
 Command::BufferUseVector ReduceScatterCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }
@@ -2263,8 +2267,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
 Command::BufferUseVector AllToAllCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }
@@ -2328,8 +2334,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
 Command::BufferUseVector AllGatherCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }
@@ -2393,8 +2401,10 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
 Command::BufferUseVector CollectiveBroadcastCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (auto& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }
@@ -2419,9 +2429,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> RecvCmd::Record(
       config().operand_element_type[0],
       buffer_.element_count,
       execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.source_buffer),
+          buffer_.source_buffer.slice),
       execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.destination_buffer),
+          buffer_.destination_buffer.slice),
       buffer_.source_memory_space,
       buffer_.destination_memory_space};
 
@@ -2500,8 +2510,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> RecvCmd::Record(
 
 Command::BufferUseVector RecvCmd::buffers() const {
   BufferUseVector buffer_usage;
-  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer));
-  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer));
+  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer.slice,
+                                            buffer_.source_buffer.shape));
+  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer.slice,
+                                             buffer_.destination_buffer.shape));
   return buffer_usage;
 }
 
@@ -2525,9 +2537,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> SendCmd::Record(
       config().operand_element_type[0],
       buffer_.element_count,
       execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.source_buffer),
+          buffer_.source_buffer.slice),
       execute_params.buffer_allocations->GetDeviceAddress(
-          buffer_.destination_buffer),
+          buffer_.destination_buffer.slice),
       buffer_.source_memory_space,
       buffer_.destination_memory_space};
 
@@ -2606,8 +2618,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> SendCmd::Record(
 
 Command::BufferUseVector SendCmd::buffers() const {
   BufferUseVector buffer_usage;
-  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer));
-  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer));
+  buffer_usage.emplace_back(BufferUse::Read(buffer_.source_buffer.slice,
+                                            buffer_.source_buffer.shape));
+  buffer_usage.emplace_back(BufferUse::Write(buffer_.destination_buffer.slice,
+                                             buffer_.destination_buffer.shape));
   return buffer_usage;
 }
 
@@ -2687,8 +2701,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> CollectivePermuteCmd::Record(
 Command::BufferUseVector CollectivePermuteCmd::buffers() const {
   BufferUseVector buffer_usage;
   for (const CollectiveThunk::Buffer& buffer : buffers_) {
-    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer));
-    buffer_usage.emplace_back(BufferUse::Write(buffer.destination_buffer));
+    buffer_usage.emplace_back(BufferUse::Read(buffer.source_buffer.slice,
+                                              buffer.source_buffer.shape));
+    buffer_usage.emplace_back(BufferUse::Write(
+        buffer.destination_buffer.slice, buffer.destination_buffer.shape));
   }
   return buffer_usage;
 }

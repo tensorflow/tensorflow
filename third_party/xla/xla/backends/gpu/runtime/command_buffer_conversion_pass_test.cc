@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
@@ -113,7 +113,7 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
   HloInstruction* all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
           ShapeUtil::MakeTupleShape(
-              {ShapeUtil::MakeShape(F32, {8, 4}), std::move(param_shape)}),
+              {ShapeUtil::MakeShape(F32, {8, 4}), param_shape}),
           {param_0}, /*all_gather_dimension=*/0, replica_groups,
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
@@ -124,8 +124,8 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
   BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
 
   CollectiveThunk::Buffer buffer;
-  buffer.source_buffer = slice0;
-  buffer.destination_buffer = slice1;
+  buffer.source_buffer = {slice0, param_shape};
+  buffer.destination_buffer = {slice1, param_shape};
 
   return std::make_unique<AllGatherStartThunk>(
       Thunk::ThunkInfo(),

@@ -191,8 +191,9 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
   DeviceBufferPair device_buffer_pair{
       config_.config.operand_element_type[0],
       buffer_.element_count,
-      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer),
-      params.buffer_allocations->GetDeviceAddress(buffer_.destination_buffer),
+      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer.slice),
+      params.buffer_allocations->GetDeviceAddress(
+          buffer_.destination_buffer.slice),
       buffer_.source_memory_space,
       buffer_.destination_memory_space};
 

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
@@ -95,8 +96,8 @@ class CollectiveThunk : public Thunk {
 
   struct Buffer {
     int64_t element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
+    ShapedSlice source_buffer;
+    ShapedSlice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
 

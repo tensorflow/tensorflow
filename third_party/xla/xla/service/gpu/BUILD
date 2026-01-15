@@ -544,6 +544,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:name_uniquer",
         "//xla/service:platform_util",
+        "//xla/service:shaped_slice",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",

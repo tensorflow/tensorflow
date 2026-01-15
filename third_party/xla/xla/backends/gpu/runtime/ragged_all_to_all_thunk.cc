@@ -420,7 +420,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     rendezvous_value.rank = state->rank;
     rendezvous_value.output_buffer =
         params.buffer_allocations->GetDeviceAddress(
-            buffers_[1].destination_buffer);
+            buffers_[1].destination_buffer.slice);
     rendezvous_value.start_event = state->start_event.get();
     rendezvous_value.end_event = state->end_event.get();
 

@@ -50,6 +50,7 @@ limitations under the License.*/
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -181,7 +182,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     const int64_t kSignalBufferSize = xla::RoundUpTo<uint64_t>(
         kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
     const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
-        buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
+        buffers_[0].source_buffer.slice.size(), kXlaAllocatedBufferAlignBytes);
     TF_ASSIGN_OR_RETURN(
         se::DeviceAddressHandle local_buffers_handle,
         AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
@@ -335,9 +336,10 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   const CollectiveThunk::Buffer& buffer = buffers_[0];
   const PrimitiveType element_type = collective_config_.operand_element_type[0];
   se::DeviceAddressBase source_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer.source_buffer);
+      params.buffer_allocations->GetDeviceAddress(buffer.source_buffer.slice);
   se::DeviceAddressBase destination_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
+      params.buffer_allocations->GetDeviceAddress(
+          buffer.destination_buffer.slice);
 
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);

@@ -374,8 +374,8 @@ message CustomKernelThunkProto {
 
 message CollectiveBufferProto {
   int64 element_count = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 3;
+  ShapedSliceProto source_buffer = 2;
+  ShapedSliceProto destination_buffer = 3;
   int64 source_memory_space = 4;
   int64 destination_memory_space = 5;
 }
