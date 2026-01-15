@@ -131,8 +131,7 @@ ENTRY test_computation {
   cb_start_thunk->set_async_events(async_events);
 
   auto cb_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kCollectiveBroadcastDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kCollectiveBroadcastDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(cb_start_thunk));

@@ -161,8 +161,7 @@ std::unique_ptr<CollectiveDoneThunk> CreateAllGatherDoneThunk(
   auto async_events =
       static_cast<const AllGatherStartThunk*>(start_thunk)->async_events();
   return std::make_unique<CollectiveDoneThunk>(
-      Thunk::kAllGatherDone, Thunk::ThunkInfo(), std::move(async_events),
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Thunk::kAllGatherDone, Thunk::ThunkInfo(), std::move(async_events));
 }
 
 std::unique_ptr<WhileThunk> CreateWhileThunk(

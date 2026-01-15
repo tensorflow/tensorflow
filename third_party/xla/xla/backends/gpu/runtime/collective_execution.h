@@ -34,7 +34,7 @@ namespace xla::gpu {
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
+    CollectiveOpGroupMode group_mode, bool is_p2p,
     bool include_participant_groups = true);
 
 }  // namespace xla::gpu
