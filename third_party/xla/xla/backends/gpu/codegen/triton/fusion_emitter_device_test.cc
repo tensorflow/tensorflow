@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1715,6 +1716,7 @@ ENTRY entry_computation {
       TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
   llvm::LLVMContext llvm_ctx;
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
   llvm::Triple target_triple(nvptx::TargetTriple());
   std::string data_layout(nvptx::DataLayout());
 

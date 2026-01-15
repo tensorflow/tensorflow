@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -68,6 +69,7 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
+  IndexingTestBase() { RegisterSymbolicExprStorage(&mlir_context_); }
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
   virtual HloInstructionIndexing GetOutputToInputIndexing(

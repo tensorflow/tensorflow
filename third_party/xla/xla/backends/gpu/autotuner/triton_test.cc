@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -96,6 +97,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   DebugOptions debug_options_;

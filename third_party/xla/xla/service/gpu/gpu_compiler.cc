@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -441,7 +442,9 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
       target_triple_(target_triple),
       data_layout_(data_layout),
       pointer_size_(llvm::DataLayout(data_layout)
-                        .getPointerSize(0 /* default address space */)) {}
+                        .getPointerSize(0 /* default address space */)) {
+  RegisterSymbolicExprStorage(&mlir_context_);
+}
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.

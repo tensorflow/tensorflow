@@ -978,9 +978,6 @@ void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context) {
 SymbolicExpr GetOrCreateSymbolicExpr(SymbolicExprType type, int64_t value,
                                      SymbolicExpr lhs, SymbolicExpr rhs,
                                      mlir::MLIRContext* mlir_context) {
-  // TODO(b/433696544): This might be too expensive to call per expression.
-  // We should consider calling this once per MLIRContext creation.
-  RegisterSymbolicExprStorage(mlir_context);
   auto* uniquer = &mlir_context->getAffineUniquer();
   auto initContext = [&](SymbolicExprStorage* storage) {
     storage->mlir_context_ = mlir_context;

@@ -53,6 +53,7 @@ AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
 
 class SymbolicMapConverterTest : public ::testing::Test {
  public:
+  SymbolicMapConverterTest() { RegisterSymbolicExprStorage(&context_); }
   MLIRContext context_;
 };
 

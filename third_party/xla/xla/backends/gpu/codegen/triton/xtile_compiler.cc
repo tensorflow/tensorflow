@@ -89,6 +89,7 @@ limitations under the License.
 #include "xla/codegen/ir_printing.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -232,6 +233,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   TF_RETURN_IF_ERROR(IsTritonSupportedFusion(*fusion, device_info));
 
   LoadMlirDialectsForTriton(mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
 
   const HloComputation* hlo_computation =
       fusion->fused_instructions_computation();

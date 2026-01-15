@@ -36,13 +36,23 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
+  SymbolicExprTest() {
+    RegisterSymbolicExprStorage(&ctx);
+    v0 = CreateSymbolicVariable(0, &ctx);
+    v1 = CreateSymbolicVariable(1, &ctx);
+    c1 = CreateSymbolicConstant(1, &ctx);
+    c3 = CreateSymbolicConstant(3, &ctx);
+    c2 = CreateSymbolicConstant(2, &ctx);
+    c5 = CreateSymbolicConstant(5, &ctx);
+  }
+
   mlir::MLIRContext ctx;
-  SymbolicExpr v0 = CreateSymbolicVariable(0, &ctx);
-  SymbolicExpr v1 = CreateSymbolicVariable(1, &ctx);
-  SymbolicExpr c1 = CreateSymbolicConstant(1, &ctx);
-  SymbolicExpr c3 = CreateSymbolicConstant(3, &ctx);
-  SymbolicExpr c2 = CreateSymbolicConstant(2, &ctx);
-  SymbolicExpr c5 = CreateSymbolicConstant(5, &ctx);
+  SymbolicExpr v0;
+  SymbolicExpr v1;
+  SymbolicExpr c1;
+  SymbolicExpr c3;
+  SymbolicExpr c2;
+  SymbolicExpr c5;
 };
 
 TEST_F(SymbolicExprTest, CreateAndPrint) {

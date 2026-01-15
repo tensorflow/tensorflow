@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -88,6 +89,7 @@ HloInstruction* GetNonBitcastRoot(const HloComputation* computation) {
 
 class TritonTest : public GpuCodegenTest {
  public:
+  TritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_autotune_level(0);

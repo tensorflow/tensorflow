@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -186,6 +187,7 @@ class StatelessAutotunerTest : public HloTestBase {
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::SetUp();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   void TearDown() override {

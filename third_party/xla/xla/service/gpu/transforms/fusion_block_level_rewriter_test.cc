@@ -27,6 +27,7 @@ License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -57,6 +58,11 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
 }
 
 class FusionBlockLevelRewriterTest : public HloHardwareIndependentTestBase {
+ public:
+  FusionBlockLevelRewriterTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::CudaComputeCapability::Ampere())};

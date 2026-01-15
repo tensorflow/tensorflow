@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -443,6 +444,7 @@ absl::StatusOr<bool> CanSymbolicTileAnalysisTileDiamond(
   TF_ASSIGN_OR_RETURN(HloFusionInstruction * normalization_fusion,
                       MakeFusionForDiamond(diamond));
   mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or_error =
       SymbolicTileAnalysis::AnalyzeComputation(
           *normalization_fusion->called_computation(), &mlir_context,

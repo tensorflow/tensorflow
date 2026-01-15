@@ -54,6 +54,7 @@ xla_cc_binary(
     deps = [
         ":test_lib",
         "//xla/codegen/tools:test_lib",
+        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",

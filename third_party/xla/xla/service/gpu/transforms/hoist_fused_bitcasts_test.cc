@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -77,6 +78,9 @@ class HoistFusedBitcastsReshapeTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<HloOpcode> {
  protected:
+  HoistFusedBitcastsReshapeTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};

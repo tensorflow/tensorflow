@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -87,6 +88,7 @@ class CoalescingTest : public HloHardwareIndependentTestBase {
   }
 
  protected:
+  CoalescingTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
@@ -77,6 +78,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
 
 class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
  protected:
+  ConvertTritonGemmConfigTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};

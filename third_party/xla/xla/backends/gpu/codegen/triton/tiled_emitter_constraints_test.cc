@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,6 +42,7 @@ namespace {
 
 class TiledEmitterConstraintsTest : public HloHardwareIndependentTestBase {
  public:
+  TiledEmitterConstraintsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
       HloModule* module, bool with_tiled_emitter_specific_constraints = true) {
     EmitterSpecificConstraintsBuilder constraints_builder = nullptr;

@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -41,6 +42,7 @@ class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
  protected:
   ComputationPartitionerTest() {
     mlir_context_.loadDialect<mlir::func::FuncDialect>();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   mlir::MLIRContext mlir_context_;
