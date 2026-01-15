@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
@@ -52,10 +53,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -248,59 +247,36 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
 // Executes the rendezvous before the kernel start.
 // Inserts CUDA events into the stream to ensure that all devices have reached
 // the start event before the kernel starts.
-absl::StatusOr<
-    std::shared_ptr<std::vector<RaggedAllToAllStartThunk::RendezvousValue>>>
-RaggedAllToAllStartThunk::RendezvousBeforeKernelStart(
+absl::Status RaggedAllToAllStartThunk::RendezvousBeforeKernelStart(
     const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state, const se::DeviceAddressBase& output_buffer) {
+    const StreamState& state) {
   int64_t num_ranks = clique_key.num_local_participants();
   const RankId& rank = state.rank;
-
-  RendezvousValue rendezvous_value;
-  rendezvous_value.rank = rank;
-  rendezvous_value.output_buffer = output_buffer;
-  rendezvous_value.start_event = state.start_event.get();
-  rendezvous_value.end_event = state.end_event.get();
 
   // Record that this device has started the memcpy ragged-all-to-all. We do
   // this before the rendezvous to make sure that RecordEvent is called before
   // WaitFor on another stream.
   RETURN_IF_ERROR(stream.RecordEvent(state.start_event.get()));
 
-  auto rendezvous_fn = [](absl::Span<const RendezvousValue* const> values) {
-    std::vector<RendezvousValue> values_copy;
-    for (const auto& value : values) {
-      values_copy.push_back(*value);
-    }
-    // Sort to make sure that values are in the same order as the devices are
-    // ordered in the communicator.
-    absl::c_sort(values_copy);
-    return values_copy;
-  };
-
   std::string name =
       absl::StrFormat("start one-shot ragged-all-to-all for rank %d, clique %s",
                       rank.value(), clique_key.ToString());
-  ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      Rendezvous<std::vector<RendezvousValue>>(
-          name, clique_key, rendezvous_value, num_ranks, rendezvous_fn));
+  RETURN_IF_ERROR(Rendezvous(name, clique_key, num_ranks));
 
   // Wait for all devices to reach the start event. This indicates that all
   // output buffers are ready for transfer.
-  for (auto& value : *rendezvous_values) {
+  for (const RendezvousValue& value : *state.rendezvous_values) {
     RETURN_IF_ERROR(stream.WaitFor(value.start_event));
   }
 
-  return rendezvous_values;
+  return absl::OkStatus();
 }
 
 // Executes the rendezvous after the kernel finish. Waits for all devices to
 // reach the end event.
 absl::Status RaggedAllToAllStartThunk::RendezvousAfterKernelFinish(
     const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state,
-    const std::vector<RendezvousValue>& rendezvous_values) {
+    const StreamState& state) {
   int64_t num_ranks = clique_key.num_local_participants();
   const RankId& rank = state.rank;
 
@@ -316,7 +292,7 @@ absl::Status RaggedAllToAllStartThunk::RendezvousAfterKernelFinish(
 
   // Wait for all devices to reach the end event. This indicates that all
   // updates from other devices have arrived.
-  for (auto& value : rendezvous_values) {
+  for (const RendezvousValue& value : *state.rendezvous_values) {
     RETURN_IF_ERROR(stream.WaitFor(value.end_event));
   }
 
@@ -337,16 +313,13 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
   PrimitiveType element_type = buffers[0].element_type;
 
   se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-  se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
 
-  ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      RendezvousBeforeKernelStart(clique_key, stream, state, output_buffer));
+  RETURN_IF_ERROR(RendezvousBeforeKernelStart(clique_key, stream, state));
 
   const int64_t num_updates_per_replica = config_.num_total_updates / num_ranks;
 
   absl::InlinedVector<se::DeviceAddressBase, 4> output_ptrs;
-  for (auto& value : *rendezvous_values) {
+  for (const RendezvousValue& value : *state.rendezvous_values) {
     output_ptrs.push_back(value.output_buffer);
   }
 
@@ -356,8 +329,7 @@ absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
       buffers[4].source_buffer, num_ranks, num_updates_per_replica,
       config_.num_input_rows, config_.num_row_elements));
 
-  return RendezvousAfterKernelFinish(clique_key, stream, state,
-                                     *rendezvous_values);
+  return RendezvousAfterKernelFinish(clique_key, stream, state);
 }
 
 /*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(
@@ -398,8 +370,16 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
 
+  ASSIGN_OR_RETURN(
+      const GpuCliqueKey clique_key,
+      GetCollectiveGpuCliqueKey(*params.collective_params, config_.config));
+  const std::optional<RankId> rank =
+      clique_key.rank(params.collective_params->global_device_id);
+  int64_t num_ranks = clique_key.num_local_participants();
+
   se::StreamExecutor* executor = params.executor;
 
+  StreamState* state = nullptr;
   {
     absl::MutexLock lock(mutex_);
 
@@ -408,16 +388,12 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     if (per_stream_states_.contains(executor)) {
       return absl::OkStatus();
     }
+
+    auto [it, inserted] = per_stream_states_.emplace(
+        executor, std::make_unique<StreamState>(executor->device_ordinal(),
+                                                rank.value()));
+    state = it->second.get();
   }
-
-  ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
-      GetCollectiveGpuCliqueKey(*params.collective_params, config_.config));
-  const std::optional<RankId> rank =
-      clique_key.rank(params.collective_params->global_device_id);
-
-  auto state =
-      std::make_unique<StreamState>(executor->device_ordinal(), rank.value());
 
   // Allocate temp buffers in the host memory to load the sizes and offsets of
   // ragged tensors from device memory.
@@ -436,14 +412,39 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
-  if (is_local()) {
+  if (is_local() && clique_key.is_local()) {
     ASSIGN_OR_RETURN(state->start_event, executor->CreateEvent());
     ASSIGN_OR_RETURN(state->end_event, executor->CreateEvent());
-  }
 
-  {
-    absl::MutexLock lock(mutex_);
-    per_stream_states_.emplace(executor, std::move(state));
+    RendezvousValue rendezvous_value;
+    rendezvous_value.rank = state->rank;
+    rendezvous_value.output_buffer =
+        params.buffer_allocations->GetDeviceAddress(
+            buffers_[1].destination_buffer);
+    rendezvous_value.start_event = state->start_event.get();
+    rendezvous_value.end_event = state->end_event.get();
+
+    std::string name =
+        absl::StrFormat("initialize ragged-all-to-all for rank %d, clique %s",
+                        rank->value(), clique_key.ToString());
+
+    auto rendezvous_fn = [](absl::Span<const RendezvousValue* const> values) {
+      std::vector<RendezvousValue> values_copy;
+      for (const auto& value : values) {
+        values_copy.push_back(*value);
+      }
+      // Sort to make sure that values are in the same order as the devices
+      // are ordered in the communicator.
+      absl::c_sort(values_copy);
+      return values_copy;
+    };
+
+    ASSIGN_OR_RETURN(
+        state->rendezvous_values,
+        Rendezvous<std::vector<RendezvousValue>>(
+            name, clique_key, rendezvous_value, num_ranks, rendezvous_fn,
+            /*warn_stuck_timeout=*/absl::Seconds(20),
+            /*terminate_timeout=*/absl::Seconds(40)));
   }
 
   return absl::OkStatus();
