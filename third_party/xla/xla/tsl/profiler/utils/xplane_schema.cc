@@ -389,7 +389,12 @@ const StatTypeMap& GetStatTypeMap() {
        {"offload_core_id", kOffloadCoreId},
        {"tc_offload_start_id", kTcOffloadStartId},
        {"offload_execution_index", kOffloadExecutionIndex},
-       {"marker_payload", kMarkerPayloadString}});
+       {"marker_payload", kMarkerPayloadString},
+       // Power related stats
+       {"core_power", kCorePower},
+       {"core_power_event_count", kCorePowerEventCount},
+       {"hbm_power", kHbmPower},
+       {"hbm_power_event_count", kHbmPowerEventCount}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
