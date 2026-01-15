@@ -377,7 +377,13 @@ enum StatType {
   kTcOffloadStartId,
   kOffloadExecutionIndex,
   kMarkerPayloadString,
-  kLastStatType = kMarkerPayloadString,
+  kMetadataCudaVersion,
+  kMetadataLibtpuVersion,
+  kMetadataCudaRuntimeVersion,
+  kMetadataCudaDriverVersion,
+  kLastStatType = kMetadataCudaDriverVersion,
+  // kMetadataJaxVersion,
+  // kMetadataJaxlibVersion,
 };
 
 enum MegaScaleStatType : uint8_t {

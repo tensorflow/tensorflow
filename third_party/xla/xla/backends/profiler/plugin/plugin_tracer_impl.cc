@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/backends/profiler/plugin/plugin_metadata.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/tsl/platform/logging.h"
@@ -85,6 +86,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   if (!args->profiler->space) {
     VLOG(1) << "TpuProfiler CollectData";
     PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->CollectData(&space));
+    AddPluginMetadata(&space);
     args->profiler->byte_size = space.ByteSizeLong();
     VLOG(2) << "TpuProfiler CollectData: Number of XPlanes: "
             << space.planes_size();

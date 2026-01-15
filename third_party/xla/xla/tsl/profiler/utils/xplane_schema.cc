@@ -389,7 +389,11 @@ const StatTypeMap& GetStatTypeMap() {
        {"offload_core_id", kOffloadCoreId},
        {"tc_offload_start_id", kTcOffloadStartId},
        {"offload_execution_index", kOffloadExecutionIndex},
-       {"marker_payload", kMarkerPayloadString}});
+       {"marker_payload", kMarkerPayloadString},
+       {"cuda_version", kMetadataCudaVersion},
+       {"libtpu_version", kMetadataLibtpuVersion},
+       {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
+       {"cuda_driver_version", kMetadataCudaDriverVersion}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

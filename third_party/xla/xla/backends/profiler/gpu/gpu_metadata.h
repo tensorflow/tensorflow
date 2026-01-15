@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
-#define XLA_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 
-#include "xla/tsl/platform/types.h"
+#ifndef XLA_BACKENDS_PROFILER_GPU_GPU_METADATA_H_
+#define XLA_BACKENDS_PROFILER_GPU_GPU_METADATA_H_
+
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
-namespace tsl {
+namespace xla {
 namespace profiler {
+void AddGpuMetadata(tensorflow::profiler::XSpace* space);
+}
+}  // namespace xla
 
-// Post process XSpaces collected locally from multiple profilers.
-void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
-                                 uint64_t start_time_ns, uint64_t stop_time_ns);
-
-void MergePlanesWithSameNames(tensorflow::profiler::XSpace* space);
-
-}  // namespace profiler
-}  // namespace tsl
-
-#endif  // XLA_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#endif  // XLA_BACKENDS_PROFILER_GPU_GPU_METADATA_H_
