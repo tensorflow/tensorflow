@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
