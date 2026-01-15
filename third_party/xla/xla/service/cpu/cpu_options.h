@@ -48,8 +48,8 @@ inline constexpr absl::string_view kDisableNewFusionEmitters =
     "xla_cpu_disable_new_fusion_emitters";
 inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
-inline constexpr absl::string_view kUseMultiOutputFusion =
-    "xla_cpu_use_multi_output_fusion";
+inline constexpr absl::string_view kDisableMultiOutputFusion =
+    "xla_cpu_disable_multi_output_fusion";
 inline constexpr absl::string_view kDisablePlatformDependentMath =
     "xla_cpu_disable_platform_dependent_math";
 inline constexpr absl::string_view kDisableTiledEmitter =

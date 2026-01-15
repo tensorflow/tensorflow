@@ -1267,6 +1267,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
