@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -22,7 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/collective_ops_e2e_test_base.h"
+#include "xla/service/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
