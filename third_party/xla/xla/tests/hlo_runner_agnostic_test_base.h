@@ -180,6 +180,20 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
     return {{optimized_module, std::move(executable)}};
   }
 
+  // Compiles the given hlo_text to an executable, and returns a clone of the
+  // optimized HloModule.
+  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config) {
+    TF_ASSIGN_OR_RETURN(auto module_and_executable,
+                        GetOptimizedModuleForExecutable(hlo_text, config));
+    return module_and_executable.first->Clone();
+  }
+
+  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
+      absl::string_view hlo_text) {
+    return GetOptimizedModule(hlo_text, GetModuleConfigForTest());
+  }
+
   // Executes the given module on multiple devices.
   //
   // use_threads indicates whether this replicated computation will be executed
