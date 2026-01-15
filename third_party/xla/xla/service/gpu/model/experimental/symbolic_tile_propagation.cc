@@ -400,6 +400,24 @@ SymbolicTiles PropagateTileToInputForReduceOp(
   return SymbolicTiles{std::move(operand_tiles)};
 }
 
+SymbolicTiles PropagateTileToOutputForReduceOp(
+    const HloReduceInstruction& reduce, const SymbolicTile& input_tile) {
+  absl::flat_hash_set<int64_t> reduce_dims(reduce.dimensions().begin(),
+                                           reduce.dimensions().end());
+
+  SmallVector<DimTile> output_dim_tiles;
+  output_dim_tiles.reserve(input_tile.num_dim_tiles() - reduce_dims.size());
+  for (auto [idx, input_dim_tile] : llvm::enumerate(input_tile.dim_tiles())) {
+    if (!reduce_dims.contains(idx)) {
+      output_dim_tiles.push_back(input_dim_tile);
+    }
+  }
+
+  SymbolicTile output_tile{input_tile.tiling_space(),
+                           std::move(output_dim_tiles)};
+  return {std::move(output_tile)};
+}
+
 }  // namespace
 
 std::string ToString(const SymbolicTiles& tiles) {
@@ -465,6 +483,15 @@ std::optional<SymbolicTiles> PropagateTileToOutput(
   }
   if (hlo.opcode() == HloOpcode::kTranspose) {
     return PropagateTileToOutputForTransposeOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduce) {
+    const HloReduceInstruction& reduce = *Cast<HloReduceInstruction>(&hlo);
+    if (input_index >= reduce.input_count()) {
+      LOG(INFO) << "Input to output tile propagation not implemented "
+                   "from reduction init operands.";
+      return std::nullopt;
+    }
+    return PropagateTileToOutputForReduceOp(reduce, input_tile);
   }
   LOG(INFO) << "Input to output tile propagation not implemented for "
             << hlo.opcode();

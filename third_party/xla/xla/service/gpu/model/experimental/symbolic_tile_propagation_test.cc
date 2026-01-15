@@ -486,6 +486,37 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfReduceOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+    ENTRY e {
+      p0 = f32[150, 20, 10, 50] parameter(0)
+      p0_init = f32[] constant(-inf)
+      ROOT reduce = f32[150, 10] reduce(p0, p0_init),
+        dimensions={3, 1}, to_apply=max
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  std::optional<SymbolicTiles> tiled_operands = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(0)->shape().dimensions()),
+      0);
+  EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
+    0) (tid_0, tid_1, tid_2, tid_3)[ts_0, ts_1, ts_2, ts_3]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+        sizes [ts_0, ts_2]
+        strides [1, 3]
+        upper bounds [150, 10]
+  )")));
+}
+
 TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
    HloModule m
