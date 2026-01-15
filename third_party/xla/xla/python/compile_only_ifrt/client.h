@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/tuple.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
@@ -158,34 +159,6 @@ class CompileOnlyDevice
   ifrt::Memory* default_memory_ = nullptr;
   std::vector<ifrt::Memory*> unowned_memories_;
   std::vector<std::unique_ptr<ifrt::Memory>> owned_memories_;
-};
-
-class CompileOnlyIfrtCompiler final
-    : public llvm::RTTIExtends<CompileOnlyIfrtCompiler, ifrt::Compiler> {
- public:
-  absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
-      std::unique_ptr<ifrt::Program> program,
-      std::unique_ptr<ifrt::CompileOptions> options) override {
-    return Unimplemented("Compile not implemented.");
-  }
-
-  absl::StatusOr<ifrt::ExecutableRef> Compile(
-      std::unique_ptr<ifrt::Program> program, const ifrt::Topology& topology,
-      std::unique_ptr<ifrt::CompileOptions> options) override;
-
-  absl::Status IsExecutableVersionCompatible(
-      const xla::ifrt::ExecutableVersion& executable_version,
-      const xla::ifrt::DeviceListRef& devices) const override {
-    return absl::UnimplementedError("Not implemented");
-  }
-
-  absl::StatusOr<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
-      absl::string_view serialized,
-      std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
-    return Unimplemented("DeserializeLoadedExecutable not implemented.");
-  }
-
-  static char ID;  // NOLINT
 };
 
 class CompileOnlyIfRtClient final
@@ -369,7 +342,7 @@ class CompileOnlyIfRtClient final
   }
 
  private:
-  CompileOnlyIfrtCompiler default_compiler_;
+  xla::ifrt::PjRtCompiler default_compiler_{/*client=*/nullptr};
   std::shared_ptr<ifrt::PjRtTopology> topology_;
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> descriptions_;
   ifrt::AttributeMap attributes_;
