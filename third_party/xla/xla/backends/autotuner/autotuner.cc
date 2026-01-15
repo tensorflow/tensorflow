@@ -477,7 +477,7 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
       absl::StatusOr<std::unique_ptr<Executable>> executable =
           configs[i].codegen_backend->Compile(*instr,
                                               *configs[i].backend_config);
-      if (executable.ok()) {
+      if (executable.ok() && IsValidExecutable(executable).ok()) {
         std::vector<absl::StatusOr<std::unique_ptr<Executable>>> success_result;
         success_result.push_back(std::move(executable));
         Config selected_config = std::move(configs[i]);
