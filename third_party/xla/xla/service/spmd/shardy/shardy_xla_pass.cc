@@ -173,10 +173,10 @@ OriginalParamIndexToFlattenedNum getOriginalParamIndexToFlattenedNum(
 // Flattens the given `shape`.
 Shape getFlattenedShape(const Shape& shape) {
   std::vector<Shape> flattenedShapes;
-  ShapeUtil::ForEachLeafShape(
-      shape, [&](const Shape& subShape, const ShapeIndex& index) {
-        flattenedShapes.push_back(subShape);
-      });
+  ShapeUtil::ForEachLeafShape(shape,
+                              [&](const Shape& subShape, const ShapeIndex&) {
+                                flattenedShapes.push_back(subShape);
+                              });
   return ShapeUtil::MakeValidatedMaybeTupleShape(flattenedShapes).value();
 }
 
@@ -199,7 +199,7 @@ ComputationLayout getFlattenedComputationLayout(
   for (int64_t i = 0; i != computationLayout.parameter_count(); ++i) {
     ShapeUtil::ForEachLeafShape(
         computationLayout.parameter_shape(i),
-        [&](const Shape& subShape, const ShapeIndex& index) {
+        [&](const Shape& subShape, const ShapeIndex&) {
           if (useTupleArgs) {
             *tupleShape.add_tuple_shapes() = subShape;
           } else {
@@ -301,10 +301,10 @@ std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
                                      absl::string_view passName,
                                      bool isShardyVerbose) {
   std::string shardyDir = debugOptions.xla_dump_to();
-  absl::string_view regex = debugOptions.xla_dump_hlo_pass_re();
   if (shardyDir.empty() || isShardyVerbose) {
     return shardyDir;
   }
+  absl::string_view regex = debugOptions.xla_dump_hlo_pass_re();
   if (regex.empty() || !RE2::PartialMatch(passName, regex)) {
     return "";
   }
@@ -403,12 +403,10 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kCall ||
-          !instruction->frontend_attributes().map().contains(
-              kXlaInlineableAttr)) {
-        continue;
-      }
-      if (absl::StrContains(instruction->to_apply()->name(),
+      if (instruction->opcode() == HloOpcode::kCall &&
+          instruction->frontend_attributes().map().contains(
+              kXlaInlineableAttr) &&
+          absl::StrContains(instruction->to_apply()->name(),
                             sdy::kManualComputationFuncName.str())) {
         instruction->erase_frontend_attribute(kXlaInlineableAttr);
         // TODO(b/436603025). CallInliner do not inline the Shardy related

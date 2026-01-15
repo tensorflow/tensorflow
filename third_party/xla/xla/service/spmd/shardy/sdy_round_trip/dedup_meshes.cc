@@ -201,11 +201,12 @@ void addOrMergeNewAxisRefAttr(AxisRefAttr oldAxisRef,
                               mlir::MLIRContext* context,
                               const MeshAttr& mainMesh,
                               const AxisMap& axisMap) {
-  if (!axisMap.contains(oldAxisRef.getName())) {
+  auto it = axisMap.find(oldAxisRef.getName());
+  if (it == axisMap.end()) {
     // The old axis is of size 1, skip it.
     return;
   }
-  ArrayRef<AxisRefAttr> mainAxisRefs = axisMap.at(oldAxisRef.getName());
+  ArrayRef<AxisRefAttr> mainAxisRefs = it->second;
   if (!oldAxisRef.getSubAxisInfo()) {
     for (AxisRefAttr mainAxisRef : mainAxisRefs) {
       sdy::addAxisOrMerge(newAxisRefs, mainAxisRef, mainMesh);
@@ -370,10 +371,11 @@ void replaceManualAxes(sdy::ManualComputationOp manualComputation,
   llvm::transform(manualComputation.getManualAxes(),
                   sdy::AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
                   [&axisMap = axisMap](StringAttr manualAxis) -> AxisRefVector {
-                    if (!axisMap.contains(manualAxis.getValue())) {
+                    auto it = axisMap.find(manualAxis.getValue());
+                    if (it == axisMap.end()) {
                       return {};
                     }
-                    return axisMap.at(manualAxis.getValue());
+                    return it->second;
                   });
   SmallVector<StringAttr> newManualAxes;
   newManualAxes.reserve(newAxisRefs.size());
