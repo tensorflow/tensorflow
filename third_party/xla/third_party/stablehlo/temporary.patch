@@ -28,13 +28,19 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b
  
  namespace mlir {
  namespace stablehlo {
-@@ -94,6 +96,43 @@
+@@ -94,6 +96,49 @@
        value));
  }
  
 +
 +MlirOp IotaLike(MlirOp input, int64_t dim, Type elementType) {
 +  auto inputType = mlir::cast<RankedTensorType>(input.getType());
++  if (inputType.getRank() == 0) {
++    // Need to construct 1-D iota and reshape to 0-D.
++    auto iota = stablehlo::Iota(input.getBuilder(),
++                                inputType.clone({1}, elementType), dim);
++    return stablehlo::Reshape(iota, {});
++  }
 +  if (inputType.hasStaticShape()) {
 +    return stablehlo::Iota(input.getBuilder(), inputType.clone(elementType),
 +                           dim);
@@ -91,7 +97,7 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h b/s
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
-@@ -199,6 +199,56 @@
+@@ -199,6 +199,79 @@
          &ctx, {Precision::HIGHEST, Precision::HIGHEST});
      auto dot = stablehlo::DotGeneral(arg0, arg1, dotDimsAttr, precision);
      func::Return(fb, dot);
@@ -116,6 +122,29 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
 +    auto type2x3xi64 = makeTensorType(ctx, {2, 3}, ElementType::I64);
 +    auto arg0 = func::Argument(fb, type2x3xi64);
 +    auto iota = stablehlo::IotaLike(arg0, 1, type2x3xi64.getElementType());
++    func::Return(fb, iota);
++  }
++
++  OwningOpRef<ModuleOp> module = mb->build();
++  EXPECT_TRUE(succeeded(mlir::verify(*module)));
++  EXPECT_EQ(expected, debugString(*module));
++}
++
++TEST(MlirBuilderTest, IotaLikeScalar) {
++  std::string expected = R"mlir(module {
++  func.func @main(%arg0: tensor<i64>) -> tensor<i64> {
++    %0 = stablehlo.iota dim = 0 : tensor<1xi64>
++    %1 = stablehlo.reshape %0 : (tensor<1xi64>) -> tensor<i64>
++    return %1 : tensor<i64>
++  }
++})mlir";
++  StablehloModuleBuilder mb;
++  {  // Build Main Func
++    func::FunctionBuilder fb(mb.get(), "main");
++    auto& ctx = fb.getContext();
++    auto typei64 = makeTensorType(ctx, {}, ElementType::I64);
++    auto arg0 = func::Argument(fb, typei64);
++    auto iota = stablehlo::IotaLike(arg0, 0, typei64.getElementType());
 +    func::Return(fb, iota);
 +  }
 +
