@@ -91,23 +91,21 @@ bool IsLocalPeerTransfer(const P2PConfig::SourceTargetMapEntry& source_target,
 CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
     int64_t replica_count, int64_t partition_count,
-    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
-    AsyncStreamKind stream_kind)
+    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled)
     : CollectivePermuteStartThunk(
           std::move(thunk_info),
           GetP2PConfig(instr, replica_count, partition_count),
           IsGPUSyncCollective(*instr)
               ? nullptr
               : std::make_shared<CollectiveThunk::AsyncEvents>(),
-          buffers, p2p_memcpy_enabled, stream_kind) {}
+          buffers, p2p_memcpy_enabled) {}
 
 CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     ThunkInfo thunk_info, const P2PConfig& config,
     std::shared_ptr<AsyncEvents> async_events,
-    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
-    AsyncStreamKind stream_kind)
+    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kCollectivePermuteStart, thunk_info, async_events,
-                      stream_kind),
+                      p2p_memcpy_enabled),
       config_(config),
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
@@ -284,8 +282,7 @@ CollectivePermuteStartThunk::FromProto(
 
   return std::make_unique<CollectivePermuteStartThunk>(
       std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
-      async_events, std::move(buffers), thunk_proto.p2p_memcpy_enabled(),
-      thunk_proto.async_stream_kind());
+      async_events, std::move(buffers), thunk_proto.p2p_memcpy_enabled());
 }
 
 absl::StatusOr<ThunkProto> CollectivePermuteStartThunk::ToProto() const {
