@@ -593,6 +593,40 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
 }
 
+TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
+  const std::string kHloText = R"(
+triton_dot {
+  p0 = f16[55,120] parameter(0)
+  p1 = f16[120,20] parameter(1)
+  ROOT dot = f16[55,20] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[55,120]{1,0} parameter(0)
+  p1 = f16[120,20]{1,0} parameter(1)
+  ROOT _ = f16[55,20] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}}}
+})";
+
+  // Check for tiling and splitk.
+  // To check for splitk, we check that two fusions are created - one for dot
+  // and the second for reduce.
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: f16[55,3,40]{2,1,0} fusion
+; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "sizes":["16","1","32"]
+; CHECK: f16[3,40,20]{2,1,0} fusion
+; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "sizes":["1","32","64"]
+; CHECK: ENTRY
+; CHECK: f32[3,55,20]{2,1,0} fusion({{.*}})
+; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}})
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -713,6 +747,76 @@ ENTRY main {
                                            ? "// CHECK: __cublas$lt"
                                            : "// CHECK: __cublas$gemm"));
   EXPECT_TRUE(filecheck_matches);
+}
+
+TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
+  if (GpuComputeComp().IsRocm() ||
+      GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
+  }
+  HloModuleConfig config;
+  DebugOptions options = GetDebugOptionsForTest();
+  options.set_xla_gpu_cublas_fallback(true);
+  options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
+  std::string output_directory;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
+    output_directory = tsl::testing::TmpDir();
+  }
+  options.set_xla_dump_to(output_directory);
+  config.set_debug_options(options);
+  // Computation is chosen such that relatively heavy math operations before the
+  // GEMM are not worth fusing because they would get duplicated many times and
+  // slow down execution. Therefore autotuning picks cuBLAS here.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion1 {
+  p0 = f32[333,333] parameter(0)
+  s = f32[333,333] sine(p0)
+  p1 = f32[333,333] parameter(1)
+  c = f32[333,333] cosine(p1)
+  ROOT dot = f32[333,333] dot(s, c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[333,333] parameter(0)
+  p1 = f32[333,333] parameter(1)
+  ROOT rr = f32[333,333] fusion(p0, p1), kind=kCustom, calls=fusion1,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
+})",
+                                                       config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+
+  std::string dump;
+  TF_EXPECT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(output_directory,
+                        FilenameFor(*optimized_module, /*prefix=*/"",
+                                    /*suffix=*/"gemm_fusion_0.rr.txt")),
+      &dump));
+  EXPECT_TRUE(*RunFileCheck(dump, R"(
+CHECK: HloModule rr
+CHECK-NOT: cublas
+CHECK: __triton_gemm
+CHECK-NOT: block_m
+)"));
+
+  dump.clear();
+
+  TF_EXPECT_OK(tsl::ReadFileToString(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(
+          output_directory,
+          FilenameFor(*optimized_module, /*prefix=*/"",
+                      /*suffix=*/"gemm_fusion_0.rr.optimized.txt")),
+      &dump));
+  EXPECT_TRUE(*RunFileCheck(dump, R"(
+CHECK: HloModule rr
+CHECK-NOT: triton
+CHECK: cublas
+)"));
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {

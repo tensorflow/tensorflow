@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -140,13 +139,6 @@ class GpuCompiler : public LLVMCompiler {
       const CompiledModule& aot_result,
       const se::StreamExecutor& stream_exec) override;
 
-  static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description,
-      bool enable_cublaslt = false);
-
-  static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description);
-
  protected:
   struct BackendCompileResult {
     std::string asm_text;
@@ -175,25 +167,24 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  // Add autotuning passes for convolution and gemm.
+  // Add autotuning passes for convolution and gemm (except triton).
   // target_config must outlive the pipeline.
-  virtual absl::Status AddConvAndGemmAutotuningPass(
+  virtual absl::Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+      se::StreamExecutor* stream_exec, const GpuTargetConfig* target_config) {
+    return absl::OkStatus();
+  }
+
+  // Add autotuning passes for GEMM fusions.
+  virtual absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
-      const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
-      const Compiler::GpuTargetConfig* target_config,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version,
-      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn);
-
-  virtual absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetCodegenBackends(se::StreamExecutor* stream_exec,
-                     const Compiler::GpuTargetConfig* target_config,
-                     const DebugOptions& debug_options,
-                     mlir::MLIRContext* mlir_context) {
-    return std::vector<std::unique_ptr<CodegenBackend>>();
+      stream_executor::StreamExecutor* stream_executor) {
+    return absl::OkStatus();
   }
 
   // target_config must outlive the pipeline.
