@@ -77,7 +77,8 @@ TEST(KernelThunkTest, AddF32) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
-      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+      KernelThunk::Create({"add_f32"}, {{in_slice, in.shape()}},
+                          {{out_slice, out.shape()}}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{0}));
 
   AddF32HostKernel host_kernels;
@@ -100,7 +101,8 @@ TEST(KernelThunkTest, AddF32Inline) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
-      KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
+      KernelThunk::Create({"add_f32"}, {{slice, in_out.shape()}},
+                          {{slice, in_out.shape()}}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
@@ -129,7 +131,8 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
   // Invariant buffer set is incorrect - should include in_slice, but is empty.
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
-      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+      KernelThunk::Create({"add_f32"}, {{in_slice, in.shape()}},
+                          {{out_slice, out.shape()}}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
@@ -162,7 +165,8 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
   // buffer that's not invariant.
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
-      KernelThunk::Create({"add_f32"}, {slice}, {slice}, "add_f32",
+      KernelThunk::Create({"add_f32"}, {{slice, in_out.shape()}},
+                          {{slice, in_out.shape()}}, "add_f32",
                           NumWorkGroups{4}, /*invariant_arguments=*/{0}));
 
   AddF32HostKernel host_kernels;
@@ -195,9 +199,11 @@ TEST(KernelThunkInvariantBuffersTest,
   auto [slice_0, slice_1] = CreateBufferAllocationSlice(alloc_0, alloc_1);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create({"add_f32"}, {slice_0, slice_1},
-                                      {slice_0}, "add_f32", NumWorkGroups{4},
-                                      /*invariant_arguments=*/{1}));
+      auto thunk,
+      KernelThunk::Create(
+          {"add_f32"}, {{slice_0, data0.shape()}, {slice_1, data1.shape()}},
+          {{slice_0, data0.shape()}}, "add_f32", NumWorkGroups{4},
+          /*invariant_arguments=*/{1}));
 
   AddF32HostKernel host_kernels;
 
