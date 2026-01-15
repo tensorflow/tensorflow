@@ -90,6 +90,7 @@ cc_library(
         "//xla/tests:pjrt_client_registry",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:protobuf",

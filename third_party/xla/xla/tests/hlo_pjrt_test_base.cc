@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tests/aot_utils.h"
@@ -52,15 +53,15 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtTestBase(GetPjRtClientForTest(), std::move(options)) {}
+    : HloPjRtTestBase(GetPjRtClientForTest().release(), std::move(options)) {}
 
-HloPjRtTestBase::HloPjRtTestBase(std::unique_ptr<PjRtClient> client,
+HloPjRtTestBase::HloPjRtTestBase(PjRtClient* client,
                                  HloPjRtTestBaseOptions options)
     : HloPjRtTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-              client.get()),
-          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
-          std::move(client), std::move(options)) {}
+              client),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
+          absl::WrapUnique(client), std::move(options)) {}
 
 HloPjRtTestBase::HloPjRtTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,

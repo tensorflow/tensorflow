@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "google/protobuf/text_format.h"
@@ -89,15 +90,16 @@ stream_executor::DeviceDescription GetDeviceDescription(
 }  // namespace
 
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtGpuTestBase(GetPjRtClientForTest(), std::move(options)) {}
+    : HloPjRtGpuTestBase(GetPjRtClientForTest().release(), std::move(options)) {
+}
 
-HloPjRtGpuTestBase::HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client,
+HloPjRtGpuTestBase::HloPjRtGpuTestBase(PjRtClient* client,
                                        HloPjRtTestBaseOptions options)
     : HloPjRtGpuTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-              client.get()),
-          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
-          GetDeviceDescription(client.get()), std::move(client),
+              client),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
+          GetDeviceDescription(client), absl::WrapUnique(client),
           std::move(options)) {}
 
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(

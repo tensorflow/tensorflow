@@ -34,8 +34,7 @@ class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase {
   }
 
  private:
-  HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client,
-                     HloPjRtTestBaseOptions options);
+  HloPjRtGpuTestBase(PjRtClient* client, HloPjRtTestBaseOptions options);
   HloPjRtGpuTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
                      DeviceShapeSizeFn device_shape_size_fn,
                      stream_executor::DeviceDescription device_description,
