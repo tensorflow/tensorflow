@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 
 #include "absl/log/check.h"
@@ -27,14 +29,37 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
+std::unique_ptr<PjRtClient> GetPjRtClientForTest() {
+  CHECK(ShouldUsePjRt())
+      << "PjRt is required for tests extending HloPjRtGpuTestBase.";
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+      GetGlobalPjRtClientTestFactory().Get()();
+  CHECK_OK(client.status())
+      << "Failed to create PjRt client. " << client.status();
+  return *std::move(client);
+}
 
-absl::StatusOr<GpuTargetConfig> GetGpuTargetConfig(PjRtClient* client) {
+HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
+  HloRunnerAgnosticTestBaseOptions new_options;
+  new_options.verifier_layout_sensitive = options.verifier_layout_sensitive;
+  new_options.allow_mixed_precision_in_hlo_verifier =
+      options.allow_mixed_precision_in_hlo_verifier;
+  new_options.instruction_can_change_layout_func =
+      std::move(options.instruction_can_change_layout_func);
+  new_options.swallow_execution_errors =
+      HasPjRtAotAwareSwallowExecutionErrors();
+  return new_options;
+}
+
+absl::StatusOr<GpuTargetConfig> GetGpuTargetConfig(PjRtClient* const client) {
   ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                    client->GetTopologyDescription());
   auto it = topology->Attributes().find("target_config");
@@ -55,20 +80,35 @@ absl::StatusOr<GpuTargetConfig> GetGpuTargetConfig(PjRtClient* client) {
   return gpu::GpuTargetConfig::FromProto(target_config_proto);
 }
 
-stream_executor::DeviceDescription GetDeviceDescription() {
-  // It is not ideal that we need to create a temporary client here and cannot
-  // use the same client that is used by the test runner. However it is
-  // intentional that the test runner does not expose the client.
-  auto pjrt_client = GetGlobalPjRtClientTestFactory().Get()();
-  CHECK_OK(pjrt_client.status());
-  absl::StatusOr<GpuTargetConfig> target_config =
-      GetGpuTargetConfig(pjrt_client.value().get());
+stream_executor::DeviceDescription GetDeviceDescription(
+    PjRtClient* const client) {
+  absl::StatusOr<GpuTargetConfig> target_config = GetGpuTargetConfig(client);
   CHECK_OK(target_config.status());
-  return target_config.value().device_description;
+  return std::move(target_config)->device_description;
 }
 }  // namespace
 
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtTestBase(options), device_description_(GetDeviceDescription()) {}
+    : HloPjRtGpuTestBase(GetPjRtClientForTest(), std::move(options)) {}
+
+HloPjRtGpuTestBase::HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client,
+                                       HloPjRtTestBaseOptions options)
+    : HloPjRtGpuTestBase(
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
+              client.get()),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
+          GetDeviceDescription(client.get()), std::move(client),
+          std::move(options)) {}
+
+HloPjRtGpuTestBase::HloPjRtGpuTestBase(
+    DeviceShapeRepresentationFn device_shape_representation_fn,
+    DeviceShapeSizeFn device_shape_size_fn,
+    stream_executor::DeviceDescription device_description,
+    std::unique_ptr<PjRtClient> client, HloPjRtTestBaseOptions options)
+    : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
+                                std::move(device_shape_representation_fn),
+                                std::move(device_shape_size_fn),
+                                BuildOptions(std::move(options))),
+      device_description_(std::move(device_description)) {}
 
 }  // namespace xla::gpu

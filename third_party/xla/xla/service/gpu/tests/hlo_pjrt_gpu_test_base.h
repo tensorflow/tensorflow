@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TESTS_HLO_PJRT_GPU_TEST_BASE_H_
 #define XLA_SERVICE_GPU_TESTS_HLO_PJRT_GPU_TEST_BASE_H_
 
+#include <memory>
+
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
 
 namespace xla::gpu {
 
-class HloPjRtGpuTestBase : public HloPjRtTestBase {
- public:
+class HloPjRtGpuTestBase : public HloRunnerAgnosticTestBase {
+ protected:
   explicit HloPjRtGpuTestBase(HloPjRtTestBaseOptions options = {});
 
   const stream_executor::DeviceDescription& device_description() const {
@@ -30,6 +34,14 @@ class HloPjRtGpuTestBase : public HloPjRtTestBase {
   }
 
  private:
+  HloPjRtGpuTestBase(std::unique_ptr<PjRtClient> client,
+                     HloPjRtTestBaseOptions options);
+  HloPjRtGpuTestBase(DeviceShapeRepresentationFn device_shape_representation_fn,
+                     DeviceShapeSizeFn device_shape_size_fn,
+                     stream_executor::DeviceDescription device_description,
+                     std::unique_ptr<PjRtClient> client,
+                     HloPjRtTestBaseOptions options);
+
   stream_executor::DeviceDescription device_description_;
 };
 
