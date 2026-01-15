@@ -1330,9 +1330,309 @@ def nonzero(a):
         "The rank of `a` is unknown, so we can't decide how many "
         'arrays to return.'
     )
+
   return array_ops_stack.unstack(
       array_ops.where_v2(math_ops.cast(a, dtypes.bool)), a.shape.rank, axis=1
   )
+
+
+@tf_export.tf_export('experimental.numpy.unique', v1=[])
+@np_utils.np_doc('unique')
+def unique(ar, return_index=False, return_inverse=False, return_counts=False,
+           axis=None):
+  """Find the unique elements of an array.
+
+  Returns the sorted unique elements of an array.
+
+  Args:
+    ar: Input array. This will be flattened if it is not already 1-D.
+    return_index: If True, also return the indices of ar that result in
+      the unique array.
+    return_inverse: If True, also return the indices of the unique array
+      that can be used to reconstruct ar.
+    return_counts: If True, also return the number of times each unique
+      item appears in ar.
+    axis: Not supported. The axis to operate on.
+
+  Returns:
+    unique: The sorted unique values.
+    unique_indices: The indices of the first occurrences of the unique
+      values in the original array. Only provided if return_index is True.
+    unique_inverse: The indices to reconstruct the original array from
+      the unique array. Only provided if return_inverse is True.
+    unique_counts: The number of times each of the unique values comes up
+      in the original array. Only provided if return_counts is True.
+
+  Raises:
+    NotImplementedError: If axis is provided.
+  """
+  if axis is not None:
+    raise NotImplementedError('axis parameter is not currently supported.')
+
+  ar = asarray(ar)
+  ar_flat = ravel(ar)
+
+  if return_counts:
+    unique_vals, idx, counts = array_ops.unique_with_counts(ar_flat)
+  else:
+    unique_vals, idx = array_ops.unique(ar_flat)
+    counts = None
+
+  # Sort the unique values to match NumPy behavior
+  sort_indices = sort_ops.argsort(unique_vals)
+  unique_vals = array_ops.gather(unique_vals, sort_indices)
+
+  # Update inverse indices to reflect sorted order
+  inverse_sort_indices = sort_ops.argsort(sort_indices)
+  idx = array_ops.gather(inverse_sort_indices, idx)
+
+  if counts is not None:
+    counts = array_ops.gather(counts, sort_indices)
+
+  result = [unique_vals]
+
+  if return_index:
+    # Find first occurrence of each unique value
+    # For each unique value, find the minimum index where it appears
+    n_unique = array_ops.shape(unique_vals)[0]
+    ar_indices = math_ops.range(array_ops.size(ar_flat))
+    # Use unsorted_segment_min to find first index for each unique value
+    first_indices = math_ops.unsorted_segment_min(
+        ar_indices, idx, n_unique)
+    result.append(first_indices)
+
+  if return_inverse:
+    result.append(idx)
+
+  if return_counts:
+    result.append(counts)
+
+  if len(result) == 1:
+    return result[0]
+  return tuple(result)
+
+
+@tf_export.tf_export('experimental.numpy.diff', v1=[])
+@np_utils.np_doc('diff')
+def diff(a, n=1, axis=-1, prepend=None, append=None):
+  """Calculate the n-th discrete difference along the given axis.
+
+  The first difference is given by out[i] = a[i+1] - a[i] along
+  the given axis. Higher differences are calculated by using diff
+  recursively.
+
+  Args:
+    a: Input array.
+    n: The number of times values are differenced. If zero, the input
+      is returned as-is.
+    axis: The axis along which the difference is taken. Default is -1.
+    prepend: Values to prepend to a along axis prior to performing
+      the difference.
+    append: Values to append to a along axis prior to performing
+      the difference.
+
+  Returns:
+    The n-th differences. The shape of the output is the same as a
+    except along axis where the dimension is smaller by n.
+
+  Raises:
+    ValueError: If n is negative.
+  """
+  if n < 0:
+    raise ValueError('order must be non-negative but got ' + repr(n))
+
+  a = asarray(a)
+
+  if n == 0:
+    return a
+
+  nd = a.ndim
+  if nd == 0:
+    raise ValueError('diff requires input that is at least one dimensional')
+
+  axis = axis if axis >= 0 else nd + axis
+
+  combined = [a]
+
+  if prepend is not None:
+    prepend = asarray(prepend)
+    if prepend.ndim == 0:
+      # Expand dims to match input shape except along axis
+      shape = [1] * nd
+      prepend = np_array_ops.broadcast_to(prepend, shape)
+    combined.insert(0, prepend)
+
+  if append is not None:
+    append = asarray(append)
+    if append.ndim == 0:
+      shape = [1] * nd
+      append = np_array_ops.broadcast_to(append, shape)
+    combined.append(append)
+
+  if len(combined) > 1:
+    a = concatenate(combined, axis=axis)
+
+  # Build slice specs for a[1:] and a[:-1] along axis
+  slice_1 = [slice(None)] * nd
+  slice_2 = [slice(None)] * nd
+  slice_1[axis] = slice(1, None)
+  slice_2[axis] = slice(None, -1)
+
+  for _ in range(n):
+    a = a[tuple(slice_1)] - a[tuple(slice_2)]
+
+  return a
+
+
+@tf_export.tf_export('experimental.numpy.ediff1d', v1=[])
+@np_utils.np_doc('ediff1d')
+def ediff1d(ary, to_end=None, to_begin=None):
+  """The differences between consecutive elements of an array.
+
+  Args:
+    ary: If necessary, will be flattened before the differences are taken.
+    to_end: Number(s) to append at the end of the returned differences.
+    to_begin: Number(s) to prepend at the beginning of the returned
+      differences.
+
+  Returns:
+    The differences. Shape will be (n-1,) + to_begin.shape + to_end.shape.
+  """
+  ary = asarray(ary)
+  ary = ravel(ary)
+
+  diff_result = ary[1:] - ary[:-1]
+
+  parts = []
+  if to_begin is not None:
+    to_begin = ravel(asarray(to_begin))
+    parts.append(to_begin)
+
+  parts.append(diff_result)
+
+  if to_end is not None:
+    to_end = ravel(asarray(to_end))
+    parts.append(to_end)
+
+  if len(parts) > 1:
+    return concatenate(parts)
+  return diff_result
+
+
+@tf_export.tf_export('experimental.numpy.gradient', v1=[])
+@np_utils.np_doc_only('gradient')
+def gradient(f, *varargs, axis=None, edge_order=1):
+  """Return the gradient of an N-dimensional array.
+
+  The gradient is computed using second order accurate central differences
+  in the interior points and either first or second order accurate one-sides
+  (forward or backwards) differences at the boundaries.
+
+  Args:
+    f: An N-dimensional array containing samples of a scalar function.
+    *varargs: Spacing between f values. Default unitary spacing for all
+      dimensions. Spacing can be specified using:
+      1. Single scalar to specify a sample distance for all dimensions.
+      2. N scalars to specify a constant sample distance for each dimension.
+    axis: Gradient is calculated only along the given axis or axes. The
+      default (axis = None) is to calculate the gradient for all axes.
+    edge_order: Gradient is calculated using N-th order accurate
+      differences at the boundaries. Default: 1.
+
+  Returns:
+    gradient: List of ndarrays (or a single ndarray if only one dimension)
+    corresponding to the derivatives of f with respect to each dimension.
+
+  Raises:
+    ValueError: If edge_order is not 1 or 2.
+    NotImplementedError: If non-scalar spacing is provided.
+  """
+  if edge_order not in (1, 2):
+    raise ValueError('edge_order must be 1 or 2, got ' + repr(edge_order))
+
+  f = asarray(f)
+  ndim = f.ndim
+
+  if ndim == 0:
+    raise ValueError('gradient requires at least one dimension')
+
+  # Determine axes to compute gradient
+  if axis is None:
+    axes = list(range(ndim))
+  elif isinstance(axis, int):
+    axes = [axis if axis >= 0 else ndim + axis]
+  else:
+    axes = [ax if ax >= 0 else ndim + ax for ax in axis]
+
+  # Parse spacing arguments
+  len_axes = len(axes)
+  if len(varargs) == 0:
+    dx = [1.0] * len_axes
+  elif len(varargs) == 1:
+    dx = [varargs[0]] * len_axes
+  elif len(varargs) == len_axes:
+    dx = list(varargs)
+  else:
+    raise ValueError(
+        'Invalid number of spacing arguments. Expected 0, 1, or '
+        f'{len_axes}, got {len(varargs)}.'
+    )
+
+  # Check that all spacings are scalars
+  for i, d in enumerate(dx):
+    if not isinstance(d, (int, float)):
+      raise NotImplementedError(
+          'Non-scalar spacing (coordinate arrays) is not currently supported.'
+      )
+
+  gradients = []
+
+  for i, ax in enumerate(axes):
+    spacing = math_ops.cast(dx[i], f.dtype)
+
+    # Get shape along axis
+    n = array_ops.shape(f)[ax]
+
+    # Build slice objects
+    slice_1 = [slice(None)] * ndim
+    slice_2 = [slice(None)] * ndim
+    slice_3 = [slice(None)] * ndim
+    slice_4 = [slice(None)] * ndim
+
+    # Central differences for interior points
+    slice_1[ax] = slice(2, None)
+    slice_2[ax] = slice(None, -2)
+    interior = (f[tuple(slice_1)] - f[tuple(slice_2)]) / (2.0 * spacing)
+
+    # Forward difference for first point
+    slice_3[ax] = slice(1, 2)
+    slice_4[ax] = slice(0, 1)
+    if edge_order == 1:
+      first = (f[tuple(slice_3)] - f[tuple(slice_4)]) / spacing
+    else:  # edge_order == 2
+      slice_5 = [slice(None)] * ndim
+      slice_5[ax] = slice(2, 3)
+      first = (-3.0 * f[tuple(slice_4)] + 4.0 * f[tuple(slice_3)] -
+               f[tuple(slice_5)]) / (2.0 * spacing)
+
+    # Backward difference for last point
+    slice_3[ax] = slice(-1, None)
+    slice_4[ax] = slice(-2, -1)
+    if edge_order == 1:
+      last = (f[tuple(slice_3)] - f[tuple(slice_4)]) / spacing
+    else:  # edge_order == 2
+      slice_5 = [slice(None)] * ndim
+      slice_5[ax] = slice(-3, -2)
+      last = (3.0 * f[tuple(slice_3)] - 4.0 * f[tuple(slice_4)] +
+              f[tuple(slice_5)]) / (2.0 * spacing)
+
+    # Concatenate: first + interior + last
+    grad = concatenate([first, interior, last], axis=ax)
+    gradients.append(grad)
+
+  if len(gradients) == 1:
+    return gradients[0]
+  return gradients
 
 
 @tf_export.tf_export('experimental.numpy.diag_indices', v1=[])
