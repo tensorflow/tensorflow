@@ -74,10 +74,12 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
 
   for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
+    Shape shape =
+        ShapeUtil::MakeShape(U8, {static_cast<int64_t>(arg.size_bytes)});
     if (arg.memory_access == BufferUse::MemoryAccess::kRead) {
-      argument_buffers.push_back(slice);
+      argument_buffers.push_back({slice, shape});
     } else {
-      result_buffers.push_back(slice);
+      result_buffers.push_back({slice, shape});
     }
   }
 
