@@ -86,6 +86,11 @@ class NcclCollectives : public GpuCollectives {
   absl::Status Deallocate(void* location) final;
 
   absl::Status InitializeTopology(Topology topology) final;
+
+  absl::StatusOr<Topology> GetTopology() final { return topology_; }
+
+ private:
+  Topology topology_;
 };
 
 }  // namespace xla::gpu
