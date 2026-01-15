@@ -42,11 +42,9 @@ namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
     ThunkInfo thunk_info, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks, AsyncStreamKind stream_kind,
+    std::vector<std::unique_ptr<Thunk>> thunks,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : Thunk(kind, std::move(thunk_info)),
-      stream_kind_(stream_kind),
-      async_events_(async_events) {
+    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {
   for (auto& thunk : thunks) {
     thunks_.emplace_back(std::move(thunk));
   }
@@ -69,7 +67,7 @@ absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
 
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
+  int64_t async_stream_idx = Thunk::execution_stream_id().value();
   // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
   // async_streams is therefore guaranteed to be non-null and to have enough
   // elements to index by the AsyncStreamKind enum.
@@ -172,8 +170,7 @@ CollectiveGroupThunk::FromProto(
                    Thunk::KindFromProto(thunk_proto.thunk_kind()));
 
   return std::make_unique<CollectiveGroupThunk>(
-      std::move(thunk_info), kind, std::move(thunk_sequence),
-      thunk_proto.async_stream_kind(), async_events);
+      std::move(thunk_info), kind, std::move(thunk_sequence), async_events);
 }
 
 absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
@@ -182,7 +179,6 @@ absl::StatusOr<ThunkProto> CollectiveGroupThunk::ToProto() const {
 
   CollectiveGroupThunkProto* thunk_proto =
       proto.mutable_collective_group_thunk();
-  thunk_proto->set_async_stream_kind(stream_kind_);
 
   std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
   if (async_events_id.has_value()) {

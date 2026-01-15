@@ -238,7 +238,7 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
     std::shared_ptr<AsyncEvents> async_events,
     std::vector<CollectiveThunk::Buffer> buffers, bool one_shot_kernel_enabled)
     : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info, async_events,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
+                      false),
       config_(config),
       buffers_(std::move(buffers)),
       one_shot_kernel_enabled_(one_shot_kernel_enabled) {

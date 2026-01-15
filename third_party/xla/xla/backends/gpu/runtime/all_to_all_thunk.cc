@@ -83,7 +83,7 @@ AllToAllStartThunk::AllToAllStartThunk(
     const AllToAllConfig& config, std::vector<CollectiveThunk::Buffer> buffers,
     bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kAllToAllStart, thunk_info, async_events,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
+                      p2p_memcpy_enabled),
       config_(config),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
@@ -134,12 +134,10 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
       << "Local device count : " << device_count_;
 
   if (is_local() && p2p_memcpy_enabled_) {
-    AsyncStreamKind stream_kind = GetAsyncStreamKind();
-
     TF_ASSIGN_OR_RETURN(
         GpuCliqueKey clique_key,
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                        config().group_mode, stream_kind));
+                        config().group_mode, p2p_memcpy_enabled_));
 
     TF_ASSIGN_OR_RETURN(
         Communicator * comm,
@@ -261,13 +259,6 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
       xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers, stream,
                             comm, config_.config.use_symmetric_buffer));
   return true;
-}
-
-AsyncStreamKind AllToAllStartThunk::GetAsyncStreamKind() const {
-  if (is_local() && p2p_memcpy_enabled_) {
-    return AsyncStreamKind::ASYNC_STREAM_KIND_MEMCPYP2P;
-  }
-  return CollectiveThunk::GetAsyncStreamKind();
 }
 
 bool AllToAllStartThunk::is_local() const {
