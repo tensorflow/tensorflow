@@ -130,8 +130,7 @@ ENTRY computation {
   send_thunk->set_async_events(async_events);
 
   auto send_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kSendDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kSendDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(send_thunk));
@@ -222,8 +221,7 @@ ENTRY computation {
   recv_thunk->set_async_events(async_events);
 
   auto recv_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kRecvDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kRecvDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(recv_thunk));

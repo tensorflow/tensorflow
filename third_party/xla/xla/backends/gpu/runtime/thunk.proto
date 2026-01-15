@@ -389,7 +389,6 @@ message CollectiveConfigProto {
 
 message CollectiveThunkProto {
   ThunkKindProto thunk_kind = 1;
-  AsyncStreamKind async_stream_kind = 2;
   uint64 async_events_unique_id = 3;
 }
 
@@ -447,7 +446,6 @@ message CollectivePermuteStartThunkProto {
   CollectiveConfigProto collective_config = 3;
   repeated SourceTarget source_target_pairs = 4;
 
-  AsyncStreamKind async_stream_kind = 5;
   bool p2p_memcpy_enabled = 6;
 }
 
@@ -458,7 +456,6 @@ message SendThunkProto {
   CollectiveConfigProto collective_config = 3;
   repeated SourceTarget source_target_pairs = 4;
 
-  AsyncStreamKind async_stream_kind = 5;
   string instruction_name = 6;
 }
 
@@ -469,7 +466,6 @@ message RecvThunkProto {
   CollectiveConfigProto collective_config = 3;
   repeated SourceTarget source_target_pairs = 4;
 
-  AsyncStreamKind async_stream_kind = 5;
   string instruction_name = 6;
 }
 
@@ -481,14 +477,12 @@ message CollectiveBroadcastStartThunkProto {
 
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
-  AsyncStreamKind async_stream_kind = 2;
   optional uint64 async_events_unique_id = 3;
 }
 
 message CollectiveGroupThunkProto {
   ThunkKindProto thunk_kind = 1;
   repeated ThunkProto thunks = 2;
-  AsyncStreamKind async_stream_kind = 3;
   optional uint64 async_events_unique_id = 4;
 }
 
