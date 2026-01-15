@@ -45,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-0EtINPmm8jM8JUkwCr5UeLHN46rBg4UyMXOmRrQJpfA=",
-    strip_prefix = "rules_ml_toolchain-7e588e5b21e91bce5c3b9786e177c2579330b9aa",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/7e588e5b21e91bce5c3b9786e177c2579330b9aa.tar.gz"],
+    integrity = "sha256-VMGjV/cfYR79tIkevUvL5K6236fkc/FP1+ytUGIJZhY=",
+    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -187,16 +187,16 @@ remote_execution_configure = use_extension("//third_party/extensions:remote_exec
 use_repo(remote_execution_configure, "local_config_remote_execution")
 
 ### From @rules_ml_toolchain
-cuda_configure = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_configure.bzl", "cuda_configure_ext")
+cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
 use_repo(cuda_configure, "local_config_cuda")
 
-nccl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:nccl_configure.bzl", "nccl_configure_ext")
+nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
 
-sycl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:sycl_configure.bzl", "sycl_configure_ext")
+sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
 
-cuda_redist_init_ext = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(cuda_redist_init_ext, "cuda_cudart")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")

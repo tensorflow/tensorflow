@@ -19,16 +19,12 @@ CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES = {
     "cuda_cccl": {
         "repo_name": "cuda_cccl",
         "version_to_template": {
-            "13": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl_github.BUILD.tpl",
-            "12": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl_github.BUILD.tpl",
-            "11": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl_github.BUILD.tpl",
+            "any": "@rules_ml_toolchain//gpu/cuda/build_templates:cuda_cccl_github.BUILD.tpl",
         },
         "local": {
             "source_dirs": ["include", "lib"],
             "version_to_template": {
-                "13": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl.BUILD.tpl",
-                "12": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl.BUILD.tpl",
-                "11": "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_cccl.BUILD.tpl",
+                "any": "@rules_ml_toolchain//gpu/cuda/build_templates:cuda_cccl.BUILD.tpl",
             },
         },
     },
