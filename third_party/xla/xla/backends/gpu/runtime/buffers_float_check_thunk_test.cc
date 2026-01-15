@@ -58,6 +58,7 @@ using Metadata = BufferDebugLogEntryMetadataStore::Metadata;
 using ::stream_executor::gpu::BufferDebugLog;
 using ::testing::AllOf;
 using ::testing::Field;
+using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
 MATCHER_P2(IsEntryWithMetadata, store, metadata, "") {
@@ -445,6 +446,79 @@ TEST_F(BuffersDebugFloatCheckThunkTest,
                         /*is_input=*/false,
                         BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS,
                     }))));
+}
+
+TEST_F(BuffersDebugFloatCheckThunkTest, DoesNotAttemptLaunchingWithZeroBlocks) {
+  // Reproduces a bug where the input buffer has 0 elements and the kernel
+  // attempts to launch with BlockDim(0).
+  static constexpr size_t kLogSize =
+      BufferDebugLog<BufferDebugFloatCheckEntry>::RequiredSizeForEntries(10);
+  static constexpr size_t kTmpSizeElems = 1024;
+  static constexpr size_t kTmpSizeBytes = kTmpSizeElems * sizeof(uint32_t);
+  static constexpr size_t kTotalDeviceMemoryBytes = kLogSize + kTmpSizeBytes;
+  // Setup memory allocations for the log and inputs
+  BufferAllocation alloc(/*index=*/0,
+                         /*size=*/kTotalDeviceMemoryBytes,
+                         /*color=*/0);
+  int64_t input_offset = kLogSize;
+  BufferAllocation::Slice log_slice(&alloc, /*offset=*/0, kLogSize);
+  BufferAllocation::Slice tmp_slice(&alloc, /*offset=*/kLogSize, kTmpSizeBytes);
+  input_offset += kLogSize + kTmpSizeBytes;
+
+  BufferAllocation::Slice inputs[2];
+  inputs[0] = BufferAllocation::Slice(&alloc, 0, 0, PrimitiveType::BF16);
+  inputs[1] = BufferAllocation::Slice(&alloc, 0, 0, PrimitiveType::F32);
+
+  BufferAllocations allocations(
+      {executor_->AllocateArray<uint8_t>(kTotalDeviceMemoryBytes)},
+      executor_->device_ordinal(), allocator_.get());
+  se::DeviceAddressBase log_mem = allocations.GetDeviceAddress(log_slice);
+  // Initialize the log in device memory
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_log,
+      BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
+          *stream_, se::DeviceAddress<uint8_t>(log_mem)));
+
+  // Setup parameters for Initialize/Prepare/ExecuteOnStream
+  Thunk::InitializeParams init_params;
+  init_params.executor = executor_;
+  init_params.stream = stream_.get();
+
+  ServiceExecutableRunOptions run_options;
+  run_options.mutable_run_options()->set_stream(stream_.get());
+  ASSERT_OK_AND_ASSIGN(
+      CollectiveParams collective_params,
+      CollectiveParams::Create(run_options, /*async_streams=*/{},
+                               LocalDeviceId(executor_->device_ordinal())));
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMultimemRegistry multimem_registry(
+      executor_, collective_params.global_device_id);
+  Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
+                                      &multimem_registry, executor_,
+                                      &allocations};
+
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      ServiceExecutableRunOptions(), allocations, stream_.get(),
+      /*command_buffer_trace_stream=*/stream_.get(),
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+  auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
+
+  Thunk::ThunkInfo checked_thunk_info;
+  checked_thunk_info.thunk_id = ThunkId(123);
+  BuffersDebugFloatCheckThunk thunk(
+      Thunk::ThunkInfo(), checked_thunk_info, log_slice, tmp_slice,
+      {{/*buffer_idx=*/0, inputs[0]}, {/*buffer_idx=*/1, inputs[1]}},
+      metadata_store);
+  TF_ASSERT_OK(thunk.Initialize(init_params));
+  TF_ASSERT_OK(thunk.Prepare(prepare_params));
+  // If the kernel is launched with BlockDim(0), then this will fail with
+  // INVALID_ARGUMENT.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(execute_params));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<BufferDebugFloatCheckEntry> entries,
+                          device_log.ReadFromDevice(*stream_));
+
+  // The zero-sized buffers should be skipped, so no entries should be written.
+  EXPECT_THAT(entries, IsEmpty());
 }
 
 }  // namespace
