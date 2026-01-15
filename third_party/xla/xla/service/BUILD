@@ -3081,6 +3081,7 @@ cc_library(
     ],
 )
 
+# TODO(b/475838852): Re-enable once fixed.
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],

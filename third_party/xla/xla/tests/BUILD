@@ -1925,6 +1925,7 @@ xla_test(
     ],
 )
 
+# TODO(b/475838852): Re-enable once fixed.
 xla_test(
     name = "slice_test",
     timeout = "long",
@@ -2454,6 +2455,7 @@ xla_test(
     ],
 )
 
+# TODO(b/475838852): Re-enable once fixed.
 xla_test(
     name = "pad_test",
     srcs = ["pad_test.cc"],
@@ -3490,7 +3492,6 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -4152,7 +4153,6 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":client_library_test_base",
-        "//xla:error_spec",
         "//xla:literal_util",
         "//xla/hlo/builder:xla_builder",
         "@com_google_googletest//:gtest_main",
@@ -4166,7 +4166,6 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":client_library_test_base",
-        ":literal_test_util",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:literal",
