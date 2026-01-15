@@ -101,6 +101,20 @@ class BoolConcatenationOpModel : public BaseConcatenationOpModel {
   std::vector<bool> GetOutput() { return ExtractVector<bool>(output_); }
 };
 
+TEST(ConcatenationOpTest, ThreeDimensionalOneInputInt4) {
+  // INT4 values are packed 2 per byte.
+  // Shape {2, 1, 2} means 4 elements.
+  // Input: {1, 3, 4, 7}
+  // Packed:
+  // Byte 0: (1 & 0xF) | (3 << 4) = 0x31
+  // Byte 1: (4 & 0xF) | (7 << 4) = 0x74
+  ConcatenationOpModel<uint8_t> m0({TensorType_INT4, {2, 1, 2}}, /*axis=*/1,
+                                   /*num_inputs=*/1);
+  m0.SetInput(0, {0x31, 0x74});
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({0x31, 0x74}));
+}
+
 TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   ConcatenationOpModel<float> m0({TensorType_FLOAT32, {2, 1, 2}}, /*axis=*/1,
                                  /*num_inputs=*/1);
@@ -302,6 +316,35 @@ TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapes) {
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 1, 2, 3, 4, 5, 6, 4, 7, 7,
                                                 8, 9, 10, 11, 12}));
+}
+
+TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapesInt4) {
+  // Input 0: {2, 1, 2}, 4 elements -> {1, 3, 4, 7}
+  // Packed: 0x31, 0x74
+  // Input 1: {2, 3, 2}, 12 elements -> {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+  // Packed: 0x21, 0x43, 0x65, 0x87, 0xA9, 0xCB
+  //
+  // Output: {2, 4, 2} (axis=1 concat), 16 elements
+  // Expected Output (logical):
+  // Row 0 (concat input 0 row 0 and input 1 row 0):
+  // {1, 3} (from in0) + {1, 2, 3, 4, 5, 6} (from in1)
+  // -> {1, 3, 1, 2, 3, 4, 5, 6}
+  // Packed: 0x31, 0x21, 0x43, 0x65
+  // Row 1 (concat input 0 row 1 and input 1 row 1):
+  // {4, 7} (from in0) + {7, 8, 9, 10, 11, 12} (from in1)
+  // -> {4, 7, 7, 8, 9, 10, 11, 12}
+  // Packed: 0x74, 0x87, 0xA9, 0xCB
+  //
+  // Total Packed Output: 0x31, 0x21, 0x43, 0x65, 0x74, 0x87, 0xA9, 0xCB
+
+  ConcatenationOpModel<uint8_t> m0(
+      {{TensorType_INT4, {2, 1, 2}}, {TensorType_INT4, {2, 3, 2}}},
+      /*axis=*/1, /*num_inputs=*/2, TensorType_INT4);
+  m0.SetInput(0, {0x31, 0x74});
+  m0.SetInput(1, {0x21, 0x43, 0x65, 0x87, 0xA9, 0xCB});
+  ASSERT_EQ(m0.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({0x31, 0x21, 0x43, 0x65, 0x74,
+                                                0x87, 0xA9, 0xCB}));
 }
 
 TEST(ConcatenationOpTest, ThreeDimensionalTwoInputsDifferentShapesUInt32) {
