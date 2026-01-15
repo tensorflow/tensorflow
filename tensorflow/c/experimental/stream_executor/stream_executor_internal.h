@@ -69,6 +69,21 @@ inline SP_DeviceMemoryBase DeviceMemoryBaseToC(const DeviceMemoryBase* mem) {
   return device_memory_base;
 }
 
+namespace internal {
+class InternalIdInfo : public Platform::IdInfo {
+ public:
+  explicit InternalIdInfo(absl::string_view name)
+      : Platform::IdInfo([](const Platform::IdInfo& self) {
+          auto real_self = static_cast<const InternalIdInfo*>(&self);
+          return real_self->name_;
+        }),
+        name_(name) {}
+
+ private:
+  absl::string_view name_;
+};
+}  // namespace internal
+
 // This file implements core stream executor base classes in terms of
 // the C API defined in stream_executor.h. A class "CSomething" represents a
 // "Something" that can be manipulated via calls in the C interface.
@@ -82,7 +97,7 @@ class CPlatform : public Platform {
                      SP_TimerFns timer_fns);
   ~CPlatform() override;
 
-  Id id() const override { return Platform::Id(platform_id_info_.get()); }
+  Id id() const override { return Platform::Id(&platform_id_info_); }
   const std::string& Name() const override { return name_; }
   int VisibleDeviceCount() const override {
     int visible_device_count = 0;
@@ -117,7 +132,7 @@ class CPlatform : public Platform {
   SP_StreamExecutor stream_executor_;
   SP_TimerFns timer_fns_;
   std::string name_;
-  std::unique_ptr<Platform::IdInfo> platform_id_info_;
+  internal::InternalIdInfo platform_id_info_;
   stream_executor::ExecutorCache executor_cache_;
 };
 

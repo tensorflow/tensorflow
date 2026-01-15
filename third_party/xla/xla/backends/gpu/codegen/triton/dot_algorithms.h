@@ -23,7 +23,6 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/xla_data.pb.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace xtile {
@@ -73,12 +72,6 @@ absl::StatusOr<::mlir::Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
 absl::StatusOr<::mlir::Value> EmitSingleTileScaledDot(
     mlir::ImplicitLocOpBuilder& b, const HloScaledDotInstruction& scaled_dot,
     ScaledDotOperands dot_operands);
-
-namespace internal {
-absl::StatusOr<mlir::triton::ScaleDotElemType> GetScaleDotElemType(
-    mlir::Type value);
-
-}  // namespace internal
 
 }  // namespace xtile
 }  // namespace xla

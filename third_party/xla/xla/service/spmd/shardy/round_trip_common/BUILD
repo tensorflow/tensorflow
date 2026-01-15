@@ -112,6 +112,7 @@ cc_library(
         ":import_func_calls",
         ":import_sdy_custom_calls",
         ":open_while_free_vars_sharding",
+        "//xla/hlo/translate/hlo_to_mhlo/mlir:stablehlo_canonicalize_from_hlo_import",  # build_cleaner: keep
         "//xla/mlir_hlo:stablehlo_extension_passes",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",

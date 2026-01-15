@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+#include "xla/hlo/translate/hlo_to_mhlo/mlir/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 
