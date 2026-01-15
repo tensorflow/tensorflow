@@ -59,15 +59,21 @@ class SocketServer::SocketNetworkState : public SocketFdPacketState {
     connections_->list.push_back(this);
     connection_it_ = --connections_->list.end();
   }
-  explicit SocketNetworkState(std::shared_ptr<PullTable> table,
+  explicit SocketNetworkState(std::shared_ptr<ConnectionList> connections,
+                              std::shared_ptr<PullTable> table,
                               std::shared_ptr<BulkTransportFactory> factory,
                               const SocketAddress& addr)
       : table_(std::move(table)),
         factory_(std::move(factory)),
-        remote_addr_(addr) {
+        remote_addr_(addr),
+        connections_(std::move(connections)) {
+    absl::MutexLock l(connections_->mu);
+    connections_->list.push_back(this);
+    connection_it_ = --connections_->list.end();
   }
 
   ~SocketNetworkState() override {
+    factory_.reset();
     if (connections_) {
       absl::MutexLock l(connections_->mu);
       connections_->list.erase(connection_it_);
@@ -550,8 +556,8 @@ SocketServer::~SocketServer() {
 
 tsl::RCReference<SocketServer::Connection> SocketServer::Connect(
     const SocketAddress& other_addr) {
-  auto* local_ =
-      new SocketNetworkState(pull_table_, bulk_transport_factory_, other_addr);
+  auto* local_ = new SocketNetworkState(connections_, pull_table_,
+                                        bulk_transport_factory_, other_addr);
   local_->StartBulkTransporting();
   local_->IncRef();
   local_->StartConnect();
