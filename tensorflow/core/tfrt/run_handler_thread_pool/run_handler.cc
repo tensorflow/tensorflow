@@ -819,9 +819,9 @@ class RunHandlerPool::Impl {
                            timeout_in_ms * 1000 * 1000)) {
           return nullptr;
         }
+        wait_for_handler_latency->GetCell(absl::StrCat(options.priority))
+            ->Add(tensorflow::Env::Default()->NowMicros() - start_wait_us);
       }
-      wait_for_handler_latency->GetCell(absl::StrCat(options.priority))
-          ->Add(tensorflow::Env::Default()->NowMicros() - start_wait_us);
 
       // Remove the last entry from free_handlers_ and add to the end of
       // sorted_active_handlers_.
