@@ -36,6 +36,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -56,6 +58,14 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status Shutdown() override;
   absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) override;
+
+  // Async version of `BlockingKeyValueGet`. The `done` callback is invoked when
+  // the key-value becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  std::shared_ptr<tsl::CallOptions> AsyncKeyValueGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override;
   absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) override;
   absl::StatusOr<int64_t> KeyValueIncrement(absl::string_view key,
                                             int64_t increment) override;
@@ -148,6 +158,13 @@ absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     absl::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
+}
+
+std::shared_ptr<tsl::CallOptions>
+DistributedRuntimeCoordinationServiceClient::AsyncKeyValueGet(
+    absl::string_view key,
+    tsl::CoordinationServiceAgent::StatusOrValueCallback done) {
+  return coord_agent_->GetKeyValueAsync(key, std::move(done));
 }
 
 absl::StatusOr<std::string>
@@ -286,6 +303,13 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
 
   absl::Status Set(absl::string_view key, absl::string_view value) override {
     return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
+  }
+
+  std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override {
+    return client_->AsyncKeyValueGet(absl::StrCat(prefix_, key),
+                                     std::move(done));
   }
 
  private:
