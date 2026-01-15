@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
-#include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/layout_util.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -643,13 +642,13 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
     std::vector<std::string> args_initializer;
     for (const auto& buffer_proto : kernel_thunk.arguments_buffers()) {
       args_initializer.push_back(absl::StrCat(
-          "XLA_CPU_KernelArg{", GetBufferAllocationString(buffer_proto.slice()),
-          ", ", buffer_proto.slice().size(), "}"));
+          "XLA_CPU_KernelArg{", GetBufferAllocationString(buffer_proto), ", ",
+          buffer_proto.size(), "}"));
     }
     for (const auto& buffer_proto : kernel_thunk.results_buffers()) {
       args_initializer.push_back(absl::StrCat(
-          "XLA_CPU_KernelArg{", GetBufferAllocationString(buffer_proto.slice()),
-          ", ", buffer_proto.slice().size(), "}"));
+          "XLA_CPU_KernelArg{", GetBufferAllocationString(buffer_proto), ", ",
+          buffer_proto.size(), "}"));
     }
     return absl::StrCat("{", absl::StrJoin(args_initializer, ", "), "}");
   };

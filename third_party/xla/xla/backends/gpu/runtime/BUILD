@@ -2470,7 +2470,6 @@ xla_cc_test(
 cc_library(
     name = "shaped_slice",
     hdrs = ["shaped_slice.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         "//xla/service:shaped_slice",
     ],

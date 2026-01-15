@@ -292,7 +292,7 @@ CpuScatterFusion::EmitKernelDefinition() {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment_.GetUniqueSlice(fusion_, indexed.index));
-    result_buffers.push_back({slice, indexed.shape});
+    result_buffers.push_back(std::move(slice));
   }
 
   // TODO(willfroom): Move this to common method that can be shared across
@@ -306,14 +306,15 @@ CpuScatterFusion::EmitKernelDefinition() {
           buffer_assignment_.GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers, [&slice](const ShapedSlice& result_slice) {
-            return result_slice.slice.OverlapsWith(slice);
+          result_buffers,
+          [&slice](const BufferAllocation::Slice& result_slice) {
+            return result_slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back({slice, indexed.shape});
+      argument_buffers.push_back(std::move(slice));
       ++operand_index;
     }
   }
