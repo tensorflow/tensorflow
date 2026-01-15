@@ -1237,6 +1237,28 @@ class BlockLSTMGradOp : public OpKernel {
     const Tensor* h_out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h", &h_out));
 
+    OP_REQUIRES(ctx, i_out->dims() == 3,
+                errors::InvalidArgument("i must be rank 3 but is rank ",
+                                        i_out->dims()));
+    OP_REQUIRES(ctx, cs_out->dims() == 3,
+                errors::InvalidArgument("cs must be rank 3 but is rank ",
+                                        cs_out->dims()));
+    OP_REQUIRES(ctx, f_out->dims() == 3,
+                errors::InvalidArgument("f must be rank 3 but is rank ",
+                                        f_out->dims()));
+    OP_REQUIRES(ctx, o_out->dims() == 3,
+                errors::InvalidArgument("o must be rank 3 but is rank ",
+                                        o_out->dims()));
+    OP_REQUIRES(ctx, ci_out->dims() == 3,
+                errors::InvalidArgument("ci must be rank 3 but is rank ",
+                                        ci_out->dims()));
+    OP_REQUIRES(ctx, co_out->dims() == 3,
+                errors::InvalidArgument("co must be rank 3 but is rank ",
+                                        co_out->dims()));
+    OP_REQUIRES(ctx, h_out->dims() == 3,
+                errors::InvalidArgument("h must be rank 3 but is rank ",
+                                        h_out->dims()));
+
     const Tensor* cs_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_grad", &cs_grad));
 
