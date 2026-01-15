@@ -34,6 +34,8 @@ limitations under the License.
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 
 namespace xla {
@@ -118,6 +120,14 @@ class DistributedRuntimeClient
   // on potentially concurrent ops (e.g. set, delete), use WaitAtBarrier().
   virtual absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) = 0;
+
+  // Async version of `BlockingKeyValueGet`. The `done` callback is invoked when
+  // the key-value becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  virtual std::shared_ptr<tsl::CallOptions> AsyncKeyValueGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) = 0;
 
   // Returns `NotFoundError` immediately if the key is not found.
   virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;

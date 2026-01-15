@@ -93,6 +93,8 @@ xla_cc_test(
         "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel_stats",
+        "//xla/tsl/distributed_runtime:call_options",
+        "//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

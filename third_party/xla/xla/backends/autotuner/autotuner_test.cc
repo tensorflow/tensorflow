@@ -50,6 +50,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_stats.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -978,6 +980,10 @@ class MockKeyValueStore : public KeyValueStoreInterface {
   MOCK_METHOD(absl::StatusOr<std::string>, Get,
               (absl::string_view key, absl::Duration timeout), (override));
   MOCK_METHOD(absl::StatusOr<std::string>, TryGet, (absl::string_view key),
+              (override));
+  MOCK_METHOD(std::shared_ptr<tsl::CallOptions>, AsyncGet,
+              (absl::string_view key,
+               tsl::CoordinationServiceAgent::StatusOrValueCallback done),
               (override));
 };
 
