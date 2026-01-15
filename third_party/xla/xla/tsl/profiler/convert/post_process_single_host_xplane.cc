@@ -1,5 +1,5 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -14,11 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/numeric/int128.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timestamp_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -28,6 +38,7 @@ limitations under the License.
 
 namespace tsl {
 namespace profiler {
+
 namespace {
 
 // Collects all the existing line ids in the given list of planes.
@@ -68,7 +79,7 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
   absl::flat_hash_set<int64_t> occupied_line_ids =
       GetOccupiedLineIds(additional_host_planes);
   tensorflow::profiler::XPlane* host_plane = space->add_planes();
-  host_plane->set_name(std::string(kHostThreadsPlaneName));
+  host_plane->set_name(kHostThreadsPlaneName);
   if (!additional_host_planes.empty()) {
     MergePlanes(additional_host_planes, host_plane);
     RemovePlanes(space, additional_host_planes);
@@ -91,12 +102,328 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
   SortXLinesBy(host_plane, XLinesComparatorByName());
 }
 
+static constexpr absl::string_view kMosaicGpuProfilerDump =
+    "MosaicGpuProfilerDump";
+static constexpr absl::string_view kMosaicGpuLaunchKernel =
+    "MosaicGpuLaunchKernel";
+static constexpr absl::string_view kInjectId = "inject_id";
+
+bool HasGpuOndeviceMosaicPlane(tensorflow::profiler::XSpace* space) {
+  for (const XPlane& plane : space->planes()) {
+    if (absl::StartsWith(plane.name(), kCustomGpuOnDeviceTracePlanePrefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+typedef absl::flat_hash_map<absl::string_view, const XEventMetadata*>
+    EventNameToMetadataMap;
+
+EventNameToMetadataMap GetEventMetadataByNames(
+    const XPlane* plane, const absl::flat_hash_set<absl::string_view>& names) {
+  EventNameToMetadataMap event_names_to_metadata;
+  for (const auto& name : names) {
+    event_names_to_metadata[name] = nullptr;
+  }
+  for (auto& id_and_metadata : plane->event_metadata()) {
+    auto& metadata = id_and_metadata.second;
+    if (!metadata.name().empty() && names.contains(metadata.name())) {
+      event_names_to_metadata[metadata.name()] = &metadata;
+    }
+  }
+  return event_names_to_metadata;
+}
+
+const XStatMetadata* GetStatMetadataByName(const XPlane* plane,
+                                           absl::string_view name) {
+  for (auto& id_and_metadata : plane->stat_metadata()) {
+    auto& metadata = id_and_metadata.second;
+    if (!metadata.name().empty() && metadata.name() == name) {
+      return &metadata;
+    }
+  }
+  return nullptr;
+}
+
+// Using 128 bit integer to represent timestamp in picosecond to avoid overflow
+// as here we need to compute absolute value of the timestamp's pico second
+// part, not normalized/relative time span.
+struct TimeSpan128 {
+  absl::uint128 begin_ps;
+  absl::uint128 end_ps;
+
+  bool Includes(const TimeSpan128& other) const {
+    return begin_ps <= other.begin_ps && other.end_ps <= end_ps;
+  }
+
+  bool IsLeftOf(const TimeSpan128& other) const {
+    return end_ps < other.begin_ps;
+  }
+
+  std::string DebugString() const {
+    return absl::StrCat("[", begin_ps, ", ", end_ps, "]");
+  }
+};
+
+TimeSpan128 GetEventTimespan(const XEventVisitor& event) {
+  absl::uint128 begin_ps =
+      static_cast<absl::uint128>(event.LineTimestampNs()) * 1000 +
+      event.OffsetPs();
+  return TimeSpan128{begin_ps, begin_ps + event.DurationPs()};
+}
+
+struct MosaicGpuInjectionAdjustment {
+  int64_t correlation_id = 0;
+  TimeSpan128 time_span{};
+};
+
+struct DumpAndLaunchPair {
+  XEventVisitor event_dump;
+  XEventVisitor event_launch;
+};
+
+using KernelExecutionAdjustmentMap =
+    absl::flat_hash_map<int64_t, MosaicGpuInjectionAdjustment>;
+using InjectionAdjustmentMap =
+    absl::flat_hash_map<int64_t, MosaicGpuInjectionAdjustment>;
+
+// On a thread line, paring the MosaicGpuProfilerDump with its corresponding
+// MosaicGpuLaunchKernel event.These two type of traceme events should
+// already be sorted by timestamp.
+std::vector<DumpAndLaunchPair> FindDumpAndLaunchPairs(
+    const XLineVisitor& line, const XEventMetadata& launch_metadata,
+    const XEventMetadata& dump_metadata) {
+  std::vector<DumpAndLaunchPair> dump_and_launches;
+  std::optional<XEventVisitor> last_launch_kernel_event = std::nullopt;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    if (event.Id() == launch_metadata.id()) {
+      last_launch_kernel_event = event;
+    } else if (event.Id() == dump_metadata.id()) {
+      if (last_launch_kernel_event.has_value()) {
+        dump_and_launches.push_back({event, last_launch_kernel_event.value()});
+      }
+      last_launch_kernel_event = std::nullopt;
+    }
+  });
+  return dump_and_launches;
+}
+
+// Updates the time_span and inject_id of according to the index of the
+// dump_and_launches vector.
+void UpdateTimespanAndInjectId(
+    const std::vector<DumpAndLaunchPair>& dump_and_launches, size_t index,
+    const XStatMetadata& inject_id_metadata, TimeSpan128& time_span,
+    int64_t& inject_id) {
+  if (index < dump_and_launches.size()) {
+    time_span = GetEventTimespan(dump_and_launches[index].event_launch);
+    std::optional<XStatVisitor> inject_id_stat =
+        dump_and_launches[index].event_dump.GetStat(0, inject_id_metadata);
+    inject_id =
+        inject_id_stat.has_value() ? inject_id_stat->IntOrUintValue() : -1LL;
+  }
+}
+
+// Handles the matching of a single CUPTI event against the outer launch
+// timespan. Returns true if a match is found and inject_adjustments is updated.
+bool HandleCuptiEventMatching(const XEventVisitor& cupti_event,
+                              const TimeSpan128& cpu_launch_timespan,
+                              const TimeSpan128& outer_launch_timespan,
+                              const XStatMetadata& correlation_id_metadata,
+                              int64_t inject_id,
+                              InjectionAdjustmentMap& inject_adjustments) {
+  if (outer_launch_timespan.Includes(cpu_launch_timespan)) {
+    std::optional<XStatVisitor> correlation_id_stat =
+        cupti_event.GetStat(StatType::kCorrelationId, correlation_id_metadata);
+    if (correlation_id_stat.has_value() && inject_id >= 0) {
+      int64_t correlation_id = correlation_id_stat->IntOrUintValue();
+      inject_adjustments[inject_id] = {correlation_id, cpu_launch_timespan};
+      return true;  // Match found
+    }
+  }
+  return false;  // No match
+}
+
+void UpdateInjectionAdjustments(
+    const XLineVisitor& cupti_line,
+    const std::vector<DumpAndLaunchPair>& dump_and_launches,
+    const XStatMetadata& correlation_id_metadata,
+    const XStatMetadata& inject_id_metadata,
+    InjectionAdjustmentMap& inject_adjustments) {
+  if (dump_and_launches.empty()) {
+    VLOG(9) << "No paired MosaicGpuProfilerDump/MosaicGpuLaunchKernel in line:"
+            << cupti_line.Id();
+    return;
+  }
+
+  size_t current_pair = 0;
+  TimeSpan128 outer_launch_timespan = {0, 0};
+  int64_t inject_id = -1LL;
+  UpdateTimespanAndInjectId(dump_and_launches, current_pair, inject_id_metadata,
+                            outer_launch_timespan, inject_id);
+
+  cupti_line.ForEachEvent([&](const XEventVisitor& cupti_event) {
+    if (current_pair < dump_and_launches.size()) {
+      auto cpu_launch_timespan = GetEventTimespan(cupti_event);
+
+      bool matched = HandleCuptiEventMatching(
+          cupti_event, cpu_launch_timespan, outer_launch_timespan,
+          correlation_id_metadata, inject_id, inject_adjustments);
+
+      if (matched || outer_launch_timespan.IsLeftOf(cpu_launch_timespan)) {
+        UpdateTimespanAndInjectId(dump_and_launches, ++current_pair,
+                                  inject_id_metadata, outer_launch_timespan,
+                                  inject_id);
+      }
+    }
+  });
+}
+
+// Search device kernel execution events using the correlation_ids we found
+// above to get its real time span on the gpu device.
+absl::flat_hash_map<int64_t, MosaicGpuInjectionAdjustment>
+FindDeviceKernelExecutionTimespans(tensorflow::profiler::XSpace* space,
+                                   InjectionAdjustmentMap& inject_adjustments) {
+  KernelExecutionAdjustmentMap correlation_id_to_adjustment;
+  for (const auto& [inject_id, adjustment] : inject_adjustments) {
+    correlation_id_to_adjustment[adjustment.correlation_id] = adjustment;
+  }
+  for (const XPlane& plane : space->planes()) {
+    if (!absl::StartsWith(plane.name(), kGpuPlanePrefix)) {
+      continue;
+    }
+    XPlaneVisitor gpu_plane(&plane);
+    const XStatMetadata* device_correlation_id_metadata =
+        GetStatMetadataByName(&plane, GetStatTypeStr(StatType::kCorrelationId));
+    if (device_correlation_id_metadata == nullptr) {
+      continue;
+    }
+    XPlaneVisitor plane_visitor(&plane);
+    plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+      line.ForEachEvent([&](const XEventVisitor& event) {
+        std::optional<XStatVisitor> corr_id = event.GetStat(
+            StatType::kCorrelationId, *device_correlation_id_metadata);
+        if (corr_id.has_value()) {
+          int64_t correlation_id = corr_id->IntOrUintValue();
+          auto it = correlation_id_to_adjustment.find(correlation_id);
+          if (it != correlation_id_to_adjustment.end()) {
+            it->second.time_span = GetEventTimespan(event);
+            VLOG(9) << "Found Mosaic GPU kernel execution on plane: "
+                    << plane.name() << ", stream id:" << line.Id()
+                    << " with execution kernel: " << event.Name()
+                    << " with correlation_id: " << correlation_id
+                    << " and time span: " << it->second.time_span.DebugString();
+          }
+        }
+      });
+    });
+  }
+  return correlation_id_to_adjustment;
+}
+
 }  // namespace
+
+void AlignMosaicGpuOndeviceTrace(tensorflow::profiler::XSpace* space) {
+  if (!HasGpuOndeviceMosaicPlane(space)) {
+    return;
+  }
+
+  // Find the cupti driver api plane and get the correlation_id metadata id.
+  XPlane* cupti_api_plane =
+      FindMutablePlaneWithName(space, kCuptiDriverApiPlaneName);
+  if (cupti_api_plane == nullptr) {
+    LOG(WARNING) << "Can not find CUPTI API plane!";
+    return;
+  }
+  XPlaneVisitor cupti_plane_visitor(cupti_api_plane);
+  const XStatMetadata* correlation_id_metadata = GetStatMetadataByName(
+      cupti_api_plane, GetStatTypeStr(StatType::kCorrelationId));
+  if (correlation_id_metadata == nullptr) {
+    LOG(WARNING) << "No stat metadata correlation_id in CUPTI API plane!";
+    return;
+  }
+
+  // From host threads plane get the event metadata for MosaicGpuProfilerDump
+  // and MosaicGpuLaunchKernel, and stat metadata for inject_id.
+  XPlane* cpu_plane = FindMutablePlaneWithName(space, kHostThreadsPlaneName);
+  if (cpu_plane == nullptr) {
+    LOG(WARNING) << "Can not find host threads plane!";
+    return;
+  }
+  EventNameToMetadataMap event_names_to_metadata = GetEventMetadataByNames(
+      cpu_plane, {kMosaicGpuProfilerDump, kMosaicGpuLaunchKernel});
+  const XEventMetadata* dump_metadata =
+      event_names_to_metadata[kMosaicGpuProfilerDump];
+  const XEventMetadata* launch_metadata =
+      event_names_to_metadata[kMosaicGpuLaunchKernel];
+  if (dump_metadata == nullptr || launch_metadata == nullptr) {
+    LOG(WARNING) << "Missing event metadata MosaicGpuProfilerDump or "
+                    "MosaicGpuLaunchKernel in host threads plane!";
+    return;
+  }
+  const XStatMetadata* inject_id_metadata =
+      GetStatMetadataByName(cpu_plane, kInjectId);
+  if (inject_id_metadata == nullptr) {
+    LOG(WARNING) << "No stat metadata inject_id in host threads plane!";
+    return;
+  }
+
+  // Mosaic inject_id to the correlation_id of the gpu kernel execution event.
+  absl::flat_hash_map<int64_t, MosaicGpuInjectionAdjustment> inject_adjustments;
+  XPlaneVisitor cpu_plane_visitor(cpu_plane);
+  cpu_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    const XLine* cupti_line = FindLineWithId(*cupti_api_plane, line.Id());
+    if (cupti_line == nullptr) {
+      VLOG(1) << "Can not find cupti api line with id:" << line.Id();
+      return;
+    }
+
+    // On each thread line, find the paired dump and launch events.
+    std::vector<DumpAndLaunchPair> dump_and_launches =
+        FindDumpAndLaunchPairs(line, *launch_metadata, *dump_metadata);
+
+    // In the corresponding cupti line, find the gpu launch events which is
+    // the child of MosaicGpuLaunchKernel event, record its correlation_id.
+    XLineVisitor cupti_line_visitor(&cupti_plane_visitor, cupti_line);
+    UpdateInjectionAdjustments(cupti_line_visitor, dump_and_launches,
+                               *correlation_id_metadata, *inject_id_metadata,
+                               inject_adjustments);
+  });
+
+  KernelExecutionAdjustmentMap correlation_id_to_adjustment =
+      FindDeviceKernelExecutionTimespans(space, inject_adjustments);
+
+  // Align or correlate the MosaicGpu on-device kernel events plane(s) with the
+  // corresponding cupti kernel execution event.
+  for (auto& [inject_id, adjustment] : inject_adjustments) {
+    adjustment.time_span =
+        correlation_id_to_adjustment[adjustment.correlation_id].time_span;
+    auto mosaic_plane_name =
+        absl::StrCat(kCustomGpuOnDeviceTracePlanePrefix, inject_id);
+    XPlane* gpu_ondevice_mosaic_plane =
+        FindMutablePlaneWithName(space, mosaic_plane_name);
+    if (gpu_ondevice_mosaic_plane == nullptr) {
+      VLOG(1) << "Found MosaicGpuProfilerDump with inject_id: " << inject_id
+              << " but no corresponding Mosaic GPU ondevice plane.";
+      continue;
+    }
+    int64_t kernel_start_time_ns =
+        static_cast<int64_t>(adjustment.time_span.begin_ps / 1000);
+    VLOG(3) << "Found MosaicGpu injection plane of inject_id:" << inject_id
+            << ", adjusting start time to : " << kernel_start_time_ns << " ns";
+    // Original lines' start timestamp is the smallest timestamp of all events
+    // in the plane. Shift all lines' timestamp to kernel execution start time.
+    for (XLine& line : *gpu_ondevice_mosaic_plane->mutable_lines()) {
+      line.set_timestamp_ns(kernel_start_time_ns);
+    }
+  }
+}
 
 void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
                                  uint64_t start_time_ns,
                                  uint64_t stop_time_ns) {
   VLOG(3) << "Post processing local profiler XSpace.";
+  AlignMosaicGpuOndeviceTrace(space);
   // Post processing the collected XSpace without hold profiler lock.
   // 1. Merge all host planes and sorts lines by name.
   MergeHostPlanesAndSortLines(space);

@@ -71,11 +71,16 @@ cc_library(
     visibility = internal_visibility(["//xla/tsl/profiler:internal"]),
     deps = [
         "//xla/tsl/platform:types",
+        "//xla/tsl/profiler/utils:timespan",
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
