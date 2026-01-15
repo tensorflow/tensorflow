@@ -2320,6 +2320,9 @@ class HloInstruction {
   // Delegates to HloCollectiveInstruction::device_list.
   const CollectiveDeviceListBase& device_list() const;
 
+  // Returns true if device_list().num_replica_groups() > 0.
+  bool has_replica_groups() const;
+
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const;
 

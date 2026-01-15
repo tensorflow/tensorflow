@@ -5878,6 +5878,10 @@ const CollectiveDeviceListBase& HloInstruction::device_list() const {
   return Cast<HloCollectiveInstruction>(this)->device_list();
 }
 
+bool HloInstruction::has_replica_groups() const {
+  return device_list().num_replica_groups() > 0;
+}
+
 const std::vector<std::pair<int64_t, int64_t>>&
 HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
