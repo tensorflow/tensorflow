@@ -17,7 +17,12 @@
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_summary_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 
@@ -61,6 +66,43 @@ class SummaryV1AudioOpTest(test.TestCase):
 
         # Check the rest of the proto
         self._CheckProto(audio_summ, sample_rate, channels, num_frames)
+
+  def testAudioSummaryTensorDimensionValidation(self):
+    """Test that WriteAudioSummary rejects tensors with less than 2 dims."""
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops_v2.create_file_writer_v2(logdir)
+      with writer.as_default():
+        # Test scalar tensor (0D) - should fail
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "at least 2"):
+          gen_summary_ops.write_audio_summary(
+              writer=writer._resource,
+              step=0,
+              tag="audio_test",
+              tensor=np.float32(1.0),  # scalar
+              sample_rate=16000.0,
+              max_outputs=3)
+
+        # Test 1D tensor - should fail
+        with self.assertRaisesRegex(
+            errors.InvalidArgumentError, "at least 2"):
+          gen_summary_ops.write_audio_summary(
+              writer=writer._resource,
+              step=0,
+              tag="audio_test",
+              tensor=np.array([1.0, 2.0], dtype=np.float32),  # 1D
+              sample_rate=16000.0,
+              max_outputs=3)
+
+        # Test 2D tensor - should succeed
+        gen_summary_ops.write_audio_summary(
+            writer=writer._resource,
+            step=0,
+            tag="audio_test",
+            tensor=np.zeros((1, 100), dtype=np.float32),  # 2D
+            sample_rate=16000.0,
+            max_outputs=3)
 
 
 if __name__ == "__main__":
