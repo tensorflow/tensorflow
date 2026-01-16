@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
