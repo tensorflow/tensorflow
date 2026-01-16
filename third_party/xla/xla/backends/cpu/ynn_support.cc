@@ -354,9 +354,16 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
-  // Skip if output is larger than input.
+  // Skip if output or filter is larger than input.
+  // TODO(b/476207717): this should work fine in theory, but currently this
+  // fails at one of the shape checks fails as statically false. I think the
+  // issue is that an inferred input size is larger than what was provided.
   for (int i = 0; i < conv_dimensions.input_spatial_dimensions_size(); ++i) {
     if (out_shape.dimensions(conv_dimensions.output_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
+    if (rhs_shape.dimensions(conv_dimensions.kernel_spatial_dimensions(i)) >
         lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
       return false;
     }
