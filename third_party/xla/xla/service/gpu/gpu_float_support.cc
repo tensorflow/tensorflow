@@ -96,6 +96,10 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         }
       }
       return LowPrecisionType() == BF16;
+    case HloOpcode::kConvolution:
+      // Only affect conv fusion codepath, conv is rewritten to custom call
+      // before this if conv fusion not enabled
+      return true;
     // Data movement only ops.
     case HloOpcode::kAllGather:
     case HloOpcode::kAllToAll:

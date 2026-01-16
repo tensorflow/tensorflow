@@ -167,6 +167,12 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
 
   // Sink kCopy across convert.
   absl::Status HandleConvert(HloInstruction* hlo) override {
+    if (hlo->user_count() == 1 &&
+        HloPredicateIsOp<HloOpcode::kConvolution>(hlo->users()[0])) {
+      // don't sink copy across convert if the convert is consumed by conv, it
+      // is likely convert can be fused with conv
+      return absl::OkStatus();
+    }
     HloInstruction* operand = hlo->mutable_operand(0);
     if (HloPredicateIsOp<HloOpcode::kCopy>(operand)) {
       HloInstruction* copied = operand->mutable_operand(0);
