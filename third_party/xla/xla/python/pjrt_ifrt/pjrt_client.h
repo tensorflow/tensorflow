@@ -402,7 +402,8 @@ class PjRtClient final
   // (source, destination) pairs is cross-host.
   absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHost(
       absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
-      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
+      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind,
+      ArrayCopySemantics semantics);
 
   // Extracts receive descriptors from a key-value store and sends buffers to a
   // remote device. This is used when the backend does not implement the
