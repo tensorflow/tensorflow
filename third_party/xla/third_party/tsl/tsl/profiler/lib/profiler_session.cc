@@ -42,8 +42,25 @@ namespace {
 using tensorflow::ProfileOptions;
 using tensorflow::profiler::XSpace;
 
+bool IsTpuCircularBufferTracingEnabled(const ProfileOptions& opts) {
+  auto it = opts.advanced_configuration().find("tpu_circular_buffer_tracing");
+  if (it != opts.advanced_configuration().end() &&
+      it->second.has_bool_value() && it->second.bool_value()) {
+    return true;
+  }
+  return false;
+}
+
 ProfileOptions GetOptions(const ProfileOptions& opts) {
-  if (opts.version()) return opts;
+  if (opts.version()) {
+    if (IsTpuCircularBufferTracingEnabled(opts)) {
+      ProfileOptions options = opts;
+      options.set_host_tracer_level(0);
+      options.set_python_tracer_level(0);
+      return options;
+    }
+    return opts;
+  }
   ProfileOptions options = ProfilerSession::DefaultOptions();
   options.set_include_dataset_ops(opts.include_dataset_ops());
   return options;
