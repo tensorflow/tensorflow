@@ -25,10 +25,9 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -48,11 +47,8 @@ using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloTestBase {
+class XlaCompileLibTest : public HloPjRtTestBase {
  protected:
-  XlaCompileLibTest()
-      : HloTestBase(*PlatformUtil::GetPlatform("Host"),
-                    GetReferencePlatform()) {}
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                                                    "tools", "data", "add.hlo");
