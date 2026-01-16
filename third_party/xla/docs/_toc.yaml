@@ -66,6 +66,8 @@ toc:
     path: /xla/errors_overview
   - title: Error Codes
     path: /xla/error_codes
+  - Debug OOM errors with XProf
+    path: xla/oom_debugging
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:
