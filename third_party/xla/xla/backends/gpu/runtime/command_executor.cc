@@ -102,103 +102,142 @@ class CommandOperation : public ExecutionGraph::Operation {
   // across commands.
   std::shared_ptr<Resource> token_;
 };
-}  // namespace
 
-static std::vector<CommandOperation> CreateCommandOperations(
-    const CommandSequence& commands,
-    CommandExecutor::SynchronizationMode synchronization_mode) {
-  std::vector<CommandOperation> operations;
-  operations.reserve(commands.size());
-  VLOG(3) << "CreateCommandOperations with synchronization mode: "
-          << (synchronization_mode ==
-                      CommandExecutor::SynchronizationMode::kConcurrent
-                  ? "Concurrent"
-                  : "LHS");
-  if (synchronization_mode ==
-      CommandExecutor::SynchronizationMode::kConcurrent) {
-    // For concurrent synchronization mode, pass in buffer and resources for
-    // dependency inference.
-    for (const std::unique_ptr<Command>& cmd : commands) {
-      operations.emplace_back(cmd->buffers(), cmd.get());
-    }
-  }
-
-  if (synchronization_mode == CommandExecutor::SynchronizationMode::kLHS) {
-    // For LHS mode, don't pass in buffers.
-    // Will use token resource to specify dependency across commands.
-    for (const std::unique_ptr<Command>& cmd : commands) {
-      operations.emplace_back(Command::BufferUseVector{}, cmd.get());
-    }
-
-    auto is_async_start = [](const CommandOperation& op) -> bool {
-      auto* async_start = dynamic_cast<const AsyncStartCommand*>(op.cmd());
-      return (async_start && async_start->IsAsync());
-    };
-
-    auto is_async_done = [](const CommandOperation& op) -> bool {
-      auto* async_done = dynamic_cast<const AsyncDoneCommand*>(op.cmd());
-      return (async_done && async_done->IsAsync());
-    };
-
-    auto find_async_start_cmd_id = [&](int64_t async_done_cmd_id) -> int64_t {
-      auto* async_done = dynamic_cast<const AsyncDoneCommand*>(
-          operations[async_done_cmd_id].cmd());
-      CHECK(async_done);
-      for (int64_t j = async_done_cmd_id - 1; j >= 0; --j) {
-        if (is_async_start(operations[j])) {
-          auto* async_start =
-              dynamic_cast<const AsyncStartCommand*>(operations[j].cmd());
-          if (async_start->IsAsync() &&
-              async_done->async_start() == async_start) {
-            return j;
-          }
-        }
-      }
-      return -1;
-    };
-
-    for (int64_t i = 0; i < operations.size(); ++i) {
-      if (is_async_start(operations[i])) {
-        for (int64_t j = i - 1; j >= 0; --j) {
-          if (is_async_start(operations[j])) {
-            continue;
-          }
-          operations[i].add_resource_use(
-              ResourceUse::Read(commands[j]->token()));
-          break;
-        }
-      } else if (is_async_done(operations[i])) {
-        int64_t async_start_cmd_id = find_async_start_cmd_id(i);
-        CHECK_NE(async_start_cmd_id, -1);
-        operations[i].add_resource_use(
-            ResourceUse::Read(commands[async_start_cmd_id]->token()));
-        CHECK_GT(i, 0);
-        if ((i - 1) != async_start_cmd_id) {
-          operations[i].add_resource_use(
-              ResourceUse::Read(commands[i - 1]->token()));
-        }
-      } else {
-        for (int64_t j = i - 1; j >= 0; --j) {
-          if (is_async_start(operations[j])) {
-            // The first command in the async group does not depend on the async
-            // command
-            continue;
-          }
-          operations[i].add_resource_use(
-              ResourceUse::Read(commands[j]->token()));
-          break;
-        }
-      }
-    }
-  }
-
+void VlogOperations(const std::vector<CommandOperation>& operations) {
   if (VLOG_IS_ON(2)) {
     for (const CommandOperation& op : operations) {
       VLOG(2) << op.ToString();
     }
   }
+}
 
+std::vector<CommandOperation> CreateCommandOperationsWithConcurrentMode(
+    const CommandSequence& commands) {
+  VLOG(3) << "CreateCommandOperations with synchronization mode: Concurrent";
+  std::vector<CommandOperation> operations;
+  operations.reserve(commands.size());
+
+  // For concurrent synchronization mode, pass in buffer and resources for
+  // dependency inference.
+  for (const std::unique_ptr<Command>& cmd : commands) {
+    operations.emplace_back(cmd->buffers(), cmd.get());
+  }
+
+  VlogOperations(operations);
   return operations;
+}
+
+// Helper: Check if an operation is an Async Start
+bool IsAsyncStart(const CommandOperation& op) {
+  const auto* cmd = dynamic_cast<const AsyncStartCommand*>(op.cmd());
+  return cmd && cmd->IsAsync();
+}
+
+// Helper: Check if an operation is an Async Done
+bool IsAsyncDone(const CommandOperation& op) {
+  const auto* cmd = dynamic_cast<const AsyncDoneCommand*>(op.cmd());
+  return cmd && cmd->IsAsync();
+}
+
+// Helper: Find the corresponding Start command for a given Done command
+int64_t FindMatchingStartId(const std::vector<CommandOperation>& ops,
+                            int64_t done_idx) {
+  const auto* done_cmd =
+      dynamic_cast<const AsyncDoneCommand*>(ops[done_idx].cmd());
+  CHECK(done_cmd);
+
+  for (int64_t j = done_idx - 1; j >= 0; --j) {
+    if (!IsAsyncStart(ops[j])) {
+      continue;
+    }
+
+    const auto* start_cmd =
+        dynamic_cast<const AsyncStartCommand*>(ops[j].cmd());
+    CHECK(start_cmd);
+
+    if (start_cmd->IsAsync() && done_cmd->async_start() == start_cmd) {
+      return j;
+    }
+  }
+  return -1;
+}
+
+// Helper: Add dependency on the nearest previous command that is NOT an Async
+// Start
+void AddDependencyOnPrevNonStart(std::vector<CommandOperation>& ops,
+                                 const CommandSequence& commands,
+                                 int64_t current_idx) {
+  for (int64_t j = current_idx - 1; j >= 0; --j) {
+    if (IsAsyncStart(ops[j])) {
+      // Skip other starts
+      continue;
+    }
+
+    ops[current_idx].add_resource_use(ResourceUse::Read(commands[j]->token()));
+    break;  // Found the dependency, stop scanning
+  }
+}
+
+std::vector<CommandOperation> CreateCommandOperationsWithLHSMode(
+    const CommandSequence& commands) {
+  VLOG(3) << "CreateCommandOperations with synchronization mode: LHS";
+  std::vector<CommandOperation> operations;
+  operations.reserve(commands.size());
+
+  // 1. Initialization Phase: Convert commands to operations
+  for (const auto& cmd : commands) {
+    operations.emplace_back(Command::BufferUseVector{}, cmd.get());
+  }
+
+  // 2. Dependency Analysis Phase
+  for (int64_t i = 0; i < operations.size(); ++i) {
+    if (IsAsyncDone(operations[i])) {
+      // CASE A: Async Done
+      // Depends on its matching Start command
+      int64_t start_id = FindMatchingStartId(operations, i);
+      CHECK_NE(start_id, -1);
+      operations[i].add_resource_use(
+          ResourceUse::Read(commands[start_id]->token()));
+
+      // Also depends on immediate predecessor (if it's not the start itself)
+      CHECK_GT(i, 0);
+      if ((i - 1) != start_id) {
+        operations[i].add_resource_use(
+            ResourceUse::Read(commands[i - 1]->token()));
+      }
+    } else {
+      // CASE B: Standard Command OR Async Start
+      // Both share the same logic: depend on the previous non-async-start
+      AddDependencyOnPrevNonStart(operations, commands, i);
+    }
+  }
+
+  VlogOperations(operations);
+  return operations;
+}
+
+}  // namespace
+
+static absl::StatusOr<std::vector<CommandOperation>> CreateCommandOperations(
+    const CommandSequence& commands,
+    CommandExecutor::SynchronizationMode synchronization_mode) {
+  using Mode = CommandExecutor::SynchronizationMode;
+  switch (synchronization_mode) {
+    case Mode::kConcurrent: {
+      return CreateCommandOperationsWithConcurrentMode(commands);
+    }
+
+    case Mode::kLHS: {
+      return CreateCommandOperationsWithLHSMode(commands);
+    }
+
+    case Mode::kSerialize:
+    default: {
+      return Unimplemented(
+          "CreateCommandOperations is only supported for Concurrent/LHS "
+          "synchronization mode");
+    }
+  }
 }
 
 absl::StatusOr<CommandExecutor> CommandExecutor::Create(
@@ -209,7 +248,8 @@ absl::StatusOr<CommandExecutor> CommandExecutor::Create(
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
   if (synchronization_mode != SynchronizationMode::kSerialize) {
-    auto operations = CreateCommandOperations(commands, synchronization_mode);
+    TF_ASSIGN_OR_RETURN(auto operations, CreateCommandOperations(
+                                             commands, synchronization_mode));
     TF_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
     VLOG(3) << "Execution graph: " << execution_graph->ToString();
@@ -640,7 +680,8 @@ absl::StatusOr<std::string> CommandExecutor::RenderExecutionGraph() {
         "concurrent/LHS synchronization mode");
   }
 
-  auto operations = CreateCommandOperations(commands_, synchronization_mode_);
+  TF_ASSIGN_OR_RETURN(auto operations, CreateCommandOperations(
+                                           commands_, synchronization_mode_));
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
   operations_ptrs.reserve(operations.size());
   for (const auto& operation : operations) {
