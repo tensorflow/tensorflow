@@ -149,7 +149,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::InitializePlatformWithId(
   TF_ASSIGN_OR_RETURN(Platform * platform, LookupByIdLocked(id));
   if (platform->Initialized()) {
     return absl::FailedPreconditionError(
-        absl::StrFormat("platform with id %p is already initialized", id));
+        absl::StrFormat("platform with id %v is already initialized", id));
   }
 
   TF_RETURN_IF_ERROR(platform->Initialize());
@@ -210,7 +210,7 @@ absl::StatusOr<Platform*> PlatformManagerImpl::LookupByIdLocked(
   auto it = id_map_.find(id);
   if (it == id_map_.end()) {
     return absl::NotFoundError(
-        absl::StrFormat("could not find registered platform with id: %p", id));
+        absl::StrFormat("could not find registered platform with id: %v", id));
   }
   return it->second;
 }

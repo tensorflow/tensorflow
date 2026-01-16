@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -81,7 +82,7 @@ class CPlatform : public Platform {
                      SP_TimerFns timer_fns);
   ~CPlatform() override;
 
-  Id id() const override { return const_cast<int*>(&plugin_id_value_); }
+  Id id() const override { return Platform::Id(platform_id_info_.get()); }
   const std::string& Name() const override { return name_; }
   int VisibleDeviceCount() const override {
     int visible_device_count = 0;
@@ -115,8 +116,8 @@ class CPlatform : public Platform {
   SP_DeviceFns device_fns_;
   SP_StreamExecutor stream_executor_;
   SP_TimerFns timer_fns_;
-  const std::string name_;
-  int plugin_id_value_;
+  std::string name_;
+  std::unique_ptr<Platform::IdInfo> platform_id_info_;
   stream_executor::ExecutorCache executor_cache_;
 };
 

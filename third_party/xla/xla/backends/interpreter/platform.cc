@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/interpreter/executor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -32,7 +33,7 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-XlaInterpreterPlatform::XlaInterpreterPlatform(const std::string& name,
+XlaInterpreterPlatform::XlaInterpreterPlatform(absl::string_view name,
                                                const Platform::Id& id)
     : name_(name), id_(id) {}
 
