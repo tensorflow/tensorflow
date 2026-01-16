@@ -57,6 +57,7 @@ namespace {
 
 using ::absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
@@ -1716,6 +1717,89 @@ TEST(ArrayImplTest, CopyPoisonedArray) {
                     StatusIs(error.code(), HasSubstr(error.message())));
       }
     }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysWithPartialReuse) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 4) {
+    GTEST_SKIP() << "This test requires at least 4 devices";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto src_devices,
+      client->MakeDeviceList({devices[0], devices[1], devices[2], devices[3]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dst_devices,
+      client->MakeDeviceList({devices[0], devices[2], devices[1], devices[3]}));
+
+  DType dtype(DType::kS32);
+  Shape shape({4, 3});
+  Shape shard_shape({1, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      ShardingRef sharding,
+      ShardingParamSharding::Create(
+          ShardingParam(
+              /*dim_shards=*/{4, 1},
+              {/*permutation=*/{0, 1}, /*axis_sizes=*/{4, 1}}),
+          src_devices, MemoryKind()));
+
+  std::vector<ArrayRef> src_arrays;
+  {
+    auto data0 = std::make_shared<std::vector<int32_t>>(3, 0);
+    auto data1 = std::make_shared<std::vector<int32_t>>(3, 1);
+    auto data2 = std::make_shared<std::vector<int32_t>>(3, 2);
+    auto data3 = std::make_shared<std::vector<int32_t>>(3, 3);
+
+    std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+    specs.push_back({
+        /*buffers=*/{
+            {{0},
+             {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data0]() {}}},
+            {{1},
+             {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data1]() {}}},
+            {{2},
+             {data2->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data2]() {}}},
+            {{3},
+             {data3->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data3]() {}}},
+        },
+        /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+    });
+    TF_ASSERT_OK_AND_ASSIGN(
+        src_arrays, client->MakeArraysFromHostBufferShards(
+                        absl::MakeSpan(specs),
+                        Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+    ASSERT_EQ(src_arrays.size(), 1);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto copied,
+      client->CopyArrays(absl::MakeSpan(src_arrays), dst_devices, MemoryKind(),
+                         ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(copied.size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          copied[0]->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_EQ(single_device_arrays.size(), 4);
+
+  for (int i = 0; i < single_device_arrays.size(); ++i) {
+    EXPECT_THAT(single_device_arrays[i]->sharding().devices()->devices(),
+                ElementsAre(dst_devices->devices()[i]));
+
+    std::vector<int32_t> out_data(3);
+    auto future = single_device_arrays[i]->CopyToHostBuffer(
+        out_data.data(),
+        /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, Each(i));
   }
 }
 
