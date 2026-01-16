@@ -87,7 +87,7 @@ absl::StatusOr<std::unique_ptr<NcclCommunicator>> CreateCommunicator(
     return comm;
   };
   bool is_async = !blocking;
-  return NcclCommunicator::Create(f, is_async);
+  return NcclCommunicator::Create(/*stream_executor=*/nullptr, f, is_async);
 }
 
 TEST(NcclCommunicator, AbortSucceeds) {
