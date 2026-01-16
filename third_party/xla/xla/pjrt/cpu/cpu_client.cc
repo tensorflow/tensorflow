@@ -700,6 +700,22 @@ PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
                          /*layout_canonicalization_callback=*/nullptr, options);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+                      CompileAndLoad(computation, options));
+  return std::make_unique<PjRtExecutableForwarder>(
+      std::move(loaded_executable));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+                      CompileAndLoad(module, options));
+  return std::make_unique<PjRtExecutableForwarder>(
+      std::move(loaded_executable));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAheadOfTimeAndLoad(
     const XlaComputation& computation, CompileOptions options,

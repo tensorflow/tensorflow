@@ -288,6 +288,29 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cpu_compiler",
+    srcs = ["cpu_compiler.cc"],
+    visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_client_users"]),
+    deps = [
+        ":cpu_client",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "//xla/service/cpu:cpu_compiler",
+        "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "cpu_async_execution_tracker",
     srcs = ["cpu_async_execution_tracker.cc"],
     hdrs = ["cpu_async_execution_tracker.h"],
