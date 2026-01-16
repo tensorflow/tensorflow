@@ -1947,11 +1947,8 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

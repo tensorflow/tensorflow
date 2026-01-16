@@ -429,13 +429,6 @@ message DebugOptions {
   // transformation.
   optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
-  // Do not lock collective cliques for each XLA:GPU execution, and instead
-  // use per-process cliques that are never unlocked. This disables deadlock
-  // prevention mechanism in XLA:GPU and should be used at you own risk. If
-  // collective operations from concurrent executions are not correcctly ordered
-  // it may lead to deadlocks, crashes or will produce garbage.
-  optional bool xla_gpu_collectives_use_persistent_cliques = 354;
-
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
@@ -1385,6 +1378,7 @@ message DebugOptions {
   reserved "xla_gpu_asm_extra_flags";
   reserved "xla_gpu_bef_executable";
   reserved "xla_gpu_bef_thunk";
+  reserved "xla_gpu_collectives_use_persistent_cliques";
   reserved "xla_gpu_deterministic_reductions";
   reserved "xla_gpu_disable_multi_streaming";
   reserved "xla_gpu_dump_hlo_unoptimized_snapshots";
@@ -1464,8 +1458,8 @@ message DebugOptions {
       183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204,
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249,
       263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302,
-      303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 355, 358, 361, 367,
-      369, 371, 385, 394, 398, 402, 423;
+      303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361,
+      367, 369, 371, 385, 394, 398, 402, 423;
 }
 
 // Contains flags which affects the GPU compilation result.
