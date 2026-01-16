@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -57,8 +57,9 @@ namespace {
 
 // Recursively prepends the given prefix to the op name of the given HLO
 // instruction as well as all the instructions in its called computations.
-void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
-  if (prefix.empty()) {
+void RecursivelyUpdateMetadata(HloInstruction* hlo, absl::string_view prefix,
+                               int32_t parent_frame_id) {
+  if (prefix.empty() && parent_frame_id == 0) {
     return;
   }
 
@@ -73,7 +74,7 @@ void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
       hlo->opcode() != HloOpcode::kCall) {
     for (HloComputation* computation : hlo->called_computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
-        RecursivelyUpdateOpName(instruction, prefix);
+        RecursivelyUpdateMetadata(instruction, prefix, parent_frame_id);
       }
     }
   }
@@ -81,12 +82,28 @@ void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
   // We found that some users are sticking many megabytes of strings into
   // op_name. Don't form op names that would be too big.
   OpMetadata metadata = hlo->metadata();
-  if (prefix.size() + metadata.op_name().size() < CallInliner::kMaxOpNameSize) {
+  bool updated = false;
+  if (!prefix.empty() &&
+      prefix.size() + metadata.op_name().size() < CallInliner::kMaxOpNameSize) {
     if (metadata.op_name().empty()) {
       metadata.set_op_name(prefix);
-    } else {
+      updated = true;
+    } else if (!absl::StartsWith(metadata.op_name(), prefix)) {
       metadata.set_op_name(absl::StrCat(prefix, "/", metadata.op_name()));
+      updated = true;
     }
+  }
+  if (parent_frame_id != 0 || metadata.stack_frame_id() != 0) {
+    // We update the stack frame if either the parent or the current frame
+    // is set. MergeStackFrames handles the case where either is 0.
+    int32_t new_frame_id = hlo->GetModule()->MergeStackFrames(
+        metadata.stack_frame_id(), parent_frame_id);
+    if (new_frame_id != metadata.stack_frame_id()) {
+      metadata.set_stack_frame_id(new_frame_id);
+      updated = true;
+    }
+  }
+  if (updated) {
     hlo->set_metadata(metadata);
   }
 }
@@ -100,8 +117,12 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // call is the call operation -- it will be replaced with the body of the
   // called computation.
   explicit SubcomputationInsertionVisitor(HloInstruction* call,
-                                          absl::string_view call_op_name)
-      : call_(call), outer_(call->parent()), call_op_name_(call_op_name) {
+                                          absl::string_view call_op_name,
+                                          int32_t call_stack_frame_id)
+      : call_(call),
+        outer_(call->parent()),
+        call_op_name_(call_op_name),
+        call_stack_frame_id_(call_stack_frame_id) {
     CHECK_EQ(HloOpcode::kCall, call_->opcode());
   }
 
@@ -115,9 +136,10 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     }
     VLOG(1) << "Cloning HLO and adding to caller: " << hlo->ToString();
     auto new_hlo = hlo->CloneWithNewOperands(hlo->shape(), new_operands);
-    RecursivelyUpdateOpName(new_hlo.get(), call_op_name_);
     HloInstruction* new_hlo_pointer =
         outer_->AddInstruction(std::move(new_hlo));
+    RecursivelyUpdateMetadata(new_hlo_pointer, call_op_name_,
+                              call_stack_frame_id_);
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
     PropagateOriginalValue(new_hlo_pointer, hlo);
@@ -241,8 +263,11 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     for (auto& pair : original_value->mutable_original_arrays()) {
       std::optional<OriginalArray>& original_array = pair.second;
       if (original_array.has_value()) {
-        original_array->instruction_name = absl::StrCat(
-            *call_instructions, "/", original_array->instruction_name);
+        if (!absl::StartsWith(original_array->instruction_name,
+                              *call_instructions)) {
+          original_array->instruction_name = absl::StrCat(
+              *call_instructions, "/", original_array->instruction_name);
+        }
       }
     }
   }
@@ -251,6 +276,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   HloComputation* outer_;
   CallInliner::InlinedInstructionMap subcomputation_hlo_to_new_hlo_;
   absl::string_view call_op_name_;
+  int32_t call_stack_frame_id_;
 };
 
 bool InlineComposites(
@@ -322,7 +348,8 @@ CallInliner::Inline(HloInstruction* call) {
   }
 
   // We visit the callee, cloning its body into its caller.
-  SubcomputationInsertionVisitor visitor(call, call->metadata().op_name());
+  SubcomputationInsertionVisitor visitor(call, call->metadata().op_name(),
+                                         call->metadata().stack_frame_id());
   TF_RETURN_IF_ERROR(callee->Accept(&visitor));
   return visitor.ConsumeInstructionMap();
 }
@@ -405,9 +432,8 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
-      TF_ASSIGN_OR_RETURN(
-          CallInliner::InlinedInstructionMap inline_map_cur_call,
-          Inline(instruction));
+      TF_ASSIGN_OR_RETURN(InlinedInstructionMap inline_map_cur_call,
+                          Inline(instruction));
       if (module->has_schedule()) {
         for (HloInstruction* inlined_instruction :
              module->schedule().sequence(callee).instructions()) {

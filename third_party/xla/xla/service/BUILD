@@ -1132,6 +1132,24 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "stack_frame_concatenation_test",
+    size = "small",
+    srcs = ["stack_frame_concatenation_test.cc"],
+    deps = [
+        ":call_inliner",
+        ":hlo_proto_cc",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "platform_util",
     srcs = ["platform_util.cc"],
