@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
@@ -47,12 +46,6 @@ namespace xla::cpu {
 // operation.
 class YnnFusionThunk : public Thunk {
  public:
-  enum class YnnFusionKind {
-    kFusion,
-  };
-
-  static absl::string_view YnnFusionKindToString(YnnFusionKind kind);
-
   ~YnnFusionThunk() override;
 
   struct Options {
@@ -105,21 +98,18 @@ class YnnFusionThunk : public Thunk {
 
   Options options() const { return options_; }
 
-  YnnFusionKind ynn_fusion_kind() const { return ynn_fusion_kind_; }
-
   const HloInstruction* hlo() const { return hlo_; }
 
   absl::Span<const Argument> arguments() const { return arguments_; }
   absl::Span<const Result> results() const { return results_; }
 
  protected:
-  YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 const HloInstruction* hlo, std::vector<Argument> arguments,
-                 std::vector<Result> results, Builder builder);
+  YnnFusionThunk(Options options, Info info, const HloInstruction* hlo,
+                 std::vector<Argument> arguments, std::vector<Result> results,
+                 Builder builder);
 
-  YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 const HloInstruction* hlo, std::vector<Argument> arguments,
-                 std::vector<Result> results,
+  YnnFusionThunk(Options options, Info info, const HloInstruction* hlo,
+                 std::vector<Argument> arguments, std::vector<Result> results,
                  CapturingBuilder capturing_builder,
                  absl::Span<const int64_t> captured_arguments_ids);
 
@@ -157,7 +147,6 @@ class YnnFusionThunk : public Thunk {
   std::vector<se::DeviceAddressBase> CaptureArguments(
       absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
-  YnnFusionKind ynn_fusion_kind_;
   Options options_;
 
   // A pointer to the HLO instruction that this thunk is associated with. Owned
@@ -187,8 +176,6 @@ class YnnFusionThunk : public Thunk {
   // The number of YNNPACK executables created for capturing graphs.
   std::atomic<int64_t> num_capturing_created_{0};
 };
-
-std::ostream& operator<<(std::ostream& os, YnnFusionThunk::YnnFusionKind kind);
 
 }  // namespace xla::cpu
 
