@@ -3973,13 +3973,13 @@ bool HloInstruction::IsElementwiseImpl(
 bool HloInstruction::IsCrossModuleAllReduce() const {
   if (opcode() == HloOpcode::kAllReduce ||
       opcode() == HloOpcode::kAllReduceStart) {
-    return channel_id() != std::nullopt;
+    return channel_id().has_value();
   }
   if (opcode() == HloOpcode::kAllReduceDone) {
     CHECK_EQ(operand_count(), 1);
     const HloInstruction* operand = this->operand(0);
     CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
-    return operand->channel_id() != std::nullopt;
+    return operand->channel_id().has_value();
   }
   return false;
 }
@@ -4981,7 +4981,7 @@ static absl::Status PostOrderDFS(
       }
     }
 
-    if (operand_order != std::nullopt) {
+    if (operand_order.has_value()) {
       std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
                 *operand_order);
     }

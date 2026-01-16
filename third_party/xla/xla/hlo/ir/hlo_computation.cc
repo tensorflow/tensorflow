@@ -711,7 +711,7 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
       worklist.push(item->mutable_operand(i));
     }
 
-    if (cleanup != std::nullopt) {
+    if (cleanup.has_value()) {
       (*cleanup)(item);
     }
     if (item->opcode() == HloOpcode::kParameter) {

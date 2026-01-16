@@ -1479,7 +1479,7 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
   TF_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
   TF_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
   if (enable_loop_unroll_ && body_commands_.support_loop_unroll() &&
-      cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt) {
+      cond_commands_.support_loop_unroll() && trip_count_.has_value()) {
     is_unrolled_loop_ = true;
   }
   VLOG(3) << "WhileCmd::Initialize: enable_loop_unroll_=" << enable_loop_unroll_
@@ -2809,7 +2809,7 @@ absl::Status DynamicSliceFusionCmd::Prepare(
     }
   }
   TF_RETURN_IF_ERROR(embedded_commands_.Prepare(params));
-  if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
     Indvar(this) =
         HloEvaluator()
             .Evaluate(
@@ -2989,7 +2989,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 
   // For command buffer instantiation ran by CommandBufferThunk::Initialize, we
   // must not step the Indvar, because it is not a real run.
-  if (offset_as_function_of_indvar_metadata_ != std::nullopt &&
+  if (offset_as_function_of_indvar_metadata_.has_value() &&
       command_buffer->state() == se::CommandBuffer::State::kUpdate) {
     Indvar(this) =
         HloEvaluator()

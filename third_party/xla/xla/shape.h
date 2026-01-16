@@ -388,7 +388,7 @@ class Shape {
       return false;
     }
     const ArrayState& state = array_state_maybe_underneath_buffer();
-    return state.layout != std::nullopt;
+    return state.layout.has_value();
   }
 
   // Returns the layout of the shape.
@@ -405,7 +405,7 @@ class Shape {
   // by this shape.
   Layout* mutable_layout() {
     ArrayState& state = array_state_maybe_underneath_buffer();
-    if (state.layout == std::nullopt) {
+    if (!state.layout.has_value()) {
       state.layout.emplace();
     }
     return &(*state.layout);

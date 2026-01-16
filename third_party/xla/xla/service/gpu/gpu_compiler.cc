@@ -318,6 +318,7 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -1219,7 +1220,7 @@ void AddDoubleBufferingPasses(const HloModule& module,
   }
   if (opts.xla_gpu_enable_while_loop_unrolling() ==
       DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
-    LOG_IF(WARNING, unroll_strategy != std::nullopt)
+    LOG_IF(WARNING, unroll_strategy.has_value())
         << "Overriding double buffering set via "
            "`xla_gpu_enable_while_loop_double_buffering` flag.";
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
@@ -1230,7 +1231,7 @@ void AddDoubleBufferingPasses(const HloModule& module,
       !opts.xla_gpu_enable_while_loop_double_buffering()) {
     unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
   }
-  if (unroll_strategy != std::nullopt) {
+  if (unroll_strategy.has_value()) {
     pipeline.AddPass<WhileLoopSimplifier>();
     pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
     pipeline.AddPass<TupleSimplifier>();
