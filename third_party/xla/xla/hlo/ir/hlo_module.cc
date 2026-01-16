@@ -558,8 +558,7 @@ void HloModule::ToProto(HloModuleProto* proto) const {
         entry_computation_layout().ComputeProgramShape().ToProto();
   }
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    HloComputationProto computation_proto = computation->ToProto();
-    proto->add_computations()->Swap(&computation_proto);
+    computation->ToProto(proto->add_computations());
   }
   if (has_schedule()) {
     *proto->mutable_schedule() = schedule().ToProto().value();

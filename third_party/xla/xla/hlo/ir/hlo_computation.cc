@@ -1244,23 +1244,21 @@ absl::Cord HloComputation::ToCord(
   return std::move(printer).ToCord();
 }
 
-HloComputationProto HloComputation::ToProto() const {
-  HloComputationProto proto;
+void HloComputation::ToProto(HloComputationProto* proto) const {
   CHECK(unique_id_ != -1)
       << "This computation does not have a valid id. Please make sure the "
          "computation is inside a module before dumping it.";
-  proto.set_id(unique_id_);
-  proto.set_name(name_);
+  proto->set_id(unique_id_);
+  proto->set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
     HloInstructionProto instruction_proto = instruction->ToProto();
-    proto.add_instructions()->Swap(&instruction_proto);
+    proto->add_instructions()->Swap(&instruction_proto);
   }
-  proto.set_root_id(root_instruction()->unique_id());
-  *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
-  proto.set_is_fusion_computation(IsFusionComputation());
-  proto.set_execution_thread(IsMainThread() ? ""
-                                            : std::string(execution_thread()));
-  return proto;
+  proto->set_root_id(root_instruction()->unique_id());
+  *proto->mutable_program_shape() = ComputeProgramShape().ToProto();
+  proto->set_is_fusion_computation(IsFusionComputation());
+  proto->set_execution_thread(IsMainThread() ? ""
+                                             : std::string(execution_thread()));
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<HloComputation>>
