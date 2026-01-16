@@ -1,8 +1,8 @@
 # Description:
 # TensorFlow SavedModel Registration.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -10,19 +10,21 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "registration",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         ":registration_lib",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "registration_lib",
     srcs = [
         "registration.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
@@ -68,11 +70,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_util",
     srcs = [
         "test_util.py",
     ],
+    strict_deps = True,
     deps = [
         ":registration_lib",
     ],

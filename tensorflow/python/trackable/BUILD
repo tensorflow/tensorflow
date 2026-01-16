@@ -1,8 +1,8 @@
 # Description:
 #   Trackable class and subclass definitions.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,8 +12,9 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "trackable",
+    strict_deps = True,
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/tf_agents:__subpackages__",
@@ -34,14 +35,16 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "trackable_init",
     srcs = ["__init__.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "base",
     srcs = ["base.py"],
+    strict_deps = True,
     deps = [
         ":constants",
         "//tensorflow/python/eager:context",
@@ -67,14 +70,16 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "constants",
     srcs = ["constants.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "converter",
     srcs = ["converter.py"],
+    strict_deps = True,
     deps = [
         ":base",
         ":data_structures",
@@ -85,9 +90,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "trackable_utils",
     srcs = ["trackable_utils.py"],
+    strict_deps = True,
 )
 
 tf_py_strict_test(
@@ -99,9 +105,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "base_delegate",
     srcs = ["base_delegate.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
@@ -125,9 +132,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "asset",
     srcs = ["asset.py"],
+    strict_deps = True,
     deps = [
         ":base",
         "//tensorflow/python/eager:context",
@@ -142,9 +150,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "autotrackable",
     srcs = ["autotrackable.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":base",
@@ -171,9 +180,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resource",
     srcs = ["resource.py"],
+    strict_deps = True,
     visibility = [
         "//intelligence/climate_foundations/vlm/export:__subpackages__",
         "//tensorflow:internal",
@@ -202,15 +212,17 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "layer_utils",
     srcs = ["layer_utils.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/util:object_identity"],
 )
 
-py_strict_library(
+py_library(
     name = "data_structures",
     srcs = ["data_structures.py"],
+    strict_deps = True,
     deps = [
         ":base",
         ":layer_utils",
@@ -251,9 +263,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "python_state",
     srcs = ["python_state.py"],
+    strict_deps = True,
     deps = [
         ":base",
         "//tensorflow/python/framework:constant_op",
