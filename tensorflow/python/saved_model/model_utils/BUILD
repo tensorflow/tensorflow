@@ -16,8 +16,7 @@
 # Description:
 #   Keras saving and loading libraries.
 
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -25,10 +24,9 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "model_utils",
     srcs = ["__init__.py"],
-    strict_deps = True,
     deps = [
         ":export_output",
         ":export_utils",
@@ -36,10 +34,9 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "export_output",
     srcs = ["export_output.py"],
-    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -70,10 +67,9 @@ py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "export_utils",
     srcs = ["export_utils.py"],
-    strict_deps = True,
     deps = [
         ":export_output",
         ":mode_keys",
@@ -110,10 +106,9 @@ py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "mode_keys",
     srcs = ["mode_keys.py"],
-    strict_deps = True,
     deps = ["//tensorflow/python/util:compat"],
 )
 
