@@ -1251,8 +1251,7 @@ void HloComputation::ToProto(HloComputationProto* proto) const {
   proto->set_id(unique_id_);
   proto->set_name(name_);
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    HloInstructionProto instruction_proto = instruction->ToProto();
-    proto->add_instructions()->Swap(&instruction_proto);
+    instruction->ToProto(proto->add_instructions());
   }
   proto->set_root_id(root_instruction()->unique_id());
   *proto->mutable_program_shape() = ComputeProgramShape().ToProto();

@@ -146,11 +146,10 @@ bool HloBatchNormInstruction::IdenticalSlowPath(
          epsilon() == casted_other.epsilon();
 }
 
-HloInstructionProto HloBatchNormInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_epsilon(epsilon_);
-  proto.set_feature_index(feature_index_);
-  return proto;
+void HloBatchNormInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_epsilon(epsilon_);
+  proto->set_feature_index(feature_index_);
 }
 
 void HloBatchNormInstruction::PrintExtraAttributesImpl(
@@ -230,13 +229,12 @@ HloFftInstruction::HloFftInstruction(const Shape& shape,
   AppendOperand(operand);
 }
 
-HloInstructionProto HloFftInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_fft_type(fft_type_);
+void HloFftInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_fft_type(fft_type_);
   for (int64_t fft_len : fft_length_) {
-    proto.add_fft_length(fft_len);
+    proto->add_fft_length(fft_len);
   }
-  return proto;
 }
 
 void HloFftInstruction::PrintExtraAttributesImpl(
@@ -450,14 +448,14 @@ void HloAsyncStartInstruction::set_async_execution_thread(
   SetThreadName(async_wrapped_computation(), async_execution_thread);
 }
 
-HloInstructionProto HloAsyncStartInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_async_execution_thread(async_execution_thread_ ==
-                                           HloInstruction::kMainExecutionThread
-                                       ? ""
-                                       : async_execution_thread_);
+void HloAsyncStartInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_async_execution_thread(async_execution_thread_ ==
+                                            HloInstruction::kMainExecutionThread
+                                        ? ""
+                                        : async_execution_thread_);
   for (const auto& pair : output_to_operand_aliasing()) {
-    auto aliasing = proto.add_output_operand_aliasing();
+    auto aliasing = proto->add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
     for (int64_t index : pair.first) {
       aliasing->add_output_shape_index(index);
@@ -466,7 +464,6 @@ HloInstructionProto HloAsyncStartInstruction::ToProto() const {
       aliasing->add_operand_shape_index(index);
     }
   }
-  return proto;
 }
 
 void HloAsyncStartInstruction::PrintExtraAttributesImpl(
@@ -547,12 +544,11 @@ HloCopyStartInstruction::HloCopyStartInstruction(
   AppendOperand(operand);
 }
 
-HloInstructionProto HloCopyStartInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloCopyStartInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   if (cross_program_prefetch_index_.has_value()) {
-    proto.set_cross_program_prefetch_index(*cross_program_prefetch_index_);
+    proto->set_cross_program_prefetch_index(*cross_program_prefetch_index_);
   }
-  return proto;
 }
 
 void HloCopyStartInstruction::PrintExtraAttributesImpl(
@@ -594,12 +590,11 @@ HloCompareInstruction::HloCompareInstruction(
   AppendOperand(rhs);
 }
 
-HloInstructionProto HloCompareInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_comparison_direction(
+void HloCompareInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_comparison_direction(
       ComparisonDirectionToString(compare_.GetDirection()));
-  proto.set_comparison_type(ComparisonTypeToString(compare_.GetType()));
-  return proto;
+  proto->set_comparison_type(ComparisonTypeToString(compare_.GetType()));
 }
 
 void HloCompareInstruction::PrintExtraAttributesImpl(
@@ -683,10 +678,9 @@ HloTriangularSolveInstruction::HloTriangularSolveInstruction(
   AppendOperand(b);
 }
 
-HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_triangular_solve_options() = triangular_solve_options_;
-  return proto;
+void HloTriangularSolveInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_triangular_solve_options() = triangular_solve_options_;
 }
 
 void HloTriangularSolveInstruction::PrintExtraAttributesImpl(
@@ -725,10 +719,9 @@ HloCholeskyInstruction::HloCholeskyInstruction(const Shape& shape,
   AppendOperand(a);
 }
 
-HloInstructionProto HloCholeskyInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_cholesky_options() = cholesky_options_;
-  return proto;
+void HloCholeskyInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_cholesky_options() = cholesky_options_;
 }
 
 void HloCholeskyInstruction::PrintExtraAttributesImpl(
@@ -766,12 +759,11 @@ void HloChannelInstruction::set_channel_id(
   channel_id_ = channel_id;
 }
 
-HloInstructionProto HloChannelInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloChannelInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   if (channel_id_) {
-    proto.set_channel_id(*channel_id_);
+    proto->set_channel_id(*channel_id_);
   }
-  return proto;
 }
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
@@ -807,11 +799,10 @@ HloTopKInstruction::HloTopKInstruction(const Shape& shape,
   AppendOperand(input);
 }
 
-HloInstructionProto HloTopKInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_k(k_);
-  proto.set_largest(largest_);
-  return proto;
+void HloTopKInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_k(k_);
+  proto->set_largest(largest_);
 }
 
 void HloTopKInstruction::PrintExtraAttributesImpl(
@@ -843,10 +834,9 @@ HloSendRecvInstruction::HloSendRecvInstruction(
     : HloChannelInstruction(opcode, shape, channel_id),
       is_host_transfer_(is_host_transfer) {}
 
-HloInstructionProto HloSendRecvInstruction::ToProto() const {
-  HloInstructionProto proto = HloChannelInstruction::ToProto();
-  proto.set_is_host_transfer(is_host_transfer_);
-  return proto;
+void HloSendRecvInstruction::ToProto(HloInstructionProto* proto) const {
+  HloChannelInstruction::ToProto(proto);
+  proto->set_is_host_transfer(is_host_transfer_);
 }
 
 void HloSendRecvInstruction::PrintExtraAttributesImpl(
@@ -998,27 +988,26 @@ HloCollectiveInstruction::HloCollectiveInstruction(
   }
 }
 
-HloInstructionProto HloCollectiveInstruction::ToProto() const {
-  HloInstructionProto proto = HloChannelInstruction::ToProto();
+void HloCollectiveInstruction::ToProto(HloInstructionProto* proto) const {
+  HloChannelInstruction::ToProto(proto);
 
   if (const CollectiveDeviceList* device_list_v1 =
           dynamic_cast<const CollectiveDeviceList*>(device_list_.get())) {
-    *proto.mutable_collective_device_list() = device_list_v1->ToProto();
+    *proto->mutable_collective_device_list() = device_list_v1->ToProto();
   } else if (const IotaReplicaGroupList* device_list_v2 =
                  dynamic_cast<const IotaReplicaGroupList*>(
                      device_list_.get())) {
-    *proto.mutable_iota_collective_device_list() = device_list_v2->ToProto();
+    *proto->mutable_iota_collective_device_list() = device_list_v2->ToProto();
   } else if (const MeshAxesReplicaGroupList* device_list_v3 =
                  dynamic_cast<const MeshAxesReplicaGroupList*>(
                      device_list_.get())) {
-    *proto.mutable_mesh_axes_replica_group_list() = device_list_v3->ToProto();
+    *proto->mutable_mesh_axes_replica_group_list() = device_list_v3->ToProto();
   } else {
     LOG(FATAL) << "Unknown or missing CollectiveDeviceList type in "
                   "HloCollectiveInstruction";
   }
 
-  proto.set_constrain_layout(constrain_layout_);
-  return proto;
+  proto->set_constrain_layout(constrain_layout_);
 }
 
 void HloCollectiveInstruction::PrintExtraAttributesImpl(
@@ -1094,11 +1083,10 @@ HloAllGatherInstruction::CloneWithNewOperandsImpl(
       constrain_layout(), channel_id(), use_global_device_ids());
 }
 
-HloInstructionProto HloAllGatherInstruction::ToProto() const {
-  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
-  proto.add_dimensions(all_gather_dimension_);
-  proto.set_use_global_device_ids(use_global_device_ids_);
-  return proto;
+void HloAllGatherInstruction::ToProto(HloInstructionProto* proto) const {
+  HloCollectiveInstruction::ToProto(proto);
+  proto->add_dimensions(all_gather_dimension_);
+  proto->set_use_global_device_ids(use_global_device_ids_);
 }
 
 bool HloAllGatherInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -1124,10 +1112,9 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
   AppendComputation(reduce_computation);
 }
 
-HloInstructionProto HloAllReduceInstructionBase::ToProto() const {
-  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
-  proto.set_use_global_device_ids(use_global_device_ids_);
-  return proto;
+void HloAllReduceInstructionBase::ToProto(HloInstructionProto* proto) const {
+  HloCollectiveInstruction::ToProto(proto);
+  proto->set_use_global_device_ids(use_global_device_ids_);
 }
 
 void HloAllReduceInstructionBase::PrintExtraAttributesImpl(
@@ -1204,10 +1191,9 @@ void HloReduceScatterInstruction::PrintExtraAttributesImpl(
   });
 }
 
-HloInstructionProto HloReduceScatterInstruction::ToProto() const {
-  HloInstructionProto proto = HloAllReduceInstructionBase::ToProto();
-  proto.add_dimensions(scatter_dimension_);
-  return proto;
+void HloReduceScatterInstruction::ToProto(HloInstructionProto* proto) const {
+  HloAllReduceInstructionBase::ToProto(proto);
+  proto->add_dimensions(scatter_dimension_);
 }
 
 bool HloReduceScatterInstruction::IdenticalSlowPathIgnoringChannelIdValues(
@@ -1257,12 +1243,11 @@ HloAllToAllInstruction::CloneWithNewOperandsImpl(
       split_dimension());
 }
 
-HloInstructionProto HloAllToAllInstruction::ToProto() const {
-  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
+void HloAllToAllInstruction::ToProto(HloInstructionProto* proto) const {
+  HloCollectiveInstruction::ToProto(proto);
   if (split_dimension_) {
-    proto.add_dimensions(*split_dimension_);
+    proto->add_dimensions(*split_dimension_);
   }
-  return proto;
 }
 
 void HloAllToAllInstruction::PrintExtraAttributesImpl(
@@ -1309,9 +1294,8 @@ HloRaggedAllToAllInstruction::CloneWithNewOperandsImpl(
       shape, new_operands, device_list(), channel_id());
 }
 
-HloInstructionProto HloRaggedAllToAllInstruction::ToProto() const {
-  HloInstructionProto proto = HloCollectiveInstruction::ToProto();
-  return proto;
+void HloRaggedAllToAllInstruction::ToProto(HloInstructionProto* proto) const {
+  HloCollectiveInstruction::ToProto(proto);
 }
 
 void HloRaggedAllToAllInstruction::PrintExtraAttributesImpl(
@@ -1336,8 +1320,9 @@ HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
                                         CollectiveDeviceList(replica_groups),
                                         constrain_layout, channel_id) {}
 
-HloInstructionProto HloCollectiveBroadcastInstruction::ToProto() const {
-  return HloCollectiveInstruction::ToProto();
+void HloCollectiveBroadcastInstruction::ToProto(
+    HloInstructionProto* proto) const {
+  HloCollectiveInstruction::ToProto(proto);
 }
 
 std::unique_ptr<HloInstruction>
@@ -1378,19 +1363,19 @@ HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(
   inplace_ = true;
 }
 
-HloInstructionProto HloCollectivePermuteInstruction::ToProto() const {
-  HloInstructionProto proto = HloChannelInstruction::ToProto();
+void HloCollectivePermuteInstruction::ToProto(
+    HloInstructionProto* proto) const {
+  HloChannelInstruction::ToProto(proto);
   for (const auto& pair : source_target_pairs()) {
-    auto* proto_pair = proto.add_source_target_pairs();
+    auto* proto_pair = proto->add_source_target_pairs();
     proto_pair->set_source(pair.first);
     proto_pair->set_target(pair.second);
   }
   for (const auto& slice_size : dynamic_slice_sizes_list()) {
     for (const auto& dimension_slice_size : slice_size) {
-      proto.add_dynamic_slice_sizes(dimension_slice_size);
+      proto->add_dynamic_slice_sizes(dimension_slice_size);
     }
   }
-  return proto;
 }
 
 void HloCollectivePermuteInstruction::PrintExtraAttributesImpl(
@@ -1463,12 +1448,11 @@ HloReverseInstruction::HloReverseInstruction(
   AppendOperand(operand);
 }
 
-HloInstructionProto HloDimensionsInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloDimensionsInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
+    proto->add_dimensions(dimension);
   }
-  return proto;
 }
 
 void HloDimensionsInstruction::PrintExtraAttributesImpl(
@@ -1564,15 +1548,14 @@ HloScanInstruction::HloScanInstruction(const Shape& shape,
   AppendComputation(to_apply);
 }
 
-HloInstructionProto HloScanInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloScanInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
+    proto->add_dimensions(dimension);
   }
-  proto.set_is_reverse(is_reverse_);
-  proto.set_is_associative(is_associative_);
-  proto.set_num_carries(num_carries_);
-  return proto;
+  proto->set_is_reverse(is_reverse_);
+  proto->set_is_associative(is_associative_);
+  proto->set_num_carries(num_carries_);
 }
 
 void HloScanInstruction::PrintExtraAttributesImpl(
@@ -1627,13 +1610,12 @@ HloSortInstruction::HloSortInstruction(
   AppendComputation(compare);
 }
 
-HloInstructionProto HloSortInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloSortInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
+    proto->add_dimensions(dimension);
   }
-  proto.set_is_stable(is_stable());
-  return proto;
+  proto->set_is_stable(is_stable());
 }
 
 void HloSortInstruction::PrintExtraAttributesImpl(
@@ -1729,12 +1711,11 @@ HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
   AppendOperand(operand);
 }
 
-HloInstructionProto HloReshapeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloReshapeInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   if (inferred_dimension_ != -1) {
-    proto.add_dimensions(inferred_dimension_);
+    proto->add_dimensions(inferred_dimension_);
   }
-  return proto;
 }
 
 void HloReshapeInstruction::PrintExtraAttributesImpl(
@@ -1777,12 +1758,11 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   std::iota(dimensions_.begin(), dimensions_.end(), 0);
 }
 
-HloInstructionProto HloMapInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloMapInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int64_t dimension : dimensions_) {
-    proto.add_dimensions(dimension);
+    proto->add_dimensions(dimension);
   }
-  return proto;
 }
 
 bool HloMapInstruction::IsElementwiseImpl(
@@ -1842,15 +1822,14 @@ HloSliceInstruction::HloSliceInstruction(
   }
 }
 
-HloInstructionProto HloSliceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloSliceInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int i = 0; i < slice_starts_.size(); ++i) {
-    auto* slice_dimension = proto.add_slice_dimensions();
+    auto* slice_dimension = proto->add_slice_dimensions();
     slice_dimension->set_start(slice_starts_[i]);
     slice_dimension->set_limit(slice_limits_[i]);
     slice_dimension->set_stride(slice_strides_[i]);
   }
-  return proto;
 }
 
 void HloSliceInstruction::PrintExtraAttributesImpl(
@@ -1906,12 +1885,11 @@ HloConstantInstruction::HloConstantInstruction(std::shared_ptr<Literal> literal,
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape) {}
 
-HloInstructionProto HloConstantInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloConstantInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   if (literal_) {
-    *proto.mutable_literal() = literal_->ToProto();
+    *proto->mutable_literal() = literal_->ToProto();
   }
-  return proto;
 }
 
 bool HloConstantInstruction::IsElementwiseImpl(
@@ -2364,8 +2342,7 @@ HloFusionInstruction::HloFusionInstruction(
     HloComputation* fusion_computation, absl::string_view prefix)
     : HloCallableInstruction(HloOpcode::kFusion, shape, operands,
                              fusion_computation, prefix),
-      fusion_kind_(fusion_kind) {
-}
+      fusion_kind_(fusion_kind) {}
 
 HloInstruction*
 HloFusionInstruction::CloneAndAppendInstructionIntoCalledComputation(
@@ -2389,11 +2366,11 @@ std::string HloFusionInstruction::ToCategory() const {
   }
 }
 
-HloInstructionProto HloFusionInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_fusion_kind() = std::string(xla::ToString(fusion_kind()));
+void HloFusionInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_fusion_kind() = std::string(xla::ToString(fusion_kind()));
   for (const auto& pair : output_to_operand_aliasing()) {
-    auto aliasing = proto.add_output_operand_aliasing();
+    auto aliasing = proto->add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
     for (int64_t index : pair.first) {
       aliasing->add_output_shape_index(index);
@@ -2402,9 +2379,8 @@ HloInstructionProto HloFusionInstruction::ToProto() const {
       aliasing->add_operand_shape_index(index);
     }
   }
-  proto.add_called_computation_ids(
+  proto->add_called_computation_ids(
       fused_instructions_computation()->unique_id());
-  return proto;
 }
 
 bool HloFusionInstruction::IsElementwiseImpl(
@@ -2812,10 +2788,9 @@ HloRngInstruction::HloRngInstruction(
   }
 }
 
-HloInstructionProto HloRngInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_distribution(distribution_);
-  return proto;
+void HloRngInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_distribution(distribution_);
 }
 
 void HloRngInstruction::PrintExtraAttributesImpl(
@@ -2854,16 +2829,15 @@ HloParameterInstruction::HloParameterInstruction(int64_t parameter_number,
   SetAndSanitizeName(name);
 }
 
-HloInstructionProto HloParameterInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_parameter_number(parameter_number_);
+void HloParameterInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_parameter_number(parameter_number_);
   if (parameter_replicated_at_leaf_buffers_) {
     for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
-      proto.mutable_parameter_replication()->add_replicated_at_leaf_buffers(
+      proto->mutable_parameter_replication()->add_replicated_at_leaf_buffers(
           replicated);
     }
   }
-  return proto;
 }
 
 void HloParameterInstruction::PrintExtraAttributesImpl(
@@ -2917,10 +2891,9 @@ HloGetTupleElementInstruction::HloGetTupleElementInstruction(
   AppendOperand(operand);
 }
 
-HloInstructionProto HloGetTupleElementInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_tuple_index(tuple_index_);
-  return proto;
+void HloGetTupleElementInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_tuple_index(tuple_index_);
 }
 
 void HloGetTupleElementInstruction::PrintExtraAttributesImpl(
@@ -2957,11 +2930,10 @@ HloReducePrecisionInstruction::HloReducePrecisionInstruction(
   AppendOperand(operand);
 }
 
-HloInstructionProto HloReducePrecisionInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_exponent_bits(exponent_bits_);
-  proto.set_mantissa_bits(mantissa_bits_);
-  return proto;
+void HloReducePrecisionInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_exponent_bits(exponent_bits_);
+  proto->set_mantissa_bits(mantissa_bits_);
 }
 
 void HloReducePrecisionInstruction::PrintExtraAttributesImpl(
@@ -3004,10 +2976,9 @@ HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
   AppendOperand(token_operand);
 }
 
-HloInstructionProto HloInfeedInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_infeed_config(infeed_config_);
-  return proto;
+void HloInfeedInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_infeed_config(infeed_config_);
 }
 
 void HloInfeedInstruction::PrintExtraAttributesImpl(
@@ -3047,11 +3018,10 @@ HloOutfeedInstruction::HloOutfeedInstruction(const Shape& outfeed_shape,
   AppendOperand(token_operand);
 }
 
-HloInstructionProto HloOutfeedInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_outfeed_config(outfeed_config());
-  *proto.mutable_outfeed_shape() = outfeed_shape().ToProto();
-  return proto;
+void HloOutfeedInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_outfeed_config(outfeed_config());
+  outfeed_shape().ToProto(*proto->mutable_outfeed_shape());
 }
 
 void HloOutfeedInstruction::PrintExtraAttributesImpl(
@@ -3115,15 +3085,14 @@ std::string HloConvolutionInstruction::ToCategory() const {
   return category;
 }
 
-HloInstructionProto HloConvolutionInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_window() = window_;
-  *proto.mutable_convolution_dimension_numbers() =
+void HloConvolutionInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_window() = window_;
+  *proto->mutable_convolution_dimension_numbers() =
       convolution_dimension_numbers_;
-  proto.set_feature_group_count(feature_group_count_);
-  proto.set_batch_group_count(batch_group_count_);
-  *proto.mutable_precision_config() = precision_config_;
-  return proto;
+  proto->set_feature_group_count(feature_group_count_);
+  proto->set_batch_group_count(batch_group_count_);
+  *proto->mutable_precision_config() = precision_config_;
 }
 
 void HloConvolutionInstruction::PrintExtraAttributesImpl(
@@ -3205,10 +3174,9 @@ HloReduceWindowInstruction::HloReduceWindowInstruction(
   AppendComputation(reduce_computation);
 }
 
-HloInstructionProto HloReduceWindowInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_window() = window_;
-  return proto;
+void HloReduceWindowInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_window() = window_;
 }
 
 void HloReduceWindowInstruction::PrintExtraAttributesImpl(
@@ -3256,10 +3224,9 @@ HloSelectAndScatterInstruction::HloSelectAndScatterInstruction(
   AppendComputation(scatter);
 }
 
-HloInstructionProto HloSelectAndScatterInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_window() = window_;
-  return proto;
+void HloSelectAndScatterInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_window() = window_;
 }
 
 void HloSelectAndScatterInstruction::PrintExtraAttributesImpl(
@@ -3380,32 +3347,32 @@ HloCustomCallInstruction::HloCustomCallInstruction(
   set_raw_backend_config_string(std::move(opaque));
 }
 
-HloInstructionProto HloCustomCallInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloCustomCallInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   if (window_ != nullptr) {
-    *proto.mutable_window() = *window_;
+    *proto->mutable_window() = *window_;
   }
   if (convolution_dimension_numbers_ != nullptr) {
-    *proto.mutable_convolution_dimension_numbers() =
+    *proto->mutable_convolution_dimension_numbers() =
         *convolution_dimension_numbers_;
   }
-  proto.set_custom_call_target(custom_call_target_);
-  proto.set_feature_group_count(feature_group_count_);
-  proto.set_batch_group_count(batch_group_count_);
-  *proto.mutable_precision_config() = precision_config_;
-  proto.set_padding_type(padding_type_);
+  proto->set_custom_call_target(custom_call_target_);
+  proto->set_feature_group_count(feature_group_count_);
+  proto->set_batch_group_count(batch_group_count_);
+  *proto->mutable_precision_config() = precision_config_;
+  proto->set_padding_type(padding_type_);
   if (layout_constrained()) {
-    proto.set_constrain_layout(true);
+    proto->set_constrain_layout(true);
     for (const Shape& shape : operand_shapes_with_layout_) {
-      *proto.add_operand_shapes_with_layout() = shape.ToProto();
+      shape.ToProto(*proto->add_operand_shapes_with_layout());
     }
   }
-  proto.set_custom_call_has_side_effect(custom_call_has_side_effect_);
+  proto->set_custom_call_has_side_effect(custom_call_has_side_effect_);
   if (literal_) {
-    *proto.mutable_literal() = literal_->ToProto();
+    *proto->mutable_literal() = literal_->ToProto();
   }
   for (const auto& pair : output_to_operand_aliasing()) {
-    auto aliasing = proto.add_output_operand_aliasing();
+    auto aliasing = proto->add_output_operand_aliasing();
     aliasing->set_operand_index(pair.second.first);
     for (int64_t index : pair.first) {
       aliasing->add_output_shape_index(index);
@@ -3414,9 +3381,8 @@ HloInstructionProto HloCustomCallInstruction::ToProto() const {
       aliasing->add_operand_shape_index(index);
     }
   }
-  proto.set_custom_call_schedule(custom_call_schedule_);
-  proto.set_custom_call_api_version(api_version_);
-  return proto;
+  proto->set_custom_call_schedule(custom_call_schedule_);
+  proto->set_custom_call_api_version(api_version_);
 }
 
 void HloCustomCallInstruction::PrintExtraAttributesImpl(
@@ -3631,10 +3597,9 @@ HloPadInstruction::HloPadInstruction(const Shape& shape,
   AppendOperand(padding_value);
 }
 
-HloInstructionProto HloPadInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_padding_config() = padding_config_;
-  return proto;
+void HloPadInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_padding_config() = padding_config_;
 }
 
 void HloPadInstruction::PrintExtraAttributesImpl(
@@ -3702,12 +3667,11 @@ HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
   }
 }
 
-HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloDynamicSliceInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   for (int64_t slice_size : dynamic_slice_sizes_) {
-    proto.add_dynamic_slice_sizes(slice_size);
+    proto->add_dynamic_slice_sizes(slice_size);
   }
-  return proto;
 }
 
 void HloDynamicSliceInstruction::PrintExtraAttributesImpl(
@@ -3808,14 +3772,13 @@ HloGatherInstruction::HloGatherInstruction(
   return gather_dim_numbers;
 }
 
-HloInstructionProto HloGatherInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_gather_dimension_numbers() = gather_dimension_numbers();
+void HloGatherInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_gather_dimension_numbers() = gather_dimension_numbers();
   for (int64_t bound : gather_slice_sizes()) {
-    proto.add_gather_slice_sizes(bound);
+    proto->add_gather_slice_sizes(bound);
   }
-  proto.set_indices_are_sorted(indices_are_sorted());
-  return proto;
+  proto->set_indices_are_sorted(indices_are_sorted());
 }
 
 void HloGatherInstruction::PrintExtraAttributesImpl(
@@ -3927,12 +3890,11 @@ HloScatterInstruction::MakeScatterDimNumbers(
   return scatter_dim_numbers;
 }
 
-HloInstructionProto HloScatterInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_scatter_dimension_numbers() = scatter_dimension_numbers();
-  proto.set_indices_are_sorted(indices_are_sorted());
-  proto.set_unique_indices(unique_indices());
-  return proto;
+void HloScatterInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_scatter_dimension_numbers() = scatter_dimension_numbers();
+  proto->set_indices_are_sorted(indices_are_sorted());
+  proto->set_unique_indices(unique_indices());
 }
 
 void HloScatterInstruction::PrintExtraAttributesImpl(
@@ -3977,10 +3939,9 @@ HloIotaInstruction::HloIotaInstruction(const Shape& shape,
     : HloInstruction(HloOpcode::kIota, shape),
       iota_dimension_(iota_dimension) {}
 
-HloInstructionProto HloIotaInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.add_dimensions(iota_dimension());
-  return proto;
+void HloIotaInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->add_dimensions(iota_dimension());
 }
 
 void HloIotaInstruction::PrintExtraAttributesImpl(
@@ -4015,11 +3976,10 @@ HloDotInstruction::HloDotInstruction(
   AppendOperand(rhs);
 }
 
-HloInstructionProto HloDotInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
-  *proto.mutable_precision_config() = precision_config_;
-  return proto;
+void HloDotInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto->mutable_precision_config() = precision_config_;
 }
 
 void HloDotInstruction::PrintExtraAttributesImpl(
@@ -4063,11 +4023,11 @@ HloRaggedDotInstruction::HloRaggedDotInstruction(
   AppendOperand(group_sizes);
 }
 
-HloInstructionProto HloRaggedDotInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_ragged_dot_dimension_numbers() = ragged_dot_dimension_numbers_;
-  *proto.mutable_precision_config() = precision_config_;
-  return proto;
+void HloRaggedDotInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_ragged_dot_dimension_numbers() =
+      ragged_dot_dimension_numbers_;
+  *proto->mutable_precision_config() = precision_config_;
 }
 
 void HloRaggedDotInstruction::PrintExtraAttributesImpl(
@@ -4115,11 +4075,10 @@ HloScaledDotInstruction::HloScaledDotInstruction(
   AppendOperand(rhs_scale);
 }
 
-HloInstructionProto HloScaledDotInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_dot_dimension_numbers() = dot_dimension_numbers_;
-  *proto.mutable_precision_config() = precision_config_;
-  return proto;
+void HloScaledDotInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  *proto->mutable_dot_dimension_numbers() = dot_dimension_numbers_;
+  *proto->mutable_precision_config() = precision_config_;
 }
 
 void HloScaledDotInstruction::PrintExtraAttributesImpl(
@@ -4192,23 +4151,21 @@ std::unique_ptr<HloInstruction> HloDomainInstruction::CloneWithNewOperandsImpl(
                                                 user_side_metadata_->Clone());
 }
 
-HloInstructionProto HloDomainInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
+void HloDomainInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
   auto operand_side_sharding =
       dynamic_cast<const ShardingMetadata*>(operand_side_metadata_.get());
   if (operand_side_sharding && operand_side_sharding->sharding() != nullptr) {
-    *proto.mutable_domain_entry_sharding() =
+    *proto->mutable_domain_entry_sharding() =
         operand_side_sharding->sharding()->ToProto();
   }
 
   auto user_side_sharding =
       dynamic_cast<const ShardingMetadata*>(user_side_metadata_.get());
   if (user_side_sharding && user_side_sharding->sharding() != nullptr) {
-    *proto.mutable_domain_exit_sharding() =
+    *proto->mutable_domain_exit_sharding() =
         user_side_sharding->sharding()->ToProto();
   }
-
-  return proto;
 }
 
 HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(
@@ -4218,10 +4175,9 @@ HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(
   AppendOperand(operand);
 }
 
-HloInstructionProto HloGetDimensionSizeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.add_dimensions(dimension());
-  return proto;
+void HloGetDimensionSizeInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->add_dimensions(dimension_);
 }
 
 void HloGetDimensionSizeInstruction::PrintExtraAttributesImpl(
@@ -4267,10 +4223,9 @@ void HloSetDimensionSizeInstruction::PrintExtraAttributesImpl(
   });
 }
 
-HloInstructionProto HloSetDimensionSizeInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.add_dimensions(dimension());
-  return proto;
+void HloSetDimensionSizeInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->add_dimensions(dimension_);
 }
 
 bool HloSetDimensionSizeInstruction::IdenticalSlowPath(
@@ -4297,10 +4252,10 @@ HloRngGetAndUpdateStateInstruction::HloRngGetAndUpdateStateInstruction(
     const Shape& shape, int64_t delta)
     : HloInstruction(HloOpcode::kRngGetAndUpdateState, shape), delta_(delta) {}
 
-HloInstructionProto HloRngGetAndUpdateStateInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_delta(delta_);
-  return proto;
+void HloRngGetAndUpdateStateInstruction::ToProto(
+    HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_delta(delta_);
 }
 
 void HloRngGetAndUpdateStateInstruction::PrintExtraAttributesImpl(
@@ -4335,10 +4290,9 @@ HloRngBitGeneratorInstruction::HloRngBitGeneratorInstruction(
   AppendOperand(state);
 }
 
-HloInstructionProto HloRngBitGeneratorInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_rng_algorithm(algorithm_);
-  return proto;
+void HloRngBitGeneratorInstruction::ToProto(HloInstructionProto* proto) const {
+  HloInstruction::ToProto(proto);
+  proto->set_rng_algorithm(algorithm_);
 }
 
 void HloRngBitGeneratorInstruction::PrintExtraAttributesImpl(
