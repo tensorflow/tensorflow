@@ -3,6 +3,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
@@ -18,9 +19,10 @@ package(
 # -----------------------------------------------------------------------------
 # A list of all modules linked into TensorFlow.
 
-py_strict_library(
+py_library(
     name = "dtensor",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
