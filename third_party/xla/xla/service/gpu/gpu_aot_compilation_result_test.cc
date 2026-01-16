@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
