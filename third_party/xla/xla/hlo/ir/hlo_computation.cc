@@ -1254,7 +1254,7 @@ void HloComputation::ToProto(HloComputationProto* proto) const {
     instruction->ToProto(proto->add_instructions());
   }
   proto->set_root_id(root_instruction()->unique_id());
-  *proto->mutable_program_shape() = ComputeProgramShape().ToProto();
+  ComputeProgramShape().ToProto(*proto->mutable_program_shape());
   proto->set_is_fusion_computation(IsFusionComputation());
   proto->set_execution_thread(IsMainThread() ? ""
                                              : std::string(execution_thread()));

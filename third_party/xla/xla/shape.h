@@ -700,6 +700,7 @@ class ProgramShape {
       const ProgramShapeProto& program_shape_proto);
 
   // Returns a proto representation of the object.
+  void ToProto(ProgramShapeProto& proto) const;
   ProgramShapeProto ToProto() const;
 
   void Print(Printer* printer) const;
