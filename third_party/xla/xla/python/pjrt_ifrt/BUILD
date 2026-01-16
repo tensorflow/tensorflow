@@ -173,6 +173,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "xla_executable_abi_version",
+    srcs = ["xla_executable_abi_version.cc"],
+    hdrs = ["xla_executable_abi_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/python/ifrt:serdes",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "xla_executable_version",
     srcs = ["xla_executable_version.cc"],
     hdrs = ["xla_executable_version.h"],
