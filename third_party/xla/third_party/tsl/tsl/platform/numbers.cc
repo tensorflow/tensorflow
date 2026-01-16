@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 
@@ -301,6 +302,11 @@ std::string HumanReadableElapsedTime(double seconds) {
   seconds /= 365.2425;
   absl::StrAppendFormat(&human_readable, "%0.3g years", seconds);
   return human_readable;
+}
+
+std::string HumanReadableElapsedTime(absl::Duration duration) {
+  return HumanReadableElapsedTime(absl::ToInt64Microseconds(duration) /
+                                  1000000.0);
 }
 
 }  // namespace strings

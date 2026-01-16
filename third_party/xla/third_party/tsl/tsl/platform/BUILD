@@ -161,12 +161,11 @@ cc_library(
     hdrs = ["numbers.h"],
     deps = [
         ":stringpiece",
-        ":stringprintf",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1392,6 +1391,7 @@ tsl_cc_test(
     deps = [
         ":numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
         "@local_xla//xla/tsl/platform:types",

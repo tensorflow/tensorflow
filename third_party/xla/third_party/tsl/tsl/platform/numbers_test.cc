@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 
@@ -531,6 +532,10 @@ TEST(LegacyPrecision, FloatRoundTrip) {
 TEST(LegacyPrecision, NoOpTypes) {
   EXPECT_EQ(absl::StrCat(strings::LegacyPrecision(1)), "1");
   EXPECT_EQ(absl::StrCat(strings::LegacyPrecision("foo")), "foo");
+}
+
+TEST(HumanReadableElapsedTime, Duration) {
+  EXPECT_EQ(HumanReadableElapsedTime(absl::Milliseconds(120)), "120 ms");
 }
 
 }  // namespace strings
