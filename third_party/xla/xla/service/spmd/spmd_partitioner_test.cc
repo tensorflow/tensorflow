@@ -8100,15 +8100,11 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceOfConstantInRange) {
   auto sharded_input = AllOf(op::Parameter(0), op::Shape("s32[128,32]"));
   auto sharded_update = AllOf(op::Parameter(1), op::Shape("s32[10,5]"));
   auto zero_one_mask = AllOf(op::Pad(op::Broadcast(_), op::Constant()),
-                             op::Shape("pred[10,59]"));
+                             op::Shape("pred[10,64]"));
   auto sliced_mask_based_on_partition_id =
       AllOf(op::DynamicSlice(zero_one_mask, _, _), op::Shape("pred[10,32]"));
-  auto dus_range_for_partition_id =
-      AllOf(op::Select(op::And(_, _), sliced_mask_based_on_partition_id,
-                       op::Broadcast(op::Constant())),
-            op::Shape("pred[10,32]"));
   auto padded_dus_range_for_partition_id =
-      AllOf(op::Pad(dus_range_for_partition_id, op::Constant()),
+      AllOf(op::Pad(sliced_mask_based_on_partition_id, op::Constant()),
             op::Shape("pred[128,32]"));
   auto padded_sharded_update =
       AllOf(op::Pad(sharded_update, op::Constant()), op::Shape("s32[10,59]"));
@@ -8187,8 +8183,8 @@ TEST_P(SpmdPartitioningTest, DynamicUpdateSliceSingleDimensionWithEnzymeOpt) {
   auto sharded_input = AllOf(op::Parameter(0), op::Shape("s32[4]"));
   auto sharded_update = AllOf(op::Parameter(1), op::Shape("s32[2]"));
   auto c3 = AllOf(op::Constant(), op::Shape("s32[]"));
-  auto per_partition_padded_mask = AllOf(op::Select(
-      _, op::DynamicSlice(op::Pad(_, _), op::Multiply(_, _)), op::Broadcast()));
+  auto per_partition_padded_mask =
+      AllOf(op::DynamicSlice(op::Pad(_, _), op::Multiply(_, _)));
   auto sliced_sharded_update_fwd_edge = AllOf(
       op::CollectivePermute(op::Slice(sharded_update)), op::Shape("s32[1]"));
   auto sharded_update_bwd_edge =
@@ -8235,6 +8231,99 @@ TEST_P(SpmdPartitioningTest,
                                          op::AllGather(sharded_update), c3)),
                                      op::Reshape(_)),
                     op::Shape("s32[4]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOpt) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %arg0 = f32[20,1536,3072] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %dus_in = f32[20,1536,3056] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    update = f32[1,1520,3056] slice(%arg0), slice={[8:9], [8:1528], [8:3064]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c7 = s32[] constant(7)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,1536,3056] dynamic-update-slice(%dus_in, update, c7, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(0), op::Shape("f32[20,768,1536]"));
+  auto sharded_dus_in = AllOf(op::Parameter(1), op::Shape("f32[20,768,1528]"));
+  EXPECT_THAT(root, AllOf(op::Select(op::Pad(_, _), sharded_dus_in,
+                                     op::Pad(op::Slice(op::DynamicSlice(
+                                                 sharded_input, _, _, _)),
+                                             _)),
+                          op::Shape("f32[20,768,1528]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceWithoutEnzymeOpt) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %arg0 = f32[20,1536,3072] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %dus_in = f32[20,1536,3056] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    update = f32[1,1520,3056] slice(%arg0), slice={[8:9], [8:1528], [8:3064]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c7 = s32[] constant(7)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,1536,3056] dynamic-update-slice(%dus_in, update, c7, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/false));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(0), op::Shape("f32[20,768,1536]"));
+  auto sharded_dus_in = AllOf(op::Parameter(1), op::Shape("f32[20,768,1528]"));
+  EXPECT_THAT(root, AllOf(op::DynamicSlice(op::DynamicUpdateSlice(
+                                               op::AllGather(sharded_dus_in),
+                                               op::AllGather(_), _, _, _),
+                                           _, _, _),
+                          op::Shape("f32[20,768,1528]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOpt2) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %arg0 = f32[20,1536,3072] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %dus_in = f32[20,1536,3056] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    update = f32[1,1520,3056] slice(%arg0), slice={[8:9], [8:1528], [8:3064]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c9 = s32[] constant(9)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,1536,3056] dynamic-update-slice(%dus_in, update, c9, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(0), op::Shape("f32[20,768,1536]"));
+  auto sharded_dus_in = AllOf(op::Parameter(1), op::Shape("f32[20,768,1528]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Select(op::Pad(_, _), sharded_dus_in,
+                       op::Pad(op::Slice(
+
+                                   op::DynamicSlice(sharded_input, _, _, _)),
+                               _)),
+            op::Shape("f32[20,768,1528]")));
 }
 
 TEST_P(SpmdPartitioningTest, UnpartitionedGather) {
@@ -14926,9 +15015,8 @@ ENTRY entry {
                                                SpmdPartitionerOptions(),
                                                /*enable_enzyme_opt=*/true));
 
-  XLA_VLOG_LINES(1, module->ToString());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::Copy(op::Select(op::Select(_, _, _),
+              AllOf(op::Copy(op::Select(op::DynamicSlice(_, _, _, _, _),
                                         op::DynamicSlice(_, _, _, _, _),
                                         op::DynamicSlice(_, _, _, _, _))),
                     op::Shape("bf16[8,112,112,384]")));
