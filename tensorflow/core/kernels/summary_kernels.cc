@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -311,6 +312,10 @@ class WriteAudioSummaryOp : public OpKernel {
 
     const Tensor* t;
     OP_REQUIRES_OK(ctx, ctx->input("tensor", &t));
+    OP_REQUIRES(ctx, t->dims() >= 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("tensor must have at least 2 dims, got ",
+                                 t->shape().DebugString())));
 
     OP_REQUIRES_OK(ctx,
                    s->WriteAudio(step, *t, tag, max_outputs_, sample_rate));
