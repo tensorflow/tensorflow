@@ -28,37 +28,44 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <array>
+#include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
-#include "xla/array4d.h"
+#include "xla/array3d.h"
 #include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -548,14 +555,6 @@ struct BoundsLayout {
   std::vector<int64_t> layout;
   std::vector<int64_t> reduce_dims;
 };
-
-void PrintTo(const BoundsLayout& spec, std::ostream* os) {
-  *os << absl::StrFormat("R%uToR%u%s_%s_Reduce%s", spec.bounds.size(),
-                         spec.bounds.size() - spec.reduce_dims.size(),
-                         absl::StrJoin(spec.bounds, "x"),
-                         absl::StrJoin(spec.layout, ""),
-                         absl::StrJoin(spec.reduce_dims, ""));
-}
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.
 TEST_F(ReduceTest, AddReduce2DScalarToR0) {
