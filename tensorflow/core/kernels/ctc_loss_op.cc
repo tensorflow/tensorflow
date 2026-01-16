@@ -343,12 +343,12 @@ class CTCLossOpGPU : public OpKernel {
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc =
         std::move(grads_desc_s).value();
 
-    absl::Span<const int32> labels_data(labels_values->flat<int32>().data(),
-                                        num_indices);
-    absl::Span<const int32> labels_lengths_data(labels_lengths.data(),
-                                                batch_size);
-    absl::Span<const int32> input_lengths_data(seq_len->flat<int32>().data(),
-                                               batch_size);
+    absl::Span<const int32_t> labels_data(labels_values->flat<int32_t>().data(),
+                                          num_indices);
+    absl::Span<const int32_t> labels_lengths_data(labels_lengths.data(),
+                                                  batch_size);
+    absl::Span<const int32_t> input_lengths_data(
+        seq_len->flat<int32_t>().data(), batch_size);
 
     auto probs_data = StreamExecutorUtil::AsDeviceMemory<float>(*inputs);
     auto costs_data = StreamExecutorUtil::AsDeviceMemory<float>(*loss);
@@ -361,7 +361,7 @@ class CTCLossOpGPU : public OpKernel {
     auto dnn = stream->parent()->AsDnn();
     OP_REQUIRES(ctx, dnn != nullptr,
                 absl::InternalError("stream->parent() has no DNN support"));
-    stream_executor::DeviceMemory<uint8_t> scratch_memory;
+    stream_executor::DeviceAddress<uint8_t> scratch_memory;
     int ctc_loss_algo_id;
     bool cudnn_launch_status =
         dnn->PrepareForCtcLoss(stream, *probs_desc, probs_data, *grads_desc,
