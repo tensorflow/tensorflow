@@ -519,7 +519,13 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  HloModuleProto ToProto() const;
+  void ToProto(HloModuleProto* proto) const;
+
+  HloModuleProto ToProto() const {
+    HloModuleProto proto;
+    ToProto(&proto);
+    return proto;
+  }
 
   // Converts an HloModuleProto to an HloModule. If preserve_instruction_ids is
   // true, the instruction ids in the proto will be preserved. Otherwise, the
@@ -541,7 +547,13 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  HloModuleProtoWithConfig ToProtoWithConfig() const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+
+  HloModuleProtoWithConfig ToProtoWithConfig() const {
+    HloModuleProtoWithConfig proto;
+    ToProtoWithConfig(&proto);
+    return proto;
+  }
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
