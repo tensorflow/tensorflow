@@ -3903,7 +3903,19 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       LiteralUtil::Zero(hlo->shape().element_type())));
 
   HloInstruction* newOperand = nullptr;
-  if (update_tensor->opcode() == HloOpcode::kSlice) {
+
+  if (update_tensor->opcode() == HloOpcode::kBroadcast) {
+    // Check if we are broadcasting a scalar, in which case we can simply
+    // broadcast the operand to the output shape instead of padding.
+    bool enableBroadcastOptimization =
+        update_tensor->operand(0)->shape().dimensions().empty();
+    if (enableBroadcastOptimization) {
+      newOperand = add_hlo(HloInstruction::CreateBroadcast(
+          GetPartitionedHlo(input_tensor).hlo()->shape(),
+          GetPartitionedHlo(update_tensor->operand(0)).hlo(), {}));
+      newOperand->set_sharding(hlo->sharding());
+    }
+  } else if (update_tensor->opcode() == HloOpcode::kSlice) {
     bool slice_expand_ellgible = true;
     const xla::HloSliceInstruction* slice =
         DynCast<HloSliceInstruction>(update_tensor);
