@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/xla_data.pb.h"
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
