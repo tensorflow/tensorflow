@@ -44,7 +44,8 @@ class GrpcRemoteWorker : public WorkerInterface {
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             thread::ThreadPool* callback_threadpool,
-                            WorkerCacheLogger* logger, const string& target)
+                            WorkerCacheLogger* logger,
+                            const std::string& target)
       : channel_(std::move(channel)),
         stub_(channel_),
         cq_(completion_queue),
@@ -154,7 +155,7 @@ class GrpcRemoteWorker : public WorkerInterface {
                          static_cast<int64_t>(response->send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
-          const string& key = request->buf_rendezvous_key();
+          const std::string& key = request->buf_rendezvous_key();
           logger_->RecordDataTransfer(
               step_id, send_start_usec, end_usec, key, request->src_device(),
               request->dst_device(), num_bytes, "", "RecvBuf");
@@ -230,8 +231,8 @@ class GrpcRemoteWorker : public WorkerInterface {
                 static_cast<int64_t>(response->metadata().send_start_micros()));
             send_start_usec = std::min(send_start_usec, end_usec - 1);
           }
-          const string& key = request->rendezvous_key();
-          std::vector<string> key_parts = str_util::Split(key, ';');
+          const std::string& key = request->rendezvous_key();
+          std::vector<std::string> key_parts = str_util::Split(key, ';');
           if (key_parts.size() != 5) {
             LOG(WARNING) << "Bad key: " << key;
           } else {
@@ -335,7 +336,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 
   // Support for logging.
   WorkerCacheLogger* logger_;
-  const string target_;
+  const std::string target_;
 
   GrpcRemoteWorker(const GrpcRemoteWorker&) = delete;
   void operator=(const GrpcRemoteWorker&) = delete;
@@ -345,7 +346,7 @@ WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      thread::ThreadPool* callback_threadpool,
                                      WorkerCacheLogger* logger,
-                                     const string& target) {
+                                     const std::string& target) {
   return new GrpcRemoteWorker(std::move(channel), completion_queue,
                               callback_threadpool, logger, target);
 }
