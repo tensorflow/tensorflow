@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
