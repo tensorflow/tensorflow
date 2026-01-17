@@ -44,6 +44,7 @@ cc_library(
         "//tensorflow/core/platform:jpeg",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
         "@libjpeg_turbo//:jpeg",
     ],
 )
@@ -66,9 +67,8 @@ cc_library(
     linkopts = if_android(["-ldl"]),
     deps = [
         "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:cord",
-        "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:float8",
         "//tensorflow/core/platform:jpeg",
         "//tensorflow/core/platform:logging",
@@ -79,6 +79,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@eigen_archive//:eigen3",
         "@libjpeg_turbo//:jpeg",
         "@local_tsl//tsl/platform:logging",
