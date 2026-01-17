@@ -30,8 +30,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
@@ -57,7 +59,10 @@ struct Tf2HloResult {
   xla::HloModuleProto hlo_module_proto;
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
   tf2xla::HostComputeMetadata host_compute_metadata;
-  Tf2HLOResultProto ToProto() const;
+  std::vector<xla::Shape> xla_input_shapes;
+  std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
+  absl::StatusOr<Tf2HLOResultProto> ToProto() const;
+  static absl::StatusOr<Tf2HloResult> FromProto(const Tf2HLOResultProto& proto);
 };
 
 absl::Status UpdateCompileMetadata(

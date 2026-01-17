@@ -158,7 +158,9 @@ cc_library(
         "@xla//xla/client:client_library",
         "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt:pjrt_layout",
         "@xla//xla/python/ifrt",
+        "@xla//xla/python/pjrt_ifrt:pjrt_layout",
         "@xla//xla/service:computation_placer_hdr",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/stream_executor:platform_manager",
@@ -305,5 +307,9 @@ tf_proto_library(
         "@xla//xla/service:hlo_proto",
         "//tensorflow/core:protos_all",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+    ],
+    deps = [
+        "@xla//xla:xla_data_proto",
+        "@xla//xla/python/ifrt:layout_proto",
     ],
 )

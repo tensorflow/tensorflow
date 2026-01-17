@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#include "xla/python/ifrt/layout.h"
 #include "xla/xla_data.pb.h"
 #define EIGEN_USE_THREADS
 
@@ -336,7 +337,7 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
 // A simple wrapper function to create ifrt array for one single device.
 absl::StatusOr<xla::ifrt::ArrayRef> CreateArrayFromHostTensorForSingleDevice(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& tensor,
-    xla::ifrt::Device* device) {
+    xla::ifrt::Device* device, const xla::ifrt::LayoutRef& xla_input_layout) {
   TF_ASSIGN_OR_RETURN(auto dtype, ToIfrtDType(tensor.dtype()));
 
   VLOG(2) << "Make single device array for buffer slice at " << tensor.data();
@@ -346,7 +347,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> CreateArrayFromHostTensorForSingleDevice(
   return ifrt_client.MakeArrayFromHostBuffer(
       tensor.data(), dtype, ToIfrtShape(tensor.shape()),
       GetByteStrides(tensor.dtype(), tensor.shape()),
-      std::move(single_device_sharding),
+      std::move(single_device_sharding), xla_input_layout,
       xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
       [tensor]() {
         // Keep tensor alive
@@ -662,11 +663,13 @@ absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
 H2DTransferExecutor::ScheduledH2DTransfer(
     const tensorflow::Tensor& tensor,
     const xla::ifrt::DeviceListRef& device_list,
-    const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool) {
+    const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout) {
   TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
-  TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef array_ref,
-                      MakeArrayFromTensor(ifrt_client_, tensor, device_list,
-                                          hlo_sharding, thread_pool));
+  TF_ASSIGN_OR_RETURN(
+      xla::ifrt::ArrayRef array_ref,
+      MakeArrayFromTensor(ifrt_client_, tensor, device_list, hlo_sharding,
+                          thread_pool, xla_input_layout));
   return tsl::Future<xla::ifrt::ArrayRef>(std::move(array_ref));
 }
 
@@ -691,7 +694,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool) {
+    const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout) {
   VLOG(1) << "Hlo sharding: " << hlo_sharding.ToString();
   VLOG(1) << "Device list size: " << device_list->size();
 
@@ -703,8 +707,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
   }
 
   if (device_list->size() == 1) {
-    return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
-                                                    device_list->devices()[0]);
+    return CreateArrayFromHostTensorForSingleDevice(
+        ifrt_client, input_tensor, device_list->devices()[0], xla_input_layout);
   }
 
   // IsTileMaximal() also returns true for a replicate sharding created by
@@ -716,7 +720,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     TF_ASSIGN_OR_RETURN(device, ifrt_client.LookupDevice(
                                     xla::ifrt::DeviceId(unique_device_id)));
     return CreateArrayFromHostTensorForSingleDevice(ifrt_client, input_tensor,
-                                                    device);
+                                                    device, xla_input_layout);
   }
 
   // Fast path for replicated sharding.
@@ -745,7 +749,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool) {
+    const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout) {
   if (device_ids.empty()) {
     return absl::InvalidArgumentError("device_ids cannot be empty");
   }
@@ -761,7 +766,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
                       ifrt_client.MakeDeviceList(devices));
 
   return MakeArrayFromTensor(ifrt_client, input_tensor, device_list,
-                             hlo_sharding, thread_pool);
+                             hlo_sharding, thread_pool, xla_input_layout);
 }
 
 std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(

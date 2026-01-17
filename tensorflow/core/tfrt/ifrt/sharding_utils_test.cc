@@ -395,7 +395,8 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, thread_pool));
+                          GetParam().sharding, thread_pool,
+                          /*xla_input_layout=*/nullptr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto disassembled_arrays,
@@ -668,7 +669,8 @@ TEST(ShardingUtilsTest, MismatchRank) {
   xla::HloSharding sharding = Tile({2, 1});
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), thread_pool),
+                                  std::move(sharding), thread_pool,
+                                  /*xla_input_layout*/ nullptr),
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   "shape must have 2 dimensions, but has 3 dimensions: "
