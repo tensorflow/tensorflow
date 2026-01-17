@@ -60,6 +60,7 @@ NvshmemCollectives* NvshmemCollectives::Default() {
 }
 
 absl::Status NvshmemCollectives::InitializeTopology(Topology topology) {
+  topology_ = topology;
   se::gpu::nvshmem::SetEnvInfo(topology.node_id, topology.num_nodes,
                                topology.device_count_per_process,
                                topology.kv_store);
