@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
   uint64_t offset = 0;
   tstring record;
   while (true) {
-    std::unique_ptr<Event> event = std::unique_ptr<Event>(new Event);
+    std::unique_ptr<Event> event = std::make_unique<Event>();
     absl::Status s = reader.ReadRecord(&offset, &record);
     if (s.code() == error::OUT_OF_RANGE) break;
     TF_CHECK_OK(s);
