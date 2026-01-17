@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
