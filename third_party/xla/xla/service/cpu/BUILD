@@ -1674,6 +1674,8 @@ cc_library(
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic:type",
+        "//xla/codegen/intrinsic/cpp:intrinsic_declarations",
         "//xla/hlo/ir:hlo",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/llvm_ir:llvm_util",
