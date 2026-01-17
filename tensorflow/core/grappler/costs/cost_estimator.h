@@ -190,7 +190,7 @@ struct Costs {
   // other reasons causing the inaccuracy
 
   // Max possible memory usage per device.
-  std::unordered_map<string, uint64> estimated_max_memory_per_device;
+  std::unordered_map<std::string, uint64_t> estimated_max_memory_per_device;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Costs::MilliSeconds d) {
