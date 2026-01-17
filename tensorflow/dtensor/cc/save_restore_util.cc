@@ -15,6 +15,15 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
