@@ -571,7 +571,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   // cost functions for cast ops, using the actual input and output types.
   elementwise_ops_.emplace(
       "Cast", Eigen::internal::functor_traits<
-                  Eigen::internal::scalar_cast_op<float, int16>>::Cost);
+                  Eigen::internal::scalar_cast_op<float, int16_t>>::Cost);
   elementwise_ops_.emplace("Ceil", EIGEN_COST(scalar_ceil_op<float>));
   elementwise_ops_.emplace("Cos", EIGEN_COST(scalar_cos_op<float>));
   elementwise_ops_.emplace("Dequantize", EIGEN_COST(scalar_product_op<float>));
