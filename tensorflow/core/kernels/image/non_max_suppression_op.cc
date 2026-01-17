@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc
 
+#include <algorithm>
+#include <deque>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/image/non_max_suppression_op.h"
