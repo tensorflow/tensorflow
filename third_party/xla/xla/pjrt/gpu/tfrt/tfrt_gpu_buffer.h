@@ -21,8 +21,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
