@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"

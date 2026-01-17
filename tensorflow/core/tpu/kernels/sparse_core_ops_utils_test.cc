@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
+#include <cstdint>
 #include <vector>
 
 #include <gtest/gtest.h>
