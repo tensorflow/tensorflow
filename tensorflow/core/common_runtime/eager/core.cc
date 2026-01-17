@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <utility>
-#include <variant>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/execute.h"

@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
 #include <memory>
+#include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
