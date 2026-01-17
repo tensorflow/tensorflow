@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -121,6 +122,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -518,11 +520,38 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
       FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
                                       executable->module()));
 
+  // Propagate env_option_overrides-> debug_options
+  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
+  // Override the debug_options() embedded in the module with those
+  // explicitly passed in when deserializing. This allows options such as
+  // --xla_dump_to to be changed.
+  if (executable->has_module()) {
+    ExecutableBuildOptions& build_options =
+        compile_options.executable_build_options;
+    DumpHloModuleIfEnabled(executable->module(), kAfterOptimizationsDumpName,
+                           build_options.has_debug_options()
+                               ? &build_options.debug_options()
+                               : nullptr);
+  }
+
+  auto cpu_executable = std::make_shared<PjRtCpuExecutable>(
+      num_replicas, num_partitions,
+      compile_options.parameter_is_tupled_arguments, std::move(input_options),
+      std::move(executable), std::move(result_buffer_indices), nullptr);
+  TF_RETURN_IF_ERROR(cpu_executable->SetUpDonation(
+      compile_options.parameter_is_tupled_arguments));
+  return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCpuClient::LoadInternal(
+    std::shared_ptr<PjRtCpuExecutable> cpu_executable,
+    std::shared_ptr<DeviceAssignment> device_assignment) {
+  int num_replicas = cpu_executable->num_replicas();
+  int num_partitions = cpu_executable->num_partitions();
   std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
       addressable_device_logical_ids;
   std::vector<PjRtDevice*> addressable_devices;
-  ExecutableBuildOptions& build_options =
-      compile_options.executable_build_options;
   if (device_assignment != nullptr) {
     addressable_device_logical_ids.reserve(num_replicas * num_partitions);
     addressable_devices.reserve(num_replicas * num_partitions);
@@ -541,32 +570,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
         addressable_devices.push_back(device);
       }
     }
-
-    if (!addressable_devices.empty() && build_options.device_ordinal() < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
   }
-
-  // Propagate env_option_overrides-> debug_options
-  TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
-  // Override the debug_options() embedded in the module with those
-  // explicitly passed in when deserializing. This allows options such as
-  // --xla_dump_to to be changed.
-  if (executable->has_module()) {
-    DumpHloModuleIfEnabled(executable->module(), kAfterOptimizationsDumpName,
-                           build_options.has_debug_options()
-                               ? &build_options.debug_options()
-                               : nullptr);
-  }
-
-  auto cpu_executable = std::make_shared<PjRtCpuExecutable>(
-      num_replicas, num_partitions,
-      compile_options.parameter_is_tupled_arguments, std::move(input_options),
-      std::move(executable), std::move(result_buffer_indices), nullptr);
-  TF_RETURN_IF_ERROR(cpu_executable->SetUpDonation(
-      compile_options.parameter_is_tupled_arguments));
-
   return std::make_unique<PjRtCpuLoadedExecutable>(
       std::move(cpu_executable), std::move(device_assignment),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
@@ -628,8 +632,10 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   return std::move(*aot_result).LoadExecutable(/*executor=*/nullptr);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
+                         std::shared_ptr<DeviceAssignment>>>
+PjRtCpuClient::CompileAndAssignDevices(mlir::ModuleOp module,
+                                       CompileOptions options) {
   TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, *topology_));
 
   XlaComputation xla_computation;
@@ -640,7 +646,7 @@ PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
       /*return_tuple=*/false, &exec_build_options));
 
   if (options.argument_layouts) {
-    return CompileAndLoad(xla_computation, options);
+    return CompileAndAssignDevices(xla_computation, options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -677,9 +683,10 @@ PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
                          layout_callback, options);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
-                              CompileOptions options) {
+absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
+                         std::shared_ptr<DeviceAssignment>>>
+PjRtCpuClient::CompileAndAssignDevices(const XlaComputation& computation,
+                                       CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -698,6 +705,54 @@ PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
       &argument_layout_pointers));
   return CompileInternal(computation, argument_layout_pointers,
                          /*layout_canonicalization_callback=*/nullptr, options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
+    const XlaComputation& computation, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(auto results,
+                      CompileAndAssignDevices(computation, std::move(options)));
+  return std::move(results.first);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
+    mlir::ModuleOp module, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(auto results, CompileAndAssignDevices(
+                                        std::move(module), std::move(options)));
+  return std::move(results.first);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
+                              CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(auto results,
+                      CompileAndAssignDevices(computation, std::move(options)));
+  return LoadInternal(std::move(results.first), std::move(results.second));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+  TF_ASSIGN_OR_RETURN(auto results, CompileAndAssignDevices(
+                                        std::move(module), std::move(options)));
+  return LoadInternal(std::move(results.first), std::move(results.second));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCpuClient::Load(
+    std::unique_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
+  TF_RET_CHECK(tensorflow::down_cast<PjRtCpuExecutable*>(executable.get()));
+  auto cpu_executable = absl::WrapUnique<PjRtCpuExecutable>(
+      tensorflow::down_cast<PjRtCpuExecutable*>(executable.release()));
+  CompileOptions options = cpu_executable->compile_options();
+  int unused_num_replicas;
+  int unused_num_partitions;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this](int num_replicas, int num_partitions) {
+        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      &unused_num_replicas, &unused_num_partitions, &device_assignment));
+  return LoadInternal(std::move(cpu_executable), std::move(device_assignment));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -720,12 +775,16 @@ PjRtCpuClient::CompileAheadOfTimeAndLoad(
       },
       options.argument_layouts, &options.executable_build_options,
       &argument_layout_pointers));
-  return CompileInternal(computation, argument_layout_pointers,
-                         /*layout_canonicalization_callback=*/nullptr, options,
-                         &aot_options);
+  TF_ASSIGN_OR_RETURN(
+      auto results,
+      CompileInternal(computation, argument_layout_pointers,
+                      /*layout_canonicalization_callback=*/nullptr, options,
+                      &aot_options));
+  return LoadInternal(std::move(results.first), std::move(results.second));
 }
 
-absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
+                         std::shared_ptr<DeviceAssignment>>>
 PjRtCpuClient::CompileInternal(
     const XlaComputation& computation,
     const std::vector<const Shape*>& argument_layout_pointers,
@@ -771,31 +830,23 @@ PjRtCpuClient::CompileInternal(
   }
 
   ExecutableBuildOptions& build_options = options.executable_build_options;
-  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids;
-  std::vector<PjRtDevice*> addressable_devices;
-  if (device_assignment != nullptr) {
-    addressable_device_logical_ids.reserve(num_replicas * num_partitions);
-    addressable_devices.reserve(num_replicas * num_partitions);
-    for (int replica = 0; replica < num_replicas; ++replica) {
-      for (int partition = 0; partition < num_partitions; ++partition) {
-        PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
-        if (UnpackCpuProcessIndex(device_id) != process_index()) {
-          VLOG(3) << "Non-local device: " << device_id;
-          continue;
+  if (device_assignment != nullptr && build_options.device_ordinal() < 0) {
+    TF_RETURN_IF_ERROR([&]() -> absl::Status {
+      for (int replica = 0; replica < num_replicas; ++replica) {
+        for (int partition = 0; partition < num_partitions; ++partition) {
+          PjRtGlobalDeviceId device_id(
+              (*device_assignment)(replica, partition));
+          if (UnpackCpuProcessIndex(device_id) != process_index()) {
+            VLOG(3) << "Non-local device: " << device_id;
+            continue;
+          }
+          TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+          build_options.set_device_ordinal(device->local_hardware_id().value());
+          return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
-        PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
-        logica_device_ids.replica = replica;
-        logica_device_ids.partition = partition;
-        addressable_device_logical_ids.push_back(std::move(logica_device_ids));
-        addressable_devices.push_back(device);
       }
-    }
-    if (!addressable_devices.empty() && build_options.device_ordinal() < 0) {
-      build_options.set_device_ordinal(
-          addressable_devices.front()->local_hardware_id().value());
-    }
+      return absl::OkStatus();
+    }());
   }
 
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
@@ -881,10 +932,7 @@ PjRtCpuClient::CompileInternal(
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(options.parameter_is_tupled_arguments));
 
-  return std::make_unique<PjRtCpuLoadedExecutable>(
-      std::move(executable), std::move(device_assignment),
-      std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this);
+  return std::make_pair(std::move(executable), std::move(device_assignment));
 }
 
 static bool IsAlignedData(void* ptr) {
