@@ -101,6 +101,26 @@ ios_unit_test(
     deps = [":common_test_lib"],
 )
 
+cc_test(
+    name = "buffer_test_gtest",
+    srcs = ["buffer_test_gtest.cc"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+        "-x", "objective-c++",
+    ],
+    tags = [
+        "local",
+        "notap",
+        "no_gpu",
+    ],
+    deps = [
+        ":buffer",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "@com_google_googletest//:gtest",
+    ],
+    linkopts = ["-framework Metal", "-framework Foundation"],
+)
+
 objc_library(
     name = "compute_task",
     srcs = ["compute_task.cc"],
