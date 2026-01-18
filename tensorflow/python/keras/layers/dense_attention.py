@@ -153,6 +153,9 @@ class BaseDenseAttention(Layer):
     if v_mask is not None:
       # Mask of shape [batch_size, 1, Tv].
       v_mask = array_ops.expand_dims(v_mask, axis=-2)
+      # Explicitly broadcast to scores shape to avoid Metal backend bug
+      # where implicit broadcasting fails (Issue #100332).
+      v_mask = array_ops.broadcast_to(v_mask, array_ops.shape(scores))
     if self.causal:
       # Creates a lower triangular mask, so position i cannot attend to
       # positions j>i. This prevents the flow of information from the future
