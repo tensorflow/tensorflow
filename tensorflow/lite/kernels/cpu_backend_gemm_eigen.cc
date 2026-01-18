@@ -59,11 +59,11 @@ void GemmImplUsingEigen::Run(
                                           dst_params.cols);
 
   if (rhs_params.cols == 1) {
-    eigen_dst.col(0).noalias() = eigen_lhs * eigen_rhs.col(0);
+    eigen_dst.col(0) = eigen_lhs * eigen_rhs.col(0);
   } else if (lhs_params.rows == 1) {
-    eigen_dst.row(0).noalias() = eigen_lhs.row(0) * eigen_rhs;
+    eigen_dst.row(0) = eigen_lhs.row(0) * eigen_rhs;
   } else {
-    eigen_dst.noalias() = eigen_lhs * eigen_rhs;
+    eigen_dst = eigen_lhs * eigen_rhs;
   }
 
   if (params.bias) {
