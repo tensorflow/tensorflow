@@ -15,13 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
+#include "absl/log/check.h"
+#include "third_party/protobuf/text_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
