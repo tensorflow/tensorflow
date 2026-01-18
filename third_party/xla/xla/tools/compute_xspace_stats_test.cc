@@ -17,14 +17,26 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/utils/group_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
+#include "third_party/tensorflow/core/framework/summary.pb.h"
+#include "third_party/tensorflow/core/lib/io/record_reader.h"
+#include "third_party/tensorflow/core/util/event.pb.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla::gpu {
@@ -191,6 +203,76 @@ TEST_F(ComputeGpuDeviceStatsTest, CalculateDeviceTimeAndMemcpyTest) {
   EXPECT_EQ(stats.peak_memory_usage_bytes, 8500);
 }
 
+TEST_F(ComputeGpuDeviceStatsTest, RunWithTensorboardOutput) {
+  tsl::profiler::XLine* line = AddLineToDevicePlane();
+  constexpr int64_t duration_ps = 1500;
+  AddEventToLine(line, duration_ps, kMemcpyDetailsMetadataId);
+  AddMemoryAllocationEvent(40000);
+
+  std::string temp_dir = testing::TempDir();
+  std::string output_dir = tsl::io::JoinPath(temp_dir, "tb_output");
+  tsl::Env* env = tsl::Env::Default();
+  TF_ASSERT_OK(env->RecursivelyCreateDir(output_dir));
+
+  std::string xspace_file = tsl::io::JoinPath(temp_dir, "xspace.pb");
+  TF_ASSERT_OK(tsl::WriteBinaryProto(env, xspace_file, xspace_));
+
+  setenv("TENSORBOARD_OUTPUT_DIR", output_dir.c_str(), 1);
+  EXPECT_TRUE(xla::gpu::Run(xspace_file, "GPU").ok());
+  unsetenv("TENSORBOARD_OUTPUT_DIR");
+
+  std::vector<std::string> files;
+  TF_ASSERT_OK(env->GetChildren(output_dir, &files));
+  std::string events_file;
+  for (const auto& file : files) {
+    if (absl::StrContains(file, "events.out.tfevents")) {
+      events_file = tsl::io::JoinPath(output_dir, file);
+      break;
+    }
+  }
+  ASSERT_FALSE(events_file.empty());
+
+  // Parse the events file and check for the expected stats.
+  std::unique_ptr<tsl::RandomAccessFile> file;
+  TF_ASSERT_OK(env->NewRandomAccessFile(events_file, &file));
+
+  tensorflow::io::SequentialRecordReader reader(file.get());
+  tsl::tstring record;
+  absl::flat_hash_map<std::string, float> stats;
+  while (reader.ReadRecord(&record).ok()) {
+    tensorflow::Event event;
+    event.ParseFromString(record);
+    for (const auto& value : event.summary().value()) {
+      stats[value.tag()] = value.simple_value();
+    }
+  }
+
+  EXPECT_FLOAT_EQ(stats["Device Time (us)"], duration_ps / 1e6);
+  EXPECT_FLOAT_EQ(stats["Device Memcpy Time (us)"], duration_ps / 1e6);
+  EXPECT_FLOAT_EQ(stats["Peak Memory (bytes)"], 8500.0f);
+}
+
+TEST_F(ComputeGpuDeviceStatsTest, NoTensorboardOutputDir) {
+  tsl::profiler::XLine* line = AddLineToDevicePlane();
+  constexpr int64_t duration_ps = 1500;
+  AddEventToLine(line, duration_ps, kMemcpyDetailsMetadataId);
+  AddMemoryAllocationEvent(40000);
+
+  std::string temp_dir = testing::TempDir();
+  std::string output_dir = tsl::io::JoinPath(temp_dir, "tb_output");
+  tsl::Env* env = tsl::Env::Default();
+  TF_ASSERT_OK(env->RecursivelyCreateDir(output_dir));
+
+  std::string xspace_file = tsl::io::JoinPath(temp_dir, "xspace.pb");
+  TF_ASSERT_OK(tsl::WriteBinaryProto(env, xspace_file, xspace_));
+
+  // No TENSORBOARD_OUTPUT_DIR set.
+  EXPECT_TRUE(xla::gpu::Run(xspace_file, "GPU").ok());
+
+  std::vector<std::string> files;
+  TF_ASSERT_OK(env->GetChildren(output_dir, &files));
+  EXPECT_TRUE(files.empty());
+}
 TEST(ComputeXSpaceStatsTest, CalculateCpuTimeTest) {
   tensorflow::profiler::XSpace xspace;
   tensorflow::profiler::XPlane* plane = xspace.add_planes();
