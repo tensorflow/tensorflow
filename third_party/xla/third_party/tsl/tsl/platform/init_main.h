@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 #define TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 
+#include <string>
+#include <vector>
 namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv);
+
+const std::vector<std::string>& GetArgvs();
+
+const char* GetArgv0();
 
 }  // namespace port
 }  // namespace tsl

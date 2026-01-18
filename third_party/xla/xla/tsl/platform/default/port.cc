@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <new>
+#include <string>
+#include <vector>
 
 #include "absl/base/internal/sysinfo.h"
 #include "xla/tsl/platform/logging.h"
@@ -68,7 +70,22 @@ limitations under the License.
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+static int g_argc = 0;
+static char** g_argv = nullptr;
+
+void InitMain(const char* usage, int* argc, char*** argv) {
+  g_argc = *argc;
+  g_argv = *argv;
+}
+
+const std::vector<std::string>& GetArgvs() {
+  static const std::vector<std::string>* const argvs =
+      g_argv == nullptr ? new std::vector<std::string>()
+                        : new std::vector<std::string>(g_argv, g_argv + g_argc);
+  return *argvs;
+}
+
+const char* GetArgv0() { return g_argv[0]; }
 
 std::string Hostname() {
   char hostname[1024];
