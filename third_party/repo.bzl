@@ -77,6 +77,10 @@ def _tf_http_archive_impl(ctx):
             stripPrefix = ctx.attr.strip_prefix,
         )
         if patch_files:
+            # Skip patching if the current OS is in the disable list.
+            if ctx.attr.disable_patches_on_os and ctx.os.name in ctx.attr.disable_patches_on_os:
+                patch_files = []
+
             for patch_file in patch_files:
                 patch_file = ctx.path(Label(patch_file)) if patch_file else None
                 if patch_file:
@@ -94,6 +98,7 @@ _tf_http_archive = repository_rule(
         "strip_prefix": attr.string(),
         "type": attr.string(),
         "patch_file": attr.string_list(),
+        "disable_patches_on_os": attr.string_list(),
         "build_file": attr.string(),
         "system_build_file": attr.string(),
         "link_files": attr.string_dict(),
