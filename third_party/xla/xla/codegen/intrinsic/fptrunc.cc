@@ -318,7 +318,11 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   auto make_const = [&](uint64_t val, llvm::Type* type) -> llvm::Constant* {
     llvm::IntegerType* scalar_ty =
         llvm::IntegerType::get(context, type->getScalarSizeInBits());
-    llvm::Constant* scalar_const = llvm::ConstantInt::get(scalar_ty, val);
+    uint64_t mask = (scalar_ty->getBitWidth() == 64)
+                        ? ~0ULL
+                        : ((1ULL << scalar_ty->getBitWidth()) - 1);
+    llvm::Constant* scalar_const =
+        llvm::ConstantInt::get(scalar_ty, val & mask);
     if (type->isVectorTy()) {
       auto vec_ty = llvm::cast<llvm::FixedVectorType>(type);
       return llvm::ConstantVector::getSplat(vec_ty->getElementCount(),
