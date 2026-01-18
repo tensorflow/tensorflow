@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <utility>
 #include <vector>

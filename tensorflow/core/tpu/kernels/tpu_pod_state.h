@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_service.h"
 
