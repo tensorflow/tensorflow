@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <variant>
-
 #include <gtest/gtest.h>
-#include "absl/functional/overload.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
