@@ -146,6 +146,26 @@ def _slice_helper(tensor, slice_spec, var=None):
           and slice_spec.dtype == bool)):
     return array_ops.boolean_mask(tensor=tensor, mask=slice_spec)
 
+  # Fallback to _numpy_style_getitem regarding any slice_spec that looks like
+  # advanced indexing (e.g. lists, tuples, non-scalar integer tensors).
+  # This fixes Issue #108304 where list indices failed in Graph mode.
+  should_use_numpy_style = False
+  if isinstance(slice_spec, (list, np.ndarray)):
+    # x[[1, 2]] passes a list/array as slice_spec.
+    should_use_numpy_style = True
+  elif isinstance(slice_spec, tuple):
+    for s in slice_spec:
+      if isinstance(s, (list, tuple, np.ndarray)):
+        should_use_numpy_style = True
+        break
+      if isinstance(s, tensor_lib.Tensor) and s.shape.ndims and s.shape.ndims > 0:
+        # Non-scalar tensor indices imply advanced indexing.
+        should_use_numpy_style = True
+        break
+  
+  if should_use_numpy_style:
+    return tensor._numpy_style_getitem(slice_spec)  # pylint: disable=protected-access
+
   if not isinstance(slice_spec, (list, tuple)):
     slice_spec = [slice_spec]
 
