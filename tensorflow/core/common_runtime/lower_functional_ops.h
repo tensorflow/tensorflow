@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTIONAL_OPS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTIONAL_OPS_H_
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"

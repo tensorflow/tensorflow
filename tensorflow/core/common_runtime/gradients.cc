@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gradients.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -27,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

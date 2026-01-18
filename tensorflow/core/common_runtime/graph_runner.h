@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
