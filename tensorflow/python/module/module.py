@@ -314,7 +314,9 @@ class Module(autotrackable.AutoTrackable):
 
 
 def _is_variable(obj):
-  return isinstance(obj, variables.Variable)
+  return isinstance(obj, variables.Variable) or (
+      hasattr(obj, "assign") and hasattr(obj, "trainable") and
+      hasattr(obj, "dtype"))
 
 
 def _is_trainable_variable(obj):
@@ -326,7 +328,7 @@ def _is_non_trainable_variable(obj):
 
 
 def _is_module(obj):
-  return isinstance(obj, Module)
+  return isinstance(obj, Module) or hasattr(obj, "variables")
 
 _CAMEL_TO_SNAKE_R = re.compile(r"((?<=[a-z0-9])[A-Z]|(?!^)[A-Z](?=[a-z]))")
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_]([a-zA-Z0-9_])*$")
@@ -453,7 +455,7 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
-        attributes_to_ignore=submodule._TF_MODULE_IGNORED_PROPERTIES,  # pylint: disable=protected-access
+        attributes_to_ignore=getattr(submodule, "_TF_MODULE_IGNORED_PROPERTIES", ()),  # pylint: disable=protected-access
         with_path=with_path,
         expand_composites=expand_composites,
         module_path=submodule_path,
