@@ -25,16 +25,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/hipblaslt.h"
 #include "xla/backends/gpu/autotuner/miopen.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/rocblas.h"
-#include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -74,8 +71,8 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_solver_context.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -248,56 +245,60 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-AMDGPUCompiler::GetCodegenBackends(
+absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
+    HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+    const CompileOptions& options, HloModule* hlo_module,
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
+    const Compiler::GpuTargetConfig* target_config) {
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  // TODO(rocm) Add more uses of xla_gpu_experimental_disable_binary_libraries
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    return absl::OkStatus();
+  }
+
+  // We still need to run autotuning pass in order to decompose fused
+  // convolutions
+  bool skip_autotuning = debug_options.xla_gpu_autotune_level() == 0 ||
+                         debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+                         stream_exec == nullptr;
+
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-
-  const auto& enabled_backends =
-      debug_options.xla_gpu_experimental_autotune_backends();
-
-  auto is_backend_enabled = [&](DebugOptions::AutotuneBackend backend) {
-    if (enabled_backends.empty()) {
-      return true;
-    }
-    for (const auto& enabled_backend : enabled_backends) {
-      if (enabled_backend == DebugOptions::AUTOTUNE_BACKEND_ALL) {
-        return true;
-      }
-      if (enabled_backend == backend) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_TRITON)) {
-    backends.push_back(std::make_unique<TritonBackend>(
-        &debug_options, this, target_config, mlir_context));
-  }
-
-  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    return backends;
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_MIOPEN)) {
-    backends.push_back(std::make_unique<MIOpenBackend>(
-        stream_exec, &debug_options, this, target_config));
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_ROCBLAS)) {
+  backends.reserve(3);
+  if (!skip_autotuning) {
+    // TODO(b/407494793): - Add proper support for ROCM. Currently the Cublas
+    // backend uses the same API as rocBLAS.
     backends.push_back(std::make_unique<RocblasBackend>(
         stream_exec, &debug_options, this, target_config));
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT)) {
     backends.push_back(std::make_unique<HipblasLtBackend>(
         stream_exec, &debug_options, this, target_config));
   }
+  backends.push_back(std::make_unique<MIOpenBackend>(
+      stream_exec, &debug_options, this, target_config));
 
-  return backends;
+  auto should_autotune = +[](const HloInstruction& instruction) -> bool {
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           (IsCublasGemm(instruction) ||
+            IsCustomCallToDnnConvolution(instruction));
+  };
+  auto should_autotune_when_skip =
+      +[](const HloInstruction& instruction) -> bool {
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           instruction.custom_call_target() ==
+               kCudnnConvBiasActivationForwardCallTarget;
+  };
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(
+          std::move(backends), debug_options,
+          !skip_autotuning ? stream_exec : nullptr, thread_pool,
+          !skip_autotuning ? should_autotune : should_autotune_when_skip,
+          target_config, options.device_allocator));
+  pipeline->AddPass(std::move(autotuner_pass));
+
+  return absl::OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()
@@ -329,6 +330,18 @@ AMDGPUCompiler::CompileTargetBinary(
   }
 
   return BackendCompileResult{"", std::move(hsaco)};
+}
+
+absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+    const MultiProcessKeyValueStore& key_value_store,
+    const se::SemanticVersion& toolkit_version,
+    se::StreamExecutor* stream_executor) {
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
+                                         thread_pool, key_value_store,
+                                         mlir_context());
+  return absl::OkStatus();
 }
 
 namespace {

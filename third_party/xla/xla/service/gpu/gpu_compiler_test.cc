@@ -1844,8 +1844,8 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
-TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterAutotuner) {
-  VerifyPassRunsAtLeastOnceBefore("autotuner", "hoist-fused-bitcasts");
+TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusionAutotuner) {
+  VerifyPassOrder("gemm-fusion-autotuner", "hoist-fused-bitcasts");
 }
 
 TEST_F(PassOrderTest, NestGemmFusionRunsAfterHoistFusedBitcasts) {
