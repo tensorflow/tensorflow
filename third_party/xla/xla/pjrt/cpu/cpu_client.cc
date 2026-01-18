@@ -1175,12 +1175,11 @@ PjRtCpuExecutable::PjRtCpuExecutable(
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
   output_memory_space_kind_ids_.resize(result_buffer_indices_.size(), 0);
-  output_indices_.resize(
-      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_)
-          ->buffer_assignment()
-          .Allocations()
-          .size(),
-      -1);
+  output_indices_.resize(absl::down_cast<cpu::CpuExecutable>(cpu_executable_)
+                             ->buffer_assignment()
+                             .Allocations()
+                             .size(),
+                         -1);
   for (int i = 0; i < result_buffer_indices_.size(); ++i) {
     CHECK_LT(result_buffer_indices_[i], output_indices_.size());
     CHECK_EQ(output_indices_[result_buffer_indices_[i]], -1)
