@@ -81,8 +81,9 @@ class HloLinker {
 
       } else {
         VLOG(6) << "Second visit to link: " << current.principal->name();
+        const HloComputation* principal = current.principal;
         HloComputation* linked_computation = HandleSecondVisit(current);
-        if (current.principal == root_computation_) {
+        if (principal == root_computation_) {
           result = linked_computation;
         }
         stack_.pop();
