@@ -3640,13 +3640,12 @@ void WhileRegionOp::getSuccessorRegions(
         1 + this->getOperation()->getOperands().size()) {
       regions.push_back(
           RegionSuccessor(&getBody(), getBody().front().getArguments()));
-      regions.push_back(RegionSuccessor(getOperation(), getResults()));
+      regions.push_back(RegionSuccessor::parent(getResults()));
     } else {
       // For compatibility with older code, we allow the "yield" in a condition
       // to only yield a single boolean. In that case we can't forward any args.
       regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(
-          RegionSuccessor(getOperation(), getResults().take_front(0)));
+      regions.push_back(RegionSuccessor::parent(getResults().take_front(0)));
     }
   } else if (!point.isParent() &&
              (point.getTerminatorPredecessorOrNull() &&
