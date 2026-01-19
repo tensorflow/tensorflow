@@ -105,7 +105,7 @@ class ScopedTFImportGraphDefOptions(object):
 
 
 class ScopedTFImportGraphDefResults(object):
-  """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
+  """Wrapper around TF_ImportGraphDefResults that handles deletion."""
 
   __slots__ = ["results"]
 
