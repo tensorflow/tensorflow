@@ -21,6 +21,8 @@ limitations under the License.
 #include <malloc.h>
 #endif
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
