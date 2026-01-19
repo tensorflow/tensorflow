@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
