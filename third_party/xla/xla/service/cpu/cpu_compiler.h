@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_CPU_COMPILER_H_
 #define XLA_SERVICE_CPU_CPU_COMPILER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -94,6 +95,14 @@ class CpuCompiler : public LLVMCompiler {
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateBufferAssignment(
       const HloModule& module) const;
+
+  // Determines if the concurrency-optimized schedule is affordable given the
+  // peak memory usage of the memory-optimized and concurrency-optimized
+  // schedules.
+  // Note: exported here only for tests.
+  static bool IsConcurrencyOptimizedScheduleAffordable(
+      int64_t memory_optimized_peak_memory,
+      int64_t concurrency_optimized_peak_memory);
 
  private:
   // Initialize the LLVM target.

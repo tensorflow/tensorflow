@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_compiler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -151,6 +152,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_pool.h"
 #include "xla/map_util.h"
 #include "xla/mlir_hlo/transforms/passes.h"
@@ -238,6 +240,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
+#include "xla/tsl/platform/status_macros.h"
 
 #ifdef TF_LLVM_X86_AVAILABLE
 #include "llvm/TargetParser/X86TargetParser.h"
@@ -2322,32 +2325,168 @@ CpuCompiler::LoadAotCompilationResult(
 absl::StatusOr<HloSchedule> CpuCompiler::CreateHloSchedule(
     const HloModule& hlo_module) const {
   AliasInfo alias_info;
-  // Select a memory scheduler optimized for concurrency vs minimal memory.
-  auto scheduler = hlo_module.config()
-                           .debug_options()
-                           .xla_cpu_enable_concurrency_optimized_scheduler()
-                       ? std::unique_ptr<ModuleSchedulerAlgorithm>(
-                             std::make_unique<BFScheduler>(
-                                 &alias_info, BufferSizeBytesFunction()))
-                       : std::make_unique<DFSMemoryScheduler>(
-                             &alias_info, BufferSizeBytesFunction());
-
-  // Select an order for emitting the HLO instructions for each
-  // computation. Using this sequence enables tighter buffer liveness analysis
-  // and reduced memory usage (as compared to using `DependencyHloOrdering`).
+  auto scheduler =
+      hlo_module.config().debug_options().xla_cpu_scheduler_type() ==
+              DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED
+          ? std::make_unique<DFSMemoryScheduler>(&alias_info,
+                                                 BufferSizeBytesFunction())
+          : std::unique_ptr<ModuleSchedulerAlgorithm>(
+                std::make_unique<BFScheduler>(&alias_info,
+                                              BufferSizeBytesFunction()));
   return ScheduleModule(&hlo_module, *scheduler);
+}
+
+// Heuristic to choose the buffer assignment strategy.
+// To make the decision more intuitive, instead of directly comparing the two
+// "peak memory" values, we compare (1) their ratio, i.e.
+//   ratio = concurrency_optimized_peak_memory / memory_optimized_peak_memory
+// , and (2) peak memory of concurrency-optimized. The larger the ratio, the
+// more we should favor memory-optimized to avoid the risk of running out of
+// memory. Conversely, with a ratio ~= 1.0 we should favor concurrency-optimized
+// since all other things being equal the concurrency-optimized schedule is more
+// likely to yield higher performance.
+// The threshold at which we pick one or the other is defined by this equation:
+//
+//   concurrency_optimized_peak_memory = 1GiB / (ratio - 1)^2
+//
+// Points on or below the curve are considered worth the memory cost for
+// concurrency-optimized.
+//
+//                   100.0G +--------------------------------------------+
+//                          |*                                           |
+//                          | *                        threshold ******* |
+//                          | **                                         |
+//                    10.0G |  **                                        |
+//                          |   **                                       |
+//                          |    ***                                     |
+//  Peak Memory (Y)    1.0G |      ***                                   |
+//                          |         ***                                |
+//                          |            *****                           |
+//                          |                *******                     |
+//                   100.0M |                       *********            |
+//                          |                               ************ |
+//                          |                                           *|
+//                          |                                            |
+//                    10.0M +--------------------------------------------+
+//                          1        2        3        4        5        6
+//                                             Ratio (X)
+//
+// As a sanity check, this goes through the following points:
+// ratio = 1.0 -> peak_memory = inf, i.e. always pick concurrency-optimized
+// ratio = 1.05 -> peak_memory ~= 400 GiB
+// ratio = 1.1  -> peak_memory ~= 100 GiB
+// ratio = 2.0  -> peak_memory ~= 1 GiB
+// ratio = 5.0  -> peak_memory ~= 64 MiB
+bool CpuCompiler::IsConcurrencyOptimizedScheduleAffordable(
+    int64_t memory_optimized_peak_memory,
+    int64_t concurrency_optimized_peak_memory) {
+  if (memory_optimized_peak_memory == 0 ||
+      concurrency_optimized_peak_memory <= memory_optimized_peak_memory) {
+    return true;
+  }
+
+  // To avoid numerical issues with floating point (e.g. cancellation error),
+  // we rearrange the inequality and avoid computing squares. We could use
+  // uint128 but is overkill because absolute precision is not needed.
+  // So, we turn this
+  //   b <= K / (b/a - 1)^2
+  // into this by taking the square root of both sides:
+  //   b - a <= a * sqrt(K / b)
+  // where K = 1GiB.
+  constexpr double k1GiB = 1024.0 * 1024.0 * 1024.0;
+  int64_t a = memory_optimized_peak_memory;
+  int64_t b = concurrency_optimized_peak_memory;
+  return b - a <= a * std::sqrt(k1GiB / b);
 }
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
 CpuCompiler::CreateBufferAssignment(const HloModule& module) const {
-  // Run buffer allocation on the HLO graph.
-  AliasInfo alias_info;
-  BufferAssigner::Options opts;
-  opts.allocate_buffers_for_constants = true;
-  return BufferAssigner::Run(
-      &module, std::make_unique<SequentialHloOrdering>(module.schedule()),
-      BufferSizeBytesFunction(), &alias_info, memory_alignment,
-      std::move(opts));
+  auto run_buffer_assignment = [&](std::unique_ptr<HloOrdering> ordering,
+                                   BufferAssigner::BufferOrder buffer_order)
+      -> absl::StatusOr<std::unique_ptr<BufferAssignment>> {
+    // Run buffer allocation on the HLO graph.
+    AliasInfo alias_info;
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.buffer_order = buffer_order;
+    return BufferAssigner::Run(&module, std::move(ordering),
+                               BufferSizeBytesFunction(), &alias_info,
+                               memory_alignment, std::move(opts));
+  };
+
+  auto memory_optimized_buffer_assignment =
+      [&]() -> absl::StatusOr<std::unique_ptr<BufferAssignment>> {
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<BufferAssignment> assignment,
+        run_buffer_assignment(
+            std::make_unique<SequentialHloOrdering>(module.schedule()),
+            BufferAssigner::BufferOrder::kBiggestFirst));
+    VLOG(2) << "memory-optimized buffer assignment peak memory: "
+            << assignment->GetStats().total_allocation_bytes;
+    return std::move(assignment);
+  };
+
+  auto concurrency_optimized_buffer_assignment =
+      [&]() -> absl::StatusOr<std::unique_ptr<BufferAssignment>> {
+    ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> assignment,
+                     run_buffer_assignment(
+                         // Note: kTopological maximizes DependencyHloOrdering's
+                         // memory locality because buffers are allocated in the
+                         // same order as they are used.
+                         std::make_unique<DependencyHloOrdering>(&module),
+                         BufferAssigner::BufferOrder::kTopological));
+    VLOG(2) << "concurrency-optimized buffer assignment peak memory: "
+            << assignment->GetStats().total_allocation_bytes;
+    return std::move(assignment);
+  };
+
+  switch (module.config().debug_options().xla_cpu_scheduler_type()) {
+    case DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED:
+      return memory_optimized_buffer_assignment();
+    case DebugOptions::CPU_SCHEDULER_TYPE_CONCURRENCY_OPTIMIZED:
+      return concurrency_optimized_buffer_assignment();
+    default:
+      break;
+  }
+
+  ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> memory_optimized,
+                   memory_optimized_buffer_assignment());
+  ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> concurrency_optimized,
+                   concurrency_optimized_buffer_assignment());
+  int64_t memory_optimized_peak_memory =
+      memory_optimized->GetStats().total_allocation_bytes;
+  int64_t concurrency_optimized_peak_memory =
+      concurrency_optimized->GetStats().total_allocation_bytes;
+  double concurrency_optimized_overhead_ratio =
+      memory_optimized_peak_memory == 0
+          ? 1.0
+          : static_cast<double>(concurrency_optimized_peak_memory) /
+                static_cast<double>(memory_optimized_peak_memory);
+  VLOG(2) << "concurrency-optimized overhead ratio: "
+          << concurrency_optimized_overhead_ratio;
+
+  auto module_has_collectives = [](const HloModule& module) -> bool {
+    for (const HloComputation* computation : module.computations()) {
+      for (const HloInstruction* instr : computation->instructions()) {
+        if (hlo_query::IsCollectiveCommunicationOp(instr->opcode())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  if (IsConcurrencyOptimizedScheduleAffordable(
+          memory_optimized_peak_memory, concurrency_optimized_peak_memory) ||
+      // Collective operations often benefit from a concurrency-optimized
+      // schedule to allow for better overlap of computation and communication,
+      // even if it means higher peak memory usage.
+      module_has_collectives(module)) {
+    VLOG(2) << "Using concurrency-optimized buffer assignment";
+    return std::move(concurrency_optimized);
+  }
+  VLOG(2) << "Using memory-optimized buffer assignment";
+  return std::move(memory_optimized);
 }
 
 }  // namespace cpu
