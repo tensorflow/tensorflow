@@ -656,90 +656,21 @@ def _rpath_user_link_flags(name):
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
 def tf_binary_additional_srcs(fullversion = False):
-    if use_pywrap_rules():
-        return []
-
-    if fullversion:
-        suffix = "." + VERSION
-    else:
-        suffix = "." + VERSION_MAJOR
-
-    return if_static(
-        extra_deps = [],
-        macos = [
-            clean_dep("//tensorflow:libtensorflow_framework%s.dylib" % suffix),
-        ],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework.so%s" % suffix),
-        ],
-    )
+    return []
 
 # TODO(b/356020232): remove completely after migration is done
 def tf_binary_additional_data_deps():
-    if use_pywrap_rules():
-        return []
-
-    return if_static(
-        extra_deps = [],
-        macos = [
-            clean_dep("//tensorflow:libtensorflow_framework.dylib"),
-            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow_framework.%s.dylib" % VERSION),
-        ],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework.so"),
-            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow_framework.so.%s" % VERSION),
-        ],
-    )
+    return []
 
 # TODO(b/356020232): remove completely after migration is done
 def tf_binary_pybind_deps():
-    if use_pywrap_rules():
-        return []
-
-    return select({
-        clean_dep("//tensorflow:macos"): [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_macos",
-            ),
-        ],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_windows",
-            ),
-        ],
-        "//conditions:default": [
-            clean_dep(
-                "//tensorflow/python:_pywrap_tensorflow_internal_linux",
-            ),
-        ],
-    })
+    return []
 
 # TODO(b/356020232): remove completely after migration is done
 # Helper function for the per-OS tensorflow libraries and their version symlinks
 def tf_shared_library_deps():
-    if use_pywrap_rules():
-        return []
-
-    return select({
-        clean_dep("//tensorflow:macos_with_framework_shared_object"): [
-            clean_dep("//tensorflow:libtensorflow.dylib"),
-            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow.%s.dylib" % VERSION),
-        ],
-        clean_dep("//tensorflow:macos"): [],
-        clean_dep("//tensorflow:windows"): [
-            clean_dep("//tensorflow:tensorflow.dll"),
-            clean_dep("//tensorflow:tensorflow_dll_import_lib"),
-        ],
-        clean_dep("//tensorflow:framework_shared_object"): [
-            clean_dep("//tensorflow:libtensorflow.so"),
-            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION_MAJOR),
-            clean_dep("//tensorflow:libtensorflow.so.%s" % VERSION),
-        ],
-        "//conditions:default": [],
-    }) + tf_binary_additional_srcs()
+    # Legacy shared library dependencies are handled by pywrap rules.
+    return [] + tf_binary_additional_srcs()
 
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
