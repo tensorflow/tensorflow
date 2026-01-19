@@ -69,6 +69,15 @@ single_version_override(
     ],
 )
 
+# TODO(dextero): upstream the patch
+single_version_override(
+    module_name = "protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/protobuf:0001-Make-src-google-protobuf-util-differencer-public.patch",
+    ],
+)
+
 # Use an unreleased version of googletest
 archive_override(
     module_name = "googletest",
