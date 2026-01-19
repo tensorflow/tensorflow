@@ -13,15 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <random>
 #include <string>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -32,8 +37,34 @@ namespace {
 
 bool IsOdd(int n) { return n % 2 == 1; }
 
-template <PrimitiveType ElementType>
-static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
+struct TypeConfig {
+  PrimitiveType input;
+  PrimitiveType kernel;
+  PrimitiveType output;
+};
+
+static const std::vector<TypeConfig>& GetTypeConfigs() {
+  static const absl::NoDestructor<std::vector<TypeConfig>> v(
+      {{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
+  return *v;
+}
+
+Literal GetRandomLiteral(PrimitiveType type, const Shape& shape,
+                         std::minstd_rand0& engine) {
+  if (type == F32) {
+    return *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  }
+  if (type == BF16) {
+    return *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
+  }
+  if (type == S8) {
+    return *LiteralUtil::CreateRandomLiteral<S8>(shape, &engine, -10, 10);
+  }
+  LOG(FATAL) << "Unsupported type";
+}
+
+static void BM_Conv2D(benchmark::State& state,
+                      const HloBenchmarkOptions& options) {
   int batch = state.range(0);
   int height = state.range(1);
   int width = state.range(2);
@@ -41,6 +72,9 @@ static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
   int kernel_h = state.range(4);
   int kernel_w = state.range(5);
   int output_channels = state.range(6);
+  int type_config_idx = state.range(7);
+
+  const auto& types = GetTypeConfigs()[type_config_idx];
 
   // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
   CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
@@ -53,7 +87,7 @@ static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
     ENTRY TestComputation {
       %p0 = $input_shape parameter(0)
       %p1 = $kernel_shape parameter(1)
-      ROOT conv = convolution(p0, p1), window={size=$window_size pad=$padding},
+      ROOT conv = $output_shape convolution(p0, p1), window={size=$window_size pad=$padding},
         dim_labels=b01f_01io->b01f
     }
   )";
@@ -62,21 +96,22 @@ static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
 
   // Input format is NHWC.
   auto input_shape =
-      ShapeUtil::MakeShape(ElementType, {batch, height, width, input_channels});
+      ShapeUtil::MakeShape(types.input, {batch, height, width, input_channels});
   // Filter format is HWIO.
   auto kernel_shape = ShapeUtil::MakeShape(
-      ElementType, {kernel_h, kernel_w, input_channels, output_channels});
+      types.kernel, {kernel_h, kernel_w, input_channels, output_channels});
+  auto output_shape = ShapeUtil::MakeShape(
+      types.output, {batch, height, width, output_channels});
 
-  auto input = *LiteralUtil::CreateRandomLiteral<ElementType>(
-      input_shape, &engine, 1.0f, 0.1f);
-  auto kernel = *LiteralUtil::CreateRandomLiteral<ElementType>(
-      kernel_shape, &engine, 1.0f, 0.1f);
+  auto input = GetRandomLiteral(types.input, input_shape, engine);
+  auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
   std::vector<const Literal*> args = {&input, &kernel};
 
   CHECK_OK(
       RunHloBenchmark(state, hlo_module, args,
                       {{"$input_shape", input_shape.ToString()},
                        {"$kernel_shape", kernel_shape.ToString()},
+                       {"$output_shape", output_shape.ToString()},
                        {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
                        {"$padding", absl::StrCat(padding_h, "_", padding_h, "x",
                                                  padding_w, "_", padding_w)}},
@@ -84,7 +119,7 @@ static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
 }
 
 static void BM_GroupedConv2D(benchmark::State& state,
-                             HloBenchmarkOptions options) {
+                             const HloBenchmarkOptions& options) {
   int batch = state.range(0);
   int height = state.range(1);
   int width = state.range(2);
@@ -93,6 +128,9 @@ static void BM_GroupedConv2D(benchmark::State& state,
   int kernel_w = state.range(5);
   int output_channels = state.range(6);
   int feature_group_count = state.range(7);
+  int type_config_idx = state.range(8);
+
+  const auto& types = GetTypeConfigs()[type_config_idx];
 
   // Derive filter channels from input channels and feature group count.
   int filter_channels = input_channels / feature_group_count;
@@ -108,7 +146,7 @@ static void BM_GroupedConv2D(benchmark::State& state,
     ENTRY TestComputation {
       %p0 = $input_shape parameter(0)
       %p1 = $kernel_shape parameter(1)
-      ROOT conv = convolution(p0, p1), window={size=$window_size pad=$padding},
+      ROOT conv = $output_shape convolution(p0, p1), window={size=$window_size pad=$padding},
         dim_labels=b01f_01io->b01f, feature_group_count=$feature_group_count
     }
   )";
@@ -117,15 +155,15 @@ static void BM_GroupedConv2D(benchmark::State& state,
 
   // Input format is NHWC.
   auto input_shape =
-      ShapeUtil::MakeShape(F32, {batch, height, width, input_channels});
+      ShapeUtil::MakeShape(types.input, {batch, height, width, input_channels});
   // Filter format is HWIO.
   auto kernel_shape = ShapeUtil::MakeShape(
-      F32, {kernel_h, kernel_w, filter_channels, output_channels});
+      types.kernel, {kernel_h, kernel_w, filter_channels, output_channels});
+  auto output_shape = ShapeUtil::MakeShape(
+      types.output, {batch, height, width, output_channels});
 
-  auto input =
-      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
-  auto kernel =
-      *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
+  auto input = GetRandomLiteral(types.input, input_shape, engine);
+  auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
 
   std::vector<const Literal*> args = {&input, &kernel};
 
@@ -133,6 +171,7 @@ static void BM_GroupedConv2D(benchmark::State& state,
       state, hlo_module, args,
       {{"$input_shape", input_shape.ToString()},
        {"$kernel_shape", kernel_shape.ToString()},
+       {"$output_shape", output_shape.ToString()},
        {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
        {"$padding", absl::StrCat(padding_h, "_", padding_h, "x", padding_w, "_",
                                  padding_w)},
@@ -419,48 +458,98 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state,
       options));
 }
 
-XLA_CPU_BENCHMARK(BM_Conv2D<F32>)
-    ->MeasureProcessCPUTime()
-    // --------------------------------------------------------------------------
-    // // Pixel CNN convolutions.
-    // --------------------------------------------------------------------------
-    // // Shapes from XLA convolution tests
-    ->Args({8, 5, 5, 1, 1, 1, 32})
-    ->Args({8, 5, 5, 4, 1, 1, 32})
-    ->Args({8, 128, 128, 4, 1, 1, 8})
-    // Shapes from TF convolution benchmarks.
-    ->Args({8, 32, 32, 128, 1, 1, 1024})
-    ->Args({16, 32, 32, 128, 1, 1, 1024})
-    ->Args({32, 32, 32, 128, 1, 1, 1024})
-    // Shapes similar to Eigen spatial convolution benchmarks.
-    ->Args({32, 64, 64, 32, 1, 1, 64})
-    ->Args({32, 256, 256, 4, 1, 1, 16})
-    ->Args({32, 64, 64, 4, 1, 1, 16})
-    ->Args({32, 32, 32, 96, 1, 1, 96})
-    // --------------------------------------------------------------------------
-    // // 3x3 Convolution: SpatialConvolution
-    // --------------------------------------------------------------------------
-    // // Shapes from XLA convolution tests
-    ->Args({8, 5, 5, 1, 3, 3, 32})
-    ->Args({8, 5, 5, 4, 3, 3, 32})
-    ->Args({8, 128, 128, 4, 3, 3, 8})
-    // Shapes from TF convolution benchmarks
-    ->Args({8, 32, 32, 128, 3, 3, 1024})
-    ->Args({16, 32, 32, 128, 3, 3, 1024})
-    ->Args({32, 32, 32, 128, 3, 3, 1024})
-    // Shapes similar to Eigen spatial convolution benchmarks.
-    ->Args({32, 64, 64, 32, 3, 3, 64})
-    ->Args({32, 256, 256, 4, 3, 3, 16})
-    ->Args({32, 64, 64, 4, 3, 3, 16})
-    ->Args({32, 32, 32, 96, 3, 3, 96});
+void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
+  auto add_args = [&](const std::vector<int64_t>& shape_args) {
+    std::vector<int64_t> args = shape_args;
+    args.push_back(type_config);
+    b->Args(args);
+  };
 
-// -------------------------------------------------------------------------- //
-// Grouped convolution
-// -------------------------------------------------------------------------- //
+  // --------------------------------------------------------------------------
+  // // Pixel CNN convolutions.
+  // --------------------------------------------------------------------------
+  // // Shapes from XLA convolution tests
 
-XLA_CPU_BENCHMARK(BM_GroupedConv2D)
-    ->MeasureProcessCPUTime()
-    ->Args({1, 45, 45, 1024, 5, 5, 1024, 1024});
+  // This test case hits b/473570788.
+  if (type_config != 2) {
+    add_args({8, 5, 5, 1, 1, 1, 32});
+  }
+  add_args({8, 5, 5, 4, 1, 1, 32});
+  add_args({8, 128, 128, 4, 1, 1, 8});
+  // Shapes from TF convolution benchmarks.
+  add_args({8, 32, 32, 128, 1, 1, 1024});
+  add_args({16, 32, 32, 128, 1, 1, 1024});
+  add_args({32, 32, 32, 128, 1, 1, 1024});
+  // Shapes similar to Eigen spatial convolution benchmarks.
+  add_args({32, 64, 64, 32, 1, 1, 64});
+  add_args({32, 256, 256, 4, 1, 1, 16});
+  add_args({32, 64, 64, 4, 1, 1, 16});
+  add_args({32, 32, 32, 96, 1, 1, 96});
+  // --------------------------------------------------------------------------
+  // // 3x3 Convolution: SpatialConvolution
+  // --------------------------------------------------------------------------
+  // // Shapes from XLA convolution tests
+  add_args({8, 5, 5, 1, 3, 3, 32});
+  add_args({8, 5, 5, 4, 3, 3, 32});
+  add_args({8, 128, 128, 4, 3, 3, 8});
+  // Shapes from TF convolution benchmarks
+  add_args({8, 32, 32, 128, 3, 3, 1024});
+  add_args({16, 32, 32, 128, 3, 3, 1024});
+  add_args({32, 32, 32, 128, 3, 3, 1024});
+  // Shapes similar to Eigen spatial convolution benchmarks.
+  add_args({32, 64, 64, 32, 3, 3, 64});
+  add_args({32, 256, 256, 4, 3, 3, 16});
+  add_args({32, 64, 64, 4, 3, 3, 16});
+  add_args({32, 32, 32, 96, 3, 3, 96});
+}
+
+void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b,
+                          int type_config) {
+  auto add_args = [&](const std::vector<int64_t>& shape_args) {
+    std::vector<int64_t> args = shape_args;
+    args.push_back(type_config);
+    b->Args(args);
+  };
+  add_args({1, 45, 45, 1024, 5, 5, 1024, 1024});
+}
+
+void RegisterBenchmarks() {
+  const auto& configs = GetTypeConfigs();
+  for (int i = 0; i < configs.size(); ++i) {
+    const auto& config = configs[i];
+    std::string name = absl::StrFormat(
+        "BM_Conv2D_%s_%s_%s",
+        primitive_util::LowercasePrimitiveTypeName(config.input),
+        primitive_util::LowercasePrimitiveTypeName(config.kernel),
+        primitive_util::LowercasePrimitiveTypeName(config.output));
+    auto* b =
+        benchmark::RegisterBenchmark(name.c_str(), [](benchmark::State& state) {
+          BM_Conv2D(state, HloBenchmarkOptions());
+        });
+    b->MeasureProcessCPUTime();
+    AddConv2DArgs(b, i);
+  }
+
+  for (int i = 0; i < configs.size(); ++i) {
+    const auto& config = configs[i];
+    std::string name = absl::StrFormat(
+        "BM_GroupedConv2D_%s_%s_%s",
+        primitive_util::LowercasePrimitiveTypeName(config.input),
+        primitive_util::LowercasePrimitiveTypeName(config.kernel),
+        primitive_util::LowercasePrimitiveTypeName(config.output));
+    auto* b =
+        benchmark::RegisterBenchmark(name.c_str(), [](benchmark::State& state) {
+          BM_GroupedConv2D(state, HloBenchmarkOptions());
+        });
+    b->MeasureProcessCPUTime();
+    AddGroupedConv2DArgs(b, i);
+  }
+}
+
+static int registration = [] {
+  RegisterBenchmarks();
+  return 0;
+}();
 
 // -------------------------------------------------------------------------- //
 // 1D and 2D strided convolutions
