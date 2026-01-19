@@ -203,6 +203,10 @@ def _tf_repositories():
         sha256 = "c0254ce97f7abc778dd2df0aaca1e0506dba1cd514fdb9fe88c07849393f8ef4",
         strip_prefix = "cpuinfo-8a9210069b5a37dd89ed118a783945502a30a4ae",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
+        exclude_patches_on_arch = {
+            "x86_64": ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
+            "aarch64": ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
+        },
         urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/8a9210069b5a37dd89ed118a783945502a30a4ae.zip"),
     )
 
@@ -352,6 +356,10 @@ def _tf_repositories():
         name = "png",
         build_file = "//third_party:png.BUILD",
         patch_file = ["//third_party:png_fix_rpi.patch"],
+        exclude_patches_on_arch = {
+            "amd64": ["//third_party:png_fix_rpi.patch"],
+            "x86_64": ["//third_party:png_fix_rpi.patch"],
+        },
         sha256 = "fecc95b46cf05e8e3fc8a414750e0ba5aad00d89e9fdf175e94ff041caf1a03a",
         strip_prefix = "libpng-1.6.43",
         system_build_file = "//third_party/systemlibs:png.BUILD",

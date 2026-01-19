@@ -83,6 +83,10 @@ def _tf_http_archive_impl(ctx):
             if ctx.attr.exclude_patches_on_os:
                 exclusions = ctx.attr.exclude_patches_on_os.get(ctx.os.name, [])
 
+            # Filter patches based on Arch exclusions.
+            if ctx.attr.exclude_patches_on_arch:
+                exclusions += ctx.attr.exclude_patches_on_arch.get(ctx.os.arch, [])
+
             filtered_patches = []
             for p in patch_files:
                 if p not in exclusions:
@@ -107,6 +111,7 @@ _tf_http_archive = repository_rule(
         "type": attr.string(),
         "patch_file": attr.string_list(),
         "exclude_patches_on_os": attr.string_list_dict(),
+        "exclude_patches_on_arch": attr.string_list_dict(),
         "build_file": attr.string(),
         "system_build_file": attr.string(),
         "link_files": attr.string_dict(),
