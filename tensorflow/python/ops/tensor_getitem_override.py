@@ -158,7 +158,8 @@ def _slice_helper(tensor, slice_spec, var=None):
       if isinstance(s, (list, tuple, np.ndarray)):
         should_use_numpy_style = True
         break
-      if isinstance(s, tensor_lib.Tensor) and s.shape.ndims and s.shape.ndims > 0:
+      if (isinstance(s, tensor_lib.Tensor) and s.shape.ndims and
+          s.shape.ndims > 0):
         # Non-scalar tensor indices imply advanced indexing.
         should_use_numpy_style = True
         break
