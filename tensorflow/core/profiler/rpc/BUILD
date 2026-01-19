@@ -65,7 +65,6 @@ tf_profiler_pybind_cc_library_wrapper(
     actual = ":profiler_server_impl",
     visibility = [
         "//tensorflow/python/profiler/internal:__pkg__",
-        "@org_xprof//xprof/pywrap:__pkg__",
     ],
 )
 
@@ -80,7 +79,6 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
         "@local_xla//xla:__subpackages__",
         "@local_xla//xla/tsl/profiler/rpc/client:__pkg__",
-        "@org_xprof//xprof/pywrap:__pkg__",
     ],
     deps = [
         ":profiler_service_impl",
