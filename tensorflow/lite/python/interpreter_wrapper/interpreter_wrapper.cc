@@ -28,12 +28,17 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "flatbuffers/string.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -1008,6 +1013,55 @@ PyObject* InterpreterWrapper::ModifyGraphWithDelegate(
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ModifyGraphWithDelegate(delegate));
   Py_RETURN_NONE;
+}
+
+PyObject* InterpreterWrapper::LoadStableDelegateCPP(
+    const std::string& config_path) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  // Load delegate settings from .json
+  tflite::delegates::utils::TfLiteSettingsJsonParser parser;
+  const tflite::TFLiteSettings* settings = parser.Parse(config_path);
+  if (!settings) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to load or parse the delegate settings file.");
+    return nullptr;
+  }
+
+  // Load stable delegate from shared library file
+  const tflite::StableDelegateLoaderSettings* delegate_loader_settings =
+      settings->stable_delegate_loader_settings();
+  if (!delegate_loader_settings) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Stable delegate loader settings are not specified in the "
+                    "settings file.");
+    return nullptr;
+  }
+  const flatbuffers::String* delegate_path =
+      delegate_loader_settings->delegate_path();
+  if (!delegate_path) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Delegate path is not specified in the settings file.");
+    return nullptr;
+  }
+  const TfLiteStableDelegate* stable_delegate_handle =
+      tflite::delegates::utils::LoadDelegateFromSharedLibrary(
+          delegate_path->str());
+  if (!stable_delegate_handle) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to load stable delegate from shared library.");
+    return nullptr;
+  }
+
+  // Construct the delegate instance using the settings
+  TfLiteOpaqueDelegate* opaque_delegate =
+      stable_delegate_handle->delegate_plugin->create(settings);
+  if (!opaque_delegate) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to create delegate with specified settings.");
+    return nullptr;
+  }
+
+  return PyLong_FromVoidPtr(static_cast<void*>(opaque_delegate));
 }
 
 }  // namespace interpreter_wrapper
