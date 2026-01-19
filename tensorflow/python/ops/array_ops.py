@@ -1439,6 +1439,8 @@ def concat(values, axis, name="concat"):
           axis, name="concat_dim",
           dtype=dtypes.int32).get_shape().assert_has_rank(0)
       return identity(values[0], name=name)
+  axis = ops.convert_to_tensor(axis, name="concat_dim", dtype=dtypes.int32)
+  axis.get_shape().assert_has_rank(0)
   return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 
 
