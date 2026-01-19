@@ -5417,10 +5417,10 @@ cc_library(
     srcs = ["xla_debug_info_manager.cc"],
     hdrs = ["xla_debug_info_manager.h"],
     deps = [
+        ":buffer_assignment",
         ":hlo_proto_cc",
         ":hlo_proto_util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:buffer_assignment",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
