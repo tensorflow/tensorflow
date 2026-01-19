@@ -18,7 +18,6 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_summary_ops
