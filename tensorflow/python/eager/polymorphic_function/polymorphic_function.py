@@ -946,9 +946,10 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
     if self._jit_compile:
       raise errors.UnimplementedError(
           None, None,
-          "We failed to lift variable creations out of this tf.function, "
-          "so this tf.function cannot be run on XLA. A possible workaround is "
-          "to move variable creation outside of the XLA compiled function.")
+          "tf.function with jit_compile=True does not support creating "
+          "tf.Variable objects inside the function body. "
+          "Please move variable creation outside the XLA-compiled function "
+          "(for example, into the model __init__ or build method).")
     canon_args, canon_kwds = bound_args.args, bound_args.kwargs
     options = tracing_compilation.TracingOptions(fn_with_cond, "fn_with_cond")
     return tracing_compilation.call_function(
