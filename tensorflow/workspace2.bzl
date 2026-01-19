@@ -466,7 +466,9 @@ def _tf_repositories():
         patch_file = [
             "@local_xla//third_party/grpc:grpc.patch",
         ],
-        disable_patches_on_os = ["mac os x"],
+        exclude_patches_on_os = {
+            "mac os x": ["@local_xla//third_party/grpc:grpc.patch"],
+        },
         urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
     )
 
