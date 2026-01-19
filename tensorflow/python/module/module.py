@@ -455,7 +455,8 @@ def _flatten_module(module,
         recursive=recursive,
         predicate=predicate,
         attribute_traversal_key=attribute_traversal_key,
-        attributes_to_ignore=getattr(submodule, "_TF_MODULE_IGNORED_PROPERTIES", ()),  # pylint: disable=protected-access
+        attributes_to_ignore=getattr(
+            submodule, "_TF_MODULE_IGNORED_PROPERTIES", ()),  # pylint: disable=protected-access
         with_path=with_path,
         expand_composites=expand_composites,
         module_path=submodule_path,
