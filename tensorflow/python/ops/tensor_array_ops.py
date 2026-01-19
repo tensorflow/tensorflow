@@ -578,6 +578,11 @@ class _GraphTensorArrayV2:
           element_dtype=self._dtype,
           num_elements=ta_size,
           element_shape=self.element_shape)
+
+      if self.element_shape:
+        if ta_size == -1:
+          ta_size = None
+        value.set_shape([ta_size] + self.element_shape.dims)
       return value
 
   def gather(self, indices, name=None):
