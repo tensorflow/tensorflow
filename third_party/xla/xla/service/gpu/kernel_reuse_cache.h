@@ -58,8 +58,12 @@ class KernelReuseCache {
   // Exporting skips kernels that were loaded but not used during emission.
   // See comment for hits_ below.
   CompilationCacheProto Export() const;
-  bool IsEmpty() const { return cache_.empty(); }
+  bool IsEmpty() const {
+    absl::MutexLock lock(m_);
+    return cache_.empty();
+  }
   void Clear() {
+    absl::MutexLock lock(m_);
     cache_.clear();
     hits_.clear();
   }
@@ -89,11 +93,13 @@ class KernelReuseCache {
       const std::function<absl::StatusOr<Entry>()>& generator);
 
  private:
-  absl::flat_hash_map<std::string /*fingerprint*/, Entry> cache_;
+  mutable absl::Mutex m_;
+  absl::flat_hash_map<std::string /*fingerprint*/, Entry> cache_
+      ABSL_GUARDED_BY(m_);
   // Track which fingerprints are in use. Unused ones can appear from loading a
   // partially compatible cache file. These should not be exported to avoid
   // linking the corresponding kernels later.
-  absl::flat_hash_set<std::string> hits_;
+  absl::flat_hash_set<std::string> hits_ ABSL_GUARDED_BY(m_);
 };
 
 // Add kernels to the cache file. Binaries are taken from binaries_to_cache,

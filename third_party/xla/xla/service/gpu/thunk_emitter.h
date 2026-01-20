@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -48,9 +49,7 @@ namespace xla::gpu {
 // Emits Thunks for the given HLO module.
 class ThunkEmitter {
  public:
-  absl::string_view platform_name() const {
-    return ir_emitter_context_->platform_name();
-  }
+  absl::string_view platform_name() const { return platform_name_; }
 
   explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
   ThunkEmitter(const ThunkEmitter&) = delete;
@@ -219,15 +218,17 @@ class ThunkEmitter {
   absl::StatusOr<ShapedSlice> GetShapedSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
-  CollectivesAsyncEvents& GetCollectivesAsyncEvents() {
+  CollectivesAsyncEvents& GetCollectivesAsyncEvents()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(ir_emitter_context_m_) {
     return ir_emitter_context_->collectives_async_events();
   }
 
-  InstructionToHostExecuteAsyncEvents&
-  GetInstructionToHostExecuteAsyncEvents() {
+  InstructionToHostExecuteAsyncEvents& GetInstructionToHostExecuteAsyncEvents()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(ir_emitter_context_m_) {
     return ir_emitter_context_->instruction_to_host_execute_async_events();
   }
-  IrEmitterContext* ir_emitter_context_;
+  mutable absl::Mutex ir_emitter_context_m_;
+  IrEmitterContext* ir_emitter_context_ ABSL_GUARDED_BY(ir_emitter_context_m_);
 
   // Container for async host send/recv events shared by host send/recv thunks.
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
@@ -244,8 +245,17 @@ class ThunkEmitter {
   // Module with constants.
   std::unique_ptr<llvm::Module> constants_module_;
 
+  absl::Mutex kernel_modules_m_;
   // Modules for each emitted kernel.
-  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
+  std::vector<std::unique_ptr<llvm::Module>> kernel_modules_
+      ABSL_GUARDED_BY(kernel_modules_m_);
+
+  KernelReuseCache kernel_cache_;
+  const se::DeviceDescription gpu_device_info_;
+  absl::string_view platform_name_;
+  const HloModuleConfig& module_config_;
+  // FIXME
+  ThunkIdGenerator& thunk_id_generator_;
 };
 
 }  // namespace xla::gpu
