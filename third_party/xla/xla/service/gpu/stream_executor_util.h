@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 
 // Runs loaded kernel on the stream with the provided arguments.
 absl::Status ExecuteKernelOnStream(
-    se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
+    se::Kernel& kernel, absl::Span<const se::KernelArg> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream);
 
@@ -124,7 +124,7 @@ absl::Status ExecuteKernelOnStream(
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
 // initialized to zero on the first use.
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64_t* rng_state, se::DeviceMemoryBase buffer);
+                      int64_t* rng_state, se::DeviceAddressBase buffer);
 
 // Converts the C++ enum `CudnnConvKind`, to the proto enum version
 // `ConvolutionKind`.

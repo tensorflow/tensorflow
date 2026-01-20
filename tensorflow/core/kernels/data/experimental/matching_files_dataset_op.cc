@@ -62,7 +62,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         : DatasetBase(DatasetContext(ctx)), patterns_(std::move(patterns)) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::MatchingFiles")});
     }
@@ -78,7 +78,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "MatchingFilesDatasetOp::Dataset";
     }
 
@@ -171,7 +171,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
             absl::string_view fixed_prefix = current_pattern_view.substr(
                 0, current_pattern_view.find_first_of("*?[\\"));
-            string current_dir(io::Dirname(fixed_prefix));
+            std::string current_dir(io::Dirname(fixed_prefix));
 
             // If current_dir is empty then we need to fix up fixed_prefix and
             // current_pattern_ to include . as the top level directory.
@@ -276,7 +276,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
      private:
       absl::Status UpdateIterator(IteratorContext* ctx, FileSystem* fs,
-                                  const string& dir, const string& eval_pattern)
+                                  const std::string& dir,
+                                  const std::string& eval_pattern)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         absl::string_view fixed_prefix =
             absl::string_view(eval_pattern)
@@ -298,8 +299,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           filepath_queue_.pop();
 
           // If current_path is a directory, search its children.
-          const string& current_dir = current_path.first;
-          std::vector<string> children;
+          const std::string& current_dir = current_path.first;
+          std::vector<std::string> children;
           ret.Update(fs->GetChildren(current_dir, &children));
 
           // Handle the error cases: 1) continue the search if the status is
@@ -322,7 +323,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           // it.
           auto is_directory_fn = [fs, current_dir, &children, &fixed_prefix,
                                   &children_dir_status](int i) {
-            const string child_path = io::JoinPath(current_dir, children[i]);
+            const std::string child_path =
+                io::JoinPath(current_dir, children[i]);
             // In case the child_path doesn't start with the fixed_prefix, then
             // we don't need to explore this path.
             if (!absl::StartsWith(child_path, fixed_prefix)) {
@@ -343,7 +345,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           counter.Wait();
 
           for (int i = 0; i < children.size(); i++) {
-            const string& child_dir_path =
+            const std::string& child_dir_path =
                 io::JoinPath(current_dir, children[i]);
             const absl::Status& child_dir_status = children_dir_status[i];
 
@@ -369,7 +371,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
 
       mutex mu_;
       // True means the path is a directory; False means the path is a filename.
-      typedef std::pair<string, bool> PathStatus;
+      typedef std::pair<std::string, bool> PathStatus;
       std::priority_queue<PathStatus, std::vector<PathStatus>,
                           std::greater<PathStatus>>
           filepath_queue_ TF_GUARDED_BY(mu_);

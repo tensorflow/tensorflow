@@ -71,8 +71,8 @@ void FillRandomTensor(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
   auto flat = tensor->flat<T>();
   if (alg == RNG_ALG_PHILOX) {
     // Reuse the compute kernels from the stateful random ops
-    auto key_data = key.flat<uint64>().data();
-    auto counter_data = counter.flat<uint64>().data();
+    auto key_data = key.flat<uint64_t>().data();
+    auto counter_data = counter.flat<uint64_t>().data();
     functor::FillPhiloxRandom<Device, Distribution>()(
         ctx, ctx->eigen_device<Device>(), key_data, counter_data,
         random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
@@ -39,15 +40,20 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
+  if (IsEarlyExitCompilation(compile_options_)) {
+    ExecutableAndOptionsProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                        compile_options_.ToProto());
+    return proto.SerializeAsString();
+  }
   std::string serialized;
-  if (std::holds_alternative<
-          std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+  if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
           executables_)) {
     const auto& aot_executables =
-        std::get<std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
-            executables_);
+        std::get<std::vector<std::unique_ptr<CompiledModule>>>(executables_);
     if (aot_executables.empty()) {
       return absl::InternalError("No local executable");
     }
@@ -63,7 +69,7 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     Executable* built_executable = local_executables[0]->executable();
     CHECK(local_client_ != nullptr);
     TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AotCompilationResult> aot_result,
+        std::unique_ptr<CompiledModule> aot_result,
         local_client_->backend().compiler()->Export(built_executable));
 
     TF_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
@@ -79,6 +85,26 @@ absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   return proto.SerializeAsString();
+}
+
+StreamExecutorExecutable::StreamExecutorExecutable(
+    const CompileOptions& compile_options,
+    std::vector<std::unique_ptr<CompiledModule>> executables, int num_replicas,
+    int num_partitions, absl::string_view name, absl::string_view fingerprint,
+    absl::string_view default_memory_kind)
+    : compile_options_(compile_options),
+      executables_(std::move(executables)),
+      num_replicas_(num_replicas),
+      num_partitions_(num_partitions),
+      name_(name),
+      fingerprint_(fingerprint),
+      default_memory_kind_(default_memory_kind) {
+  std::vector<std::shared_ptr<HloModule>> hlo_modules;
+  for (const auto& executable :
+       std::get<std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
+    hlo_modules.push_back(executable->shared_optimized_module());
+  }
+  hlo_modules_ = std::move(hlo_modules);
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
@@ -109,7 +135,7 @@ absl::StatusOr<CompiledMemoryStats>
 StreamExecutorExecutable::GetCompiledMemoryStats() const {
   CompiledMemoryStats memory_stats = CompiledMemoryStats();
   if (auto* aot_executables =
-          std::get_if<std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+          std::get_if<std::vector<std::unique_ptr<CompiledModule>>>(
               &executables_)) {
     if (aot_executables->size() != 1) {
       return Unimplemented(
@@ -128,8 +154,8 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
       alloc_ptrs.push_back(&alloc);
     }
     memory_stats.PopulateBufferStatsFromAllocations(alloc_ptrs);
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
-    memory_stats.peak_memory_in_bytes = peak_memory;
+    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
+                        ComputePeakMemory(proto));
     return memory_stats;
   }
 
@@ -144,8 +170,8 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
       local_executables[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
-    memory_stats.peak_memory_in_bytes = peak_memory;
+    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
+                        ComputePeakMemory(*proto));
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       local_executables[0]->executable()->GetAllocations());
@@ -154,8 +180,7 @@ StreamExecutorExecutable::GetCompiledMemoryStats() const {
 }
 
 int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytes() const {
-  if (std::holds_alternative<
-          std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+  if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
           executables_)) {
     return 0;
   }
@@ -227,10 +252,9 @@ StreamExecutorExecutable::ConsumeExecutable(
     return std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
         std::move(executables_));
   } else if (std::holds_alternative<
-                 std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
-                 executables_)) {
+                 std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
     auto aot_executables =
-        std::get<std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+        std::get<std::vector<std::unique_ptr<CompiledModule>>>(
             std::move(executables_));
     std::vector<std::unique_ptr<LocalExecutable>> local_executables;
     local_executables.reserve(aot_executables.size());

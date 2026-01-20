@@ -25,6 +25,8 @@ const char kXlaHostTransferHandlerNameAttr[] =
 
 const char kXlaHostTransferTfRendezvousHandlerName[] = "tf_rendezvous";
 
+const char kXlaHostTransferPjRtRendezvousHandlerName[] = "pjrt_rendezvous";
+
 const char kXlaComputeTypeAttr[] = "_xla_compute_type";
 
 const char kXlaComputeTypeSparse[] = "sparse";
@@ -94,4 +96,6 @@ const char kNumSlotVariables[] = "_num_slot_variables";
 const char kNumHyperparameters[] = "_num_hyperparameters";
 
 const char kLogTag[] = "_xla_log_tag";
+
+const char kXlaTableNameAttr[] = "_xla_table_name";
 }  // namespace xla

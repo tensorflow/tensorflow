@@ -1,0 +1,76 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: CI ROCm
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
+
+jobs:
+  execute-xla-ut:
+    runs-on: linux-x64-mi210-64-2gpu-amd
+    env:
+      DOCKER_IMAGE: rocm/tensorflow-build@sha256:7fcfbd36b7ac8f6b0805b37c4248e929e31cf5ee3af766c8409dd70d5ab65faa
+      CONTAINER_NAME: xla-runner
+    steps:
+      # Pre-clean up in case a previous run crashed
+      - name: Cleanup container
+        run: docker rm -f ${{ env.CONTAINER_NAME }} || true
+
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Checkout rocAutomation using local creds
+        run: |
+          rm -rf rocAutomation
+          git clone -b jenkins-pipelines https://github.com/ROCm/rocAutomation.git rocAutomation
+
+      - name: Start Container
+        run: |
+          docker run -dt \
+            --name ${{ env.CONTAINER_NAME }} \
+            --network=host \
+            --device=/dev/dri \
+            --device=/dev/kfd \
+            --group-add $(getent group render | cut -d: -f3) \
+            --group-add $(getent group video | cut -d: -f3) \
+            --ipc=host \
+            --shm-size=16G \
+            --cap-add=SYS_PTRACE \
+            --security-opt=seccomp=unconfined \
+            -v ${{ github.workspace }}:/workspace \
+            -v ${{ github.workspace }}/rocAutomation/resources/certificates:/tf/certificates:ro \
+            -v ${{ github.workspace }}/rocAutomation/resources/upstream-xla-data/rocm_tag_filters.sh:/workspace/build_tools/rocm/rocm_tag_filters.sh:ro \
+            -v ${{ github.workspace }}/rocAutomation/resources/upstream-xla-data/execute_ci_build.sh:/workspace/build_tools/rocm/execute_ci_build.sh:ro \
+            -w /workspace \
+            ${{ env.DOCKER_IMAGE }}
+
+      - name: Test XLA
+        run: |
+          docker exec \
+            ${{ env.CONTAINER_NAME }} \
+            bash -c "build_tools/rocm/execute_ci_build.sh"
+
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f ${{ env.CONTAINER_NAME }} || true

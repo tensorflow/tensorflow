@@ -85,7 +85,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
   auto* stream = ctx->op_device_context()->stream();
 
   if (!autotune_map->Find(params, &autotune_entry)) {
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
@@ -250,7 +250,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
   auto* stream = ctx->op_device_context()->stream();
 
   if (!autotune_map->Find(conv_parameters, &autotune_entry)) {
-    profiler::ScopedAnnotation annotation("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation annotation("cudnn_autotuning");
 
 #if GOOGLE_CUDA
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
@@ -383,12 +383,31 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         se::dnn::ProfileResult profile_result;
-        auto miopen_launch_status = dnn->ConvolveWithAlgorithm(
-            stream, kind, input_desc, input_ptr, filter_desc, filter_ptr,
-            output_desc, output_ptr, conv_desc, &scratch_allocator,
-            se::dnn::AlgorithmConfig(profile_algorithm,
-                                     miopen_algorithm.scratch_size()),
-            &profile_result);
+        se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+        auto runner_or = dnn->ConvolveRunnerFromDesc(
+            stream, profile_algorithm, kind, element_type, element_type,
+            input_desc, filter_desc, output_desc, conv_desc);
+        if (!runner_or.ok()) {
+          LOG(WARNING) << runner_or.status();
+          continue;
+        }
+        std::unique_ptr<const se::dnn::ConvRunner> runner =
+            std::move(runner_or).value();
+
+        se::DeviceMemoryBase scratch_memory;
+        int64_t workspace_size = runner->GetWorkspaceSize();
+        if (workspace_size > 0) {
+          auto scratch_or = scratch_allocator.AllocateBytes(workspace_size);
+          if (!scratch_or.ok()) {
+            LOG(WARNING) << scratch_or.status();
+            continue;
+          }
+          scratch_memory = scratch_or.value();
+        }
+
+        auto miopen_launch_status =
+            (*runner)(stream, &profile_result, scratch_memory, input_ptr,
+                      filter_ptr, output_ptr);
         if (miopen_launch_status.ok() && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();

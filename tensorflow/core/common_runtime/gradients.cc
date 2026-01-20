@@ -40,18 +40,18 @@ namespace tensorflow {
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 
-string NodeOut::name() const {
+std::string NodeOut::name() const {
   if (index == 0) {
     return node->name();
   } else {
-    return strings::StrCat(node->name(), ":", index);
+    return absl::StrCat(node->name(), ":", index);
   }
 }
 
 DataType NodeOut::dtype() const { return node->output_type(index); }
 
 struct NodeOutHash {
-  uint64 operator()(const NodeOut& x) const {
+  uint64_t operator()(const NodeOut& x) const {
     return Hash64(reinterpret_cast<const char*>(&x.node), sizeof(Node*),
                   x.index);
   }
@@ -334,7 +334,7 @@ NodeOut SymbolicGradientBuilder::SumGradients(const NodeOut& src) {
   return {add, 0};
 }
 
-static bool IsPrimitiveOpWithNoGrad(const string& func) {
+static bool IsPrimitiveOpWithNoGrad(const std::string& func) {
   gradient::Creator creator;
   absl::Status s = gradient::GetOpGradientCreator(func, &creator);
   return s.ok() && (creator == nullptr);

@@ -106,7 +106,8 @@ Status PopulateConvMap(
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
                         platform->DescriptionForDevice(i));
-    device_descs.push_back(device_desc->model_str());
+    device_descs.push_back(
+        DeviceIdentifierForAutotuning(device_desc->model_str()));
   }
 
   std::set<std::string> unmatched_device_descs;
@@ -162,9 +163,8 @@ Status PopulateConvMap(
 
   if (!unmatched_device_descs.empty()) {
     LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
-                 << str_util::Join(unmatched_device_descs, ", ")
-                 << "; existing devices: "
-                 << str_util::Join(device_descs, ", ");
+                 << absl::StrJoin(unmatched_device_descs, ", ")
+                 << "; existing devices: " << absl::StrJoin(device_descs, ", ");
   }
 
   return OkStatus();

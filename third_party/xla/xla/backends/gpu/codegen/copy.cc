@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -64,13 +65,16 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   std::vector<BufferAllocation::Slice> src_buffers;
+  std::vector<Shape> src_shapes;
   for (const HloInstructionAdaptor& root_adaptor : analysis_.fusion_roots()) {
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* src_instr =
         fusion.operand(root->operand(0)->parameter_number());
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        buffer_assignment_->GetUniqueSlice(src_instr, {}));
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice slice,
+        ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
+    src_shapes.push_back(root->operand(0)->shape());
   }
 
   std::vector<BufferAllocation::Slice> dst_buffers;
@@ -79,8 +83,10 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
         if (!subshape.IsArray()) {
           return absl::OkStatus();
         }
-        TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            buffer_assignment_->GetUniqueSlice(&fusion, index));
+        TF_ASSIGN_OR_RETURN(
+            BufferAllocation::Slice slice,
+            ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion,
+                                                                  index));
         dst_buffers.push_back(slice);
         return absl::OkStatus();
       }));
@@ -91,8 +97,8 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
       result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
-          /*source_buffer=*/src_buffers[i],
-          /*destination_buffer=*/dst_buffers[i],
+          /*source_buffer=*/ShapedSlice{src_buffers[i], src_shapes[i]},
+          /*destination_buffer=*/ShapedSlice{dst_buffers[i], src_shapes[i]},
           /*mem_size=*/src_buffers[i].size()));
     }
   }
@@ -119,10 +125,11 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
     // implemented: we only support dynamic offsets, no dynamic sizes.
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice input_slice,
-        buffer_assignment_->GetUniqueSlice(
+        ir_emitter_context.buffer_assignment().GetUniqueSlice(
             &SkipOptionalBitcast(root.GetOperand(0)).instruction(), {}));
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_slice,
-                        buffer_assignment_->GetUniqueSlice(&fusion, {}));
+    TF_ASSIGN_OR_RETURN(
+        BufferAllocation::Slice dst_slice,
+        ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion, {}));
     CHECK_EQ(input_slice, dst_slice);
 
     source_operand_index = 1;
@@ -135,10 +142,12 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
 
   const auto* src_instr =
       &SkipOptionalBitcast(root.GetOperand(source_operand_index)).instruction();
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
-                      buffer_assignment_->GetUniqueSlice(src_instr, {}));
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                      buffer_assignment_->GetUniqueSlice(&fusion, {}));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_buffer,
+      ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_buffer,
+      ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion, {}));
 
   FusionEmissionResult result;
 

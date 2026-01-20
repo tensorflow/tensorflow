@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_client_test.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -23,8 +24,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -132,7 +136,7 @@ TEST_P(PjRtClientTest, Execute) {
                           executable->Execute({{buffer.get()}}, options));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 1);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -161,7 +165,7 @@ TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
                           executable->Execute({{buffer.get()}}, options));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 1);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -203,7 +207,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
 
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 1);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -232,7 +236,7 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
                           executable->Execute({{buffer.get()}}, options));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(results[0].size(), 1);
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, results[0][0]->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 1);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -312,7 +316,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
 
   std::vector<int32_t> expected(4, 1);
   for (const auto& result : results) {
-    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                        *literal));
   }
@@ -357,7 +361,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
         auto& results = *results_or;
         CHECK_EQ(results.size(), 1);
         CHECK_EQ(results[0].size(), 1);
-        auto literal_or = results[0][0]->ToLiteralSync();
+        auto literal_or = results[0][0]->ToLiteral().Await();
         if (literal_or.ok()) {
           CHECK(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                        *literal_or.value()));
@@ -380,7 +384,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
 
   blocking_counter.Wait();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
                                      *literal));
 }
@@ -409,7 +413,7 @@ TEST(PjRtClientTest, CopyToDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto result, buffer->CopyToMemorySpace(
                                            *device_1->default_memory_space()));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
 
   std::vector<int32_t> expected(4, 0);
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -448,7 +452,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
 
   for (const auto& result : results) {
     ASSERT_TRUE(result);
-    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
 
     std::vector<int32_t> expected(4, 0);
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
@@ -495,7 +499,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
 
   for (const auto& result : results) {
     ASSERT_TRUE(result);
-    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+    TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
 
     std::vector<int32_t> expected(4, 0);
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),

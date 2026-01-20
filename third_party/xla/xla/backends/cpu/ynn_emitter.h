@@ -18,20 +18,25 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace xla::cpu {
 
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnFusionBuilder(const HloComputation* computation);
 
 absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers)>>
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs);
+
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
+    absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
+EmitYnnConvolutionBuilder(const HloConvolutionInstruction* conv);
 
 }  // namespace xla::cpu
 

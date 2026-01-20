@@ -35,7 +35,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -93,10 +93,10 @@ class Backend {
   // Accessors for the various objects.
   se::Platform* platform() const { return platform_; }
   Compiler* compiler() const { return compiler_.get(); }
-  se::DeviceMemoryAllocator* memory_allocator() const {
+  se::DeviceAddressAllocator* memory_allocator() const {
     return memory_allocator_.get();
   }
-  std::shared_ptr<se::DeviceMemoryAllocator> shared_memory_allocator() const {
+  std::shared_ptr<se::DeviceAddressAllocator> shared_memory_allocator() const {
     return memory_allocator_;
   }
   TransferManager* transfer_manager() const { return transfer_manager_; }
@@ -204,7 +204,8 @@ class Backend {
   // This must be a shared_ptr, as this is passed all the way down to the
   // cluster compilation. This allows asynchronous compilation to hold a
   // referecence until the compilation is finished.
-  std::shared_ptr<se::StreamExecutorMemoryAllocator> memory_allocator_;
+  std::shared_ptr<stream_executor::StreamExecutorAddressAllocator>
+      memory_allocator_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
   struct IntraOpThreadPool;

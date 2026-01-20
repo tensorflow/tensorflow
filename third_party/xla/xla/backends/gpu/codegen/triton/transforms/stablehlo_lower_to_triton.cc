@@ -17,6 +17,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,11 +29,15 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -47,10 +52,11 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -126,7 +132,7 @@ class LowerBroadcastInDim
   mlir::LogicalResult matchAndRewrite(
       stablehlo::BroadcastInDimOp op,
       mlir::PatternRewriter& rewriter) const override {
-    ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
+    mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     auto input_tensor = op.getOperand();
     auto input_shape = input_tensor.getType().getShape();
     auto output_shape = op.getResult().getType().getShape();
@@ -154,7 +160,7 @@ class LowerBroadcastInDim
         axis = output_dim_id + 1;
         continue;
       }
-      input_tensor = builder.create<ttir::ExpandDimsOp>(input_tensor, axis);
+      input_tensor = ttir::ExpandDimsOp::create(builder, input_tensor, axis);
     }
     rewriter.replaceOpWithNewOp<ttir::BroadcastOp>(op, op.getResult().getType(),
                                                    input_tensor);
@@ -400,12 +406,12 @@ struct TritonPrecisionSpec {
 mlir::Type ElementType(mlir::Value v) { return mlir::getElementTypeOrSelf(v); }
 
 using AlgorithmEmitter = absl::StatusOr<Value> (*)(
-    ::xla::EmitterLocOpBuilder, const ::xla::gpu::triton::DotOperands&,
+    mlir::ImplicitLocOpBuilder&, const ::xla::xtile::DotOperands&,
     const TritonPrecisionSpec&);
 
 absl::StatusOr<Value> EmitDotAlgUnset(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    mlir::ImplicitLocOpBuilder& b,
+    const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
   // TODO(manany): Should be looked into once we enable Hopper workloads.
@@ -424,15 +430,15 @@ absl::StatusOr<Value> EmitDotAlgUnset(
     max_num_imprecise_acc = std::numeric_limits<int>::max();
   }
 
-  return b.create<ttir::DotOp>(
-      lhs, rhs, acc,
+  return ttir::DotOp::create(
+      b, lhs, rhs, acc,
       /*inputPrecision=*/precision_spec.ttir_input_precision,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
 
 absl::StatusOr<Value> EmitRegularDot(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    mlir::ImplicitLocOpBuilder& b,
+    const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   Value lhs = dot_operands.lhs;
   Value rhs = dot_operands.rhs;
@@ -450,16 +456,16 @@ absl::StatusOr<Value> EmitRegularDot(
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
     if (ElementType(lhs).isF32()) {
-      lhs = ::xla::gpu::triton::Cast(b, lhs, b.getBF16Type());
+      lhs = ::xla::xtile::Cast(b, lhs, b.getBF16Type());
     }
 
     if (ElementType(rhs).isF32()) {
-      rhs = ::xla::gpu::triton::Cast(b, rhs, b.getBF16Type());
+      rhs = ::xla::xtile::Cast(b, rhs, b.getBF16Type());
     }
   }
 
-  return b.create<ttir::DotOp>(
-      dot_operands.lhs, dot_operands.rhs, dot_operands.accumulator,
+  return ttir::DotOp::create(
+      b, dot_operands.lhs, dot_operands.rhs, dot_operands.accumulator,
       /*inputPrecision=*/precision_spec.ttir_input_precision,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
@@ -471,15 +477,15 @@ absl::StatusOr<Value> EmitRegularDot(
 // We would get the wrong result if we sum these partial products. Instead, we
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
-Value ZeroNaNs(::xla::EmitterLocOpBuilder b, Value input) {
-  Value positive_inf = ::xla::gpu::triton::CreateConst<float>(
+Value ZeroNaNs(mlir::ImplicitLocOpBuilder& b, Value input) {
+  Value positive_inf = ::xla::xtile::CreateConst<float>(
       b, b.getF32Type(), std::numeric_limits<float>::infinity(),
       mlir::cast<ShapedType>(input.getType()).getShape());
-  Value abs_input = b.create<math::AbsFOp>(input);
-  Value is_finite = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT,
-                                            positive_inf, abs_input);
-  return b.create<arith::SelectOp>(is_finite, input,
-                                   ::xla::gpu::triton::ZerosLike(b, input));
+  Value abs_input = math::AbsFOp::create(b, input);
+  Value is_finite = arith::CmpFOp::create(b, arith::CmpFPredicate::OGT,
+                                          positive_inf, abs_input);
+  return arith::SelectOp::create(b, is_finite, input,
+                                 ::xla::xtile::ZerosLike(b, input));
 }
 
 absl::Status ExpectType(Value v, Type expected_type) {
@@ -497,33 +503,32 @@ absl::Status ExpectType(Value v, Type expected_type) {
   return absl::OkStatus();
 }
 
-std::vector<Value> SplitF32(::xla::EmitterLocOpBuilder b, Value input,
+std::vector<Value> SplitF32(mlir::ImplicitLocOpBuilder& b, Value input,
                             int split_count) {
   std::vector<Value> split_inputs;
   split_inputs.reserve(split_count);
   for (int i = 0; i < split_count; ++i) {
-    Value input_as_bf16 = ::xla::gpu::triton::Cast(b, input, b.getBF16Type());
+    Value input_as_bf16 = ::xla::xtile::Cast(b, input, b.getBF16Type());
     if (i != split_count - 1) {
-      Value input_as_f32 =
-          ::xla::gpu::triton::Cast(b, input_as_bf16, b.getF32Type());
-      input = b.create<arith::SubFOp>(input, input_as_f32);
+      Value input_as_f32 = ::xla::xtile::Cast(b, input_as_bf16, b.getF32Type());
+      input = arith::SubFOp::create(b, input, input_as_f32);
     }
     split_inputs.push_back(input_as_bf16);
   }
   return split_inputs;
 }
 
-Value IEEEDot(::xla::EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
-  return b.create<ttir::DotOp>(lhs, rhs, acc,
-                               /*inputPrecision=*/ttir::InputPrecision::IEEE,
-                               /*maxNumImpreciseAcc=*/0);
+Value IEEEDot(mlir::ImplicitLocOpBuilder& b, Value lhs, Value rhs, Value acc) {
+  return ttir::DotOp::create(b, lhs, rhs, acc,
+                             /*inputPrecision=*/ttir::InputPrecision::IEEE,
+                             /*maxNumImpreciseAcc=*/0);
 }
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> EmitBF16x9Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    mlir::ImplicitLocOpBuilder& b,
+    const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
   constexpr int kHigh = 0;
@@ -538,7 +543,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
 
   result = IEEEDot(b, lhs_parts[kLow], rhs_parts[kLow], result);
   result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kLow], result);
@@ -554,15 +559,15 @@ absl::StatusOr<Value> EmitBF16x9Matmul(
 
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
 absl::StatusOr<Value> EmitBF16x6Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    mlir::ImplicitLocOpBuilder& b,
+    const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
   constexpr int kHigh = 0;
@@ -577,7 +582,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
   std::vector<Value> lhs_parts = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_parts = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
 
   result = IEEEDot(b, lhs_parts[kMid], rhs_parts[kMid], result);
 
@@ -589,15 +594,15 @@ absl::StatusOr<Value> EmitBF16x6Matmul(
 
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_parts[kHigh], rhs_parts[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
 // EmitBF16x6Matmul.
 absl::StatusOr<Value> EmitBF16x3Matmul(
-    ::xla::EmitterLocOpBuilder b,
-    const ::xla::gpu::triton::DotOperands& dot_operands,
+    mlir::ImplicitLocOpBuilder& b,
+    const ::xla::xtile::DotOperands& dot_operands,
     const TritonPrecisionSpec& precision_spec) {
   constexpr int kNumParts = 2;
   constexpr int kHigh = 0;
@@ -611,12 +616,12 @@ absl::StatusOr<Value> EmitBF16x3Matmul(
   std::vector<Value> lhs_bf16 = SplitF32(b, dot_operands.lhs, kNumParts);
   std::vector<Value> rhs_bf16 = SplitF32(b, dot_operands.rhs, kNumParts);
 
-  Value result = ::xla::gpu::triton::ZerosLike(b, dot_operands.accumulator);
+  Value result = ::xla::xtile::ZerosLike(b, dot_operands.accumulator);
   result = IEEEDot(b, lhs_bf16[kLow], rhs_bf16[kHigh], result);
   result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kLow], result);
   result = ZeroNaNs(b, result);
   result = IEEEDot(b, lhs_bf16[kHigh], rhs_bf16[kHigh], result);
-  result = b.create<arith::AddFOp>(dot_operands.accumulator, result);
+  result = arith::AddFOp::create(b, dot_operands.accumulator, result);
   return result;
 }
 
@@ -658,7 +663,7 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
                    ::xla::PrecisionConfig::Algorithm_Name(algorithm)));
 }
 
-bool IsTf32Allowed(const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+bool IsTf32Allowed(const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm == ::xla::PrecisionConfig::ALG_UNSET) {
     return tsl::tensor_float_32_execution_enabled() &&
            StableHloPrecisionToXlaPrecision(
@@ -672,7 +677,7 @@ bool IsTf32Allowed(const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
 }
 
 ttir::InputPrecision InferDotPrecision(
-    const ::xla::gpu::triton::PrecisionSpec& precision_spec) {
+    const ::xla::xtile::PrecisionSpec& precision_spec) {
   if (precision_spec.algorithm ==
       ::xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3) {
     return ttir::InputPrecision::TF32x3;
@@ -685,7 +690,8 @@ ttir::InputPrecision InferDotPrecision(
 LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
                                            stablehlo::DotGeneralOp op,
                                            mlir::Operation* add_op,
-                                           Value accumulator) {
+                                           Value accumulator,
+                                           bool warp_specialization_allowed) {
   auto dot_algorithm = op.getAlgorithm();
 
   auto hlo_algorithm_or_status =
@@ -712,10 +718,9 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
 
   auto algorithm_emitter = algorithm_emitter_or_status.value();
 
-  ::xla::EmitterLocOpBuilder builder(op->getLoc(), rewriter);
+  mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 
-  ::xla::gpu::triton::DotOperands dot_operands{op.getLhs(), op.getRhs(),
-                                               accumulator};
+  ::xla::xtile::DotOperands dot_operands{op.getLhs(), op.getRhs(), accumulator};
 
   stablehlo::Precision lhs_precision;
   stablehlo::Precision rhs_precision;
@@ -725,8 +730,8 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
     return mlir::failure();
   }
 
-  ::xla::gpu::triton::PrecisionSpec precision_spec{hlo_algorithm, lhs_precision,
-                                                   rhs_precision};
+  ::xla::xtile::PrecisionSpec precision_spec{hlo_algorithm, lhs_precision,
+                                             rhs_precision};
 
   TritonPrecisionSpec triton_precision_spec{hlo_algorithm,
                                             InferDotPrecision(precision_spec)};
@@ -738,6 +743,12 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
     return rewriter.notifyMatchFailure(
         op->getLoc(), absl::StrCat("Algorithm emitter failed with error: ",
                                    triton_dot_op_or_result.status().message()));
+  }
+
+  if (warp_specialization_allowed) {
+    if (auto for_op = mlir::dyn_cast<scf::ForOp>(op->getParentOp())) {
+      for_op->setAttr("tt.warp_specialize", rewriter.getBoolAttr(true));
+    }
   }
 
   auto triton_dot_op = triton_dot_op_or_result.value();
@@ -752,7 +763,9 @@ LogicalResult RewriteDotGeneralToTritonDot(mlir::PatternRewriter& rewriter,
 
 class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  LowerDotGeneral(mlir::MLIRContext* context, bool warp_specialization_allowed)
+      : OpRewritePattern(context),
+        warp_specialization_allowed_(warp_specialization_allowed) {}
 
  private:
   mlir::LogicalResult matchAndRewrite(
@@ -781,9 +794,84 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
     auto accumulator = add_op->getOperand(1) == op ? add_op->getOperand(0)
                                                    : add_op->getOperand(1);
 
-    if (mlir::failed(
-            RewriteDotGeneralToTritonDot(rewriter, op, add_op, accumulator))) {
+    if (mlir::failed(RewriteDotGeneralToTritonDot(
+            rewriter, op, add_op, accumulator, warp_specialization_allowed_))) {
       return mlir::failure();
+    }
+    return mlir::success();
+  }
+
+  bool warp_specialization_allowed_;
+};
+
+class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      stablehlo::AllReduceOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    return ::xla::gpu::RewriteAllReduce(op, rewriter);
+  }
+};
+
+Value UnsignedIntegerToSignlessInteger(mlir::PatternRewriter& rewriter,
+                                       Value value) {
+  CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
+      << "Expected unsigned integer element type, got: "
+      << ::xla::xtile::MlirToString(value.getType());
+  Type signless_integer_type_type = IntegerType::get(
+      rewriter.getContext(),
+      getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
+      IntegerType::SignednessSemantics::Signless);
+  if (auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType())) {
+    signless_integer_type_type =
+        shaped_type.clone(shaped_type.getShape(), signless_integer_type_type);
+  }
+  return UnrealizedConversionCastOp::create(rewriter, value.getLoc(),
+                                            signless_integer_type_type, value)
+      .getResult(0);
+}
+
+template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
+          typename UnsignedIntArithOp = IntArithOp>
+class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
+ public:
+  using OpRewritePattern<StableHloOp>::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
+    if (result_type.isFloat()) {
+      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+    } else {
+      Operation* new_op = nullptr;
+      bool should_guard_ub = mlir::isa<stablehlo::DivOp, stablehlo::RemOp>(op);
+
+      if (result_type.isUnsignedInteger()) {
+        llvm::SmallVector<Value> signless_operands;
+        signless_operands.reserve(op.getOperands().size());
+        Type operand_type = op.getOperands().front().getType();
+        for (Value operand : op.getOperands()) {
+          signless_operands.push_back(
+              UnsignedIntegerToSignlessInteger(rewriter, operand));
+        }
+        new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
+                                            signless_operands.front().getType(),
+                                            signless_operands);
+
+        rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+            op, op.getResult().getType(), new_op->getResult(0));
+      } else {
+        new_op = rewriter.replaceOpWithNewOp<IntArithOp>(op, op.getOperands());
+      }
+
+      // Special case for division with zero.
+      if (should_guard_ub) {
+        new_op->setAttr("xla.guard_ub", rewriter.getUnitAttr());
+      }
     }
     return mlir::success();
   }
@@ -792,11 +880,30 @@ class LowerDotGeneral : public mlir::OpRewritePattern<stablehlo::DotGeneralOp> {
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
+  using StableHLOLowerToTritonPassBase::StableHLOLowerToTritonPassBase;
+
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
-                 LowerReduce, LowerReshape, LowerDotGeneral>(mlir_context);
+    patterns.add<
+        LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
+        LowerReshape, LowerAllReduce,
+        LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
+        LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
+                                arith::SubIOp>,
+        LowerStableHloOpToArith<stablehlo::MulOp, arith::MulFOp, arith::MulIOp>,
+        LowerStableHloOpToArith<stablehlo::AndOp, arith::AndIOp, arith::AndIOp>,
+        LowerStableHloOpToArith<stablehlo::OrOp, arith::OrIOp, arith::OrIOp>,
+        LowerStableHloOpToArith<stablehlo::XorOp, arith::XOrIOp, arith::XOrIOp>,
+        LowerStableHloOpToArith<stablehlo::DivOp, arith::DivFOp, arith::DivSIOp,
+                                arith::DivUIOp>,
+        LowerStableHloOpToArith<stablehlo::RemOp, arith::RemFOp, arith::RemSIOp,
+                                arith::RemUIOp>,
+        LowerStableHloOpToArith<stablehlo::MaxOp, arith::MaximumFOp,
+                                arith::MaxSIOp, arith::MaxUIOp>,
+        LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
+                                arith::MinSIOp, arith::MinUIOp>>(mlir_context);
+    patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -807,8 +914,11 @@ class StableHLOLowerToTritonPass
 
 }  // namespace
 
-std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass() {
-  return std::make_unique<StableHLOLowerToTritonPass>();
+std::unique_ptr<Pass> CreateStableHLOLowerToTritonPass(
+    bool warp_specialization_allowed) {
+  StableHLOLowerToTritonPassOptions options;
+  options.warp_specialization_allowed_ = warp_specialization_allowed;
+  return std::make_unique<StableHLOLowerToTritonPass>(options);
 }
 
 }  // namespace mlir::triton::xla

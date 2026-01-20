@@ -360,8 +360,8 @@ class RandomBinomialOp : public OpKernel {
     TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int32_t>(), &output_shape));
     } else {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
                               shape_tensor.vec<int64_t>(), &output_shape));
@@ -380,11 +380,11 @@ class RandomBinomialOp : public OpKernel {
     const int64_t num_sample_dims =
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
-      samples_per_batch *= shape_tensor.flat<int32>()(i);
+      samples_per_batch *= shape_tensor.flat<int32_t>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
-      num_batches *= shape_tensor.flat<int32>()(i);
+      num_batches *= shape_tensor.flat<int32_t>()(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
 
@@ -409,8 +409,9 @@ class RandomBinomialOp : public OpKernel {
                 errors::InvalidArgument("Unsupported algorithm id: ", alg));
     static_assert(std::is_same<StateElementType, int64_t>::value,
                   "StateElementType must be int64");
-    static_assert(std::is_same<PhiloxRandom::ResultElementType, uint32>::value,
-                  "PhiloxRandom::ResultElementType must be uint32");
+    static_assert(
+        std::is_same<PhiloxRandom::ResultElementType, uint32_t>::value,
+        "PhiloxRandom::ResultElementType must be uint32");
     OP_REQUIRES(ctx, var_tensor_flat.size() >= PHILOX_MIN_STATE_SIZE,
                 errors::InvalidArgument(
                     "For Philox algorithm, the size of state must be at least ",
@@ -478,8 +479,8 @@ class StatelessRandomBinomialOp : public OpKernel {
     TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
     TensorShape output_shape;
     if (shape_tensor.dtype() == DataType::DT_INT32) {
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
-                                                      &output_shape));
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
+                              shape_tensor.vec<int32_t>(), &output_shape));
     } else {
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
                               shape_tensor.vec<int64_t>(), &output_shape));
@@ -494,14 +495,14 @@ class StatelessRandomBinomialOp : public OpKernel {
         (shape_tensor.dim_size(0) - bcast.output_shape().size());
     for (int64_t i = 0; i < num_sample_dims; ++i) {
       samples_per_batch *= shape_tensor.dtype() == DataType::DT_INT32
-                               ? shape_tensor.flat<int32>()(i)
-                               : shape_tensor.flat<int64>()(i);
+                               ? shape_tensor.flat<int32_t>()(i)
+                               : shape_tensor.flat<int64_t>()(i);
     }
     int64_t num_batches = 1;
     for (int64_t i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
       num_batches *= shape_tensor.dtype() == DataType::DT_INT32
-                         ? shape_tensor.flat<int32>()(i)
-                         : shape_tensor.flat<int64>()(i);
+                         ? shape_tensor.flat<int32_t>()(i)
+                         : shape_tensor.flat<int64_t>()(i);
     }
     const int64_t num_elements = num_batches * samples_per_batch;
 
@@ -557,7 +558,7 @@ class StatelessRandomBinomialOp : public OpKernel {
 REGISTER_ALL(Eigen::half);
 REGISTER_ALL(float);
 REGISTER_ALL(double);
-REGISTER_ALL(int32);
+REGISTER_ALL(int32_t);
 REGISTER_ALL(int64_t);
 
 #undef REGISTER

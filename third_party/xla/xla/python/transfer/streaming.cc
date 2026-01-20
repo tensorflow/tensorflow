@@ -36,15 +36,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
 
 class StringFutureChunkDestination : public aux::ChunkDestination {
  public:
-  explicit StringFutureChunkDestination(xla::Promise<std::string> dest)
+  explicit StringFutureChunkDestination(tsl::Promise<std::string> dest)
       : dest_(std::move(dest)) {}
   ~StringFutureChunkDestination() override { dest_.Set(ConsumeFinalResult()); }
   absl::Status Put(const void* data, int64_t offset, size_t size,
@@ -77,12 +77,12 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
  private:
   absl::Mutex mu_;
   std::vector<std::pair<size_t, std::string>> chunks_;
-  xla::Future<std::string>::Promise dest_;
+  tsl::Promise<std::string> dest_;
 };
 
-std::pair<xla::Future<std::string>, tsl::RCReference<ChunkDestination>>
+std::pair<tsl::Future<std::string>, tsl::RCReference<ChunkDestination>>
 ChunkDestination::MakeStringDest() {
-  auto [promise, result] = xla::Future<std::string>::MakePromise();
+  auto [promise, result] = tsl::MakePromise<std::string>();
   return std::make_pair(
       std::move(result),
       tsl::MakeRef<StringFutureChunkDestination>(std::move(promise)));

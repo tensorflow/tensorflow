@@ -24,15 +24,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_transfer_manager.h"
 #include "xla/service/gpu/outfeed_manager.h"
+#include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -103,7 +105,7 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (!source_slice.allocation()) {
       return Internal("outfeed source missing buffer allocation");
     }
-    se::DeviceMemoryBase data_address =
+    se::DeviceAddressBase data_address =
         buffer_allocations.GetDeviceAddress(source_slice);
 
     // TODO(b/111309141): Run this on a separate stream so it doesn't block

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/tracked_device_buffer.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -34,7 +35,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -90,7 +91,7 @@ absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> MakeArray(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
       [&](const Shape& subshape, const ShapeIndex&) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
-            se::OwningDeviceMemory device_memory,
+            se::ScopedDeviceAddress<uint8_t> device_memory,
             client->backend().memory_allocator()->Allocate(
                 /*device_ordinal=*/0,
                 client->backend().transfer_manager()->GetByteSizeRequirement(
@@ -114,7 +115,7 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client));
   TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client));
 
-  std::vector<se::DeviceMemoryBase> expected_buffer_sequence = {
+  std::vector<se::DeviceAddressBase> expected_buffer_sequence = {
       a_buffer->mem(), b_buffer->mem(), c_buffer->mem()};
   ShapedBuffer shaped_a = a_buffer->AsShapedBuffer(
       &device,

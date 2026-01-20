@@ -54,9 +54,7 @@ absl::Status DelegateCompatibilityCheckerBase::checkOpCompatibilityOffline(
     proto::OpCompatibilityResult* op_result) {
   OpSignature op_sig = tflite::GetOpSignature(op_code, op, subgraph, model);
   auto status = checkOpSigCompatibility(op_sig, op_result);
-  if (op_sig.builtin_data) {
-    free(op_sig.builtin_data);
-  }
+  free(op_sig.builtin_data);
   return status;
 }
 

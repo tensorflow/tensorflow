@@ -15,8 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -98,9 +111,8 @@ std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
 
         first_side_effecting_node_on_path = n;
         std::string original_node_name;
-        TF_CHECK_OK(GetNodeAttr(n->def(),
-                                kXlaOriginalOutsideCompilationNodeName,
-                                &original_node_name));
+        CHECK_OK(GetNodeAttr(n->def(), kXlaOriginalOutsideCompilationNodeName,
+                             &original_node_name));
         results.insert(original_node_name);
       },
       [&](Node* n) {

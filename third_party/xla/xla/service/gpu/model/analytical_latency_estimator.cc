@@ -18,9 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/time/time.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -89,7 +90,7 @@ AnalyticalLatencyEstimator::AnalyticalLatencyEstimator(
                                   /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true},
       gpu_info_);
-  TF_CHECK_OK(computation->Accept(&cost_analysis_.value()));
+  CHECK_OK(computation->Accept(&cost_analysis_.value()));
 }
 
 }  // namespace gpu

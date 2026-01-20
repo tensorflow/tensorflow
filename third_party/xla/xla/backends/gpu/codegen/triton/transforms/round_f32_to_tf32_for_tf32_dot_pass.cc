@@ -50,16 +50,24 @@ class Tf32DotPattern : public OpRewritePattern<mt::DotOp> {
   mlir::LogicalResult matchAndRewrite(
       mt::DotOp op, PatternRewriter &rewriter) const override {
     constexpr auto tf32_args_rounded = "tf32_arguments_rounded";
-    if (op.getInputPrecision() != mt::InputPrecision::TF32) return failure();
-    if (!op.getA().getType().getElementType().isF32()) return failure();
-    if (!op.getB().getType().getElementType().isF32()) return failure();
-    if (op->hasAttr(tf32_args_rounded)) return failure();
+    if (op.getInputPrecision() != mt::InputPrecision::TF32) {
+      return failure();
+    }
+    if (!op.getA().getType().getElementType().isF32()) {
+      return failure();
+    }
+    if (!op.getB().getType().getElementType().isF32()) {
+      return failure();
+    }
+    if (op->hasAttr(tf32_args_rounded)) {
+      return failure();
+    }
 
     auto f32ToTF32 = [&](Value value) -> Value {
-      return rewriter
-          .create<ElementwiseInlineAsmOp>(
-              op.getLoc(), value.getType(), "cvt.rna.tf32.f32 $0, $1;", "=r,r",
-              /*isPure=*/true, /*pack=*/1, ArrayRef<Value>{value})
+      return ElementwiseInlineAsmOp::create(
+                 rewriter, op.getLoc(), value.getType(),
+                 "cvt.rna.tf32.f32 $0, $1;", "=r,r",
+                 /*isPure=*/true, /*pack=*/1, ArrayRef<Value>{value})
           ->getResult(0);
     };
     auto lhs = f32ToTF32(op.getA());

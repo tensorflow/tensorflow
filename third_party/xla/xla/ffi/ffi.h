@@ -50,10 +50,7 @@ limitations under the License.
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/scratch_allocator.h"
-#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -63,15 +60,8 @@ limitations under the License.
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
-struct Stream {};             // binds `se::Stream*`
 struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
-struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
-struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
-struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
-
-template <typename T>
-struct PlatformStream {};  // binds a platform stream, e.g. `cudaStream_t`
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -147,8 +137,8 @@ class AnyBuffer {
     return reinterpret_cast<T*>(buf_->data);
   }
 
-  se::DeviceMemoryBase device_memory() const {
-    return se::DeviceMemoryBase(untyped_data(), size_bytes());
+  se::DeviceAddressBase device_memory() const {
+    return se::DeviceAddressBase(untyped_data(), size_bytes());
   }
 
  private:
@@ -192,9 +182,9 @@ class Buffer {
     return reinterpret_cast<internal::NativeType<dtype>*>(untyped_data());
   }
 
-  se::DeviceMemory<internal::NativeType<dtype>> device_memory() const {
-    return se::DeviceMemory<internal::NativeType<dtype>>(
-        se::DeviceMemoryBase(untyped_data(), size_bytes()));
+  se::DeviceAddress<internal::NativeType<dtype>> device_memory() const {
+    return se::DeviceAddress<internal::NativeType<dtype>>(
+        se::DeviceAddressBase(untyped_data(), size_bytes()));
   }
 
  private:
@@ -552,20 +542,26 @@ struct CtxDecoding<Context> {
 // Context decoding
 //===----------------------------------------------------------------------===//
 
-template <>
-struct CtxDecoding<Stream> {
-  using Type = se::Stream*;
+namespace internal {
 
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
-    void* ptr = api->internal_api->XLA_FFI_INTERNAL_Stream_Get(ctx);
-    if (ABSL_PREDICT_FALSE(ptr == nullptr)) {
-      return diagnostic.Emit("Failed to decode stream");
-    }
-    return reinterpret_cast<Type>(ptr);
+// A helper function to decode context value of type `T` using provided
+// `func` and name for error reporting.
+template <typename T, typename F>
+static std::optional<T> DecodeInternalCtx(const XLA_FFI_Api* api,
+                                          XLA_FFI_ExecutionContext* ctx,
+                                          DiagnosticEngine& diagnostic, F func,
+                                          const char* name) {
+  void* result = nullptr;
+  if (XLA_FFI_Error* error = func(ctx, &result); ABSL_PREDICT_FALSE(error)) {
+    diagnostic.Emit("Failed to get ")
+        << name << ": " << internal::GetErrorMessage(api, error);
+    internal::DestroyError(api, error);
+    return std::nullopt;
   }
-};
+  return reinterpret_cast<T>(result);
+}
+
+}  // namespace internal
 
 template <>
 struct CtxDecoding<DeviceOrdinal> {
@@ -579,37 +575,6 @@ struct CtxDecoding<DeviceOrdinal> {
 };
 
 template <>
-struct CtxDecoding<Allocator> {
-  using Type = se::DeviceMemoryAllocator*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-    return reinterpret_cast<Type>(device_allocator);
-  }
-};
-
-template <>
-struct CtxDecoding<ScratchAllocator> {
-  using Type = se::OwningScratchAllocator<>;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    int32_t device_ordinal =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
-    void* device_allocator =
-        api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-
-    return se::OwningScratchAllocator<>(
-        device_ordinal,
-        reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator));
-  }
-};
-
-template <>
 struct CtxDecoding<CalledComputation> {
   using Type = const HloComputation*;
 
@@ -618,35 +583,6 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
-  }
-};
-
-template <>
-struct CtxDecoding<IntraOpThreadPool> {
-  using Type = const Eigen::ThreadPoolDevice*;
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine&) {
-    void* intra_op_thread_pool =
-        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
-    return reinterpret_cast<Type>(intra_op_thread_pool);
-  }
-};
-
-template <typename T>
-struct CtxDecoding<PlatformStream<T>> {
-  using Type = T;
-  static_assert(std::is_pointer_v<T>, "platform stream type must be a pointer");
-
-  static std::optional<Type> Decode(const XLA_FFI_Api* api,
-                                    XLA_FFI_ExecutionContext* ctx,
-                                    DiagnosticEngine& diagnostic) {
-    if (auto stream = CtxDecoding<Stream>::Decode(api, ctx, diagnostic)) {
-      return reinterpret_cast<Type>(
-          stream.value()->platform_specific_handle().stream);
-    }
-    return std::nullopt;
   }
 };
 

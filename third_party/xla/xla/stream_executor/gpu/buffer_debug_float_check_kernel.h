@@ -19,29 +19,40 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/types.h"
 
 namespace stream_executor::gpu {
 
-// Trait for a kernel that computes the NaN count of given input buffer and
-// appends it to the buffer debug log.
-//
-// This kernel MUST execute on a single thread block.
+// Counts the number of NaNs, Infs and zeros in a buffer of floats in parallel,
+// and stores partially accumulated results in the FloatCheckResult array.
 struct BufferDebugFloatCheckF32Kernel {
   using KernelType =
-      TypedKernel<xla::gpu::BufferDebugLogEntryId, DeviceMemory<float>,
-                  uint64_t, DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                  DeviceMemory<xla::gpu::BufferDebugFloatCheckEntry>>;
+      TypedKernel<DeviceAddress<float>, uint64_t,
+                  DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
 };
 
+// Counts the number of NaNs, Infs and zeros in a buffer of bfloat16s in
+// parallel, and stores partially accumulated results in the FloatCheckResult
+// array.
 struct BufferDebugFloatCheckBf16Kernel {
   using KernelType =
-      TypedKernel<xla::gpu::BufferDebugLogEntryId,
-                  DeviceMemory<Eigen::bfloat16>, uint64_t,
-                  DeviceMemory<xla::gpu::BufferDebugLogHeader>,
-                  DeviceMemory<xla::gpu::BufferDebugFloatCheckEntry>>;
+      TypedKernel<DeviceAddress<Eigen::bfloat16>, uint64_t,
+                  DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t>;
+};
+
+// Trait for a kernel that reduces the partially accumulated results from
+// `BufferDebugFloatCheckF32Kernel` or `BufferDebugFloatCheckBf16Kernel`
+// invocations and appends the result to the buffer debug log.
+//
+// This kernel MUST execute on a single thread block.
+struct BufferDebugAppendReducedFloatCheckResultsKernel {
+  using KernelType =
+      TypedKernel<DeviceAddress<xla::gpu::FloatCheckResult>, uint64_t,
+                  xla::gpu::BufferDebugLogEntryId,
+                  DeviceAddress<xla::gpu::BufferDebugLogHeader>,
+                  DeviceAddress<xla::gpu::BufferDebugFloatCheckEntry>>;
 };
 
 }  // namespace stream_executor::gpu

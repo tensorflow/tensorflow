@@ -82,5 +82,8 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:UBDialect",
+        "@llvm-project//mlir:VectorDialect",
+        "@llvm-project//mlir:VectorUtils",
     ],
 )

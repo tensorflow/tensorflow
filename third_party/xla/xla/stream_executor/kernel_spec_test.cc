@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -40,6 +40,8 @@ using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::Field;
 using ::testing::Optional;
+using ::testing::Property;
+using ::testing::VariantWith;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
@@ -175,6 +177,13 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
     in_process_symbol { persistent_name: "persistent_kernel_name" }
     kernel_name: "kernel_name"
     arity: 42
+    kernel_args_packing_spec {
+      kernel_arguments {
+        relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 0 }
+        data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+      }
+      kernel_arguments { data: "\x34\x12\x00\x00" }
+    }
   )pb");
 
   const auto symbol_resolver = [](absl::string_view name) {
@@ -191,6 +200,20 @@ TEST(KernelLoaderSpec, InProcessSymbolFromProto) {
   EXPECT_THAT(spec.in_process_symbol(),
               Optional(Field(&InProcessSymbol::persistent_name,
                              "persistent_kernel_name")));
+
+  const auto kReferenceKernelArgsPackingSpecProto =
+      R"pb(
+    kernel_arguments {
+      relocations { kind: KIND_BITS64_ABSOLUTE argument_index: 0 offset: 0 }
+      data: "\x00\x00\x00\x00\x00\x00\x00\x00"
+    }
+    kernel_arguments { data: "\x34\x12\x00\x00" }
+      )pb";
+  EXPECT_THAT(
+      spec.kernel_args_packing(),
+      VariantWith<KernelArgsPackingSpec>(Property(
+          &KernelArgsPackingSpec::ToProto,
+          IsOkAndHolds(EqualsProto(kReferenceKernelArgsPackingSpecProto)))));
 
   // If the symbol resolver is not provided, the spec cannot be deserialized.
   EXPECT_THAT(KernelLoaderSpec::FromProto(proto),
@@ -217,11 +240,11 @@ TEST(KernelLoaderSpec, InProcessSymbolToProto) {
 
 TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
   auto kernel_args_packing_spec_proto =
-      ParseTextProtoOrDie<KernelArgumentsPackingSpecProto>(
+      ParseTextProtoOrDie<KernelArgsPackingSpecProto>(
           R"pb(
             kernel_arguments {
               relocations {
-                type: TYPE_BITS64_ABSOLUTE
+                kind: KIND_BITS64_ABSOLUTE
                 argument_index: 0
                 offset: 0
               }
@@ -231,8 +254,8 @@ TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
           )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(
-      KernelArgumentsPackingSpec kernel_args_packing_spec,
-      KernelArgumentsPackingSpec::FromProto(kernel_args_packing_spec_proto));
+      KernelArgsPackingSpec kernel_args_packing_spec,
+      KernelArgsPackingSpec::FromProto(kernel_args_packing_spec_proto));
 
   auto spec = KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
       std::vector<uint8_t>{'C', 'U', 'B', 'I', 'N'}, "kernel_name",
@@ -245,7 +268,7 @@ TEST(kernelLoaderSpec, StoresKernelArgsPackingSpec) {
                 kernel_args_packing_spec {
                   kernel_arguments {
                     relocations {
-                      type: TYPE_BITS64_ABSOLUTE
+                      kind: KIND_BITS64_ABSOLUTE
                       argument_index: 0
                       offset: 0
                     }

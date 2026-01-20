@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -522,7 +522,7 @@ TEST(FfiTest, DeviceOrdinal) {
 
 TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -544,7 +544,7 @@ TEST(FfiTest, AnyBufferArgument) {
 
 TEST(FfiTest, BufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -562,7 +562,7 @@ TEST(FfiTest, BufferArgument) {
 
 TEST(FfiTest, AnyBufferResult) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -594,7 +594,7 @@ TEST(FfiTest, MissingBufferArgument) {
 
 TEST(FfiTest, WrongRankBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -611,7 +611,7 @@ TEST(FfiTest, WrongRankBufferArgument) {
 
 TEST(FfiTest, WrongTypeBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
@@ -648,7 +648,7 @@ TEST(FfiTest, WrongNumberOfArguments) {
 
 TEST(FfiTest, TokenArgument) {
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
-  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+  builder.AddBufferArg(se::DeviceAddressBase(), PrimitiveType::TOKEN,
                        /*dims=*/{});
   auto call_frame = builder.Build();
 
@@ -665,7 +665,7 @@ TEST(FfiTest, TokenArgument) {
 
 TEST(FfiTest, RemainingArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -694,7 +694,7 @@ TEST(FfiTest, RemainingArgs) {
 
 TEST(FfiTest, RemainingRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/2);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -724,7 +724,7 @@ TEST(FfiTest, RemainingRets) {
 
 TEST(FfiTest, OptionalArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -785,7 +785,7 @@ TEST(FfiTest, OptionalArgs) {
 
 TEST(FfiTest, OptionalRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -854,7 +854,7 @@ TEST(FfiTest, AutoBinding) {
   });
 
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert(kI32, 42);
@@ -873,7 +873,8 @@ TEST(FfiTest, AutoBindingResult) {
       Ffi::BindTo(+[](Result<AnyBuffer> buffer) { return Error::Success(); });
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
-  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  builder.AddBufferRet(se::DeviceAddressBase(), PrimitiveType::F32,
+                       /*dims=*/{});
   auto call_frame = builder.Build();
 
   auto status = Call(*handler, call_frame);
@@ -1304,8 +1305,20 @@ TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
 static constexpr auto kMyDataWithAutoTypeIdTypeInfo =
     MakeTypeInfo<MyDataWithAutoTypeId>();
 
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
-                      &kMyDataWithAutoTypeIdTypeInfo);
+// Test that XLA FFI macro works.
+XLA_FFI_DECLARE_TYPE_ID_SYMBOL(my_data_type_id);
+XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(my_data_type_info);
+
+extern "C" XLA_FFI_TypeId* my_data_type_id() {
+  return &MyDataWithAutoTypeId::id;
+}
+
+extern "C" const XLA_FFI_TypeInfo* my_data_type_info() {
+  return &kMyDataWithAutoTypeIdTypeInfo;
+}
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", my_data_type_id(),
+                      my_data_type_info());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
@@ -1397,19 +1410,22 @@ TEST(FfiTest, ScratchAllocator) {
   static void* kAddr = reinterpret_cast<void*>(0xDEADBEEF);
 
   // A test only memory allocator that returns a fixed memory address.
-  struct TestDeviceMemoryAllocator final : public se::DeviceMemoryAllocator {
+  struct TestDeviceMemoryAllocator final : public se::DeviceAddressAllocator {
     size_t count;
 
     TestDeviceMemoryAllocator()
-        : se::DeviceMemoryAllocator(nullptr), count(0) {}
+        : se::DeviceAddressAllocator(nullptr), count(0) {}
 
-    absl::StatusOr<se::OwningDeviceMemory> Allocate(int, uint64_t size, bool,
-                                                    int64_t) final {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(int,
+                                                              uint64_t size,
+                                                              bool,
+                                                              int64_t) final {
       count++;
-      return se::OwningDeviceMemory(se::DeviceMemoryBase(kAddr, size), 0, this);
+      return se::ScopedDeviceAddress<uint8_t>(
+          se::DeviceAddressBase(kAddr, size), 0, this);
     }
 
-    absl::Status Deallocate(int, se::DeviceMemoryBase mem) final {
+    absl::Status Deallocate(int, se::DeviceAddressBase mem) final {
       count--;
       EXPECT_EQ(mem.opaque(), kAddr);
       return absl::OkStatus();
@@ -1576,7 +1592,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(BufferR2F32Handler, BufferR2F32Function);
 
 TEST(FfiTest, DefineAutoSymbol) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -1592,7 +1608,7 @@ TEST(FfiTest, DefineAutoSymbol) {
 //===----------------------------------------------------------------------===//
 
 static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
-  se::DeviceMemoryBase memory;
+  se::DeviceAddressBase memory;
   std::vector<int64_t> dims(4, 1);
 
   CallFrameBuilder builder(/*num_args=*/num_args, /*num_rets=*/0);

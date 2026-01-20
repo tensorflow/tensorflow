@@ -90,11 +90,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -4931,8 +4929,8 @@ int main(int argc, char** argv) {
   // XLA devices register kernels at construction time; create all known devices
   // to make sure the kernels are registered.
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
-      tensorflow::SessionOptions(), "", &devices));
+  CHECK_OK(tensorflow::DeviceFactory::AddDevices(tensorflow::SessionOptions(),
+                                                 "", &devices));
   tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;

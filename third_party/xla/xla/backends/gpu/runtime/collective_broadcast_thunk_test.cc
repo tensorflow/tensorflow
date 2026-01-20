@@ -24,9 +24,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -40,12 +40,16 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -55,6 +59,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
+using ::tsl::proto_testing::EqualsProto;
 
 class GpuCollectiveBroadcastTest : public HloTestBase {};
 
@@ -94,6 +99,7 @@ ENTRY test_computation {
 
   const int64_t kElementSize = sizeof(DataT);
   const int64_t kTotalDataBytes = kNumElements * kElementSize;
+  Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});
 
   // Use RoundUpTo to calculate the actual size needed for one buffer.
   const int64_t kAlignedSliceBytes =
@@ -112,8 +118,8 @@ ENTRY test_computation {
   // Use designated initializers if possible, or format for clarity.
   std::vector<CollectiveThunk::Buffer> buffers = {
       {/*element_count=*/kNumElements,
-       /*source_buffer=*/input_slice,
-       /*destination_buffer=*/output_slice,
+       /*source_buffer=*/{input_slice, shape},
+       /*destination_buffer=*/{output_slice, shape},
        /*source_memory_space=*/0,
        /*destination_memory_space=*/0},
   };
@@ -128,8 +134,7 @@ ENTRY test_computation {
   cb_start_thunk->set_async_events(async_events);
 
   auto cb_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kCollectiveBroadcastDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kCollectiveBroadcastDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(cb_start_thunk));
@@ -179,10 +184,7 @@ ENTRY test_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(compiled_module), executor,
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/false}));
+                                       /*device_allocator=*/nullptr));
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
@@ -209,6 +211,44 @@ ENTRY test_computation {
   EXPECT_THAT(kinds, ElementsAre(Kind::kReplicaId, Kind::kKernel,
                                  Kind::kCollectiveBroadcastStart,
                                  Kind::kCollectiveBroadcastDone));
+}
+
+TEST(CollectiveThunkTest, ProtoRoundTrip) {
+  ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info {
+          profile_annotation: "partition_id_profile_annotation"
+          execution_stream_id: 2
+        }
+        collective_broadcast_start_thunk {
+          async_events_unique_id: 3
+          collective_config {}
+        }
+      )pb");
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
+  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
+      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
+          proto.thunk_info().execution_stream_id())};
+
+  CollectiveThunk::AsyncEventsMap async_events_map;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveBroadcastStartThunk> thunk,
+                       CollectiveBroadcastStartThunk::FromProto(
+                           thunk_info, proto.collective_broadcast_start_thunk(),
+                           buffer_allocations, async_events_map));
+  ASSERT_NE(thunk->async_events(), nullptr);
+
+  ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+
+  // Ids are unique and expected to differ.
+  proto.mutable_collective_broadcast_start_thunk()->set_async_events_unique_id(
+      round_trip_proto.collective_broadcast_start_thunk()
+          .async_events_unique_id());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace

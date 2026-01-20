@@ -72,10 +72,9 @@ class RewriteIfrtLoadVariablePass
       std::vector<mlir::Type> result_types;
       result_types.push_back(load_variable_op.getArrayKey().getType());
       result_types.push_back(builder.getType<mlrt::compiler::FutureType>());
-      auto mlrt_load_variable_op =
-          builder.create<tf_mlrt::TFIfrtLoadVariableOp>(
-              load_variable_op->getLoc(), result_types,
-              load_variable_op->getOperands(), load_variable_op->getAttrs());
+      auto mlrt_load_variable_op = tf_mlrt::TFIfrtLoadVariableOp::create(
+          builder, load_variable_op->getLoc(), result_types,
+          load_variable_op->getOperands(), load_variable_op->getAttrs());
       tf_mlrt::TFAwaitOp await_op;
       for (auto user : llvm::make_early_inc_range(
                load_variable_op.getTensorFuture().getUsers())) {
@@ -83,8 +82,9 @@ class RewriteIfrtLoadVariablePass
         // the uses.
         if (!await_op) {
           builder.setInsertionPoint(user);
-          await_op = builder.create<tf_mlrt::TFAwaitOp>(
-              user->getLoc(), load_variable_op.getTensorFuture().getType(),
+          await_op = tf_mlrt::TFAwaitOp::create(
+              builder, user->getLoc(),
+              load_variable_op.getTensorFuture().getType(),
               mlrt_load_variable_op.getTensorFuture());
         } else {
           if (user->isBeforeInBlock(await_op)) {

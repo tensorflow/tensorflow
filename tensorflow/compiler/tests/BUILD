@@ -100,6 +100,7 @@ py_strict_test(
 tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
+    timeout = "long",
     package = "tensorflow.compiler.tests",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2072,7 +2073,7 @@ tf_xla_py_strict_test(
 
 tf_xla_py_strict_test(
     name = "xla_device_test",
-    size = "small",
+    size = "medium",
     srcs = ["xla_device_test.py"],
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2902,13 +2903,12 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/jit:xla_kernel_creator",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_testutil",
-        "@local_xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
     ],
 )
 

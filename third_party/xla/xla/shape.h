@@ -101,6 +101,9 @@ class Shape {
   // opposed to crashing) if the proto has logically invalid fields.
   static absl::StatusOr<Shape> FromProto(const ShapeProto& shape_proto);
 
+  // Converts the Shape to a ShapeProto. Clears `proto` first.
+  void ToProto(ShapeProto& proto) const;
+
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
 
@@ -385,7 +388,7 @@ class Shape {
       return false;
     }
     const ArrayState& state = array_state_maybe_underneath_buffer();
-    return state.layout != std::nullopt;
+    return state.layout.has_value();
   }
 
   // Returns the layout of the shape.
@@ -402,7 +405,7 @@ class Shape {
   // by this shape.
   Layout* mutable_layout() {
     ArrayState& state = array_state_maybe_underneath_buffer();
-    if (state.layout == std::nullopt) {
+    if (!state.layout.has_value()) {
       state.layout.emplace();
     }
     return &(*state.layout);
@@ -667,6 +670,9 @@ class Shape {
   // CHECK-fails if this shape's state is not empty.
   void CheckStateIsEmpty() const;
 
+  // Converts this shape to a proto. `proto` must be an empty message.
+  void SaveToEmptyProto(ShapeProto& proto) const;
+
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
 
@@ -694,6 +700,7 @@ class ProgramShape {
       const ProgramShapeProto& program_shape_proto);
 
   // Returns a proto representation of the object.
+  void ToProto(ProgramShapeProto& proto) const;
   ProgramShapeProto ToProto() const;
 
   void Print(Printer* printer) const;

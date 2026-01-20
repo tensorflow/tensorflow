@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -49,11 +49,11 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 // the case.
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
-    se::DeviceMemoryBase input_buffer,
-    absl::Span<const se::DeviceMemoryBase> output_buffers,
-    se::DeviceMemoryBase input_offsets_buffer,
-    se::DeviceMemoryBase send_sizes_buffer,
-    se::DeviceMemoryBase output_offsets_buffer, int64_t num_outputs,
+    se::DeviceAddressBase input_buffer,
+    absl::Span<const se::DeviceAddressBase> output_buffers,
+    se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements);
 }  // namespace xla::gpu

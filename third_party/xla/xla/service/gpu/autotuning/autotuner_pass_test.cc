@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -69,11 +69,12 @@ class AutotunerPassTest : public HloHardwareIndependentTestBase {
  protected:
   AutotunerPassTest()
       : stream_executor_(GpuExecutor()),
-        allocator_(std::make_unique<se::StreamExecutorMemoryAllocator>(
-            stream_executor_)) {}
+        allocator_(
+            std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+                stream_executor_)) {}
 
   se::StreamExecutor* stream_executor_;
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
   NVPTXCompiler compiler_;
 };
 

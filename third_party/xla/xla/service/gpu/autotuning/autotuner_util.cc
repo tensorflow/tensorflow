@@ -18,10 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -294,7 +297,7 @@ TryFindInAllCacheTypes(const AutotuneCacheKey& key, absl::string_view cache_dir)
 }
 }  // namespace
 
-AutotuneConfig AutotuneConfig::FromDebugOptions(
+absl::StatusOr<AutotuneConfig> AutotuneConfig::FromDebugOptions(
     const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
   int autotune_level = opts.xla_gpu_autotune_level();
 
@@ -314,12 +317,32 @@ AutotuneConfig AutotuneConfig::FromDebugOptions(
   std::string autotune_cache_dir = opts.xla_gpu_per_fusion_autotune_cache_dir();
   DebugOptions_AutotuneCacheMode autotune_cache_mode =
       opts.xla_gpu_experimental_autotune_cache_mode();
-  return AutotuneConfig(config, should_init_buffers,
-                        should_reinit_output_buffer, should_check_correctness,
-                        should_skip_wrong_results,
-                        should_crash_on_check_failure, exhaustive_tiling_search,
-                        should_require_complete_aot_autotune_results,
-                        autotune_cache_dir, autotune_cache_mode);
+
+  std::optional<std::vector<AutotuneResult::TritonGemmKey>>
+      gemm_config_overrides;
+  const std::string& override_file =
+      opts.xla_gpu_gemm_autotuner_override_file();
+  if (!override_file.empty()) {
+    std::string file_content;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
+                                             &file_content));
+    TritonGemmConfigsProto configs;
+    if (!tsl::protobuf::TextFormat::ParseFromString(file_content, &configs)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse override file: ", override_file));
+    }
+    gemm_config_overrides.emplace();
+    absl::c_copy(configs.config(), std::back_inserter(*gemm_config_overrides));
+    LOG(INFO) << "Loaded " << gemm_config_overrides->size()
+              << " gemm config overrides from " << override_file;
+  }
+
+  return AutotuneConfig(
+      config, should_init_buffers, should_reinit_output_buffer,
+      should_check_correctness, should_skip_wrong_results,
+      should_crash_on_check_failure, exhaustive_tiling_search,
+      should_require_complete_aot_autotune_results, autotune_cache_dir,
+      autotune_cache_mode, gemm_config_overrides);
 }
 
 /*static*/ absl::StatusOr<bool> AutotunerUtil::IsInCache(

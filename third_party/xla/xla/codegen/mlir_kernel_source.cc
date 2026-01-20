@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -54,8 +53,7 @@ absl::StatusOr<MlirKernelSource> MlirKernelSource::ParseFromString(
     return Internal("Failed to parse MLIR IR: %s", error_string);
   }
 
-  return MlirKernelSource(std::move(mlir_context),
-                          std::move(mlir_module));
+  return MlirKernelSource(std::move(mlir_context), std::move(mlir_module));
 }
 
 }  // namespace xla

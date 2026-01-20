@@ -52,6 +52,7 @@ using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
+  TiledHloScheduleTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   mlir::MLIRContext mlir_context_;
 };
 

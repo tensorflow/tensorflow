@@ -59,6 +59,10 @@ using ::testing::HasSubstr;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
+  GpuIndexingPerformanceModelTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.

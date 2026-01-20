@@ -17,14 +17,18 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -40,6 +44,10 @@ class AllGatherStartThunk : public CollectiveThunk {
   AllGatherStartThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
                       std::vector<Buffer> buffers,
                       bool p2p_memcpy_enabled = false);
+  AllGatherStartThunk(
+      ThunkInfo thunk_info,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
+      CollectiveConfig config, std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
@@ -53,10 +61,30 @@ class AllGatherStartThunk : public CollectiveThunk {
   const CollectiveConfig& config() const override { return config_.config; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
+  static absl::StatusOr<std::unique_ptr<AllGatherStartThunk>> FromProto(
+      ThunkInfo thunk_info, const AllGatherStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
+
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
+                                     Communicator& comm) override;
 
  private:
   const AllGatherConfig config_;
@@ -64,7 +92,7 @@ class AllGatherStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm,
+                          se::Stream& stream, Communicator& comm,
                           bool use_symmetric_buffer = false);
 
 }  // namespace gpu

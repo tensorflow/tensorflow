@@ -67,11 +67,18 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
            "invalidated some method string_views.";
     auto mock_executable =
         std::make_unique<testing::NiceMock<MockLoadedExecutable>>();
+    int num_devices;
+    if (options.executable_build_options.has_device_assignment()) {
+      num_devices =
+          options.executable_build_options.device_assignment().num_elements();
+    } else {
+      num_devices = 1;
+    }
     int num_parameters_to_propagate =
         options.executable_build_options
             .allow_spmd_sharding_propagation_to_parameters()
             .size();
-    if (num_parameters_to_propagate > 0) {
+    if (num_devices > 1 && num_parameters_to_propagate > 0) {
       xla::OpSharding op_sharding;
       op_sharding.set_type(xla::OpSharding::REPLICATED);
       std::vector<xla::OpSharding> parameter_shardings(
@@ -83,7 +90,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
         options.executable_build_options
             .allow_spmd_sharding_propagation_to_output()
             .size();
-    if (num_outputs_to_propagate > 0) {
+    if (num_devices > 1 && num_outputs_to_propagate > 0) {
       // Always infer output shardings to be replicated for the lit tests.
       xla::OpSharding op_sharding;
       op_sharding.set_type(xla::OpSharding::REPLICATED);

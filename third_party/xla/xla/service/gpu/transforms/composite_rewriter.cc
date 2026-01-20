@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -143,28 +144,51 @@ absl::StatusOr<bool> CompositeRewriter::RewriteComputation(
     const HloInstruction* lhs_scale = call->operand(2);
     const HloInstruction* rhs_scale = call->operand(3);
 
-    if (lhs->shape().element_type() != BF16) {
-      int64_t contracting_dim =
-          dot_dimension_numbers.lhs_contracting_dimensions(0);
-      int64_t scale_factor = lhs->shape().dimensions(contracting_dim) /
-                             lhs_scale->shape().dimensions(contracting_dim);
-      if (scale_factor != 32) {
-        VLOG(2) << "LHS scale_factor is not 32: " << scale_factor
-                << " ignore such scaled_dot. It will be inlined later.";
-        continue;
-      }
-    }
+    int64_t lhs_contracting_dim =
+        dot_dimension_numbers.lhs_contracting_dimensions(0);
+    int64_t rhs_contracting_dim =
+        dot_dimension_numbers.rhs_contracting_dimensions(0);
 
-    if (rhs->shape().element_type() != BF16) {
-      int64_t contracting_dim =
-          dot_dimension_numbers.rhs_contracting_dimensions(0);
-      int64_t scale_factor = rhs->shape().dimensions(contracting_dim) /
-                             rhs_scale->shape().dimensions(contracting_dim);
-      if (scale_factor != 32) {
-        VLOG(2) << "RHS scale_factor is not 32: " << scale_factor
-                << " ignore such scaled_dot for now. It will be inlined later.";
-        continue;
+    auto is_supported = [&](const HloInstruction* operand,
+                            const HloInstruction* scale,
+                            int64_t contracting_dim) {
+      auto op_type = operand->shape().element_type();
+      auto scale_type = scale->shape().element_type();
+      if ((op_type == F8E4M3FN || op_type == F8E5M2 || op_type == F4E2M1FN) &&
+          scale_type == F8E8M0FNU) {
+        if (contracting_dim >= scale->shape().dimensions().size()) {
+          return false;
+        }
+        int64_t operand_dim_size = operand->shape().dimensions(contracting_dim);
+        int64_t scale_dim_size = scale->shape().dimensions(contracting_dim);
+
+        if (scale_dim_size == 0 || operand_dim_size % scale_dim_size != 0) {
+          return false;
+        }
+        int64_t scale_factor = operand_dim_size / scale_dim_size;
+        return scale_factor % 32 == 0;
       }
+      if (op_type == BF16 && scale_type == BF16) {
+        if (scale->shape().dimensions().size() !=
+            operand->shape().dimensions().size()) {
+          return false;
+        }
+        for (int64_t dim : scale->shape().dimensions()) {
+          if (dim != 1) {
+            return false;
+          }
+        }
+        if (scale->opcode() != HloOpcode::kConstant) {
+          return false;
+        }
+        return scale->literal().IsAllFloat(1.0);
+      }
+      return false;
+    };
+
+    if (!is_supported(lhs, lhs_scale, lhs_contracting_dim) ||
+        !is_supported(rhs, rhs_scale, rhs_contracting_dim)) {
+      continue;
     }
 
     PrecisionConfig precision{};

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/error/error_codes.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -249,11 +250,11 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       if (is_end_of_offload) {
         // This DynamicSlice is the end of this path of host memory offload.
         continue;
-      } else {
-        // This is not the end of host memory offload. This is treated as device
-        // compute happening on host memory, convert it to host compute.
-        need_to_wrap_instruction_as_host_compute = true;
-      }
+      }  // This is not the end of host memory offload. This is treated as
+         // device
+      // compute happening on host memory, convert it to host compute.
+      need_to_wrap_instruction_as_host_compute = true;
+
     } else if (instruction->opcode() == HloOpcode::kSlice) {
       TF_ASSIGN_OR_RETURN(bool is_end_of_offload,
                           SliceLeadsToMoveToDeviceCustomCall(instruction));
@@ -263,11 +264,11 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         // memory.
         slices_to_dynamify.insert(instruction);
         continue;
-      } else {
-        // This is not the end of host memory offload. This is treated as device
-        // compute happening on host memory, convert it to host compute.
-        need_to_wrap_instruction_as_host_compute = true;
-      }
+      }  // This is not the end of host memory offload. This is treated as
+         // device
+      // compute happening on host memory, convert it to host compute.
+      need_to_wrap_instruction_as_host_compute = true;
+
     } else if (instruction->opcode() == HloOpcode::kCopy) {
       if (instruction->shape() == instruction->operand(0)->shape()) {
         need_to_wrap_instruction_as_host_compute = true;
@@ -298,10 +299,17 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "to move the inputs to the device so that computation happens on the "
           "device.",
           instruction->name());
+      bool h2h_copy_allowed =
+          instruction->opcode() == HloOpcode::kCopy &&
+          instruction->GetModule()
+              ->config()
+              .debug_options()
+              .xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled();  // NOLINT
       if (instruction->GetModule()
               ->config()
               .debug_options()
-              .xla_disable_automatic_host_compute_offload()) {
+              .xla_disable_automatic_host_compute_offload() &&
+          !h2h_copy_allowed) {
         return absl::InvalidArgumentError(
             "Automatic host compute offloading is disabled.");
       }
@@ -336,17 +344,16 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
             "Memory offloaded starting from %s is output streamed",
             starting_instruction_and_index.ToString());
         continue;
-      } else {
-        if (VLOG_IS_ON(1)) {
-          LOG(INFO) << "Instruction trace leading to error:";
-          PrintTrace(instruction_and_shape_index, previous);
-        }
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Tensor which is moved to host (starting from %s) "
-                            "is returned from the entry computation but the "
-                            "layout for this output is not set to host memory.",
-                            starting_instruction->name()));
       }
+      if (VLOG_IS_ON(1)) {
+        LOG(INFO) << "Instruction trace leading to error:";
+        PrintTrace(instruction_and_shape_index, previous);
+      }
+      return error::CompileTimeHostOffloadOutputLocationMismatch(
+          "Tensor which is moved to host (starting from %s) "
+          "is returned from the entry computation but the "
+          "layout for this output is not set to host memory.",
+          starting_instruction->name());
     }
     // Push successors onto the queue to be visited.
     TF_ASSIGN_OR_RETURN(
@@ -636,8 +643,8 @@ HostOffloader::GetStartingInstructions(
       // Found a DynamicUpdateSlice.
       result.push_back(instruction_and_shape);
       continue;
-    } else if (!InstructionIsAllowedBetweenMoveToHostAndDus(
-                   current_instruction)) {
+    }
+    if (!InstructionIsAllowedBetweenMoveToHostAndDus(current_instruction)) {
       // Found the start of "normal" memory offloading.
       result.push_back(instruction_and_shape);
       continue;

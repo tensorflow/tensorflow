@@ -40,9 +40,11 @@ namespace proxy {
 // RpcHelper helps establish a connection with the IFRT server and perform
 // logical RPCs on the connection.
 //
-// TODO(b/266635130): RpcHelper currently makes each logical RPC order-dependent
-// on the previous RPC it was asked to make. Instead, allow users of RpcHelper
-// specify the necessary dependency.
+// RpcHelper makes each logical RPC order-dependent on the previous RPC it was
+// asked to make. This implies that with a sequence of logical RPCs such as
+// `CopyArrays(req1); CopyArrays(req2);`, if req1 does not reach the server
+// because of an error, req2 (and any subsequent requests) also do not reach the
+// server.
 class RpcHelper {
  public:
   RpcHelper(IfrtProxyVersion version, std::shared_ptr<ClientSession> session);
@@ -118,6 +120,8 @@ class RpcHelper {
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
   ResponseFuture<RemapArraysResponse> RemapArrays(
       std::unique_ptr<RemapArraysRequest> req);
+  ResponseFuture<ReshardArraysResponse> ReshardArrays(
+      std::unique_ptr<ReshardArraysRequest> req);
   ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>
   DisassembleIntoSingleDeviceArrays(
       std::unique_ptr<DisassembleIntoSingleDeviceArraysRequest> req);
@@ -138,14 +142,23 @@ class RpcHelper {
 
   ResponseFuture<LoadedExecutableMetadataResponse> LoadedExecutableMetadata(
       std::unique_ptr<LoadedExecutableMetadataRequest> req);
+  ResponseFuture<LoadedExecutableMpmdMetadataResponse>
+  LoadedExecutableMpmdMetadata(
+      std::unique_ptr<LoadedExecutableMpmdMetadataRequest> req);
   ResponseFuture<LoadedExecutableCostAnalysisResponse>
   LoadedExecutableCostAnalysis(
       std::unique_ptr<LoadedExecutableCostAnalysisRequest> req);
+  ResponseFuture<LoadedExecutableMpmdCostAnalysisResponse>
+  LoadedExecutableMpmdCostAnalysis(
+      std::unique_ptr<LoadedExecutableMpmdCostAnalysisRequest> req);
   ResponseFuture<LoadedExecutableHumanReadableProgramTextResponse>
   LoadedExecutableHumanReadableProgramText(
       std::unique_ptr<LoadedExecutableHumanReadableProgramTextRequest> req);
   ResponseFuture<LoadedExecutableExecuteResponse> LoadedExecutableExecute(
       std::unique_ptr<LoadedExecutableExecuteRequest> req);
+  ResponseFuture<LoadedExecutableFetchExecuteResultResponse>
+  LoadedExecutableFetchExecuteResult(
+      std::unique_ptr<LoadedExecutableFetchExecuteResultRequest> req);
   ResponseFuture<LoadedExecutableDeleteResponse> LoadedExecutableDelete(
       std::unique_ptr<LoadedExecutableDeleteRequest> req);
   ResponseFuture<LoadedExecutableIsDeletedResponse> LoadedExecutableIsDeleted(

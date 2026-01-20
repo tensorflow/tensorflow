@@ -281,8 +281,10 @@ const std::vector<PayloadSizeAndAlign>& PredefinedPayloadTypes() {
     // The first element in fact defines the length of the info array.
     global_data->reserve(payload_type_info->size);
     for (uint16_t i = 0; i < payload_type_info->size; ++i) {
-      global_data->emplace_back(payload_type_info[i].size,
-                                payload_type_info[i].align);
+      global_data->push_back(PayloadSizeAndAlign{
+          payload_type_info[i].size,
+          payload_type_info[i].align,
+      });
     }
     VLOG(9) << "Initialized NVTX predefined payload type info with "
             << global_data->size() << " entries.";

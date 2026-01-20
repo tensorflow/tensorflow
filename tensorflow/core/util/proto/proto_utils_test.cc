@@ -61,21 +61,21 @@ TEST(ParseTextFormatFromStringTest, DiesOnNullOutputPointer) {
 }
 
 TEST(StringErrorCollectorTest, AppendsError) {
-  string err;
+  std::string err;
   StringErrorCollector collector(&err);
   collector.RecordError(1, 2, "foo");
   EXPECT_EQ("1(2): foo\n", err);
 }
 
 TEST(StringErrorCollectorTest, AppendsWarning) {
-  string err;
+  std::string err;
   StringErrorCollector collector(&err);
   collector.RecordWarning(1, 2, "foo");
   EXPECT_EQ("1(2): foo\n", err);
 }
 
 TEST(StringErrorCollectorTest, AppendsMultipleError) {
-  string err;
+  std::string err;
   StringErrorCollector collector(&err);
   collector.RecordError(1, 2, "foo");
   collector.RecordError(3, 4, "bar");
@@ -83,7 +83,7 @@ TEST(StringErrorCollectorTest, AppendsMultipleError) {
 }
 
 TEST(StringErrorCollectorTest, AppendsMultipleWarning) {
-  string err;
+  std::string err;
   StringErrorCollector collector(&err);
   collector.RecordWarning(1, 2, "foo");
   collector.RecordWarning(3, 4, "bar");
@@ -91,7 +91,7 @@ TEST(StringErrorCollectorTest, AppendsMultipleWarning) {
 }
 
 TEST(StringErrorCollectorTest, OffsetWorks) {
-  string err;
+  std::string err;
   StringErrorCollector collector(&err, true);
   collector.RecordError(1, 2, "foo");
   collector.RecordWarning(3, 4, "bar");

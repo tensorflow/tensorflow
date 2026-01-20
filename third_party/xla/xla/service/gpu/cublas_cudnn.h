@@ -219,7 +219,13 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 // Reference: https://nvlabs.github.io/cub/
 extern const absl::string_view kCubDeviceRadixSortTarget;
 
+// CUB library call that allows to not specify the scratch size.
+// EstimateCubScratchSizePass will assign the correct scratch size.
+extern const absl::string_view kCubDeviceRadixSortUnassignedScratchSizeTarget;
+
 bool IsCubDeviceRadixSort(const HloInstruction& hlo);
+bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo);
+
 }  // namespace gpu
 }  // namespace xla
 

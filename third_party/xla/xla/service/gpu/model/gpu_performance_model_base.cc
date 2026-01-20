@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -347,6 +347,33 @@ int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
 
   double flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
   return flop_per_ns_per_fpu * fpu_count;
+}
+
+/*static*/
+int64_t GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+    const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype) {
+  const se::ExecutionUnitDescription* caps =
+      gpu_device_info.matrix_unit_description();
+  std::optional<se::ExecutionUnitDescription::RateInfo> dtype_rates;
+
+  if (caps != nullptr) {
+    dtype_rates = caps->GetRateInfo(dtype);
+  }
+
+  if (!dtype_rates.has_value()) {
+    // Fallback to default flops if matrix unit description is not available
+    // or does not support the given dtype.
+    return CalculateEffectiveFlopsPerNs(
+        gpu_device_info, /*num_blocks=*/gpu_device_info.core_count(),
+        /*num_threads_per_block=*/gpu_device_info.fpus_per_core());
+  }
+
+  // FMA is counted as 2 ops.
+  double flops_per_ns_per_unit =
+      dtype_rates->clock_rate_ghz * dtype_rates->ops_per_clock * 2;
+  int64_t n_compute_units =
+      gpu_device_info.core_count() * dtype_rates->units_per_core;
+  return flops_per_ns_per_unit * n_compute_units;
 }
 
 /*static*/

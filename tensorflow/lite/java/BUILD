@@ -39,6 +39,21 @@ exports_files([
     "tflite_version_script.lds",
 ])
 
+exports_files([
+    # go/keep-sorted start
+    "src/main/java/org/tensorflow/lite/DataType.java",
+    "src/main/java/org/tensorflow/lite/DataTypeUtils.java",
+    "src/main/java/org/tensorflow/lite/InterpreterFactory.java",
+    "src/main/java/org/tensorflow/lite/NativeInterpreterWrapperExperimental.java",
+    "src/main/java/org/tensorflow/lite/NativeSignatureRunnerWrapper.java",
+    "src/main/java/org/tensorflow/lite/RuntimeFlavor.java",
+    "src/main/java/org/tensorflow/lite/Tensor.java",
+    "src/main/java/org/tensorflow/lite/TensorImpl.java",
+    "src/main/java/org/tensorflow/lite/annotations/UsedByReflection.java",
+    "src/main/java/org/tensorflow/lite/package-info.java",
+    # go/keep-sorted end
+])
+
 #-----------------------------------------------------------------------------
 # Filegroup targets.
 
@@ -924,6 +939,17 @@ filegroup(
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_tests_for_litert",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterMobileNetTest.java",
+        "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
+        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     visibility = ["//visibility:public"],
 )

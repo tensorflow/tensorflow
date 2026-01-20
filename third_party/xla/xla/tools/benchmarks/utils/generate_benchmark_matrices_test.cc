@@ -28,7 +28,6 @@ limitations under the License.
 #include "json/json.h"
 #include "xla/tools/benchmarks/proto/benchmark_config.pb.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -42,8 +41,6 @@ using testing::ElementsAre;
 using testing::HasSubstr;
 using testing::Not;
 using testing::SizeIs;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 // Helper function to create a temporary registry file.
 std::string CreateTempRegistryFile(const std::string& content,

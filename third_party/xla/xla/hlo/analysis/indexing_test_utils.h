@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
@@ -68,15 +69,22 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
+  IndexingTestBase() { RegisterSymbolicExprStorage(&mlir_context_); }
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
-  HloInstructionIndexing GetOutputToInputIndexing(
-      const HloInstruction* instr, int output_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetOutputToInputIndexing(
+      const HloInstruction* instr, int output_id, bool use_physical_layout);
+  HloInstructionIndexing GetOutputToInputIndexing(const HloInstruction* instr,
+                                                  int output_id = 0) {
+    return GetOutputToInputIndexing(instr, output_id, false);
+  }
 
-  HloInstructionIndexing GetInputToOutputIndexing(
-      const HloInstruction* instr, int input_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetInputToOutputIndexing(
+      const HloInstruction* instr, int input_id, bool use_physical_layout);
+  HloInstructionIndexing GetInputToOutputIndexing(const HloInstruction* instr,
+                                                  int input_id = 0) {
+    return GetInputToOutputIndexing(instr, input_id, false);
+  }
 
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;

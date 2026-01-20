@@ -22,18 +22,19 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -59,17 +60,17 @@ class BufferComparatorTest : public testing::Test {
                            double tolerance) {
     auto stream = stream_exec_->CreateStream().value();
 
-    se::DeviceMemoryHandle current_buffer(
+    se::DeviceAddressHandle current_buffer(
         stream_exec_, stream_exec_->AllocateArray<ElementType>(current.size()));
-    se::DeviceMemoryHandle expected_buffer(
+    se::DeviceAddressHandle expected_buffer(
         stream_exec_,
         stream_exec_->AllocateArray<ElementType>(expected.size()));
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), current.data(),
-                               current_buffer.memory().size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), expected.data(),
-                               expected_buffer.memory().size()));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->Memcpy(current_buffer.address_ptr(), current.data(),
+                            current_buffer.address().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.address_ptr(), expected.data(),
+                            expected_buffer.address().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
@@ -77,8 +78,8 @@ class BufferComparatorTest : public testing::Test {
             {static_cast<int64_t>(current.size())}),
         tolerance);
     return comparator
-        .CompareEqual(stream.get(), current_buffer.memory(),
-                      expected_buffer.memory())
+        .CompareEqual(stream.get(), current_buffer.address(),
+                      expected_buffer.address())
         .value();
   }
 
@@ -104,24 +105,24 @@ class BufferComparatorTest : public testing::Test {
                           const ElementType& expected,
                           double tolerance = kDefaultTolerance) {
     auto stream = stream_exec_->CreateStream().value();
-    se::DeviceMemoryHandle current_buffer(
+    se::DeviceAddressHandle current_buffer(
         stream_exec_, stream_exec_->AllocateScalar<ElementType>());
-    se::DeviceMemoryHandle expected_buffer(
+    se::DeviceAddressHandle expected_buffer(
         stream_exec_, stream_exec_->AllocateScalar<ElementType>());
 
-    TF_CHECK_OK(stream->Memcpy(current_buffer.memory_ptr(), &current,
-                               current_buffer.memory().size()));
-    TF_CHECK_OK(stream->Memcpy(expected_buffer.memory_ptr(), &expected,
-                               expected_buffer.memory().size()));
-    TF_CHECK_OK(stream->BlockHostUntilDone());
+    CHECK_OK(stream->Memcpy(current_buffer.address_ptr(), &current,
+                            current_buffer.address().size()));
+    CHECK_OK(stream->Memcpy(expected_buffer.address_ptr(), &expected,
+                            expected_buffer.address().size()));
+    CHECK_OK(stream->BlockHostUntilDone());
 
     BufferComparator comparator(
         ShapeUtil::MakeShape(
             primitive_util::NativeToPrimitiveType<ElementType>(), {}),
         kDefaultTolerance);
     return comparator
-        .CompareEqual(stream.get(), current_buffer.memory(),
-                      expected_buffer.memory())
+        .CompareEqual(stream.get(), current_buffer.address(),
+                      expected_buffer.address())
         .value();
   }
 
@@ -433,19 +434,59 @@ TEST_F(BufferComparatorTest, BF16) {
 
   auto stream = stream_exec_->CreateStream().value();
 
-  se::DeviceMemoryHandle lhs(
+  se::DeviceAddressHandle lhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.memory());
+  InitializeBuffer(stream.get(), BF16, &rng_state, lhs.address());
 
-  se::DeviceMemoryHandle rhs(
+  se::DeviceAddressHandle rhs(
       stream_exec_,
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
-  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
+  InitializeBuffer(stream.get(), BF16, &rng_state, rhs.address());
 
   BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
-  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
-                   .value());
+  EXPECT_FALSE(
+      comparator.CompareEqual(stream.get(), lhs.address(), rhs.address())
+          .value());
+}
+
+TEST_F(BufferComparatorTest, VeryLargeArray) {
+  constexpr PrimitiveType number_type = U8;
+  using NT = primitive_util::PrimitiveTypeToNative<number_type>::type;
+
+  // Set non-power-of-two element count on purpose, use aligned buffer size.
+  int64_t n_elems = (1LL << 32) - 11,
+          // Buffer size must be 4-bytes aligned for Memset32.
+      buf_size = (((n_elems + 1) * sizeof(NT)) + 3) & ~3;
+  auto stream = stream_exec_->CreateStream().value();
+
+  auto base = stream_exec_->Allocate(buf_size);
+  EXPECT_TRUE(!base.is_null());
+  auto cleanup =
+      absl::MakeCleanup([this, &base] { stream_exec_->Deallocate(&base); });
+
+  // We use overlapping lhs and rhs arrays to reduce memory usage, also this
+  // serves as an extra test for possible pointer aliasing problems.
+  se::DeviceAddressBase lhs(base.opaque(), n_elems * sizeof(NT)),
+      rhs(static_cast<NT*>(base.opaque()) + 1, lhs.size());
+
+  constexpr uint32_t pattern = 0xABABABAB;
+  CHECK_OK(stream->Memset32(&lhs, pattern, buf_size));
+
+  // First we do "positive" test to make sure lhs and rhs are indeed equal:
+  // disable host comparison here since it could take a while for ~4GB array
+  BufferComparator comparator(ShapeUtil::MakeShape(number_type, {n_elems}),
+                              /*tolerance*/ 0.1, /* verbose */ false,
+                              /*run_host_compare*/ false);
+  EXPECT_TRUE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
+
+  se::DeviceAddressBase last_word(
+      static_cast<uint8_t*>(base.opaque()) + (n_elems & ~3), sizeof(uint32_t));
+  // Change only the very last entry of rhs to verify that the whole arrays are
+  // compared (if the grid dimensions are not computed correctly, this might
+  // not be the case).
+  CHECK_OK(stream->Memset32(&last_word, 0x11223344, last_word.size()));
+  EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs, rhs).value());
 }
 
 }  // namespace

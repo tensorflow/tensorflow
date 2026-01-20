@@ -131,8 +131,9 @@ Value PrepareBroadcastLikeOpInput(Operation* op, PatternRewriter& rewriter) {
         RankedTensorType::get({}, elements_attr.getType().getElementType()),
         elements_attr.getSplatValue<mlir::Attribute>());
 
-    return rewriter.create<arith::ConstantOp>(
-        op->getLoc(), scalar_elements_attr.getType(), scalar_elements_attr);
+    return arith::ConstantOp::create(rewriter, op->getLoc(),
+                                     scalar_elements_attr.getType(),
+                                     scalar_elements_attr);
   }
   return nullptr;
 }
@@ -380,10 +381,10 @@ LogicalResult ReorderBroadcastToCast::matchAndRewrite(
           : static_cast<TensorType>(UnrankedTensorType::get(
                 old_cast_op_output_type.getElementType()));
 
-  auto new_cast_op = rewriter.create<TFL::CastOp>(
-      fused_loc, new_cast_op_output_type, input_value);
-  auto new_broadcast_to_op = rewriter.create<TFL::BroadcastToOp>(
-      fused_loc, old_cast_op_output_type, new_cast_op.getOutput(),
+  auto new_cast_op = TFL::CastOp::create(rewriter, fused_loc,
+                                         new_cast_op_output_type, input_value);
+  auto new_broadcast_to_op = TFL::BroadcastToOp::create(
+      rewriter, fused_loc, old_cast_op_output_type, new_cast_op.getOutput(),
       broadcast_to_op.getShape());
 
   rewriter.replaceOp(cast_op, new_broadcast_to_op.getOutput());

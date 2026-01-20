@@ -290,6 +290,7 @@ enum StatType {
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
+  kHbmUtilizationPercent,
   // Cost analysis related.
   kTimeScaleMultiplier,
   // XLA metadata map related.
@@ -372,8 +373,17 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
+  kOffloadCoreId,
+  kTcOffloadStartId,
+  kOffloadExecutionIndex,
   kMarkerPayloadString,
-  kLastStatType = kMarkerPayloadString,
+  kMetadataCudaVersion,
+  kMetadataLibtpuVersion,
+  kMetadataCudaRuntimeVersion,
+  kMetadataCudaDriverVersion,
+  kLastStatType = kMetadataCudaDriverVersion,
+  // kMetadataJaxVersion,
+  // kMetadataJaxlibVersion,
 };
 
 enum MegaScaleStatType : uint8_t {

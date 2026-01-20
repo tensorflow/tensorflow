@@ -51,8 +51,8 @@ class MockHashTable : public lookup::HashTable<K, V> {
   ~MockHashTable() override { alive = false; }
 };
 
-typedef int32 key_dtype;
-typedef int32 value_dtype;
+typedef int32_t key_dtype;
+typedef int32_t value_dtype;
 
 REGISTER_KERNEL_BUILDER(
     Name("MockAnonymousHashTable")

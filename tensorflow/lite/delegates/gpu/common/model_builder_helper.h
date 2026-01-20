@@ -190,6 +190,8 @@ absl::Status CreateVectorCopyData(const TfLiteTensor& src, T* dst) {
           dst[i] = tflite::GetTensorData<uint16_t>(&src)[i];
         }
         return absl::OkStatus();
+      case kTfLiteUInt4:
+        return absl::UnimplementedError("src can't be uint4.");
       case kTfLiteInt4:
         return absl::UnimplementedError("src can't be int4.");
       case kTfLiteInt2:

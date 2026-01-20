@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,13 +25,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
-#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -113,9 +114,12 @@ ENTRY entry_computation {
   EXPECT_EQ(triton_fusion_emitter->GetLaunchConfig(), std::nullopt);
 
   // Ensure that the emitter fails gracefully when the launch config is not set.
+  llvm::LLVMContext llvm_ctx;
+  llvm::Triple triple(nvptx::TargetTriple());
+  std::string data_layout = nvptx::DataLayout();
   EXPECT_THAT(triton_fusion_emitter->GenerateTritonKernelAndWrapper(
                   *::xla::Cast<HloFusionInstruction>(root), "random_name",
-                  device_info, /*llvm_module=*/nullptr, &mlir_context),
+                  device_info, triple, data_layout, &llvm_ctx, &mlir_context),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

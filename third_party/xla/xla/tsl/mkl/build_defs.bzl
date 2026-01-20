@@ -115,6 +115,25 @@ def mkl_deps():
         "//conditions:default": [],
     })
 
+def mkl_dep():
+    """Returns the correct oneDNN library dependency.
+
+      Shorthand for select() to pull in the correct oneDNN library dep
+      depending on the platform. x86 Linux/Windows with or without --config=mkl
+      will always build with oneDNN library.
+
+    Returns:
+      a select evaluating to a library target, suitable for
+      inclusion in the deps attribute of rules.
+    """
+    return select({
+        Label("//xla/tsl/mkl:build_with_mkl_aarch64"): "@mkl_dnn_acl_compatible//:mkl_dnn_acl",
+        Label("//xla/tsl:linux_x86_64_with_onednn_async"): "@onednn_async//:mkl_dnn",
+        Label("//xla/tsl:linux_x86_64"): "@onednn//:mkl_dnn",
+        Label("//xla/tsl:windows"): "@onednn//:mkl_dnn",
+        "//conditions:default": "//xla/tsl/mkl:dummy_mkl_dnn",
+    })
+
 def if_onednn_async(if_true, if_false = []):
     """Returns `if_true` if building oneDNN with async runtime support.
 

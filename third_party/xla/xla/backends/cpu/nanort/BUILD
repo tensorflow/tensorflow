@@ -113,7 +113,7 @@ cc_library(
         "//xla/service/cpu:cpu_aot_loader",
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:executable_proto_cc",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",

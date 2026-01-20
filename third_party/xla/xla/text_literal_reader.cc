@@ -73,13 +73,24 @@ absl::StatusOr<Literal> TextLiteralReader::ReadAllLines() {
 
   absl::StripAsciiWhitespace(&shape_string);
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShape(shape_string));
+
+  // Sanity check to reject shapes that are obviously too large. This doesn't
+  // guarantee allocation will succeed, but prevents crashes from absurdly
+  // large sizes (e.g., from fuzz testing).
+  constexpr int64_t kMaxSupportedBytes = std::numeric_limits<int32_t>::max();
+  int64_t byte_size = ShapeUtil::ByteSizeOf(shape);
+  if (byte_size < 0 || byte_size > kMaxSupportedBytes) {
+    return ResourceExhausted("Shape %s requires too much memory (%d bytes)",
+                             ShapeUtil::HumanString(shape), byte_size);
+  }
+
   if (shape.element_type() != F32) {
     return Unimplemented(
         "unsupported element type for text literal reading: %s",
         ShapeUtil::HumanString(shape));
   }
 
-  Literal result(shape);
+  TF_ASSIGN_OR_RETURN(Literal result, Literal::Make(shape));
   const float fill = std::numeric_limits<float>::quiet_NaN();
   result.PopulateWithValue<float>(fill);
   std::vector<absl::string_view> pieces;

@@ -46,8 +46,8 @@ Value PackScalarIndices(mlir::ValueRange indices, OpBuilder& b) {
   auto values_count_attr = b.getI32IntegerAttr(num_indices);
   auto pack_axis_attr = b.getI32IntegerAttr(0);
 
-  return b.create<TFL::PackOp>(indices.back().getLoc(), packed_indices_type,
-                               indices, values_count_attr, pack_axis_attr);
+  return TFL::PackOp::create(b, indices.back().getLoc(), packed_indices_type,
+                             indices, values_count_attr, pack_axis_attr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -56,8 +56,8 @@ Value PackScalarIndices(mlir::ValueRange indices, OpBuilder& b) {
 
 // Cast the value to i32.
 Value BuildTFLCastOp(OpBuilder& b, Value value) {
-  return b.create<TFL::CastOp>(
-      value.getLoc(),
+  return TFL::CastOp::create(
+      b, value.getLoc(),
       RankedTensorType::get(llvm::cast<ShapedType>(value.getType()).getShape(),
                             b.getI32Type()),
       value);
@@ -70,12 +70,12 @@ class LegalizeSliceOp : public OpConversionPattern<mhlo::SliceOp> {
   LogicalResult matchAndRewrite(
       mhlo::SliceOp slice_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto begin = rewriter.create<arith::ConstantOp>(slice_op.getLoc(),
-                                                    slice_op.getStartIndices());
-    auto end = rewriter.create<arith::ConstantOp>(slice_op.getLoc(),
-                                                  slice_op.getLimitIndices());
-    auto strides = rewriter.create<arith::ConstantOp>(slice_op.getLoc(),
-                                                      slice_op.getStrides());
+    auto begin = arith::ConstantOp::create(rewriter, slice_op.getLoc(),
+                                           slice_op.getStartIndices());
+    auto end = arith::ConstantOp::create(rewriter, slice_op.getLoc(),
+                                         slice_op.getLimitIndices());
+    auto strides = arith::ConstantOp::create(rewriter, slice_op.getLoc(),
+                                             slice_op.getStrides());
     auto zero = rewriter.getIntegerAttr(rewriter.getI32Type(), 0);
     auto no_offset = rewriter.getBoolAttr(false);
 
@@ -116,8 +116,8 @@ LogicalResult CastSliceIndicesToSignless::matchAndRewrite(
 
   llvm::SmallVector<Value> casted_start_inds;
   for (auto start_ind_opr : op.getStartIndices()) {
-    auto casted_start_ind_opr = rewriter.create<mhlo::ConvertOp>(
-        start_ind_opr.getLoc(), start_ind_opr, new_start_e_type);
+    auto casted_start_ind_opr = mhlo::ConvertOp::create(
+        rewriter, start_ind_opr.getLoc(), start_ind_opr, new_start_e_type);
     casted_start_inds.push_back(casted_start_ind_opr.getResult());
   }
 
@@ -161,8 +161,8 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
   // clamp start indices between zero and shape(operand) - slice_sizes
   //=-----
 
-  Value clamp_left_cst = rewriter.create<arith::ConstantOp>(
-      op->getLoc(), rewriter.getZeroAttr(start_type));
+  Value clamp_left_cst = arith::ConstantOp::create(
+      rewriter, op->getLoc(), rewriter.getZeroAttr(start_type));
 
   llvm::SmallVector<Value> new_start_indices;
   const auto stride_sizes = UnrollI64Splat(op.getSliceSizes());
@@ -170,15 +170,15 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
   for (auto [dim_size, start_ind_opr, stride_size] :
        llvm::zip(input_type.getShape(), op.getStartIndices(), stride_sizes)) {
     const int64_t clamp_right_val = dim_size - stride_size;
-    auto clamp_right_cst = rewriter.create<arith::ConstantOp>(
-        op->getLoc(),
+    auto clamp_right_cst = arith::ConstantOp::create(
+        rewriter, op->getLoc(),
         DenseElementsAttr::get(start_type, rewriter.getIntegerAttr(
                                                start_e_type, clamp_right_val)));
 
-    Value new_start_ind = rewriter.create<TFL::MaximumOp>(
-        op->getLoc(), start_type, clamp_left_cst, start_ind_opr);
-    new_start_ind = rewriter.create<TFL::MinimumOp>(
-        op->getLoc(), start_type, clamp_right_cst, new_start_ind);
+    Value new_start_ind = TFL::MaximumOp::create(
+        rewriter, op->getLoc(), start_type, clamp_left_cst, start_ind_opr);
+    new_start_ind = TFL::MinimumOp::create(rewriter, op->getLoc(), start_type,
+                                           clamp_right_cst, new_start_ind);
 
     new_start_indices.push_back(new_start_ind);
   }
@@ -190,7 +190,7 @@ LogicalResult LegalizeDynamicSliceOp::matchAndRewrite(
   auto packed_indices = PackScalarIndices(new_start_indices, rewriter);
 
   auto slice_sizes_cst =
-      rewriter.create<arith::ConstantOp>(op->getLoc(), op.getSliceSizes());
+      arith::ConstantOp::create(rewriter, op->getLoc(), op.getSliceSizes());
 
   rewriter.replaceOpWithNewOp<TFL::SliceOp>(op, op.getType(), op.getOperand(),
                                             packed_indices, slice_sizes_cst);

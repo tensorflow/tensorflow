@@ -143,12 +143,14 @@ ParallelFusionEmitter::FusionCompilerPool::GetNestedHooks() const {
 ParallelFusionEmitter::ParallelFusionEmitter(
     tsl::thread::ThreadPool& thread_pool, FusionCompiler::Options options,
     FusionCompiler::CompilationHooks hooks,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name)
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
+    bool enable_tiled_emitter)
     : thread_pool_(thread_pool),
       fusion_compiler_pool_(
           std::make_unique<FusionCompilerPool>(options, std::move(hooks))),
       buffer_assignment_(buffer_assignment),
-      use_unique_c_name_(use_unique_c_name) {}
+      use_unique_c_name_(use_unique_c_name),
+      enable_tiled_emitter_(enable_tiled_emitter) {}
 
 ParallelFusionEmitter::~ParallelFusionEmitter() {
   absl::MutexLock lock(kernels_mutex_);
@@ -167,7 +169,8 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   TF_ASSIGN_OR_RETURN(
       KernelDefinition mlir_kernel_definition,
       EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
-                       buffer_assignment_, use_unique_c_name_));
+                       buffer_assignment_, use_unique_c_name_,
+                       enable_tiled_emitter_));
 
   {
     absl::MutexLock lock(kernels_mutex_);

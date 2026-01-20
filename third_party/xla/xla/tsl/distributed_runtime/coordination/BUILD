@@ -1,5 +1,4 @@
 load("//xla/tsl:tsl.bzl", "if_oss", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -30,7 +29,6 @@ tsl_cc_test(
     srcs = ["coordination_service_error_util_test.cc"],
     deps = [
         ":coordination_service_error_util",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/status",
@@ -152,7 +150,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -238,9 +235,6 @@ tsl_cc_test(
     ]),  # no status matchers in OSS.
     deps = [
         ":key_value_store",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -262,20 +256,19 @@ tsl_cc_test(
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
-        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
-        "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
-        "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 tsl_cc_test(
@@ -293,22 +286,23 @@ tsl_cc_test(
         "//xla/tsl/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "//xla/tsl/protobuf:coordination_service_proto_cc_impl",
-        "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-    ] + tsl_grpc_cc_dependencies(),
+    ],
 )
 
 filegroup(

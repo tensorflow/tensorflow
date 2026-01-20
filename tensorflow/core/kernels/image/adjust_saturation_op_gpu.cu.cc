@@ -26,7 +26,7 @@ namespace functor {
 
 template <typename T>
 void AdjustSaturationGPU<T>::operator()(GPUDevice* device,
-                                        const int64 number_of_elements,
+                                        const int64_t number_of_elements,
                                         const T* const input,
                                         const float* const scale,
                                         T* const output) {

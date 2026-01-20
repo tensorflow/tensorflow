@@ -85,7 +85,7 @@ TEST(LegalizeMlirTest, LegalizesModule) {
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_TRUE(status.ok());
-  EXPECT_THAT(status.value(), HasSubstr("mhlo.const"));
+  EXPECT_THAT(status.value(), HasSubstr("stablehlo.constant"));
 }
 
 TEST(LegalizeMlirTest, FailsLegalizesModule) {

@@ -21,18 +21,19 @@ limitations under the License.
 namespace tsl {
 namespace random {
 
-uint32 SimplePhilox::Uniform(uint32 n) {
-  return ExactUniformInt<uint32>(n, [this]() { return Rand32(); });
+uint32_t SimplePhilox::Uniform(uint32_t n) {
+  return ExactUniformInt<uint32_t>(n, [this]() { return Rand32(); });
 }
 
-uint64 SimplePhilox::Uniform64(uint64 n) {
-  return ExactUniformInt<uint64>(n, [this]() { return Rand64(); });
+uint64_t SimplePhilox::Uniform64(uint64_t n) {
+  return ExactUniformInt<uint64_t>(n, [this]() { return Rand64(); });
 }
 
-uint32 SimplePhilox::Skewed(int max_log) {
+uint32_t SimplePhilox::Skewed(int max_log) {
   CHECK(0 <= max_log && max_log <= 32);
   const int shift = Rand32() % (max_log + 1);
-  const uint32 mask = shift == 32 ? ~static_cast<uint32>(0) : (1 << shift) - 1;
+  const uint32_t mask =
+      shift == 32 ? ~static_cast<uint32_t>(0) : (1 << shift) - 1;
   return Rand32() & mask;
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -50,7 +51,7 @@ class AbstractTrackedDeviceBuffer {
 
   // Returns a raw buffer which aliases the same
   // underlying memory as this AbstractTrackedDeviceBuffer.
-  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer() const {
+  const tsl::RCReference<CommonPjRtRawBuffer>& raw_buffer() const {
     return raw_buffer_;
   }
 
@@ -96,6 +97,18 @@ class AbstractTrackedDeviceBuffer {
   virtual absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) {
     return absl::UnimplementedError(
         "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+  }
+
+  // TODO(parkers): definition events are fixed, so we should just store them
+  // directly.
+  // Returns true if there is an error in any of the events.
+  virtual bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
+    LOG(FATAL) << "TODO IMPLEMENT: AddDefinitionEventsToSet.";
+    return false;
+  }
+
+  virtual void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
+    LOG(FATAL) << "TODO IMPLEMENT: AddUsageEventsToSet.";
   }
 
  protected:

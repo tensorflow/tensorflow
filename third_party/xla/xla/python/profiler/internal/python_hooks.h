@@ -135,7 +135,6 @@ class PythonHookContext {
   void Stop();
   void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
   void CollectData(tensorflow::profiler::XPlane* raw_plane);
-  static void EnableTraceMe(bool enable);
 
   static void SetProfilerInAllThreads();
   static void ClearProfilerInAllThreads();

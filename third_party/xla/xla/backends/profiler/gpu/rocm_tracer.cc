@@ -499,6 +499,10 @@ void RocmTracer::toolFinalize(void* tool_data) {
 }
 
 void RocmTracer::Disable() {
+  rocprofiler_status_t status = rocprofiler_flush_buffer(buffer_);
+  if (status != ROCPROFILER_STATUS_SUCCESS) {
+    LOG(WARNING) << "rocprofiler_flush_buffer failed with error " << status;
+  }
   absl::MutexLock lock(collector_mutex_);
   collector_->Flush();
   collector_ = nullptr;

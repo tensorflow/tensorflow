@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
@@ -55,6 +54,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/ir/program_interpreter.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
@@ -327,6 +327,8 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   mlir::MLIRContext* context = mlir_module.getContext();
   xla::ifrt::support::RegisterMlirDialects(*context);
 
+  std::string program_name = mlir_module.getName().value_or("unknown").str();
+
   // Add the bounded executables to the atom program executable map so that
   // they can be used by the interpreter
   std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_executable_map =
@@ -344,26 +346,6 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Run lowering passes.
   {
-    // We need to ensure that Multithreading is enabled in order to be able
-    // to dispatch compilations from multiple threads. Otherwise, we would
-    // trigger data races while printing the ModuleOps for creating the
-    // compilation cache keys
-    // (see llvm/llvm-project/mlir/lib/Support/StorageUniquer.cpp).
-    // JAX currently disables Multithreading for all contexts, but temporarily
-    // enabling multithreading here is safe as long as the IfrtIRProgram
-    // exclusively owns the context because the context is not shared across JAX
-    // ModuleOps.
-    std::optional<bool> was_multithreading_enabled;
-    if (ifrt_ir_program->OwnsMlirContext()) {
-      was_multithreading_enabled = context->isMultithreadingEnabled();
-      context->enableMultithreading(true);
-    }
-    absl::Cleanup reset_multithreading = [&]() {
-      if (was_multithreading_enabled.has_value()) {
-        context->enableMultithreading(*was_multithreading_enabled);
-      }
-    };
-
     mlir::PassManager pm(context);
     InitPassManager(pm, "ifrt.compile", compile_options->mlir_dump_to,
                     compile_options->mlir_dump_pass_re,
@@ -383,19 +365,8 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     compile_pipeline_options.propagate_shardings =
         compile_options->propagate_shardings;
     for (const auto device : devices) {
-      const auto it = device->Attributes().map().find("platform_name");
-      if (it != device->Attributes().map().end()) {
-        if (auto* const str = std::get_if<xla::ifrt::AttributeMap::StringValue>(
-                &it->second)) {
-          compile_pipeline_options.platform_names.push_back(str->value);
-        } else {
-          return absl::FailedPreconditionError(
-              "Device platform name is not a string");
-        }
-      } else {
-        compile_pipeline_options.platform_names.push_back(
-            std::string(client->platform_name()));
-      }
+      compile_pipeline_options.platform_names.push_back(
+          std::string(device->PlatformName()));
     }
     TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
@@ -439,8 +410,16 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
     }
   }
 
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(devices));
+  TF_ASSIGN_OR_RETURN(
+      auto interpreter,
+      ProgramInterpreter::Create(client, program_name, mlir_module,
+                                 atom_executable_map, std::move(device_list)));
+  TF_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
+
   return CompiledIfrtIrProgram{
-      /*program_name=*/mlir_module.getName().value_or("unknown").str(),
+      /*program_name=*/std::move(program_name),
       /*atom_program_executables=*/std::move(atom_executable_map),
       /*in_specs=*/std::move(in_specs),
       /*out_specs=*/std::move(out_specs),
@@ -449,6 +428,7 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
       /*program=*/std::move(ifrt_ir_program),
       /*device_assignments=*/std::move(device_assignments),
       /*compile_options=*/compile_options,
+      /*execute_fn=*/std::move(execute_fn),
   };
 }
 

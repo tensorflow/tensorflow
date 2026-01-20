@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -122,6 +125,73 @@ TEST(RocmTracerTest, AnnotationMapWorks) {
 
   absl::string_view result = map->LookUp(id);
   EXPECT_EQ(result, annotation);
+}
+
+// Simple collector that tracks received events for verification.
+class EventCapturingCollector : public RocmTraceCollector {
+ public:
+  EventCapturingCollector() : RocmTraceCollector(MakeCollectorOptions()) {}
+
+  void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override {
+    event_count_++;
+  }
+
+  void OnEventsDropped(const std::string& reason,
+                       uint32_t num_events) override {}
+  void Flush() override {}
+  void Export(tsl::profiler::XSpace* space) override {}
+
+  int event_count() const { return event_count_; }
+
+ private:
+  static RocmTraceCollectorOptions MakeCollectorOptions() {
+    RocmTraceCollectorOptions options;
+    options.max_callback_api_events = 2 * 1024 * 1024;
+    options.max_activity_api_events = 2 * 1024 * 1024;
+    options.max_annotation_strings = 1024 * 1024;
+    options.num_gpus = RocmTracer::GetRocmTracerSingleton().NumGpus();
+    return options;
+  }
+  int event_count_ = 0;
+};
+
+std::unique_ptr<EventCapturingCollector> CreateEventCapturingCollector() {
+  return std::make_unique<EventCapturingCollector>();
+}
+
+TEST(RocmTracerTest, CapturesHipEvents) {
+#define HIP_ASSERT_OK(expr) ASSERT_EQ((expr), hipSuccess) << #expr " failed"
+
+  int device_count = 0;
+  HIP_ASSERT_OK(hipGetDeviceCount(&device_count));
+  ASSERT_GT(device_count, 0) << "No HIP devices available";
+
+  auto collector = CreateEventCapturingCollector();
+  EventCapturingCollector* collector_ptr = collector.get();
+
+  RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
+  RocmTracerOptions tracer_options{/*max_annotation_strings=*/1024 * 1024};
+  tracer.Enable(tracer_options, collector.get());
+
+  constexpr size_t kNumFloats = 1024;
+  constexpr size_t kSize = kNumFloats * sizeof(float);
+  std::vector<float> host_data(kNumFloats, 1.0f);
+  void* device_data = nullptr;
+
+  HIP_ASSERT_OK(hipMalloc(&device_data, kSize));
+  HIP_ASSERT_OK(
+      hipMemcpy(device_data, host_data.data(), kSize, hipMemcpyHostToDevice));
+  HIP_ASSERT_OK(
+      hipMemcpy(host_data.data(), device_data, kSize, hipMemcpyDeviceToHost));
+  HIP_ASSERT_OK(hipDeviceSynchronize());
+
+  tracer.Disable();
+  HIP_ASSERT_OK(hipFree(device_data));
+
+#undef HIP_ASSERT_OK
+
+  EXPECT_GT(collector_ptr->event_count(), 0)
+      << "Expected to capture at least one trace event";
 }
 
 }  // namespace

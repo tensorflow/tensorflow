@@ -40,12 +40,16 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
+#include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
+#include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,16 +64,12 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -327,12 +327,13 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 // enabled.
 bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
     const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
+  if (stream_exec == nullptr ||
+      module->config().debug_options().xla_gpu_autotune_level() == 0) {
     return false;
   }
   for (const HloComputation* comp : module->MakeNonfusionComputations()) {
     for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
+      if (IsCustomCallToDnnConvolution(*inst)) {
         return true;
       }
     }
@@ -341,53 +342,86 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
-    HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
-    const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+NVPTXCompiler::GetCodegenBackends(
     se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config) {
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
-    return absl::OkStatus();
-  }
-
+    const Compiler::GpuTargetConfig* target_config,
+    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<CublasBackend>(
-      stream_exec, &debug_options, this, target_config));
-  backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_exec, &debug_options, this, target_config));
-  backends.push_back(std::make_unique<CudnnBackend>(stream_exec, &debug_options,
-                                                    this, target_config));
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    return instruction.opcode() == HloOpcode::kCustomCall &&
-           (IsCublasGemm(instruction) ||
-            IsCustomCallToDnnConvolution(instruction));
+  const auto& enabled_backends =
+      debug_options.xla_gpu_experimental_autotune_backends();
+
+  auto is_backend_enabled = [&](DebugOptions::AutotuneBackend backend) {
+    if (enabled_backends.empty()) {
+      return true;
+    }
+    for (const auto& enabled_backend : enabled_backends) {
+      if (enabled_backend == DebugOptions::AUTOTUNE_BACKEND_ALL) {
+        return true;
+      }
+      if (enabled_backend == backend) {
+        return true;
+      }
+    }
+    return false;
   };
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator));
-  pipeline->AddPass(std::move(autotuner_pass));
-  return absl::OkStatus();
-}
+  // Selecting the "first' config in the autotuner is backend order dependent.
+  // To make all tests pass we need to keep the CuDnn backend first and the
+  // Triton backend second.
 
-absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version,
-    se::StreamExecutor* stream_executor) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
-                                         thread_pool, key_value_store,
-                                         mlir_context());
-  return absl::OkStatus();
+  // CudnnBackend must be disabled if the binary libraries are disabled.
+  // Otherwise CuDnn graph will not be compiled and CuDNN thunk crashes on cache
+  // lookup.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUDNN)) {
+    backends.push_back(std::make_unique<CudnnBackend>(
+        stream_exec, &debug_options, this, target_config));
+  }
+
+  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_TRITON)) {
+    backends.push_back(std::make_unique<TritonBackend>(
+        &debug_options, this, target_config, mlir_context));
+  }
+
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
+    if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLAS)) {
+      backends.push_back(std::make_unique<CublasBackend>(
+          stream_exec, &debug_options, this, target_config));
+    }
+    if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLASLT)) {
+      backends.push_back(std::make_unique<CublasLtBackend>(
+          stream_exec, &debug_options, this, target_config));
+    }
+    if (debug_options.xla_gpu_cublas_fallback()) {
+      if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLAS)) {
+        backends.push_back(std::make_unique<FissionBackend>(
+            &debug_options, this, target_config,
+            std::make_unique<CublasBackend>(stream_exec, &debug_options, this,
+                                            target_config, true),
+            GetCublasRewriterPipeline(target_config->device_description),
+            mlir_context));
+      }
+      if (debug_options.xla_gpu_enable_cublaslt() &&
+          is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLASLT)) {
+        backends.push_back(std::make_unique<FissionBackend>(
+            &debug_options, this, target_config,
+            std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this,
+                                              target_config),
+            GetCublasRewriterPipeline(target_config->device_description,
+                                      /*enable_cublaslt=*/true),
+            mlir_context));
+      }
+    }
+    backends.push_back(std::make_unique<FissionBackend>(
+        &debug_options, this, target_config,
+        std::make_unique<CustomKernelBackend>(stream_exec, &debug_options, this,
+                                              target_config),
+        GetCustomKernelRewriterPipeline(target_config->device_description),
+        mlir_context));
+  }
+
+  return backends;
 }
 
 namespace {
@@ -437,12 +471,10 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   auto native_backend = std::make_unique<NativeEmitterBackend>(
       &debug_options, this, target_config);
-  native_backend->AllowRegisterSpills();
   backends.push_back(std::move(native_backend));
   auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
       &debug_options, this, shape_size_fn, target_config,
       /*use_default_config=*/true);
-  ble_backend->AllowRegisterSpills();
   backends.push_back(std::move(ble_backend));
 
   TF_ASSIGN_OR_RETURN(
@@ -450,7 +482,9 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
       AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
                             thread_pool, ShouldAutotuneBetweenFusionEmitters,
                             target_config, options.device_allocator,
-                            /*optimize_scratch_bytes=*/false));
+                            /*optimize_scratch_bytes=*/false,
+                            MultiProcessKeyValueStore(),
+                            /*allow_reg_spills=*/true));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
@@ -636,7 +670,7 @@ NVPTXCompiler::CompileTargetBinary(
   } else {
     selected_module = llvm_module;
   }
-
+  const DebugOptions& debug_options = module_config.debug_options();
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -646,12 +680,13 @@ NVPTXCompiler::CompileTargetBinary(
         absl::StrCat(
             "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
-        !options.is_autotuning_compilation);
+        debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 module_config.debug_options()));
+                                 debug_options));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -659,7 +694,7 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   module_config.debug_options())) {
+                                   debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -683,9 +718,7 @@ NVPTXCompiler::CompileTargetBinary(
                       GetCompilationProvider(module_config.debug_options()));
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(
-          module_config.debug_options(),
-          /*is_autotuning_compilation=*/options.is_autotuning_compilation);
+      PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
   se::CudaComputeCapability cc =
       *device_description.gpu_compute_capability().cuda_compute_capability();
@@ -697,7 +730,7 @@ NVPTXCompiler::CompileTargetBinary(
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("NVPTXCompiler::CompileTargetBinary - PtxToCubin for ",
                    module_name),
-      !options.is_autotuning_compilation);
+      debug_options.xla_enable_scoped_logging_timers());
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
   });
@@ -718,15 +751,18 @@ NVPTXCompiler::CompileTargetBinary(
                         compilation_provider->CompileToRelocatableModule(
                             cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{std::move(ptx),
-                                std::move(relocatable_module.cubin)};
+    return BackendCompileResult{
+        std::move(ptx), std::move(relocatable_module.cubin),
+        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
   }
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
-  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin)};
+  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
+                              /*dnn_compiled_graphs=*/{},
+                              std::move(assembly.module_stats)};
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
@@ -760,8 +796,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false);
+      PtxCompileOptionsFromDebugOptions(debug_options);
 
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "

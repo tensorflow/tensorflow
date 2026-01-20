@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -97,7 +97,7 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      xla::Compiler::GetForPlatform(platform));
+                      xla::Compiler::GetForPlatform(platform->id()));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   Compiler::GpuTargetConfig target_config(stream_executor);
@@ -109,8 +109,8 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
       get_codegen_backends(stream_executor, &debug_options, compiler.get(),
                            &target_config, mlir_context);
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+  std::unique_ptr<se::DeviceAddressAllocator> allocator =
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
   auto profiler =
       GpuProfiler::Create(stream_executor, ProfileOptions(), allocator.get());
@@ -182,6 +182,7 @@ int main(int argc, char* argv[]) {
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
   mlir::MLIRContext mlir_context;
+  xla::RegisterSymbolicExprStorage(&mlir_context);
   CHECK_OK(xla::gpu::Autotune(*module.value(), cache_dir, autotune_cache_mode,
                               &mlir_context));
   std::cout << module.value()->ToString() << std::endl;

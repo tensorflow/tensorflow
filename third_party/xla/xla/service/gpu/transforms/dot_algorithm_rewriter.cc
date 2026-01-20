@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -186,8 +185,8 @@ void RewriteF32ToBF16X3(HloInstruction* instr) {
   HloInstruction* low_sum = sum(low_high_dot, high_low_dot);
   low_sum = ReplaceNaNWithZeros(low_sum);
   HloInstruction* result = sum(low_sum, high_high_dot);
-  TF_CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  TF_CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
 }
 
 void RewriteF32ToBF16X6(HloInstruction* instr) {
@@ -226,8 +225,8 @@ void RewriteF32ToBF16X6(HloInstruction* instr) {
   result = ReplaceNaNWithZeros(result);
   result = sum(result, high_high_dot);
 
-  TF_CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  TF_CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
 }
 
 void RewriteF32ToBF16X9(HloInstruction* instr) {
@@ -272,8 +271,8 @@ void RewriteF32ToBF16X9(HloInstruction* instr) {
   result = ReplaceNaNWithZeros(result);
   result = sum(result, high_high_dot);
 
-  TF_CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  TF_CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
 }
 
 void RewriteF32ToTF32X3(HloInstruction* instr) {
@@ -303,8 +302,8 @@ void RewriteF32ToTF32X3(HloInstruction* instr) {
   HloInstruction* low_sum = sum(low_high_dot, high_low_dot);
   low_sum = ReplaceNaNWithZeros(low_sum);
   HloInstruction* result = sum(low_sum, high_high_dot);
-  TF_CHECK_OK(original_dot->ReplaceAllUsesWith(result));
-  TF_CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
 }
 
 }  // namespace

@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/shape.h"
 
 struct PJRT_Error {
@@ -208,9 +209,14 @@ struct PJRT_FulfillAliasBufferCallback {
 
 struct PJRT_Event {
   xla::Future<> future;
+  xla::Promise<> promise;
 };
 
 struct PJRT_SerializedExecutable {
+  std::string serialized;
+};
+
+struct PJRT_SerializedCompileOptions {
   std::string serialized;
 };
 
@@ -259,6 +265,10 @@ struct PJRT_PhaseCompiler {
       : compiler(phase_compiler), owned_compiler(nullptr) {}
 };
 
+struct PJRT_AsyncTrackingEvent {
+  std::unique_ptr<xla::ScopedAsyncTrackingEvent> event;
+};
+
 namespace pjrt {
 // C API definitions
 
@@ -274,6 +284,8 @@ PJRT_Error* PJRT_Event_IsReady(PJRT_Event_IsReady_Args* args);
 PJRT_Error* PJRT_Event_Error(PJRT_Event_Error_Args* args);
 PJRT_Error* PJRT_Event_Await(PJRT_Event_Await_Args* args);
 PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
+PJRT_Error* PJRT_Event_Create(PJRT_Event_Create_Args* args);
+PJRT_Error* PJRT_Event_Set(PJRT_Event_Set_Args* args);
 
 PJRT_Error* PJRT_Client_Destroy(PJRT_Client_Destroy_Args* args);
 PJRT_Error* PJRT_Client_PlatformName(PJRT_Client_PlatformName_Args* args);
@@ -373,6 +385,8 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
 PJRT_Error* PJRT_Executable_OptimizedProgram(
     PJRT_Executable_OptimizedProgram_Args* args);
 PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args);
+PJRT_Error* PJRT_Executable_GetCompileOptions(
+    PJRT_Executable_GetCompileOptions_Args* args);
 PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
     PJRT_Executable_GetCompiledMemoryStats_Args* args);
 
@@ -422,6 +436,9 @@ PJRT_Error* PJRT_Buffer_DecreaseExternalReferenceCount(
     PJRT_Buffer_DecreaseExternalReferenceCount_Args* args);
 PJRT_Error* PJRT_Buffer_OpaqueDeviceMemoryDataPointer(
     PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args* args);
+
+PJRT_Error* PJRT_Buffer_DonateWithControlDependency(
+    PJRT_Buffer_DonateWithControlDependency_Args* args);
 
 PJRT_Error* PJRT_CopyToDeviceStream_Destroy(
     PJRT_CopyToDeviceStream_Destroy_Args* args);

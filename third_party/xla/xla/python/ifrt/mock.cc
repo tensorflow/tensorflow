@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -48,6 +50,7 @@ char MockClient::ID = 0;
 char MockCompiler::ID = 0;
 char MockExecutable::ID = 0;
 char MockLoadedExecutable::ID = 0;
+char MockMpmdLoadedExecutable::ID = 0;
 char MockHostCallback::ID = 0;
 char MockLoadedHostCallback::ID = 0;
 char MockSharding::ID = 0;
@@ -170,6 +173,12 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {
     return delegated_->MakeTuple(values);
   });
+  ON_CALL(*this, CancelExecution)
+      .WillByDefault([this](xla::ifrt::LoadedExecutable::CancellationHandle
+                                cancellation_handle,
+                            absl::Status error) {
+        delegated_->CancelExecution(cancellation_handle, std::move(error));
+      });
 
   ON_CALL(*this, runtime_type).WillByDefault([this]() {
     return delegated_->runtime_type();
@@ -245,6 +254,14 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();
   });
+  ON_CALL(*this, SubscribeToAttributeChanges)
+      .WillByDefault(
+          [this](absl::Span<xla::ifrt::Device* const> devices,
+                 std::optional<absl::Span<const std::string>> attribute_names,
+                 xla::ifrt::OnDeviceAttributeChangeCallback callback) {
+            return delegated_->SubscribeToAttributeChanges(
+                devices, attribute_names, std::move(callback));
+          });
 }
 // LINT.ThenChange()
 
@@ -259,6 +276,9 @@ MockDevice::MockDevice(Device* delegated) : delegated_(delegated) {
   ON_CALL(*this, Id).WillByDefault([this]() { return delegated_->Id(); });
   ON_CALL(*this, ProcessIndex).WillByDefault([this]() {
     return delegated_->ProcessIndex();
+  });
+  ON_CALL(*this, PlatformName).WillByDefault([this]() {
+    return delegated_->PlatformName();
   });
   ON_CALL(*this, Kind).WillByDefault([this]() { return delegated_->Kind(); });
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {

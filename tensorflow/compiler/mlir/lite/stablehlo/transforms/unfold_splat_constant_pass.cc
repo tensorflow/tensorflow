@@ -74,18 +74,17 @@ class UnfoldSplatConstantPass
       return;
     }
     op_builder->setInsertionPoint(const_op);
-    Value scalar = op_builder->create<mhlo::ConstantOp>(
-        const_op->getLoc(),
+    Value scalar = mhlo::ConstantOp::create(
+        *op_builder, const_op->getLoc(),
         DenseElementsAttr::get(
             RankedTensorType::get(/*shape=*/{}, element_type),
             splat_elements_attr.getSplatValue<Attribute>()));
     auto broadcast_dims = DenseIntElementsAttr::get(
         RankedTensorType::get(/*shape=*/{0}, op_builder->getI64Type()),
         llvm::SmallVector<int64_t>{});
-    mhlo::BroadcastInDimOp broadcast_in_dim_op =
-        op_builder->create<mhlo::BroadcastInDimOp>(
-            const_op->getLoc(), splat_elements_attr.getType(), scalar,
-            broadcast_dims);
+    mhlo::BroadcastInDimOp broadcast_in_dim_op = mhlo::BroadcastInDimOp::create(
+        *op_builder, const_op->getLoc(), splat_elements_attr.getType(), scalar,
+        broadcast_dims);
     const_op->replaceAllUsesWith(broadcast_in_dim_op);
     const_op->erase();
   }

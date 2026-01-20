@@ -2396,6 +2396,48 @@ INSTANTIATE_TEST_SUITE_P(ReductionTypeTestSuite, ReductionTypeTest,
                          ::testing::ValuesIn(kReductionSupportedDataTypes),
                          TritonSupportTestTypeToString);
 
+class ClampTypeTest : public TritonTest,
+                      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(ClampTypeTest, CheckInvertedBoundsGivesExpectedResult) {
+  PrimitiveType data_type = GetParam();
+
+  const std::string kHloTestTemplate = R"hlo(
+    triton_computation {
+      param = $0[512] parameter(0)
+      lower_bound = $0[] constant(2)
+      lower_bound_tensor = $0[512] broadcast(lower_bound)
+      upper_bound = $0[] constant(-2)
+      upper_bound_tensor = $0[512] broadcast(upper_bound)
+      ROOT clamp = $0[512] clamp(lower_bound_tensor, param, upper_bound_tensor)
+    }
+
+    ENTRY entry_computation {
+      p = $0[512] parameter(0)
+      ROOT fusion = $0[512] fusion(p), kind=kCustom, calls=triton_computation,
+        backend_config={
+          "fusion_backend_config":{
+          "kind":"__triton",
+          "block_level_fusion_config":{
+            "output_tiles":[{"sizes":["512"]}],
+            "num_warps":"1",
+            "num_ctas":"1",
+            "num_stages":"1"}}}
+})hlo";
+
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+constexpr PrimitiveType kClampSupportedDataTypes[] = {S8,  S16, S32, S64,
+                                                      F16, F32, F64, BF16};
+
+INSTANTIATE_TEST_SUITE_P(ClampTypeTestSuite, ClampTypeTest,
+                         ::testing::ValuesIn(kClampSupportedDataTypes),
+                         TritonSupportTestTypeToString);
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

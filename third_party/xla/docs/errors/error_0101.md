@@ -1,25 +1,29 @@
 # Error code: 0101
 
-**Category:** Program allocation failure
+**Category:** Runtime: Program allocation failure
 
-**Type:** Runtime
+This error indicates that the XLA runtime on a TPU device failed to load a
+compiled XLA program executable into the TPU's HBM.
 
-## Error log example
+**Sample Error Message:**
 
 ```
 XlaRuntimeError: RESOURCE_EXHAUSTED: Error loading program 'jit_embedding_pipeline_step_fn': Attempting to reserve 29.49G at the bottom of memory. That was not possible. There are 147.64M free, 0B reserved, and 147.64M reservable. Scope: unknown..: while running replica 0 and partition 34 of a replicated computation (other replicas may have failed as well).
 ```
 
-## Why do these happen?
+**XLA backends:** TPU
 
-This error indicates that the XLA runtime on a TPU device failed to load a
-compiled XLA program executable into the TPU's HBM. It typically occurs for one
-of the following reasons: - Program Size Exceeds Available HBM: The compiled XLA
-program, including its instructions, static data, and any embedded constants, is
-larger than the total amount of free HBM currently available on the specific TPU
-core(s) where the program is being loaded. - HBM Fragmentation: While the total
-free HBM on the device might be sufficient in aggregate, it is not available in
-a single, contiguous block large enough to fit the entire program.
+## Overview
+
+This error is typically caused by one of the following reasons:
+
+- Program Size Exceeds Available HBM: The compiled XLA program, including its
+instructions, static data, and any embedded constants, is larger than the total
+amount of free HBM currently available on the specific TPU core(s) where the
+program is being loaded.
+- HBM Fragmentation: While the total free HBM on the device might be sufficient
+in aggregate, it is not available in a single, contiguous block large enough to
+fit the entire program.
 
 It's important to understand how the TPU runtime prioritizes memory. Buffer
 allocations are privileged over loaded programs. If a buffer allocation fails,
@@ -27,7 +31,7 @@ the runtime will evict already loaded programs from HBM to free up space. This
 can lead to a situation where a program that loaded successfully before now
 fails with an OOM error, because the HBM is now occupied with more data buffers.
 
-## How can a user fix their program when they do happen?
+## Debugging
 
 -   Reduce Buffer Memory Footprint: Freeing up memory used by data buffers will
     leave more room for the program itself:
@@ -56,7 +60,7 @@ fails with an OOM error, because the HBM is now occupied with more data buffers.
         intended. Holding on to `jax.Array` objects might prevent automatic
         de-allocation even after program compilation is completed.
 
-## How can a user debug these failures?
+### Tooling
 
 -   Enable the `tpu_log_allocations_on_oom` flag for which the allocator will
     dump a detailed report of all current allocations when an OOM occurs, which

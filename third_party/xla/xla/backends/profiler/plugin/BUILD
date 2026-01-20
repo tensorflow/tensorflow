@@ -2,6 +2,7 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -59,6 +60,7 @@ cc_library(
         "//xla/pjrt/c:__pkg__",
     ],
     deps = [
+        ":plugin_metadata",
         ":profiler_c_api_hdrs",
         ":profiler_error",
         "//xla/tsl/platform:logging",
@@ -73,6 +75,30 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "plugin_metadata_hdr",
+    hdrs = ["plugin_metadata.h"],
+    visibility = ["//xla/backends/profiler/plugin:__subpackages__"],
+    deps = [
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "plugin_metadata",
+    hdrs = ["plugin_metadata.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":plugin_metadata_hdr",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ] + if_google(
+        ["//xla/backends/profiler/plugin/google:plugin_metadata_google"],
+        ["//xla/backends/profiler/plugin/oss:plugin_metadata_oss"],
+    ),
+    alwayslink = 1,
+)
+
 xla_cc_test(
     name = "plugin_tracer_impl_test",
     srcs = ["plugin_tracer_impl_test.cc"],
@@ -83,6 +109,7 @@ xla_cc_test(
         ":profiler_error",
         "//xla/tsl/platform:logging",
         "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",

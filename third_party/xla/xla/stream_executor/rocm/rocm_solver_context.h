@@ -38,7 +38,7 @@ using gpusolverHandle_t = rocblas_handle;
 #endif  // TF_ROCM_VERSION >= 40500
 
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -52,35 +52,35 @@ class RocmSolverContext : public GpuSolverContext {
 
   absl::Status SetStream(Stream* stream) override;
   absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                            DeviceMemory<float*> as, int lda,
-                            DeviceMemory<int> lapack_info,
+                            DeviceAddress<float*> as, int lda,
+                            DeviceAddress<int> lapack_info,
                             int batch_size) override;
   absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                            DeviceMemory<double*> as, int lda,
-                            DeviceMemory<int> lapack_info,
+                            DeviceAddress<double*> as, int lda,
+                            DeviceAddress<int> lapack_info,
                             int batch_size) override;
   absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                            DeviceMemory<std::complex<float>*> as, int lda,
-                            DeviceMemory<int> lapack_info,
+                            DeviceAddress<std::complex<float>*> as, int lda,
+                            DeviceAddress<int> lapack_info,
                             int batch_size) override;
   absl::Status PotrfBatched(blas::UpperLower uplo, int n,
-                            DeviceMemory<std::complex<double>*> as, int lda,
-                            DeviceMemory<int> lapack_info,
+                            DeviceAddress<std::complex<double>*> as, int lda,
+                            DeviceAddress<int> lapack_info,
                             int batch_size) override;
-  absl::Status Potrf(blas::UpperLower uplo, int n, DeviceMemory<float> a,
-                     int lda, DeviceMemory<int> lapack_info,
-                     DeviceMemory<float> workspace) override;
-  absl::Status Potrf(blas::UpperLower uplo, int n, DeviceMemory<double> a,
-                     int lda, DeviceMemory<int> lapack_info,
-                     DeviceMemory<double> workspace) override;
+  absl::Status Potrf(blas::UpperLower uplo, int n, DeviceAddress<float> a,
+                     int lda, DeviceAddress<int> lapack_info,
+                     DeviceAddress<float> workspace) override;
+  absl::Status Potrf(blas::UpperLower uplo, int n, DeviceAddress<double> a,
+                     int lda, DeviceAddress<int> lapack_info,
+                     DeviceAddress<double> workspace) override;
   absl::Status Potrf(blas::UpperLower uplo, int n,
-                     DeviceMemory<std::complex<float>> a, int lda,
-                     DeviceMemory<int> lapack_info,
-                     DeviceMemory<std::complex<float>> workspace) override;
+                     DeviceAddress<std::complex<float>> a, int lda,
+                     DeviceAddress<int> lapack_info,
+                     DeviceAddress<std::complex<float>> workspace) override;
   absl::Status Potrf(blas::UpperLower uplo, int n,
-                     DeviceMemory<std::complex<double>> a, int lda,
-                     DeviceMemory<int> lapack_info,
-                     DeviceMemory<std::complex<double>> workspace) override;
+                     DeviceAddress<std::complex<double>> a, int lda,
+                     DeviceAddress<int> lapack_info,
+                     DeviceAddress<std::complex<double>> workspace) override;
   absl::StatusOr<int64_t> PotrfBufferSize(xla::PrimitiveType type,
                                           blas::UpperLower uplo, int n, int lda,
                                           int batch_size) override;

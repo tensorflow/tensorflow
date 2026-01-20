@@ -431,6 +431,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_INT2:
       bytes_required = (bytes_required + 3) / 4;
       break;
+    case TensorType_UINT4:
+      bytes_required = (bytes_required + 1) / 2;
+      break;
     case TensorType_INT4:
       bytes_required = (bytes_required + 1) / 2;
       break;

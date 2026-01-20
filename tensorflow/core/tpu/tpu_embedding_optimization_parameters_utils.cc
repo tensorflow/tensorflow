@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
@@ -256,7 +257,7 @@ absl::Status UseGradientAccumulation(const OptimizationParameters& params,
     }
     case GradientAccumulationSupport::kNotSupported: {
       if (raw_gradient_accumulation_status) {
-        return errors::InvalidArgument(strings::Printf(
+        return errors::InvalidArgument(absl::StrFormat(
             "Optimization algorithm %s does not support gradient accumulation "
             "but parameters specify it.",
             GetOptimizationAlgorithmName(params.parameters_case()).c_str()));

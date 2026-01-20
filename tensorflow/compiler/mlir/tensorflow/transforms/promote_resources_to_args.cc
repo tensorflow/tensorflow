@@ -328,7 +328,7 @@ LogicalResult PromoteResourcesToArguments(
   // Rewrite return if there are variable writes.
   const int return_operands_size = return_operands.size();
   if (return_operands_size > num_results_before) {
-    builder.create<func::ReturnOp>(return_op.getLoc(), return_operands);
+    func::ReturnOp::create(builder, return_op.getLoc(), return_operands);
     return_op.erase();
   }
 

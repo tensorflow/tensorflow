@@ -80,11 +80,6 @@ class HloModuleGroup {
     return H::combine(std::move(h), group.module_);
   }
 
-  // Serialize the module group to/from a proto.
-  HloModuleGroupProto ToProto() const;
-  static absl::StatusOr<HloModuleGroup> CreateFromProto(
-      const HloModuleGroupProto& proto,
-      absl::Span<const HloModuleConfig> module_configs);
 
   // Returns the number of modules in the module group.
   int size() const { return module_ ? 1 : 0; }
@@ -92,18 +87,10 @@ class HloModuleGroup {
   // Returns true if there are no modules in the module group.
   bool empty() const { return !module_; }
 
-  absl::string_view cache_key() const { return cache_key_; }
-  void set_cache_key(absl::string_view cache_key) {
-    cache_key_ = std::string(cache_key);
-  }
-
- private:
   std::string name_;
 
   // Vector of modules as std::unique_ptrs.
   std::unique_ptr<HloModule> module_;
-
-  std::string cache_key_;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloModuleGroup& group);

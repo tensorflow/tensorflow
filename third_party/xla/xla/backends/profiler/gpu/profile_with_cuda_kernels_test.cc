@@ -27,11 +27,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
@@ -105,33 +107,29 @@ void HandleRecords(PmSamples* samples) {
   }
 }
 
-TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
-  // Ensure this is only run on CUPTI > 26 (paired w/ CUDA 12.6)
-  if (CUPTI_API_VERSION < 24) {
-    GTEST_SKIP() << "PM Sampling not supported on this version of CUPTI";
-  }
-
+void SimpleAddSubWithProfilerTest(bool enable_activity_hardware_tracing,
+                                  bool enable_pm_sampling) {
   uint32_t cupti_version = 0;
   cuptiGetVersion(&cupti_version);
-  EXPECT_EQ(CUPTI_API_VERSION, cupti_version);
+  LOG(INFO) << "RUNTIME CUPTI version " << cupti_version
+            << " and CUPTI_API_VERSION " << CUPTI_API_VERSION;
 
-  if (cupti_version < 24) {
-    GTEST_SKIP() << "PM Sampling not supported on this version of CUPTI";
-  }
-
-  LOG(INFO) << "Starting PM Sampling test with CUPTI version " << cupti_version;
+  enable_pm_sampling =
+      enable_pm_sampling && (cupti_version >= 24 && CUPTI_API_VERSION >= 24);
+  LOG(INFO) << "PM Sampling enabled: " << enable_pm_sampling;
 
   constexpr int kNumElements = 256 * 1024;
 
-  CuptiTracerCollectorOptions collector_options;
+  CuptiTracerCollectorOptions collector_options{};
   collector_options.num_gpus = CuptiTracer::NumGpus();
+  LOG(INFO) << "Cupti found #gpus: " << collector_options.num_gpus;
   uint64_t start_walltime_ns = absl::GetCurrentTimeNanos();
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   auto collector = CreateCuptiCollector(collector_options, start_walltime_ns,
                                         start_gputime_ns);
 
   CuptiPmSamplerOptions sampler_options;
-  sampler_options.enable = true;
+  sampler_options.enable = enable_pm_sampling;
   // Metrics can be queried with Nsight Compute
   // ncu --query-metrics-collection pmsampling --chip <CHIP>
   // Any metrics marked with a particular Triage group naming should be
@@ -141,8 +139,13 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
                              "sm__inst_executed_pipe_fp64.sum"};
   sampler_options.process_samples = HandleRecords;
 
-  CuptiTracerOptions tracer_options;
+  CuptiTracerOptions tracer_options{};
   tracer_options.enable_nvtx_tracking = false;
+  tracer_options.activities_selected.push_back(
+      CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
+  tracer_options.enable_activity_hardware_tracing =
+      enable_activity_hardware_tracing;
+  tracer_options.cupti_finalize = true;
 
   tracer_options.pm_sampler_options = sampler_options;
 
@@ -185,17 +188,38 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
   EXPECT_EQ(vec.size(), kNumElements);
   EXPECT_THAT(vec, Each(DistanceFrom(0, Lt(0.001))));
 
-  // Expect 4 * elems / (32 elemn / warp) +- 5% double instructions
-  // (if they were sampled)
-  // Double this as two kernels are sampled (middle kernel is not)
-  if (records_fp64 > 0) {
-    LOG(INFO) << "Sampled " << total_fp64 << " fp64 instructions";
-    double target = kNumElements * 4 * 2 / 32;
-    EXPECT_THAT(total_fp64, DistanceFrom(target, Lt(target * 5 / 100)));
+  auto space = std::make_unique<tensorflow::profiler::XSpace>();
+  collector->Export(space.get(), CuptiTracer::GetTimestamp());
+  EXPECT_GE(space->planes_size(), 1);
+
+  if (enable_pm_sampling) {
+    // Expect 4 * elems / (32 elemn / warp) +- 5% double instructions
+    // (if they were sampled)
+    // Double this as two kernels are sampled (middle kernel is not)
+    if (records_fp64 > 0) {
+      LOG(INFO) << "Sampled " << total_fp64 << " fp64 instructions";
+      double target = kNumElements * 4 * 2 / 32;
+      EXPECT_THAT(total_fp64, DistanceFrom(target, Lt(target * 5 / 100)));
+    }
+    if (records_cycles > 0) {
+      LOG(INFO) << "Sampled " << total_cycles << " cycles";
+    }
   }
-  if (records_cycles > 0) {
-    LOG(INFO) << "Sampled " << total_cycles << " cycles";
-  }
+}
+
+TEST(ProfilerCudaKernelSanityTest, SimpleAddSubWithPMSampling) {
+  SimpleAddSubWithProfilerTest(/*enable_activity_hardware_tracing=*/false,
+                               /*enable_pm_sampling=*/true);
+}
+
+TEST(ProfilerCudaKernelSanityTest, SimpleAddSubWithHESDisabled) {
+  SimpleAddSubWithProfilerTest(/*enable_activity_hardware_tracing=*/false,
+                               /*enable_pm_sampling=*/false);
+}
+
+TEST(ProfilerCudaKernelSanityTest, SimpleAddSubWithHESEnabled) {
+  SimpleAddSubWithProfilerTest(/*enable_activity_hardware_tracing=*/true,
+                               /*enable_pm_sampling=*/false);
 }
 
 }  // namespace

@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
@@ -38,7 +37,7 @@ limitations under the License.
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -47,12 +46,6 @@ namespace xla::cpu {
 // operation.
 class YnnFusionThunk : public Thunk {
  public:
-  enum class YnnFusionKind {
-    kFusion,
-  };
-
-  static absl::string_view YnnFusionKindToString(YnnFusionKind kind);
-
   ~YnnFusionThunk() override;
 
   struct Options {
@@ -84,7 +77,7 @@ class YnnFusionThunk : public Thunk {
   // constant, i.e. convolution filters and one of the dot arguments).
   using CapturingBuilder = absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers)>;
+      absl::Span<const se::DeviceAddressBase> arguments_buffers)>;
 
   static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> Create(
       Options options, Info info, const HloInstruction* hlo,
@@ -105,21 +98,18 @@ class YnnFusionThunk : public Thunk {
 
   Options options() const { return options_; }
 
-  YnnFusionKind ynn_fusion_kind() const { return ynn_fusion_kind_; }
-
   const HloInstruction* hlo() const { return hlo_; }
 
   absl::Span<const Argument> arguments() const { return arguments_; }
   absl::Span<const Result> results() const { return results_; }
 
  protected:
-  YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 const HloInstruction* hlo, std::vector<Argument> arguments,
-                 std::vector<Result> results, Builder builder);
+  YnnFusionThunk(Options options, Info info, const HloInstruction* hlo,
+                 std::vector<Argument> arguments, std::vector<Result> results,
+                 Builder builder);
 
-  YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
-                 const HloInstruction* hlo, std::vector<Argument> arguments,
-                 std::vector<Result> results,
+  YnnFusionThunk(Options options, Info info, const HloInstruction* hlo,
+                 std::vector<Argument> arguments, std::vector<Result> results,
                  CapturingBuilder capturing_builder,
                  absl::Span<const int64_t> captured_arguments_ids);
 
@@ -145,19 +135,18 @@ class YnnFusionThunk : public Thunk {
   // Creates YnnExecutable for the fusion operation using one of the builders.
   absl::StatusOr<YnnExecutable> CreateYnnExecutable(
       const YnnThreadpool& threadpool,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Updates YnnExecutable to the YNN subgraph constructed with the given
   // arguments buffers.
   absl::Status UpdateYnnExecutable(
       const YnnThreadpool& threadpool, YnnExecutable& executable,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   // Returns the list of captured arguments buffers.
-  std::vector<se::DeviceMemoryBase> CaptureArguments(
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
+  std::vector<se::DeviceAddressBase> CaptureArguments(
+      absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
-  YnnFusionKind ynn_fusion_kind_;
   Options options_;
 
   // A pointer to the HLO instruction that this thunk is associated with. Owned
@@ -181,14 +170,12 @@ class YnnFusionThunk : public Thunk {
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of YNNPACK executables to avoid data races.
   using YnnExecutablePool = ObjectPool<YnnExecutable, const YnnThreadpool&,
-                                       absl::Span<const se::DeviceMemoryBase>>;
+                                       absl::Span<const se::DeviceAddressBase>>;
   YnnExecutablePool ynn_executable_pool_;
 
   // The number of YNNPACK executables created for capturing graphs.
   std::atomic<int64_t> num_capturing_created_{0};
 };
-
-std::ostream& operator<<(std::ostream& os, YnnFusionThunk::YnnFusionKind kind);
 
 }  // namespace xla::cpu
 

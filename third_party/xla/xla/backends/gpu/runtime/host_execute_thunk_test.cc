@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -83,9 +83,8 @@ CreateHostExecuteStartThunk(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::cpu::NanoRtExecutable> executable,
                       client.Compile(host_computation));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AotCompilationResult> aot_compilation_result,
-      client.Export(executable.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_compilation_result,
+                      client.Export(executable.get()));
 
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
       tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
@@ -114,8 +113,8 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kHloModule, {}));
 
-  se::DeviceMemoryBase arg = stream_executor->Allocate(1 * sizeof(int32_t));
-  se::DeviceMemoryBase result = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase arg = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase result = stream_executor->Allocate(1 * sizeof(int32_t));
 
   TF_ASSERT_OK(stream->Memset32(&arg, 5, 4));
   TF_ASSERT_OK(stream->MemZero(&result, 4));
@@ -184,10 +183,12 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kHloModule, {}));
 
-  se::DeviceMemoryBase arg0 = stream_executor->Allocate(1 * sizeof(int32_t));
-  se::DeviceMemoryBase arg1 = stream_executor->Allocate(1 * sizeof(int32_t));
-  se::DeviceMemoryBase result0 = stream_executor->Allocate(1 * sizeof(int32_t));
-  se::DeviceMemoryBase result1 = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase arg0 = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase arg1 = stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase result0 =
+      stream_executor->Allocate(1 * sizeof(int32_t));
+  se::DeviceAddressBase result1 =
+      stream_executor->Allocate(1 * sizeof(int32_t));
 
   TF_ASSERT_OK(stream->Memset32(&arg0, 5, 4));
   TF_ASSERT_OK(stream->Memset32(&arg1, 3, 4));
@@ -277,10 +278,10 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
       auto result_memory_allocation,
       stream_executor->HostMemoryAllocate(1 * sizeof(int32_t)));
 
-  se::DeviceMemoryBase arg(arg_memory_allocation->opaque(),
-                           arg_memory_allocation->size());
-  se::DeviceMemoryBase result(result_memory_allocation->opaque(),
-                              result_memory_allocation->size());
+  se::DeviceAddressBase arg(arg_memory_allocation->opaque(),
+                            arg_memory_allocation->size());
+  se::DeviceAddressBase result(result_memory_allocation->opaque(),
+                               result_memory_allocation->size());
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -352,10 +353,10 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
       auto result_memory_allocation,
       unified_memory_allocator->Allocate(1 * sizeof(int32_t)));
 
-  se::DeviceMemoryBase arg(arg_memory_allocation->opaque(),
-                           arg_memory_allocation->size());
-  se::DeviceMemoryBase result(result_memory_allocation->opaque(),
-                              result_memory_allocation->size());
+  se::DeviceAddressBase arg(arg_memory_allocation->opaque(),
+                            arg_memory_allocation->size());
+  se::DeviceAddressBase result(result_memory_allocation->opaque(),
+                               result_memory_allocation->size());
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -415,8 +416,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
   alignas(xla::cpu::Align()) int32_t arg_value = 5;
   alignas(xla::cpu::Align()) int32_t result_value = 0;
 
-  se::DeviceMemoryBase arg(&arg_value, sizeof(int32_t));
-  se::DeviceMemoryBase result(&result_value, sizeof(int32_t));
+  se::DeviceAddressBase arg(&arg_value, sizeof(int32_t));
+  se::DeviceAddressBase result(&result_value, sizeof(int32_t));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -484,8 +485,8 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
   int32_t arg_value = 5;
   int32_t result_value = 0;
 
-  se::DeviceMemoryBase arg(&arg_value, sizeof(int32_t));
-  se::DeviceMemoryBase result(&result_value, sizeof(int32_t));
+  se::DeviceAddressBase arg(&arg_value, sizeof(int32_t));
+  se::DeviceAddressBase result(&result_value, sizeof(int32_t));
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);

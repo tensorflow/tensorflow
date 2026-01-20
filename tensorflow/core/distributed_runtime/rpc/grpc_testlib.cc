@@ -75,7 +75,7 @@ absl::Status TestCluster::MakeTestCluster(
 
   for (const auto& job : config.jobs) {
     for (int i = 0; i < job.num_tasks; ++i) {
-      const std::vector<string> argv(
+      const std::vector<std::string> argv(
           {binary_path, /* see grpc_testlib_server.cc for flags */
            tf_jobs, absl::StrCat("--tf_job=", job.name),
            absl::StrCat("--tf_task=", i / job.num_replicas),

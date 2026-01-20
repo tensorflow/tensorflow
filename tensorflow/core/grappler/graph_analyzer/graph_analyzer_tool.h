@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace grappler {
 namespace graph_analyzer {
 
-void GraphAnalyzerTool(const string& file_name, int n);
+void GraphAnalyzerTool(const std::string& file_name, int n);
 
 }  // end namespace graph_analyzer
 }  // end namespace grappler

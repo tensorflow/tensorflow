@@ -48,7 +48,7 @@ StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type);
 
 // Return a 1-D int32 constant array with the given values.
 mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
-                     llvm::ArrayRef<int32> values);
+                     llvm::ArrayRef<int32_t> values);
 // Return a 1-D int64 constant array with the given values.
 mlir::Value Int64Const(mlir::OpBuilder& builder, mlir::Location loc,
                        llvm::ArrayRef<int64_t> values);

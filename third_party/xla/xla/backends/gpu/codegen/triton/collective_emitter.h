@@ -18,20 +18,24 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -61,19 +65,17 @@ absl::StatusOr<bool> TrySetGpuBackendConfigForCollective(
 // The fn_arg_types is updated in place to add these.
 // Returns the number of metadata arguments added or error.
 absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
-    llvm::SmallVector<mlir::Type>& fn_arg_types, EmitterLocOpBuilder& b,
+    llvm::SmallVector<mlir::Type>& fn_arg_types, mlir::ImplicitLocOpBuilder& b,
     const HloComputation* hlo_computation);
 
-// Emits tiled XTile/Triton IR for a collective op.
-// See [EmitTiledHloInstruction] for an overview of how this fits into the
-// emitter.
-absl::StatusOr<triton::TensorValue> EmitCollective(
-    EmitterLocOpBuilder b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_reduce,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, triton::TensorValue>&
-        values);
+// Version of [AddCollectiveMetadataArguments] that does the same for
+// [emitters::KernelArgument] structure.
+absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
+    const HloFusionInstruction* fusion);
+
+// Rewrites stablehlo all-reduce op to a triton implementation.
+mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
+                                     mlir::PatternRewriter& rewriter);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

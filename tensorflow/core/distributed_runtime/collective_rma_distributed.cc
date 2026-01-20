@@ -39,9 +39,9 @@ namespace {
 
 class RecvBufCall : public CancellableCall {
  public:
-  RecvBufCall(int64_t step_id, const string& peer_device,
-              const string& peer_task, const string& key, Device* to_device,
-              DeviceContext* to_device_ctx,
+  RecvBufCall(int64_t step_id, const std::string& peer_device,
+              const std::string& peer_task, const std::string& key,
+              Device* to_device, DeviceContext* to_device_ctx,
               const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
               const DeviceLocality& client_locality,
               const DeviceAttributes& server_attributes,
@@ -107,11 +107,12 @@ absl::Status PopulateTensorFromResponse(const RecvBufResponse& response,
 }  // namespace
 
 void CollectiveRemoteAccessDistributed::RecvFromPeer(
-    const string& peer_device, const string& peer_task, bool peer_is_local,
-    const string& key, Device* to_device, DeviceContext* to_device_ctx,
-    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
-    CancellationManager* cancellation_manager, const StatusCallback& done) {
+    const std::string& peer_device, const std::string& peer_task,
+    bool peer_is_local, const std::string& key, Device* to_device,
+    DeviceContext* to_device_ctx, const AllocatorAttributes& to_alloc_attr,
+    Tensor* to_tensor, const DeviceLocality& client_locality,
+    int dev_to_dev_stream_index, CancellationManager* cancellation_manager,
+    const StatusCallback& done) {
   if (peer_is_local) {
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
@@ -232,7 +233,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 }
 
 void CollectiveRemoteAccessDistributed::CheckPeerHealth(
-    const string& peer_task, int64_t timeout_in_ms,
+    const std::string& peer_task, int64_t timeout_in_ms,
     const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
@@ -265,7 +266,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
           s = dev_resolver_->GetAllDeviceAttributes(peer_task, &cached_attrs);
         }
         if (s.ok()) {
-          absl::flat_hash_set<uint64> remote_incarnations;
+          absl::flat_hash_set<uint64_t> remote_incarnations;
           for (const DeviceAttributes& da : resp->device_attributes()) {
             remote_incarnations.insert(da.incarnation());
           }

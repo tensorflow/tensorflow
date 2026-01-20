@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/ffi/execution_state.pb.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
@@ -50,6 +51,23 @@ class ExecutionState {
   ExecutionState(const ExecutionState&) = delete;
   ExecutionState& operator=(const ExecutionState&) = delete;
 
+  ExecutionState(ExecutionState&& other) { *this = std::move(other); }
+  ExecutionState& operator=(ExecutionState&& other) {
+    if (this != &other) {
+      if (type_info_.deleter) {
+        type_info_.deleter(state_);
+      }
+      type_id_ = other.type_id_;
+      type_info_ = other.type_info_;
+      state_ = other.state_;
+
+      other.type_id_ = TypeRegistry::kUnknownTypeId;
+      other.type_info_ = {};
+      other.state_ = nullptr;
+    }
+    return *this;
+  }
+
   // Sets opaque state with a given type id. Returns an error if state is
   // already set, or if type id is not supported as a state.
   absl::Status Set(TypeId type_id, void* state);
@@ -57,6 +75,10 @@ class ExecutionState {
   // Returns opaque state of the given type id. If set state type id does not
   // match the requested one, returns an error.
   absl::StatusOr<void*> Get(TypeId type_id) const;
+
+  absl::StatusOr<ExecutionStateProto> ToProto() const;
+  static absl::StatusOr<ExecutionState> FromProto(
+      const ExecutionStateProto& proto);
 
   // Sets typed state of type `T` and optional deleter. Returns an
   // error if state is already set.
@@ -69,6 +91,7 @@ class ExecutionState {
   absl::StatusOr<T*> Get() const;
 
   bool IsSet() const;
+  bool IsSerializable() const;
 
  private:
   absl::Status Set(TypeId type_id, TypeInfo type_info, void* state);

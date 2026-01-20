@@ -273,12 +273,13 @@ class DeviceNameUtils {
   // Returns canonical and legacy full names for the given parsed
   // device name 'pn'. The returned string names are often useful to
   // look up devices from a mapping.
-  static std::vector<string> GetNamesForDeviceMappings(const ParsedName& pn);
+  static std::vector<std::string> GetNamesForDeviceMappings(
+      const ParsedName& pn);
 
   // Returns canonical and legacy local names for the given parsed device name
   // 'pn'. The returned string names are often useful to look up devices from a
   // mapping.
-  static std::vector<string> GetLocalNamesForDeviceMappings(
+  static std::vector<std::string> GetLocalNamesForDeviceMappings(
       const ParsedName& pn);
 
   // Returns name of the CPU:0 device on the same host as the device

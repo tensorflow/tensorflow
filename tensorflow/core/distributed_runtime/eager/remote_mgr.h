@@ -58,7 +58,7 @@ class RemoteMgr {
 
   // Helper function to create monotonically increasing ids unique to this
   // context.
-  uint64 NextOpId() {
+  uint64_t NextOpId() {
     DCHECK(is_master_);
     mutex_lock l(next_id_mutex_);
     return next_op_id_++;
@@ -77,20 +77,20 @@ class RemoteMgr {
   absl::Status DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
                                              TensorHandle** out);
 
-  EagerExecutor& GetOrCreateExecutorForStream(uint64 stream_id);
+  EagerExecutor& GetOrCreateExecutorForStream(uint64_t stream_id);
 
-  void DeleteExecutorForStream(uint64 stream_id);
+  void DeleteExecutorForStream(uint64_t stream_id);
 
  protected:
   mutex next_id_mutex_;
-  uint64 next_op_id_ TF_GUARDED_BY(next_id_mutex_) = 1;
+  uint64_t next_op_id_ TF_GUARDED_BY(next_id_mutex_) = 1;
 
  private:
   // Returns the op_id and output_num if the given local TensorHandle exists in
   // remote_tensor_handle_map_.
   absl::Status GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                      const bool wait_until_ready,
-                                     int64_t* op_id, int32* output_num)
+                                     int64_t* op_id, int32_t* output_num)
       TF_SHARED_LOCKS_REQUIRED(remote_tensor_handle_mu_);
 
   absl::Status GetTensorHandleImpl(
@@ -129,7 +129,7 @@ class RemoteMgr {
   EagerContext* parent_;  // not owned.
 
   mutex executor_map_mu_;
-  std::unordered_map<uint64, EagerExecutor> executor_map_
+  std::unordered_map<uint64_t, EagerExecutor> executor_map_
       TF_GUARDED_BY(executor_map_mu_);
 };
 

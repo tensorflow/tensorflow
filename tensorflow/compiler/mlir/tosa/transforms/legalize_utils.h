@@ -144,11 +144,6 @@ Value getTosaConstTensorSingleI32(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
                                   int64_t val, int rank);
 
-// Create a tosa::ConstShape based on the specified values
-Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
-                        llvm::ArrayRef<int64_t> values);
-
-
 // Populate a int32_t vector from a val tensor
 // return failure if val is not a constant value
 // return success otherwise

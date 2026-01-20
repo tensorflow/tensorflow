@@ -71,6 +71,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
         mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
         mlir::LLVM::LLVMDialect, mlir::DLTIDialect, xla::XlaDialect,
         xla::gpu::XlaGpuDialect>();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to

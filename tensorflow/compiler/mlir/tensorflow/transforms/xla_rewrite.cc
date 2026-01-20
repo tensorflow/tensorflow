@@ -81,8 +81,8 @@ void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
     MoveResourceArgsToEnd(symtab.lookup<func::FuncOp>(callee_sym));
   }
   builder.setInsertionPoint(cluster_func_op);
-  auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
-      cluster_func_op.getLoc(), cluster_func_op.getResultTypes(),
+  auto xla_launch_op = TF::XlaLaunchOp::create(
+      builder, cluster_func_op.getLoc(), cluster_func_op.getResultTypes(),
       /*constants=*/ValueRange({}), ValueRange(non_resource_args),
       ValueRange(resource_args), cluster_func_op.getFuncAttr());
 

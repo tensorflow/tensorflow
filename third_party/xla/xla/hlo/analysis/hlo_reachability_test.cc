@@ -21,8 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "absl/strings/string_view.h"
+#include "benchmark/benchmark.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -34,8 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace xla {
 
@@ -134,7 +134,7 @@ TEST_F(HloReachabilityTest, NonTrivialReachability) {
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/mul));
 
-  TF_CHECK_OK(add->AddControlDependencyTo(exp));
+  CHECK_OK(add->AddControlDependencyTo(exp));
   auto reachability = HloReachabilityMap::Build(computation);
 
   EXPECT_TRUE(reachability->IsReachable(constant1, constant1));

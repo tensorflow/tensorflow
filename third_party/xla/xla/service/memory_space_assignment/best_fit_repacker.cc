@@ -136,8 +136,6 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -578,7 +576,7 @@ class BestFitRepacker
   }
 
   bool Repack() {
-    TF_CHECK_OK(Finish().status());
+    CHECK_OK(Finish().status());
     bool success = result_.heap_size <= max_size_;
     if (!success) {
       VLOG(1) << "Repacking unsuccessful with heap size " << result_.heap_size;

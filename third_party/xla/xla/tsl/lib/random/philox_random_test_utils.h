@@ -26,7 +26,7 @@ namespace tsl {
 namespace random {
 
 // Return a random seed.
-inline uint64 GetTestSeed() { return New64(); }
+inline uint64_t GetTestSeed() { return New64(); }
 
 // A utility function to fill the given array with samples from the given
 // distribution.

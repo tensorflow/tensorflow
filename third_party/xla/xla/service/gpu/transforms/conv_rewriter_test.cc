@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -52,11 +52,14 @@ using ::tsl::proto_testing::EqualsProto;
 
 namespace m = ::xla::match;
 
-class ConvRewriterTest : public HloTestBase {
+constexpr se::CudaComputeCapability kDefaultCC;
+
+class ConvRewriterTest : public HloHardwareIndependentTestBase {
  public:
   ConvRewriterTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/true,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false) {
+      : HloHardwareIndependentTestBase(
+            /*verifier_layout_sensitive=*/true,
+            /*allow_mixed_precision_in_hlo_verifier=*/false) {
     for (int i = 0; i < 2; ++i) {
       WindowDimension* window_dim = default_conv_window_.add_dimensions();
       window_dim->set_size(1);
@@ -102,15 +105,8 @@ class ConvRewriterTest : public HloTestBase {
   }
 
  protected:
-  const se::GpuComputeCapability& GetComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
   bool RunPass(HloModule* module) {
-    return ConvRewriter(GetComputeCapability()).Run(module).value();
+    return ConvRewriter(kDefaultCC).Run(module).value();
   }
 
   // A convolution window with stride 1 and zero padding. The size fields are
@@ -792,7 +788,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
     TF_ASSERT_OK_AND_ASSIGN(auto m,
                             ParseAndReturnVerifiedModule(module_with_type));
 
-    absl::Status s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
+    absl::Status s = ConvRewriter(kDefaultCC).Run(m.get()).status();
     EXPECT_THAT(
         s, absl_testing::StatusIs(
                absl::StatusCode::kUnimplemented,
@@ -824,7 +820,7 @@ TEST_F(ConvRewriterTest, TestInvalidTypes) {
   // Test unsupported FP8 type
   module_with_type = absl::StrReplaceAll(module_str, {{"TYPE", "f8e4m3fnuz"}});
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(module_with_type));
-  s = ConvRewriter(GetComputeCapability()).Run(m.get()).status();
+  s = ConvRewriter(kDefaultCC).Run(m.get()).status();
   EXPECT_THAT(s,
               absl_testing::StatusIs(
                   absl::StatusCode::kUnimplemented,

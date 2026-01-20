@@ -20,13 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-::stream_executor::Platform::Id GetTpuPlatformId() {
-  // We can't use the PLATFORM_DEFINE_ID macro because of potential
-  // initialization-order-fiasco errors.
-  static int plugin_id_value = 42;
-  const ::stream_executor::Platform::Id platform_id = &plugin_id_value;
-  return platform_id;
-}
+PLATFORM_DEFINE_ID(kTpuPlatformId, TPU);
+
+::stream_executor::Platform::Id GetTpuPlatformId() { return kTpuPlatformId; }
 
 }  // namespace tpu
 }  // namespace tensorflow

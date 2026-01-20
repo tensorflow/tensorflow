@@ -1,3 +1,9 @@
+#include <memory>
+
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
 /* Copyright 2024 The OpenXLA Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,17 +49,43 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
   const CollectiveConfig& config() const override { return config_; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
-  static const char* GetHloOpName() { return "collective-broadcast-start"; }
+  static absl::string_view GetHloOpName() {
+    return "collective-broadcast-start";
+  }
 
   CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
                                 const HloCollectiveBroadcastInstruction* instr,
                                 std::vector<Buffer> buffers,
                                 bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastStartThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                                std::shared_ptr<AsyncEvents> async_events,
+                                std::vector<Buffer> buffers);
+
+  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastStartThunk>>
+  FromProto(ThunkInfo thunk_info,
+            const CollectiveBroadcastStartThunkProto& thunk_proto,
+            absl::Span<const BufferAllocation> buffer_allocations,
+            CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm_handle) override;
+                                     Communicator& comm) override;
 
  private:
   const CollectiveConfig config_;
@@ -61,7 +93,7 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
 };
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, Communicator* comm);
+                                    se::Stream& stream, Communicator& comm);
 
 }  // namespace xla::gpu
 

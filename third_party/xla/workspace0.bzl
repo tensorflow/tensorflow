@@ -7,6 +7,7 @@ load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependenci
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
 load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 def _tf_bind():
     """Bind targets for some external repositories"""
@@ -109,21 +110,20 @@ def workspace():
     # Note: We add this to fix Kokoro builds.
     # The rules below call into `rules_proto` but the hash has changed and
     # Bazel refuses to continue. So, we add our own mirror.
-    http_archive(
+    tf_http_archive(
         name = "rules_proto",
         sha256 = "20b240eba17a36be4b0b22635aca63053913d5c1ee36e16be36499d167a2f533",
         strip_prefix = "rules_proto-11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8",
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
+        urls = tf_mirror_urls(
             "https://github.com/bazelbuild/rules_proto/archive/11bf7c25e666dd7ddacbcd4d4c4a9de7a25175f8.tar.gz",
-        ],
+        ),
     )
 
-    http_archive(
+    tf_http_archive(
         name = "rules_shell",
         sha256 = "bc61ef94facc78e20a645726f64756e5e285a045037c7a61f65af2941f4c25e1",
         strip_prefix = "rules_shell-0.4.1",
-        url = "https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_shell/releases/download/v0.4.1/rules_shell-v0.4.1.tar.gz"),
     )
 
     # Now, finally use the rules
@@ -138,13 +138,13 @@ def workspace():
     # Toolchains for ML projects hermetic builds.
     # Details: https://github.com/google-ml-infra/rules_ml_toolchain
     if "rules_ml_toolchain" not in native.existing_rules():
-        http_archive(
+        tf_http_archive(
             name = "rules_ml_toolchain",
-            sha256 = "5f17275397752b666adbf8f0a81a3ebfb1e26a970b459cac33a06a8f03caa537",
-            strip_prefix = "rules_ml_toolchain-a2626615e1277a635b43dd268e1d4bc892afea10",
-            urls = [
-                "https://github.com/google-ml-infra/rules_ml_toolchain/archive/a2626615e1277a635b43dd268e1d4bc892afea10.tar.gz",
-            ],
+            sha256 = "54c1a357f71f611efdb4891ebd4bcbe4aeb6dfa7e473f14fd7ecad5062096616",
+            strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+            urls = tf_mirror_urls(
+                "https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz",
+            ),
         )
 
     # If a target is bound twice, the later one wins, so we have to do tf bindings

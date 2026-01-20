@@ -48,7 +48,7 @@ class CompileOnlyService : public Service {
   // Compiles a list of xla computations for ahead-of-time execution.  This is
   // intended for use in static compilation.  See
   // |CompileOnlyClient::CompileAheadOfTime| for additional details.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(const AotXlaComputationInstance& computation,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);

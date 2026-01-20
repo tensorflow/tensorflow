@@ -161,11 +161,15 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num: A `Tensor`. Must be one of the following types: `int32`, `int64`. 0-D
       tensor. Number of values to generate.
     name: A name for the operation (optional).
-    axis: Axis along which the operation is performed (used only when N-D
-      tensors are provided).
+    axis: Axis along which the operation is performed (can be specified to
+      non-zero only when N-D tensors are provided).
 
   Returns:
     A `Tensor`. Has the same type as `start`.
+
+  Raises:
+    InvalidArgumentError: If `axis` is specified to non-zero when 1-D tensor
+      is provided.
   """
 
   with ops.name_scope(name, "linspace", [start, stop]):

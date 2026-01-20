@@ -479,6 +479,23 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
   return absl::OkStatus();
 }
 
+void LegalizeSchedulingAnnotations::LogConfig(int64_t level) {
+  VLOG(level) << "LegalizeSchedulingAnnotations running with config: ";
+  VLOG(level) << "\tDEBUG: " << config_.debug_str;
+  VLOG(level) << "\tpropagate_annotation: " << config_.propagate_annotation;
+  VLOG(level) << "\tcheck_start_done_annotation_consistency: "
+              << config_.check_start_done_annotation_consistency;
+  VLOG(level) << "\tremove_loop_iteration_annotation_only: "
+              << config_.remove_loop_iteration_annotation_only;
+  VLOG(level) << "\trun_verification: " << config_.run_verification;
+  VLOG(level) << "\tkeep_start_annotation: " << config_.keep_start_annotation;
+  VLOG(level) << "\tdeannotate_unsupported_groups: "
+              << config_.deannotate_unsupported_groups;
+  VLOG(level) << "\tcheck_gap_only: " << config_.check_gap_only;
+  VLOG(level) << "\tcheck_non_mitigatable_gap_only: "
+              << config_.check_non_mitigatable_gap_only;
+}
+
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -487,6 +504,9 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::RunImpl(
       Annotation,
       absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
       annotation_to_instruction;
+  if (VLOG_IS_ON(1)) {
+    LogConfig(1);
+  }
   // Run gap checking if requested.
   if (config_.check_gap_only) {
     // Find the annotated instructions and save relevant information.

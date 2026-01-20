@@ -435,7 +435,7 @@ inline bool UpdateDevice(NodeViewDiff<GraphViewT>* diff,
     diff->device.clear();
     diff->update_device = false;
   } else {
-    diff->device = string(device);
+    diff->device = std::string(device);
     diff->update_device = true;
   }
   return true;
@@ -787,7 +787,7 @@ struct NewNode {
   NodeDef node;
   std::vector<SafeTensorId> regular_fanins;
   int num_regular_fanins = 0;
-  absl::flat_hash_set<string> controlling_fanins;
+  absl::flat_hash_set<std::string> controlling_fanins;
 };
 
 // Updates new node name.

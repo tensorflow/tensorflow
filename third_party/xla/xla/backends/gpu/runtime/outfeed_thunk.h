@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -42,6 +44,15 @@ class OutfeedThunk : public Thunk {
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(source_slices_.size());
+    for (const ShapedSlice& shaped_slice : source_slices_) {
+      res.push_back(BufferUse::Read(shaped_slice.slice, shaped_slice.shape));
+    }
+    return res;
+  }
 
   // Deserializes an `OutfeedThunk` that will copy the data from the given
   // `source_allocations` to the host-side outfeed queue.

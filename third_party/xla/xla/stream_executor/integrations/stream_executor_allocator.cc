@@ -31,7 +31,7 @@ limitations under the License.
 namespace stream_executor {
 
 StreamExecutorAllocator::StreamExecutorAllocator(
-    std::unique_ptr<MemoryAllocator> memory_allocator, MemoryType memory_type,
+    std::unique_ptr<MemoryAllocator> memory_allocator, MemorySpace memory_type,
     int index, const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors)
     : tsl::SubAllocator(alloc_visitors, free_visitors),
@@ -39,16 +39,16 @@ StreamExecutorAllocator::StreamExecutorAllocator(
       memory_type_(memory_type),
       index_(index) {}
 
-// Converts MemoryType to a human-readable string for allocation error messages
-static absl::string_view MemoryTypeToString(MemoryType type) {
+// Converts MemorySpace to a human-readable string for allocation error messages
+static absl::string_view MemorySpaceToString(MemorySpace type) {
   switch (type) {
-    case MemoryType::kDevice:
+    case MemorySpace::kDevice:
       return "device";
-    case MemoryType::kUnified:
+    case MemorySpace::kUnified:
       return "unified";
-    case MemoryType::kHost:
+    case MemorySpace::kHost:
       return "pinned host";
-    case MemoryType::kCollective:
+    case MemorySpace::kCollective:
       return "collective";
     default:
       return "unknown";
@@ -64,13 +64,14 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
   if (num_bytes > 0) {
     auto allocation = memory_allocator_->Allocate(num_bytes);
     if (!allocation.ok()) {
-      LOG(WARNING) << "could not allocate " << MemoryTypeToString(memory_type_)
-                   << " of size: " << num_bytes;
+      LOG(WARNING) << "could not allocate " << MemorySpaceToString(memory_type_)
+                   << " of size: " << num_bytes << " (" << allocation.status()
+                   << ')';
       *bytes_received = 0;
       return nullptr;
     }
 
-    ptr = (*allocation)->opaque();
+    ptr = (*allocation)->address().opaque();
     VisitAlloc(ptr, index_, num_bytes);
 
     absl::MutexLock lock(mutex_);
@@ -95,7 +96,7 @@ void StreamExecutorAllocator::Free(void* ptr, size_t num_bytes) {
 bool StreamExecutorAllocator::SupportsCoalescing() const { return false; }
 
 tsl::AllocatorMemoryType StreamExecutorAllocator::GetMemoryType() const {
-  if (memory_type_ == MemoryType::kHost) {
+  if (memory_type_ == MemorySpace::kHost) {
     return tsl::AllocatorMemoryType::kHostPinned;
   } else {
     return tsl::AllocatorMemoryType::kDevice;

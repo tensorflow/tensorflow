@@ -465,7 +465,7 @@ xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise = std::move(promise).ToShared(), c_event,
        c_api](PJRT_Error* error) mutable {
@@ -523,8 +523,8 @@ static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.bool_value = std::get<bool>(value);
     c_value.value_size = 1;
   } else {
-    return tsl::errors::InvalidArgument("Unexpected PjRtValueType: '",
-                                        value.index(), " with name: ", name);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unexpected PjRtValueType: '", value.index(), " with name: ", name));
   }
 
   return c_value;
@@ -601,8 +601,8 @@ static absl::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
   if (std::holds_alternative<bool>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
   }
-  return tsl::errors::InvalidArgument("Unexpected PjRtValueType with index",
-                                      cpp_value.index());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unexpected PjRtValueType with index", cpp_value.index()));
 }
 
 absl::Status ValidateCreateOptions(
@@ -612,16 +612,16 @@ absl::Status ValidateCreateOptions(
   for (const auto& [name, value] : value_map) {
     auto it = expected_name_and_types.find(name);
     if (it == expected_name_and_types.end()) {
-      return tsl::errors::InvalidArgument(
-          "Unexpected option name passed to PJRT_Client_Create: ", name);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unexpected option name passed to PJRT_Client_Create: ", name));
     }
     TF_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
                         GetPjrtNamedValueType(value));
     if (type != it->second) {
-      return tsl::errors::InvalidArgument(
-          "Option passed to PJRT_Client_Create with name ", name,
-          " has type index ", value.index(), " but expected type index is ",
-          it->second);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Option passed to PJRT_Client_Create with name ", name,
+                       " has type index ", value.index(),
+                       " but expected type index is ", it->second));
     }
   }
   return absl::OkStatus();
@@ -686,7 +686,7 @@ absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
                                               size_t expected_size,
                                               size_t actual_size) {
   if (actual_size < expected_size) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
   if (actual_size > expected_size) {
@@ -705,6 +705,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   absl::string_view platform_version(args.platform_version,
                                      args.platform_version_size);
   return platform_version;
+}
+
+absl::string_view GetPlatformVersion(PJRT_TopologyDescription* c_topology,
+                                     const PJRT_Api* api) {
+  PJRT_TopologyDescription_PlatformVersion_Args args;
+  args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = c_topology;
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_TopologyDescription_PlatformVersion(&args), api);
+  return absl::string_view(args.platform_version, args.platform_version_size);
 }
 
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
@@ -1096,6 +1107,8 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   args.extension_start = nullptr;
   args.executable = executable;
   args.peak_memory_in_bytes = 0;
+  args.total_size_in_bytes = 0;
+
   RETURN_STATUS_IF_PJRT_ERROR(
       api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
   xla::CompiledMemoryStats results;
@@ -1111,6 +1124,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
   results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
   results.peak_memory_in_bytes = args.peak_memory_in_bytes;
+  results.total_size_in_bytes = args.total_size_in_bytes;
   return results;
 }
 

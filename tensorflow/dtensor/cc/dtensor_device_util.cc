@@ -801,7 +801,7 @@ absl::Status PrepareGraphForMlir(
     // not be consulted at all and we should use the shape on our input tensor
     // directly.
     const auto& shape = input->global_shape();
-    std::vector<tensorflow::int64> cast_shape(shape.begin(), shape.end());
+    std::vector<int64_t> cast_shape(shape.begin(), shape.end());
     tensorflow::PartialTensorShape partial_shape;
     // For resource tensors, `shape` attribute should not be specified as
     // shape of resource tensors is specified by resource shape subtype -- not

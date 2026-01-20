@@ -44,7 +44,7 @@ static SessionOptions Devices(int num_cpus, int num_gpus) {
   return result;
 }
 
-void CreateGraphDef(GraphDef* graph_def, string node_names[3]) {
+void CreateGraphDef(GraphDef* graph_def, std::string node_names[3]) {
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({1, 2}));
@@ -71,7 +71,7 @@ static void IsSingleFloatValue(const Tensor& val, float expected_val) {
   ASSERT_EQ(val.flat<float>()(0), expected_val);
 }
 
-static SessionOptions Options(const string& target, int placement_period) {
+static SessionOptions Options(const std::string& target, int placement_period) {
   SessionOptions options;
   options.target = absl::StrCat("grpc://", target);
   options.config.set_isolate_session_state(false);
@@ -92,7 +92,7 @@ using test::TestJob;
 
 TEST(GrpcSessionTest, BasicNonProtoAPI) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   // c = a * b
   CreateGraphDef(&graph, node_names);
 
@@ -110,15 +110,15 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
     TF_ASSERT_OK(session->Create(graph));
     {
       // Just run to target node
-      std::vector<std::pair<string, Tensor>> inputs;
-      std::vector<string> targets = {node_names[2]};
+      std::vector<std::pair<std::string, Tensor>> inputs;
+      std::vector<std::string> targets = {node_names[2]};
       TF_ASSERT_OK(session->Run(inputs, {}, targets, nullptr));
     }
     {
       // Run to a target node and a real tensor
-      std::vector<std::pair<string, Tensor>> inputs;
-      std::vector<string> names = {node_names[2] + ":0"};
-      std::vector<string> targets = {node_names[1]};
+      std::vector<std::pair<std::string, Tensor>> inputs;
+      std::vector<std::string> names = {node_names[2] + ":0"};
+      std::vector<std::string> targets = {node_names[1]};
       std::vector<Tensor> outputs;
       TF_ASSERT_OK(session->Run(inputs, names, targets, &outputs));
       ASSERT_TRUE(outputs[0].IsInitialized());
@@ -131,7 +131,7 @@ TEST(GrpcSessionTest, BasicNonProtoAPI) {
 
 TEST(GrpcSessionTest, BasicCallable) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   // c = a * b
   CreateGraphDef(&graph, node_names);
 
@@ -180,7 +180,7 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
   // Specifying feeds/fetch devices for remote sessions is not yet defined.
   // Ensure that the error is graceful.
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   // c = a * b
   CreateGraphDef(&graph, node_names);
 
@@ -200,10 +200,10 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
   std::vector<DeviceAttributes> devices;
   TF_ASSERT_OK(session->ListDevices(&devices));
   ASSERT_GT(devices.size(), 0);
-  const string device_name = devices.back().name();
+  const std::string device_name = devices.back().name();
 
   CallableOptions opts;
-  const string fetch = node_names[2] + ":0";
+  const std::string fetch = node_names[2] + ":0";
   opts.add_fetch(fetch);
   opts.mutable_fetch_devices()->insert({fetch, device_name});
 
@@ -215,7 +215,7 @@ TEST(GrpcSessionTest, CallableWithOnDeviceFeedsAndFetches) {
 
 TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   // c = a * b
   CreateGraphDef(&graph, node_names);
 
@@ -233,11 +233,11 @@ TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
 
   // Test that the order of the output names matches the order of the
   // returned Tensors.
-  std::vector<std::pair<string, Tensor>> inputs;
-  std::vector<string> names = {node_names[2] + ":0", node_names[0] + ":0",
-                               node_names[1] + ":0"};
+  std::vector<std::pair<std::string, Tensor>> inputs;
+  std::vector<std::string> names = {node_names[2] + ":0", node_names[0] + ":0",
+                                    node_names[1] + ":0"};
 
-  std::vector<string> target_ops = {node_names[1]};
+  std::vector<std::string> target_ops = {node_names[1]};
   std::vector<Tensor> outputs;
   ASSERT_TRUE(session->Run(inputs, names, target_ops, &outputs).ok());
   ASSERT_TRUE(outputs[0].IsInitialized());
@@ -251,7 +251,7 @@ TEST(GrpcSessionTest, BasicNonProtoAPIConsistentOrder) {
 
 TEST(GrpcSessionTest, NonLocalWithFilters) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   // c = a * b
   CreateGraphDef(&graph, node_names);
 
@@ -286,7 +286,7 @@ TEST(GrpcSessionTest, NonLocalWithFilters) {
 
 TEST(GrpcSessionTest, FetchMultipleTimes) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
@@ -301,10 +301,10 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   ASSERT_TRUE(session != nullptr);
 
   TF_ASSERT_OK(session->Create(graph));
-  const std::vector<std::pair<string, Tensor>> inputs;
+  const std::vector<std::pair<std::string, Tensor>> inputs;
   std::vector<Tensor> outputs;
 
-  const string node = node_names[2] + ":0";
+  const std::string node = node_names[2] + ":0";
   TF_ASSERT_OK(session->Run(inputs, {node, node}, {}, &outputs));
   EXPECT_EQ(2, outputs.size());
   for (int i = 0; i < outputs.size(); ++i) {
@@ -317,7 +317,7 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
 
 TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
   GraphDef graph;
-  string node_names[3];
+  std::string node_names[3];
   CreateGraphDef(&graph, node_names);
 
   std::unique_ptr<test::TestCluster> cluster;
@@ -358,7 +358,7 @@ TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end
 // At the end, we expect "lambda" converges to 2.0.
-void FindMaxEigen(const string& target) {
+void FindMaxEigen(const std::string& target) {
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -379,7 +379,7 @@ void FindMaxEigen(const string& target) {
 
   // const tensor for reduction
   Tensor rdim_tensor(DT_INT32, TensorShape({}));
-  rdim_tensor.scalar<int32>()() = 0;
+  rdim_tensor.scalar<int32_t>()() = 0;
   Node* rdim = test::graph::Constant(&graph, rdim_tensor);
 
   // y2_sum = sum(y2)
@@ -433,7 +433,8 @@ TEST(FindMaxEigenTest, RemoteDevice) {
   FindMaxEigen(cluster->targets()[0]);
 }
 
-void SetDevice(GraphDef* graph, const string& name, const string& dev) {
+void SetDevice(GraphDef* graph, const std::string& name,
+               const std::string& dev) {
   for (int i = 0; i < graph->node_size(); ++i) {
     if (graph->node(i).name() == name) {
       graph->mutable_node(i)->set_device(dev);
@@ -530,10 +531,10 @@ TEST(GrpcSessionTest, LargeTensorSend) {
 
   // Define a 3 GB fill result.
   Tensor fill_shape_tensor(DT_INT32, TensorShape({4}));
-  fill_shape_tensor.vec<int32>()(0) = 1;
-  fill_shape_tensor.vec<int32>()(1) = 256;
-  fill_shape_tensor.vec<int32>()(2) = 1024;
-  fill_shape_tensor.vec<int32>()(3) = 1024;
+  fill_shape_tensor.vec<int32_t>()(0) = 1;
+  fill_shape_tensor.vec<int32_t>()(1) = 256;
+  fill_shape_tensor.vec<int32_t>()(2) = 1024;
+  fill_shape_tensor.vec<int32_t>()(3) = 1024;
   Node* fill_shape_node = test::graph::Constant(&graph, fill_shape_tensor);
 
   Tensor fill_val_tensor(DT_FLOAT, TensorShape({}));
@@ -544,10 +545,10 @@ TEST(GrpcSessionTest, LargeTensorSend) {
       test::graph::Binary(&graph, "Fill", fill_shape_node, fill_val_node);
 
   Tensor max_axes_tensor(DT_INT32, TensorShape({4}));
-  max_axes_tensor.vec<int32>()(0) = 0;
-  max_axes_tensor.vec<int32>()(1) = 1;
-  max_axes_tensor.vec<int32>()(2) = 2;
-  max_axes_tensor.vec<int32>()(3) = 3;
+  max_axes_tensor.vec<int32_t>()(0) = 0;
+  max_axes_tensor.vec<int32_t>()(1) = 1;
+  max_axes_tensor.vec<int32_t>()(2) = 2;
+  max_axes_tensor.vec<int32_t>()(3) = 3;
   Node* max_axes_node = test::graph::Constant(&graph, max_axes_tensor);
   Node* max_node = test::graph::Reduce(&graph, "Max", fill_node, max_axes_node);
 
@@ -687,11 +688,11 @@ TEST(GrpcSessionTest, Error) {
           .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
       &cluster));
   auto master = cluster->targets()[0];
-  const string& dev_a = cluster->devices()[0].name();
-  const string& dev_b = cluster->devices()[1].name();
+  const std::string& dev_a = cluster->devices()[0].name();
+  const std::string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
   GraphDef gdef;
-  std::vector<string> fetches;
+  std::vector<std::string> fetches;
   {
     Graph g(OpRegistry::Global());
 
@@ -729,7 +730,7 @@ TEST(GrpcSessionTest, Error) {
   {
     absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
@@ -748,11 +749,11 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
           .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
       &cluster));
   auto master = cluster->targets()[0];
-  const string& dev_a = cluster->devices()[0].name();
-  const string& dev_b = cluster->devices()[1].name();
+  const std::string& dev_a = cluster->devices()[0].name();
+  const std::string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
   GraphDef gdef;
-  std::vector<string> fetches;
+  std::vector<std::string> fetches;
   {
     Graph g(OpRegistry::Global());
 
@@ -791,8 +792,8 @@ TEST(GrpcSessionTest, ErrorStatusLog) {
     absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     std::cerr << status << "\n";
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
-    EXPECT_NE(status.ToString().find("ErrorOp: fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
+    EXPECT_NE(status.ToString().find("ErrorOp: fantasia!"), std::string::npos);
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
@@ -811,11 +812,11 @@ TEST(GrpcSessionTest, LongErrorMessage) {
           .Jobs({TestJob{"localhost", /*num_tasks=*/2}}),
       &cluster));
   auto master = cluster->targets()[0];
-  const string& dev_a = cluster->devices()[0].name();
-  const string& dev_b = cluster->devices()[1].name();
+  const std::string& dev_a = cluster->devices()[0].name();
+  const std::string& dev_b = cluster->devices()[1].name();
   LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
   GraphDef gdef;
-  std::vector<string> fetches;
+  std::vector<std::string> fetches;
   {
     Graph g(OpRegistry::Global());
 
@@ -827,7 +828,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
     a->set_assigned_device_name(dev_a);
     std::vector<char> long_string_buffer(1024 * 1024, 'x');
     absl::string_view long_string(long_string_buffer.data(), 1024 * 1024);
-    string name = absl::StrCat(long_string, "fantasia!");
+    std::string name = absl::StrCat(long_string, "fantasia!");
     auto a_err = test::graph::Error(&g, a, name);
     a_err->set_assigned_device_name(dev_a);
     auto a2 = test::graph::Add(&g, a, a_err);
@@ -856,7 +857,7 @@ TEST(GrpcSessionTest, LongErrorMessage) {
   {
     absl::Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.
@@ -874,13 +875,13 @@ TEST(SessionTest, SharedVar) {
           .Options(Devices(1, 0))
           .Jobs({TestJob{"localhost", /*num_tasks=*/1}}),
       &cluster));
-  const string master = cluster->targets()[0];
+  const std::string master = cluster->targets()[0];
   CHECK_EQ(cluster->devices().size(), 1);
 
   GraphDef gdef;
-  string init_name;
-  string inc_name;
-  string get_name;
+  std::string init_name;
+  std::string inc_name;
+  std::string get_name;
   {
     Graph g(OpRegistry::Global());
     Tensor one(DT_FLOAT, TensorShape({}));
@@ -899,7 +900,7 @@ TEST(SessionTest, SharedVar) {
   {
     Session* sess = NewRemote(Options(master, 1));
     TF_ASSERT_OK(sess->Create(gdef));
-    std::vector<std::pair<string, Tensor>> inp;
+    std::vector<std::pair<std::string, Tensor>> inp;
     TF_ASSERT_OK(sess->Run(inp, {}, {init_name}, nullptr));
     TF_ASSERT_OK(sess->Close());
     delete sess;
@@ -910,7 +911,7 @@ TEST(SessionTest, SharedVar) {
     {
       Session* sess = NewRemote(Options(master, 1));
       TF_ASSERT_OK(sess->Create(gdef));
-      std::vector<std::pair<string, Tensor>> inp;
+      std::vector<std::pair<std::string, Tensor>> inp;
       TF_ASSERT_OK(sess->Run(inp, {}, {inc_name}, nullptr));
       TF_ASSERT_OK(sess->Close());
       delete sess;
@@ -920,7 +921,7 @@ TEST(SessionTest, SharedVar) {
     {
       Session* sess = NewRemote(Options(master, 1));
       TF_ASSERT_OK(sess->Create(gdef));
-      std::vector<std::pair<string, Tensor>> inp;
+      std::vector<std::pair<std::string, Tensor>> inp;
       std::vector<Tensor> ret;
       TF_ASSERT_OK(sess->Run(inp, {get_name}, {}, &ret));
       ASSERT_EQ(ret.size(), 1);
@@ -946,9 +947,9 @@ TEST(SessionTest, SharedVarWithMultipleLearnerReplicas) {
   ASSERT_EQ(cluster->devices().size(), 3);
 
   GraphDef gdef;
-  string init_name;
-  string inc_name;
-  string get_name;
+  std::string init_name;
+  std::string inc_name;
+  std::string get_name;
 
   std::string var_server_device = "/job:variable_server/replica:0/task:0";
   std::string learner_0_device = "/job:learner/replica:0/task:0";
@@ -976,13 +977,13 @@ TEST(SessionTest, SharedVarWithMultipleLearnerReplicas) {
 
   {
     TF_ASSERT_OK(learner0->Create(gdef));
-    std::vector<std::pair<string, Tensor>> inp;
+    std::vector<std::pair<std::string, Tensor>> inp;
     TF_ASSERT_OK(learner0->Run(inp, {}, {init_name}, nullptr));
   }
 
   // Increment with learner 0
   for (int rep = 1; rep < 10; ++rep) {
-    std::vector<std::pair<string, Tensor>> inp;
+    std::vector<std::pair<std::string, Tensor>> inp;
     TF_ASSERT_OK(learner0->Run(inp, {}, {inc_name}, nullptr));
   }
 
@@ -990,12 +991,12 @@ TEST(SessionTest, SharedVarWithMultipleLearnerReplicas) {
   TF_ASSERT_OK(learner1->Create(gdef));
   // Increment with learner 1
   for (int rep = 1; rep < 10; ++rep) {
-    std::vector<std::pair<string, Tensor>> inp;
+    std::vector<std::pair<std::string, Tensor>> inp;
     TF_ASSERT_OK(learner1->Run(inp, {}, {inc_name}, nullptr));
   }
 
   // Fetch results with both and validate they are the same.
-  std::vector<std::pair<string, Tensor>> inp;
+  std::vector<std::pair<std::string, Tensor>> inp;
   std::vector<Tensor> ret;
   TF_ASSERT_OK(learner0->Run(inp, {get_name}, {}, &ret));
   ASSERT_EQ(ret.size(), 1);
@@ -1009,8 +1010,8 @@ TEST(SessionTest, SharedVarWithMultipleLearnerReplicas) {
   TF_ASSERT_OK(learner1->Close());
 }
 
-void CreateInvalidGraph(const string& graph_def_ascii,
-                        const string& error_substring) {
+void CreateInvalidGraph(const std::string& graph_def_ascii,
+                        const std::string& error_substring) {
   GraphDef graph;
   CHECK(protobuf::TextFormat::ParseFromString(graph_def_ascii, &graph));
 
@@ -1026,7 +1027,7 @@ void CreateInvalidGraph(const string& graph_def_ascii,
   absl::Status s = session->Create(graph);
 
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(s.message().find(error_substring), string::npos);
+  EXPECT_NE(s.message().find(error_substring), std::string::npos);
 }
 
 TEST(SessionTest, InvalidOpName) {
@@ -1184,7 +1185,7 @@ TEST(SessionTest, ExtendValidation) {
 
   absl::Status s = session->Extend(extension);
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(s.message().find("Illegal op input name"), string::npos);
+  EXPECT_NE(s.message().find("Illegal op input name"), std::string::npos);
 
   // 2. Succeed with a valid node.
   success = protobuf::TextFormat::ParseFromString(R"(
@@ -1213,7 +1214,7 @@ TEST(SessionTest, ExtendValidation) {
   s = session->Extend(extension);
   ASSERT_FALSE(s.ok());
   EXPECT_NE(s.message().find("'b', which was created by a previous call"),
-            string::npos);
+            std::string::npos);
 }
 // Tests that Create() with "operation_timeout_in_ms" set times out.
 TEST(SessionTest, CreateTimeoutWithSessionOptions) {
@@ -1277,7 +1278,7 @@ TEST(SessionTest, RunTimeoutWithSessionOptions) {
   TF_ASSERT_OK(session->Create(run_options, gdef));
 
   // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   absl::Status status = session->Run(inputs, {}, {b_delay->name()}, nullptr);
   // TODO(sherrym): Due to potentially a GRPC bug, we sometimes get
   // GRPC_CHTTP2_INTERNAL_ERROR which is mapped to error::INTERNAL.
@@ -1305,7 +1306,7 @@ TEST(SessionTest, RunTimeoutWithRunOptions) {
   TF_ASSERT_OK(session->Create(gdef));
 
   // Verifies that Run() times out, and the error code is DEADLINE_EXCEEDED.
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   RunOptions run_options;
   run_options.set_timeout_in_ms(100);
   absl::Status status = session->Run(run_options, inputs, {}, {b_delay->name()},
@@ -1340,7 +1341,7 @@ TEST(SessionTest, TestCompression) {
   RunOptions run_options;
   TF_ASSERT_OK(session->Create(run_options, gdef));
 
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(session->Run(inputs, {b->name()}, {}, &outputs));
   ASSERT_EQ(1, outputs.size());
@@ -1357,14 +1358,14 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
   auto& devs = cluster->devices();
   auto master = cluster->targets()[0];
   // worker 1
-  const string w1_dev1 = devs[0].name();
+  const std::string w1_dev1 = devs[0].name();
   // worker 2
-  const string w2_dev1 = devs[1].name();
+  const std::string w2_dev1 = devs[1].name();
 
   LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w2_dev1 "
             << w2_dev1;
   GraphDef gdef;
-  std::vector<string> fetches;
+  std::vector<std::string> fetches;
   {
     // Set up a graph to test the error handling when two workers both reports
     // original errors. The expected behavior is:
@@ -1409,7 +1410,7 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkersTwoErrors) {
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // Status contains the error either worker1 or worker2.
-    EXPECT_NE(status.ToString().find("fantasia"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia"), std::string::npos);
     EXPECT_EQ(status.code(), error::Code::INTERNAL);
   }
   // session->Close() shall clean up all states related to the session->
@@ -1431,16 +1432,16 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
   auto& devs = cluster->devices();
   auto master = cluster->targets()[0];
   // worker 1
-  const string w1_dev1 = devs[0].name();
-  const string w1_dev2 = devs[1].name();
+  const std::string w1_dev1 = devs[0].name();
+  const std::string w1_dev2 = devs[1].name();
   // worker 2
-  const string w2_dev1 = devs[2].name();
+  const std::string w2_dev1 = devs[2].name();
 
   LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
             << w1_dev2 << " w2_dev1 " << w2_dev1;
   GraphDef gdef;
-  std::vector<string> fetches;
-  std::vector<string> targets;
+  std::vector<std::string> fetches;
+  std::vector<std::string> targets;
   {
     // Set up a graph to test the error handling when a derived error is
     // reported to master before the original error. The expected behavior is:
@@ -1492,9 +1493,9 @@ TEST(GrpcSessionTest, ErrorAggregationTwoWorkerRace) {
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
     // assert status does not contain cancelled error.
-    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
+    EXPECT_EQ(status.ToString().find("Cancelled"), std::string::npos);
     EXPECT_EQ(status.code(), error::Code::INTERNAL);
   }
   // session->Close() shall clean up all states related to the session->
@@ -1516,18 +1517,18 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
   auto& devs = cluster->devices();
   auto master = cluster->targets()[0];
   // worker 1
-  const string w1_dev1 = devs[0].name();
-  const string w1_dev2 = devs[1].name();
+  const std::string w1_dev1 = devs[0].name();
+  const std::string w1_dev2 = devs[1].name();
   // worker 2
-  const string w2_dev1 = devs[2].name();
+  const std::string w2_dev1 = devs[2].name();
   // worker 3
-  const string w3_dev1 = devs[4].name();
+  const std::string w3_dev1 = devs[4].name();
 
   LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
             << w1_dev2 << " w2_dev1 " << w2_dev1 << " w3_dev1 " << w3_dev1;
   GraphDef gdef;
-  std::vector<string> fetches;
-  std::vector<string> targets;
+  std::vector<std::string> fetches;
+  std::vector<std::string> targets;
   {
     // Set up a graph to test the error handling when a derived error is
     // reported to master before the original error and a third worker is
@@ -1591,10 +1592,10 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant1) {
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
     // assert status does not contain cancelled or aborted error.
-    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
-    EXPECT_EQ(status.ToString().find("Aborted"), string::npos);
+    EXPECT_EQ(status.ToString().find("Cancelled"), std::string::npos);
+    EXPECT_EQ(status.ToString().find("Aborted"), std::string::npos);
     EXPECT_EQ(status.code(), error::Code::INTERNAL);
   }
   // session->Close() shall clean up all states related to the session->
@@ -1616,18 +1617,18 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
   auto& devs = cluster->devices();
   auto master = cluster->targets()[0];
   // worker 1
-  const string w1_dev1 = devs[0].name();
-  const string w1_dev2 = devs[1].name();
+  const std::string w1_dev1 = devs[0].name();
+  const std::string w1_dev2 = devs[1].name();
   // worker 2
-  const string w2_dev1 = devs[2].name();
+  const std::string w2_dev1 = devs[2].name();
   // worker 3
-  const string w3_dev1 = devs[4].name();
+  const std::string w3_dev1 = devs[4].name();
 
   LOG(INFO) << "master " << master << "w1_dev1 " << w1_dev1 << " w1_dev2 "
             << w1_dev2 << " w2_dev1 " << w2_dev1 << " w3_dev1 " << w3_dev1;
   GraphDef gdef;
-  std::vector<string> fetches;
-  std::vector<string> targets;
+  std::vector<std::string> fetches;
+  std::vector<std::string> targets;
   {
     // Set up a graph to test the error handling when a derived error is
     // reported to master before the original error and a third worker is
@@ -1692,10 +1693,10 @@ TEST(GrpcSessionTest, ErrorAggregationThreeWorkerRaceVariant2) {
     LOG(INFO) << status;
     EXPECT_FALSE(status.ok());
     // assert status contains the root error
-    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("fantasia!"), std::string::npos);
     // assert status does not contain cancelled or aborted error.
-    EXPECT_EQ(status.ToString().find("Cancelled"), string::npos);
-    EXPECT_EQ(status.ToString().find("Aborted"), string::npos);
+    EXPECT_EQ(status.ToString().find("Cancelled"), std::string::npos);
+    EXPECT_EQ(status.ToString().find("Aborted"), std::string::npos);
     EXPECT_EQ(status.code(), error::Code::INTERNAL);
   }
   // session->Close() shall clean up all states related to the session->

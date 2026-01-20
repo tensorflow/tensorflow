@@ -103,8 +103,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
   const int64_t sort_dim = 1;
 
   CHECK(sharding.IsTiled());
-  const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
-  const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
+  const int64_t shard_count = sharding.dimension(sort_dim);
+  const int64_t batch_dim_partition = sharding.dimension(batch_dim);
 
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
@@ -130,9 +130,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
     partition_state = CreatePerGroupPartitioningState(
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);
-    std::vector<int64_t> reshape_dimensions(
-        sharding.tile_assignment().dimensions().begin(),
-        sharding.tile_assignment().dimensions().end());
+    std::vector<int64_t> reshape_dimensions(sharding.dimensions().begin(),
+                                            sharding.dimensions().end());
     reshape_dimensions.push_back(reshape_dimensions.back());
     reshape_dimensions[sort_dim] = 1;
     auto reshape_tile_assignment =
@@ -327,9 +326,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
               pairs.emplace_back(device,
                                  hlo->sharding().tile_assignment()(dst_idx));
             });
-        halo =
-            collective_ops_creator_.create_cross_partition_collective_permute(
-                &b_, halo, pairs, NewChannel());
+        halo = collective_ops_creator_.create_collective_permute(
+            &b_, halo, pairs, NewChannel());
       }
       concat_pieces.push_back(halo);
     }
@@ -483,7 +481,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   // Block-scaled dot with MX operands.
   if (hlo->custom_call_target() == "__op$block_scaled_dot") {
     // Evaluate the dimension numbers of the block-scaled dot.
-    int dimensions_size = hlo->operand(0)->shape().dimensions_size();
+    int dimensions_size = hlo->operand(0)->shape().dimensions().size();
     TF_RET_CHECK(dimensions_size == 2 || dimensions_size == 3);
     DotDimensionNumbers dimension_numbers;
     dimension_numbers.add_lhs_contracting_dimensions(dimensions_size - 1);

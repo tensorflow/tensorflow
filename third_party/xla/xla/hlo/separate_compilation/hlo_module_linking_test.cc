@@ -147,8 +147,9 @@ TEST_F(LinkingTest, SingleCallLinking) {
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  auto* split_group_root = module_split_group->address_book.at(original_root)
-                               ->computation_map.at(original_root);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloComputation* split_group_root,
+      module_split_group->GetClonedComputation(original_root));
 
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
                           LinkComputation(linking_manifest, split_group_root));
@@ -160,7 +161,7 @@ TEST_F(LinkingTest, SingleCallLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
                                       /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));
@@ -208,8 +209,9 @@ TEST_F(LinkingTest, ChainGraphLinking) {
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  auto* split_group_root = module_split_group->address_book.at(original_root)
-                               ->computation_map.at(original_root);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloComputation* split_group_root,
+      module_split_group->GetClonedComputation(original_root));
 
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
                           LinkComputation(linking_manifest, split_group_root));
@@ -220,7 +222,7 @@ TEST_F(LinkingTest, ChainGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   VLOG(6) << linked_module->ToString();
   TF_EXPECT_OK(compiler->RunHloPasses(std::move(linked_module),
                                       /*executor=*/nullptr,
@@ -280,13 +282,12 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
   const HloLinkingManifest& linking_manifest =
       module_split_group->linking_manifest;
   auto* original_root = FindComputation(original_module.get(), "main");
-  ASSERT_TRUE(module_split_group->address_book.contains(original_root));
-  auto* split = module_split_group->address_book.at(original_root);
-  ASSERT_TRUE(split->computation_map.contains(original_root));
-  auto* split_root = split->computation_map.at(original_root);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const HloComputation* split_group_root,
+      module_split_group->GetClonedComputation(original_root));
 
   TF_ASSERT_OK_AND_ASSIGN(auto linked_module,
-                          LinkComputation(linking_manifest, split_root));
+                          LinkComputation(linking_manifest, split_group_root));
   HloVerifier verifier(HloVerifierOpts{});
   TF_ASSERT_OK(verifier.Run(linked_module.get()));
 
@@ -295,7 +296,7 @@ TEST_F(LinkingTest, DiamondGraphLinking) {
   TF_ASSERT_OK_AND_ASSIGN(stream_executor::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
-                          Compiler::GetForPlatform(platform));
+                          Compiler::GetForPlatform(platform->id()));
   TF_EXPECT_OK(compiler->RunHloPasses(original_module->Clone(),
                                       /*executor=*/nullptr,
                                       Compiler::CompileOptions{}));

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <numeric>
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -170,7 +171,7 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
                                     /*options=*/{});
   ASSERT_FALSE(result.ok());
   EXPECT_THAT(result.status().message(),
-              HasSubstr("buffer has been deleted or donated."));
+              HasSubstr("Buffer has been deleted or donated."));
 }
 
 TEST(PjRtCpuClientTest, RuntimeDonationDenial) {
@@ -444,7 +445,7 @@ TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   absl::string_view raw_data_view(raw_data, raw_data_size);
   TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
@@ -465,7 +466,7 @@ TEST(PjRtCpuClientTest, AsyncTransferWithSpecs) {
   absl::string_view raw_data_view(raw_data, raw_data_size);
   TF_ASSERT_OK(transfer_manager->TransferRawDataToBuffer(
       0, absl::string_view(raw_data, raw_data_size), []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
@@ -481,7 +482,7 @@ TEST(PjRtCpuClientTest, AsyncTransferLiteral) {
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
   TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<float>(),
               ElementsAreArray(literal.data<float>()));
 }
@@ -497,7 +498,7 @@ TEST(PjRtCpuClientTest, AsyncTransferLiteralInt4) {
   EXPECT_THAT(ready_future.IsReady(), IsFalse());
   TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(0, literal, []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
 }
@@ -509,7 +510,7 @@ TEST(PjRtCpuClientTest, BufferFromLiteralInt4) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<s4>(),
               ElementsAreArray(literal.data<s4>()));
 }
@@ -523,7 +524,7 @@ TEST(PjRtCpuClientTest, CopyToMemorySpace) {
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
   TF_ASSERT_OK_AND_ASSIGN(buffer,
                           buffer->CopyToMemorySpace(buffer->memory_space()));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
   EXPECT_THAT(received_literal->data<int32_t>(),
               ElementsAreArray(literal.data<int32_t>()));
 }
@@ -555,7 +556,7 @@ TEST(PjRtCpuClientTest, AsyncTransferNeverTransferred) {
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager.reset();
   EXPECT_THAT(
-      buffer->ToLiteralSync(),
+      buffer->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL,
                              HasSubstr("Async transfer object was deleted "
                                        "before transfers completed.")));
@@ -602,7 +603,7 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
   auto buffer = transfer_manager->RetrieveBuffer(0);
   transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
-      buffer->ToLiteralSync(),
+      buffer->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
@@ -614,7 +615,7 @@ TEST(PjRtCpuClientTest, CreateErrorBuffer) {
         auto buffer,
         client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
     EXPECT_THAT(
-        buffer->ToLiteralSync(),
+        buffer->ToLiteral().Await(),
         absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     EXPECT_EQ(buffer->memory_space(), memory_space);
   }
@@ -639,7 +640,7 @@ TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
   TF_ASSERT_OK(transfer_manager->TransferRawDataToSubBuffer(
       0, raw_data_view.data(), raw_data_size - 1, 1, /*is_last_transfer=*/true,
       []() {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, buffer->ToLiteral().Await());
   ASSERT_EQ(literal->element_count(), 3 * 2);
   EXPECT_THAT(literal->data<uint32_t>(), Each(0x42424242));
 }
@@ -678,7 +679,7 @@ ENTRY Identity() -> f32[2, 2] {
   ASSERT_THAT(result, absl_testing::StatusIs(tsl::error::OK));
   // However, the buffer is expected to be poisoned.
   EXPECT_THAT(
-      result->at(0).at(0)->ToLiteralSync(),
+      result->at(0).at(0)->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
@@ -717,7 +718,7 @@ ENTRY Identity() -> f32[2, 2] {
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
   EXPECT_THAT(
-      result->at(0).at(0)->ToLiteralSync(),
+      result->at(0).at(0)->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
@@ -775,11 +776,11 @@ ENTRY Identity() -> f32[2, 2] {
   }
   for (int i = 0; i < output_buffers.size(); ++i) {
     if (i % 2 == 0) {
-      EXPECT_THAT(output_buffers[i]->ToLiteralSync(),
+      EXPECT_THAT(output_buffers[i]->ToLiteral().Await(),
                   absl_testing::StatusIs(tsl::error::OK));
     } else {
       EXPECT_THAT(
-          output_buffers[i]->ToLiteralSync(),
+          output_buffers[i]->ToLiteral().Await(),
           absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
     }
   }
@@ -832,7 +833,7 @@ ENTRY Identity() -> f32[2, 2] {
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
   EXPECT_THAT(
-      result->at(0).at(0)->ToLiteralSync(),
+      result->at(0).at(0)->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
 
   // A later error (propagated from the input buffer) would not affect the
@@ -840,7 +841,7 @@ ENTRY Identity() -> f32[2, 2] {
   transfer_manager->SetBufferError(0, Internal("foobar2"));
 
   EXPECT_THAT(
-      result->at(0).at(0)->ToLiteralSync(),
+      result->at(0).at(0)->ToLiteral().Await(),
       absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
 
   // Attempting to poison a non-existent execution should fail.
@@ -899,7 +900,7 @@ TEST(PjRtCpuClientTest, ForwardUserDataToFfiHandler) {
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));
@@ -943,7 +944,7 @@ TEST(PjRtCpuClientTest, PassAttrToFfiHandler) {
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({3.0f, 3.0f, 3.0f, 3.0f}), *result_literal));
 }
@@ -1025,7 +1026,7 @@ TEST(PjRtCpuClientTest, CustomAllocator) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteral().Await());
 
   // Check that buffer was constructed in the data array provided by the custom
   // allocator.
@@ -1037,16 +1038,16 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
     HloModule add_and_multiply
 
     ynn_fusion {
-      %lhs = f32[4] parameter(0)
-      %rhs = f32[4] parameter(1)
-      %add = f32[4] add(%lhs, %rhs)
-      ROOT %mul = f32[4] multiply(%add, %add)
+      %lhs = f32[100] parameter(0)
+      %rhs = f32[100] parameter(1)
+      %add = f32[100] add(%lhs, %rhs)
+      ROOT %mul = f32[100] multiply(%add, %add)
     }
 
     ENTRY entry {
-      %p0 = f32[4] parameter(0)
-      %p1 = f32[4] parameter(1)
-      ROOT %fusion = f32[4] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
+      %p0 = f32[100] parameter(0)
+      %p1 = f32[100] parameter(1)
+      ROOT %fusion = f32[100] fusion(%p0, %p1), kind=kCustom, calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 
@@ -1057,7 +1058,15 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           client->CompileAndLoad(xla_computation, {}));
 
-  Literal literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
+  std::vector<float> literal_data(100);
+  std::iota(literal_data.begin(), literal_data.end(), 1.0f);
+
+  std::vector<float> literal_data_x2_squared(literal_data);
+  for (float& i : literal_data_x2_squared) {
+    i = 4 * i * i;
+  }
+
+  Literal literal = LiteralUtil::CreateR1<float>(literal_data);
   TF_ASSERT_OK_AND_ASSIGN(auto buf, client->BufferFromHostLiteral(
                                         literal, client->memory_spaces()[0]));
 
@@ -1065,10 +1074,9 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
   auto result = executable->Execute({{buf.get(), buf.get()}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result->at(0).at(0)->ToLiteralSync());
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
-      *result_literal));
+      LiteralUtil::CreateR1<float>(literal_data_x2_squared), *result_literal));
 
   // Check that serialized/deserialized executable works and produces the same
   // result.
@@ -1079,10 +1087,10 @@ TEST(PjRtCpuClientTest, SerializeYnnFusions) {
       client->LoadSerializedExecutable(serialized, std::nullopt, {}));
 
   result = executable->Execute({{buf.get(), buf.get()}}, opts);
-  TF_ASSERT_OK_AND_ASSIGN(result_literal, result->at(0).at(0)->ToLiteralSync());
+  TF_ASSERT_OK_AND_ASSIGN(result_literal,
+                          result->at(0).at(0)->ToLiteral().Await());
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      LiteralUtil::CreateR1<float>({4.0f, 16.0f, 36.0f, 64.0f}),
-      *result_literal));
+      LiteralUtil::CreateR1<float>(literal_data_x2_squared), *result_literal));
 }
 
 }  // namespace

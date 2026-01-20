@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -89,9 +90,11 @@ class PjRtCompatibleLoadedExecutable
 class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
-  // Creates PjRtExecutable from xla::PjRtExecutable.
+  // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
+  // provided MLIR module into an `xla::PjRtExecutable`.
   static absl::StatusOr<ExecutableRef> Create(
-      std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
+      mlir::ModuleOp module, xla::CompileOptions compile_options,
+      const xla::PjRtTopologyDescription& topology);
 
   // PjRtCompatibleExecutable implementation.
 
@@ -172,10 +175,26 @@ class PjRtExecutable final
   static char ID;  // NOLINT
 
  protected:
-  explicit PjRtExecutable(std::shared_ptr<xla::PjRtExecutable> pjrt_executable)
-      : pjrt_executable_(std::move(pjrt_executable)) {}
+  PjRtExecutable(
+      std::shared_ptr<xla::PjRtExecutable> pjrt_executable,
+      std::vector<int> donatable_input_indices,
+      std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+      std::optional<std::vector<xla::HloSharding>> output_hlo_shardings,
+      std::vector<absl::string_view> output_memory_kinds,
+      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+          output_layouts);
 
   std::shared_ptr<xla::PjRtExecutable> pjrt_executable_;
+
+  std::vector<int> donatable_input_indices_;
+
+  // Output array specs.
+  std::vector<DType> output_dtypes_;
+  std::vector<Shape> output_shapes_;
+  std::optional<std::vector<xla::HloSharding>> output_hlo_shardings_;
+  std::vector<absl::string_view> output_memory_kinds_;
+  std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+      output_layouts_;
 };
 
 // `LoadedExecutable` implementation that wraps a `xla::PjRtLoadedExecutable`.
@@ -229,8 +248,7 @@ class PjRtLoadedExecutable final
 
   absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
       const override {
-    return absl::UnimplementedError(
-        "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
+    return donatable_input_indices_;
   }
 
   UserContextRef user_context() const override { return user_context_; }
@@ -316,7 +334,14 @@ class PjRtLoadedExecutable final
       absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
 
-  const DeviceListRef& devices() const override { return devices_; }
+  std::optional<DeviceListRef> devices() const override {
+    if (pjrt_loaded_executable_->addressable_devices().empty()) {
+      // Portable executable.
+      return std::nullopt;
+    } else {
+      return devices_;
+    }
+  }
 
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
@@ -332,26 +357,13 @@ class PjRtLoadedExecutable final
   static char ID;  // NOLINT
 
  private:
-  static absl::StatusOr<LoadedExecutableRef> CreateInternal(
-      PjRtClient* client,
-      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      absl::Span<const xla::PrimitiveType> result_element_types,
-      absl::Span<const xla::DimensionVector> result_dimensions,
-      const std::optional<xla::HloSharding>& result_hlo_sharding,
-      const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
-      const std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>&
-          output_layouts,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
-      DeviceListRef executable_devices);
-
   PjRtLoadedExecutable(
       PjRtClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      DeviceListRef devices, std::vector<Device*> addressable_devices,
+      DeviceListRef devices,
       std::vector<tsl::RCReference<LoadedHostCallback>>
           all_loaded_host_callbacks,
-      std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
-          host_send_recv_callbacks,
+      std::vector<int> donatable_input_indices,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
       std::vector<ShardingRef> output_shardings,
       std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
@@ -362,17 +374,21 @@ class PjRtLoadedExecutable final
   // Devices that `pjrt_loaded_executable_` runs on. Empty if the executable is
   // portable.
   DeviceListRef devices_;
-  std::vector<Device*> addressable_devices_;
+  // Addressable devices. The underlying device list is owned by
+  // `devices_->AddressableDeviceList()`.
+  absl::Span<Device* const> addressable_devices_;
   std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
       all_loaded_host_callbacks_;
   std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
 
-  // Output array specs. If the executable is portable, shardings in
-  // `output_shardings_` will use an arbitrary addressable device, and will be
-  // overridden by a `SingleDeviceSharding` generated on the fly at execution
-  // time.
+  std::vector<int> donatable_input_indices_;
+
+  // Output array specs.
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
+  // If the executable is portable, shardings in `output_shardings_` will use an
+  // arbitrary addressable device, and will be overridden by a
+  // `SingleDeviceSharding` generated on the fly at execution time.
   std::vector<ShardingRef> output_shardings_;
   std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
       output_layouts_;

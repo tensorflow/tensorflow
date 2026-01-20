@@ -33,13 +33,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -47,23 +46,12 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::string_view YnnFusionThunk::YnnFusionKindToString(YnnFusionKind kind) {
-  switch (kind) {
-    case YnnFusionKind::kFusion:
-      return "ynn-fusion";
-  }
-}
-
-std::ostream& operator<<(std::ostream& os, YnnFusionThunk::YnnFusionKind kind) {
-  return os << YnnFusionThunk::YnnFusionKindToString(kind);
-}
-
 // YNNPACK executable instantiated for the fusion operation.
 struct YnnFusionThunk::YnnExecutable {
   tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> Invoke(
       const YnnThreadpool& threadpool,
-      absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results,
+      absl::Span<se::DeviceAddressBase> arguments,
+      absl::Span<se::DeviceAddressBase> results,
       absl::FunctionRef<bool(size_t)> is_captured_argument);
 
   // Resets YNNPACK runtime and subgraph.
@@ -76,7 +64,7 @@ struct YnnFusionThunk::YnnExecutable {
   // captured argument, and this is not correct as we can have multiple
   // arguments allocated to the heap address. This is work in progress, and will
   // be migrated to a buffer identity passed to XLA by the client (PjRt).
-  std::vector<se::DeviceMemoryBase> captured_arguments;
+  std::vector<se::DeviceAddressBase> captured_arguments;
 };
 
 namespace {
@@ -99,8 +87,9 @@ static enum ynn_status set_external_values(
 
 tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent>
 YnnFusionThunk::YnnExecutable::Invoke(
-    const YnnThreadpool& threadpool, absl::Span<se::DeviceMemoryBase> arguments,
-    absl::Span<se::DeviceMemoryBase> results,
+    const YnnThreadpool& threadpool,
+    absl::Span<se::DeviceAddressBase> arguments,
+    absl::Span<se::DeviceAddressBase> results,
     absl::FunctionRef<bool(size_t)> is_captured_argument) {
   // Create external values for all arguments and results.
   absl::InlinedVector<YnnExternalValue, 8> external_values;
@@ -109,14 +98,14 @@ YnnFusionThunk::YnnExecutable::Invoke(
   // External tensor id for arguments and results.
   uint32_t id = 0;
 
-  for (const se::DeviceMemoryBase& argument : arguments) {
+  for (const se::DeviceAddressBase& argument : arguments) {
     YnnExternalValue value{id++, argument.opaque()};
     if (!is_captured_argument(value.id)) {
       external_values.push_back(value);
     }
   }
 
-  for (const se::DeviceMemoryBase& result : results) {
+  for (const se::DeviceAddressBase& result : results) {
     YnnExternalValue value{id++, result.opaque()};
     external_values.push_back(value);
   }
@@ -143,7 +132,7 @@ absl::Status YnnFusionThunk::YnnExecutable::Reset() {
 absl::StatusOr<YnnFusionThunk::YnnExecutable>
 YnnFusionThunk::CreateYnnExecutable(
     const YnnThreadpool& threadpool,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   bool capturing = !captured_arguments_ids_.empty();
   VLOG(3) << absl::StreamFormat(
       "Create %s YNN executable for `%s` operation: num_created=%d",
@@ -179,7 +168,7 @@ YnnFusionThunk::CreateYnnExecutable(
 
 absl::Status YnnFusionThunk::UpdateYnnExecutable(
     const YnnThreadpool& threadpool, YnnExecutable& executable,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   DCHECK(capturing_builder_) << "YNN executable is not capturing arguments";
   DCHECK_EQ(executable.captured_arguments.size(),
             captured_arguments_ids_.size())
@@ -219,9 +208,9 @@ absl::Status YnnFusionThunk::UpdateYnnExecutable(
   return absl::OkStatus();
 }
 
-std::vector<se::DeviceMemoryBase> YnnFusionThunk::CaptureArguments(
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  std::vector<se::DeviceMemoryBase> captured_arguments_ids;
+std::vector<se::DeviceAddressBase> YnnFusionThunk::CaptureArguments(
+    absl::Span<const se::DeviceAddressBase> arguments_buffers) {
+  std::vector<se::DeviceAddressBase> captured_arguments_ids;
   captured_arguments_ids.reserve(captured_arguments_ids_.size());
   for (int64_t i = 0; i < captured_arguments_ids_.size(); ++i) {
     int32_t arg_index = captured_arguments_ids_[i];
@@ -235,8 +224,8 @@ absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
     std::vector<Argument> arguments, std::vector<Result> results,
     Builder builder) {
   return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
-      std::move(arguments), std::move(results), std::move(builder)));
+      std::move(options), std::move(info), hlo, std::move(arguments),
+      std::move(results), std::move(builder)));
 }
 
 absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
@@ -244,18 +233,17 @@ absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
     std::vector<Argument> arguments, std::vector<Result> results,
     CapturingBuilder capturing_builder,
     absl::Span<const int64_t> captured_arguments_ids) {
-  return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
-      std::move(arguments), std::move(results), std::move(capturing_builder),
-      captured_arguments_ids));
+  return absl::WrapUnique(
+      new YnnFusionThunk(std::move(options), std::move(info), hlo,
+                         std::move(arguments), std::move(results),
+                         std::move(capturing_builder), captured_arguments_ids));
 }
 
-YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+YnnFusionThunk::YnnFusionThunk(Options options, Info info,
                                const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results, Builder builder)
     : Thunk(Kind::kYnnFusion, std::move(info)),
-      ynn_fusion_kind_(kind),
       options_(std::move(options)),
       hlo_(hlo),
       arguments_(std::move(arguments)),
@@ -264,14 +252,13 @@ YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
       ynn_executable_pool_(
           absl::bind_front(&YnnFusionThunk::CreateYnnExecutable, this)) {}
 
-YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+YnnFusionThunk::YnnFusionThunk(Options options, Info info,
                                const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results,
                                CapturingBuilder capturing_builder,
                                absl::Span<const int64_t> captured_arguments_ids)
     : Thunk(Kind::kYnnFusion, std::move(info)),
-      ynn_fusion_kind_(kind),
       options_(std::move(options)),
       hlo_(hlo),
       arguments_(std::move(arguments)),
@@ -313,7 +300,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   }
 
   // Resolve device memory for arguments.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments_buffers;
   arguments_buffers.resize(arguments_.size());
   for (size_t i = 0; i < arguments_.size(); ++i) {
     Argument& argument = arguments_[i];
@@ -329,7 +316,7 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   }
 
   // Resolve device memory for results.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results_buffers;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results_buffers;
   results_buffers.resize(results_.size());
   for (size_t i = 0; i < results_.size(); ++i) {
     Result& result = results_[i];

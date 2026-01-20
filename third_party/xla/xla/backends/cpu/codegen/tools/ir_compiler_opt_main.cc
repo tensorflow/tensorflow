@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdio>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>

@@ -23,15 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/status_macros.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -53,38 +45,6 @@ std::string HloModuleGroup::ToString() const {
     s << module_->ToString() << "\n";
   }
   return s.str();
-}
-
-HloModuleGroupProto HloModuleGroup::ToProto() const {
-  HloModuleGroupProto proto;
-  proto.set_name(name());
-  if (module_) {
-    *proto.add_hlo_modules() = module_->ToProto();
-  }
-  return proto;
-}
-
-/* static */ absl::StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
-    const HloModuleGroupProto& proto,
-    absl::Span<const HloModuleConfig> module_configs) {
-  TF_RET_CHECK(!proto.name().empty()) << "Module group name cannot be empty";
-  TF_RET_CHECK(proto.hlo_modules_size() > 0)
-      << "Module group must have at least one HLO module";
-  TF_RET_CHECK(proto.hlo_modules_size() == module_configs.size());
-
-  std::vector<std::unique_ptr<HloModule>> modules;
-  if (proto.hlo_modules_size() != 1) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("HloModuleGroupProto should have exactly one module, "
-                     "but it has ",
-                     proto.hlo_modules_size()));
-  }
-  const HloModuleProto& module_proto = proto.hlo_modules(0);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      HloModule::CreateFromProto(module_proto, module_configs[0]));
-
-  return HloModuleGroup(std::move(module));
 }
 
 void HloModuleGroup::AddModule(std::unique_ptr<HloModule> module) {

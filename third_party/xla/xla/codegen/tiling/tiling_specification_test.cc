@@ -48,6 +48,8 @@ MATCHER_P2(InstructionMapping, instruction, num_tiling_parameters,
 
 class TilingSpecificationTest : public HloHardwareIndependentTestBase {
  public:
+  TilingSpecificationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   SymbolicTileAnalysis AnalyzeModule(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(

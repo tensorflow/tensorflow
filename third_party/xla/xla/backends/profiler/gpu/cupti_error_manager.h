@@ -124,6 +124,8 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
 
   CUptiResult SetThreadIdType(CUpti_ActivityThreadIdType type) override;
 
+  CUptiResult ActivityEnableHWTrace(bool enable) override;
+
   // Profiler Host APIs
   CUptiResult ProfilerHostInitialize(
       CUpti_Profiler_Host_Initialize_Params* params) override;

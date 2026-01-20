@@ -31,7 +31,7 @@ namespace {
 class SCCTest : public ::testing::Test {
  public:
   void SetUp() override {
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     DeviceProperties unknown_device;
     devices["MY_DEVICE"] = unknown_device;
     cluster_ = std::make_unique<VirtualCluster>(devices);
@@ -41,11 +41,11 @@ class SCCTest : public ::testing::Test {
   void TearDown() override { cluster_.reset(); }
 
  protected:
-  static NodeDef CreateNode(const string& name,
-                            absl::Span<const string> inputs) {
+  static NodeDef CreateNode(const std::string& name,
+                            absl::Span<const std::string> inputs) {
     NodeDef node;
     node.set_name(name);
-    for (const string& input : inputs) {
+    for (const std::string& input : inputs) {
       node.add_input(input);
     }
     return node;
@@ -86,7 +86,7 @@ TEST_F(SCCTest, DisjointCycleAndPath) {
   *graph.add_node() = CreateNode("h", {"g"});
 
   std::vector<const NodeDef*> nodes;
-  std::unordered_map<string, const NodeDef*> name_to_node;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;
   for (const auto& n : graph.node()) {
     nodes.push_back(&n);
     name_to_node[n.name()] = &n;
@@ -149,7 +149,7 @@ TEST_F(SCCTest, WikipediaExample) {
   *graph.add_node() = CreateNode("h", {"h"});
 
   std::vector<const NodeDef*> nodes;
-  std::unordered_map<string, const NodeDef*> name_to_node;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;
   for (const auto& n : graph.node()) {
     nodes.push_back(&n);
     name_to_node[n.name()] = &n;
@@ -187,7 +187,7 @@ TEST_F(SCCTest, TensorFlowLoop) {
        with open('/tmp/graph.txt', 'w') as f:
          f.write(str(tf.get_default_graph().as_graph_def()))
   */
-  const string gdef_ascii = R"EOF(
+  const std::string gdef_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -411,7 +411,7 @@ versions {
 
 TEST_F(SCCTest, NestedLoops) {
   GrapplerItem item;
-  string filename = io::JoinPath(
+  std::string filename = io::JoinPath(
       testing::TensorFlowSrcRoot(),
       "core/grappler/costs/graph_properties_testdata/nested_loop.pbtxt");
   TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));

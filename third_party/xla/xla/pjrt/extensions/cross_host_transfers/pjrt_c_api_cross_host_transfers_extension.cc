@@ -36,6 +36,97 @@ limitations under the License.
 #include "xla/shape.h"
 
 namespace pjrt {
+namespace {
+
+// Nested callback functions for the C API version of
+// xla::PjRtClient::MakeCrossHostReceiveBuffers.
+using CrossHostRecvNotifierFunction = std::function<void(
+    PJRT_Error* error, const char** serialized_descriptors,
+    size_t* descriptors_sizes, size_t num_descriptors,
+    PJRT_Transfers_CrossHostSendCancelNotifier cancel_notifier,
+    void* cancel_notifier_user_arg)>;
+using CrossHostSendCancelNotifierFunction = std::function<void(
+    const char* serialized_descriptor, size_t serialized_descriptor_size,
+    PJRT_Error_Code error_code, const char* error_message,
+    size_t error_message_size,
+    PJRT_Transfers_CrossHostOnCanceledCallback on_canceled,
+    void* on_canceled_user_arg)>;
+using CrossHostOnCanceledCallbackFunction =
+    std::function<void(PJRT_Error* error)>;
+
+// Callback function for the C API version of
+// xla::PjRtBuffer::CopyToRemoteDevice.
+using RemoteSendCallbackFunction =
+    std::function<void(PJRT_Error* error, bool sends_were_enqueued)>;
+
+xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
+    const PJRT_Transfers_CrossHostRecvNotifierInfo& c_notifier) {
+  return [user_arg = c_notifier.user_arg, notifier = c_notifier.notifier](
+             absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
+    // Define the function to pass as `cancel_notifier_user_arg` to
+    // `notifier`.
+    auto cancel_notifier_function = new CrossHostSendCancelNotifierFunction(
+        [cpp_cancel_notifier = std::move(recv_state->cancel_notifier)](
+            const char* serialized_descriptor,
+            size_t serialized_descriptor_size, PJRT_Error_Code error_code,
+            const char* error_message, size_t error_message_size,
+            PJRT_Transfers_CrossHostOnCanceledCallback on_canceled,
+            void* on_canceled_user_arg) {
+          std::string serialized_descriptor_str(serialized_descriptor,
+                                                serialized_descriptor_size);
+          std::string error_message_str(error_message, error_message_size);
+          absl::Status state(pjrt::PjrtErrorCodeToStatusCode(error_code),
+                             error_message_str);
+          auto cpp_on_canceled = [user_arg = on_canceled_user_arg,
+                                  on_canceled =
+                                      on_canceled](absl::Status status) {
+            auto error = new PJRT_Error{status};
+            on_canceled(error, user_arg);
+            delete error;
+          };
+          return cpp_cancel_notifier(std::move(serialized_descriptor_str),
+                                     std::move(state),
+                                     std::move(cpp_on_canceled));
+        });
+    PJRT_Transfers_CrossHostSendCancelNotifier cancel_notifier =
+        [](const char* serialized_descriptor, size_t serialized_descriptor_size,
+           PJRT_Error_Code error, const char* error_message,
+           size_t error_message_size,
+           PJRT_Transfers_CrossHostOnCanceledCallback on_canceled,
+           void* on_canceled_user_arg, void* user_arg) {
+          CrossHostSendCancelNotifierFunction* cancel_notifier_fn =
+              reinterpret_cast<CrossHostSendCancelNotifierFunction*>(user_arg);
+          (*cancel_notifier_fn)(serialized_descriptor,
+                                serialized_descriptor_size, error,
+                                error_message, error_message_size, on_canceled,
+                                on_canceled_user_arg);
+        };
+    if (!recv_state.ok()) {
+      auto error = new PJRT_Error{recv_state.status()};
+      notifier(error, nullptr, nullptr, 0, user_arg, cancel_notifier,
+               cancel_notifier_function);
+      delete error;
+      return;
+    }
+    // Convert serialized descriptors to char*.
+    std::vector<xla::PjRtCrossHostRecvDescriptors>& descriptors =
+        recv_state->descriptors;
+    std::vector<size_t> descriptors_sizes;
+    descriptors_sizes.reserve(descriptors.size());
+    std::vector<const char*> serialized_descriptors;
+    serialized_descriptors.reserve(descriptors.size());
+    for (int i = 0; i < descriptors.size(); ++i) {
+      serialized_descriptors.push_back(
+          descriptors[i].serialized_descriptors.front().c_str());
+      descriptors_sizes.push_back(
+          descriptors[i].serialized_descriptors.front().size());
+    }
+    notifier(nullptr, serialized_descriptors.data(), descriptors_sizes.data(),
+             descriptors.size(), user_arg, cancel_notifier,
+             cancel_notifier_function);
+  };
+}
+}  // namespace
 
 PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args* args) {
@@ -106,41 +197,44 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
   return nullptr;
 }
 
-namespace {
-static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
-    const PJRT_Transfers_CrossHostRecvNotifierInfo& c_notifier) {
-  return [user_arg = c_notifier.user_arg, notifier = c_notifier.notifier](
-             absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
-    if (!recv_state.ok()) {
-      auto error = new PJRT_Error{recv_state.status()};
-      notifier(error, nullptr, nullptr, 0, user_arg);
-      return;
-    }
-    auto& descriptors = recv_state->descriptors;
-    std::vector<size_t> descriptors_sizes;
-    descriptors_sizes.reserve(descriptors.size());
-    std::vector<const char*> serialized_descriptors;
-    serialized_descriptors.reserve(descriptors.size());
-    for (int i = 0; i < descriptors.size(); ++i) {
-      serialized_descriptors.push_back(
-          descriptors[i].serialized_descriptors.front().c_str());
-      descriptors_sizes.push_back(
-          descriptors[i].serialized_descriptors.front().size());
-    }
-    notifier(nullptr, serialized_descriptors.data(), descriptors_sizes.data(),
-             descriptors.size(), user_arg);
-  };
-}
-}  // namespace
-
 PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
     const PJRT_Api* c_api, xla::PjRtCrossHostRecvNotifier cpp_notifier) {
-  using CrossHostRecvNotifierFunction =
-      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
   auto notifier_function = new CrossHostRecvNotifierFunction(
       [cpp_notifier = std::move(cpp_notifier), c_api](
           PJRT_Error* error, const char** serialized_descriptors,
-          size_t* descriptors_sizes, size_t num_descriptors) {
+          size_t* descriptors_sizes, size_t num_descriptors,
+          PJRT_Transfers_CrossHostSendCancelNotifier cancel_notifier,
+          void* cancel_notifier_user_arg) {
+        xla::PjRtCrossHostSendCancelNotifier cpp_cancel_notifier =
+            [user_arg = cancel_notifier_user_arg, notifier = cancel_notifier,
+             c_api](absl::string_view serialized_descriptor,
+                    absl::Status reason,
+                    std::function<void(absl::Status)> on_canceled) {
+              PJRT_Error_Code error_code =
+                  pjrt::StatusCodeToPjrtErrorCode(reason.code());
+              // Define the function to pass as `on_canceled_user_arg` to
+              // the cancel notifier.
+              auto on_canceled_function =
+                  new CrossHostOnCanceledCallbackFunction(
+                      [cpp_on_canceled = std::move(on_canceled),
+                       c_api](PJRT_Error* error) {
+                        absl::Status status =
+                            ::pjrt::PjrtErrorToStatus(error, c_api);
+                        cpp_on_canceled(status);
+                      });
+              PJRT_Transfers_CrossHostOnCanceledCallback on_canceled_callback =
+                  [](PJRT_Error* error, void* user_arg) {
+                    CrossHostOnCanceledCallbackFunction* on_canceled_fn =
+                        reinterpret_cast<CrossHostOnCanceledCallbackFunction*>(
+                            user_arg);
+                    (*on_canceled_fn)(error);
+                    delete on_canceled_fn;
+                  };
+              notifier(serialized_descriptor.data(),
+                       serialized_descriptor.size(), error_code,
+                       reason.message().data(), reason.message().size(),
+                       on_canceled_callback, on_canceled_function, user_arg);
+            };
         if (error != nullptr) {
           absl::Status state = ::pjrt::PjrtErrorToStatus(error, c_api);
           return cpp_notifier(std::move(state));
@@ -154,34 +248,34 @@ PJRT_Transfers_CrossHostRecvNotifierInfo CppCrossHostRecvNotifierToC(
           state.descriptors.push_back(std::move(descriptors));
         }
 
-        // TODO(emilyaf): Support cancellation.
-        xla::PjRtCrossHostSendCancelNotifier cancel_notifier =
-            [](absl::string_view, absl::Status,
-               std::function<void(absl::Status)>) {
-              LOG(FATAL) << "MakeCrossHostReceiveBuffers: Cancellation is not "
-                            "supported in PJRT C API.";
-            };
-        state.cancel_notifier = cancel_notifier;
+        state.cancel_notifier = cpp_cancel_notifier;
         return cpp_notifier(std::move(state));
       });
   return PJRT_Transfers_CrossHostRecvNotifierInfo{
       /*user_arg=*/notifier_function,
       /*notifier=*/
       [](PJRT_Error* error, const char** serialized_descriptors,
-         size_t* descriptors_sizes, size_t num_descriptors, void* user_arg) {
+         size_t* descriptors_sizes, size_t num_descriptors, void* user_arg,
+         PJRT_Transfers_CrossHostSendCancelNotifier cancel_notifier,
+         void* cancel_notifier_user_arg) {
         CrossHostRecvNotifierFunction* notifier_fn =
             reinterpret_cast<CrossHostRecvNotifierFunction*>(user_arg);
         (*notifier_fn)(error, serialized_descriptors, descriptors_sizes,
-                       num_descriptors);
+                       num_descriptors, cancel_notifier,
+                       cancel_notifier_user_arg);
         delete notifier_fn;
+        // The cancellation callback isn't always called, so instead of freeing
+        // it after usage, we free it here after the notifier is called.
+        CrossHostSendCancelNotifierFunction* cancel_notifier_fn =
+            reinterpret_cast<CrossHostSendCancelNotifierFunction*>(
+                cancel_notifier_user_arg);
+        delete cancel_notifier_fn;
       }};
 }
 
 PJRT_Transfers_CrossHostRemoteSendCallbackInfo
 CppCrossHostRemoteSendCallbackToC(
     const PJRT_Api* c_api, xla::PjRtBuffer::RemoteSendCallback cpp_callback) {
-  using RemoteSendCallbackFunction =
-      std::function<void(PJRT_Error * error, bool sends_were_enqueued)>;
   auto on_done_function = new RemoteSendCallbackFunction(
       [cpp_callback = std::move(cpp_callback), c_api](
           PJRT_Error* error, bool sends_were_enqueued) {
@@ -229,9 +323,43 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
 
 void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args) {
+#if PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION < 5
   std::string serialized_descriptor = std::string(
       args->serialized_descriptor, args->serialized_descriptor_size);
-  xla::Future<std::string> descriptor_future(std::move(serialized_descriptor));
+  xla::Future<std::string> future(std::move(serialized_descriptor));
+#else
+  auto [promise, future] = xla::MakePromise<std::string>();
+  if (args->event == nullptr) {
+    // If `event` is not provided, populate the descriptor data synchronously.
+    std::string serialized_descriptor = std::string(
+        *args->serialized_descriptor, *args->serialized_descriptor_size);
+    promise.Set(std::move(serialized_descriptor));
+    delete args->serialized_descriptor;
+    delete args->serialized_descriptor_size;
+  } else {
+    args->event->future.OnReady(
+        [promise = std::move(promise), descriptor = args->serialized_descriptor,
+         size = args->serialized_descriptor_size](absl::Status status) mutable {
+          if (status.ok()) {
+            promise.Set(std::string(*descriptor, *size));
+          } else {
+            promise.Set(status);
+          }
+          delete descriptor;
+          delete size;
+        });
+
+    future.GetReadyFuture().OnReady([event = args->event](absl::Status status) {
+      CHECK_OK(status);
+      PJRT_Event_Destroy_Args destroy_args;
+      destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+      destroy_args.extension_start = nullptr;
+      destroy_args.event = event;
+      PJRT_Error* error = PJRT_Event_Destroy(&destroy_args);
+      CHECK_EQ(error, nullptr);
+    });
+  }
+#endif
 
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [user_arg = args->on_done.user_arg, on_done = args->on_done.on_done](
@@ -241,7 +369,7 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
         delete error;
       };
 
-  args->buffer->buffer->CopyToRemoteDevice(descriptor_future, on_done);
+  args->buffer->buffer->CopyToRemoteDevice(future, on_done);
 }
 
 PJRT_CrossHostTransfers_Extension CreateCrossHostTransfersExtension(

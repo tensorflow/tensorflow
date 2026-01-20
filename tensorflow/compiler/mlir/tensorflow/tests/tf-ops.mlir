@@ -1317,9 +1317,10 @@ func.func @testIfRegionElseTerminator(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -
 
 // tf.Region yield number of results should match op number of results
 func.func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{'tf.IfRegion' op region control flow edge from Operation tf.Yield to parent results: source has 2 operands, but target successor <to parent> needs 1}}
+  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to parent: region branch point has 2 operands, but region successor needs 1 inputs}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     // expected-note @+1 {{region branch point}}
      "tf.Yield"(%t, %t) : (tensor<2xf32>, tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
@@ -1332,12 +1333,13 @@ func.func @testIfRegionThenResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) 
 // -----
 
 func.func @testIfRegionElseResultCount(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{'tf.IfRegion' op region control flow edge from Operation tf.Yield to parent results: source has 2 operands, but target successor <to parent> needs 1}}
+  // expected-error @+1 {{'tf.IfRegion' op along control flow edge from Operation tf.Yield to parent: region branch point has 2 operands, but region successor needs 1 inputs}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
     }, {
      %e = "tf.Acos"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
+     // expected-note @+1 {{region branch point}}
      "tf.Yield"(%e, %e) : (tensor<2xf32>, tensor<2xf32>) -> ()
     }) { is_stateless = false} : (tensor<i1>) -> tensor<2xf32>
 

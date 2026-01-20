@@ -40,7 +40,7 @@ using ::testing::IsTrue;
 class GpuConvertAsyncCollectivesToSyncTest
     : public HloHardwareIndependentTestBase {
  public:
-  absl::Status RunPass(HloModule *module, bool expect_change) {
+  absl::Status RunPass(HloModule* module, bool expect_change) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         GpuConvertAsyncCollectivesToSync().Run(module));
     EXPECT_EQ(changed, expect_change);
@@ -48,8 +48,8 @@ class GpuConvertAsyncCollectivesToSyncTest
   }
 
   // Returns true if the instruction with the given name is synchronous.
-  bool IsSync(HloModule *module, absl::string_view name) {
-    const HloInstruction *inst = FindInstruction(module, name);
+  bool IsSync(HloModule* module, absl::string_view name) {
+    const HloInstruction* inst = FindInstruction(module, name);
     if (inst == nullptr) {
       return false;
     }
@@ -82,7 +82,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduce) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
 
@@ -105,7 +105,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
 TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
@@ -125,7 +125,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectiveBroadcast) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "cb-start"), IsTrue());
 }
 
@@ -148,7 +148,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllReduceWithNonNop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/false));
 }
 
 TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
@@ -161,7 +161,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllGather) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "ags"), IsTrue());
 }
 
@@ -176,7 +176,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleCollectivePermute) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
 }
 
@@ -204,7 +204,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleReduceScatter) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "rs-start"), IsTrue());
 }
 
@@ -226,7 +226,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, SimpleAllToAll) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "a2a-start"), IsTrue());
 }
 
@@ -251,7 +251,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, ControlDeps) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
 }
@@ -279,7 +279,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightStreaming) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
 }
@@ -306,7 +306,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightNested) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsTrue());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
 }
@@ -335,7 +335,7 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest, MultipleInFlightNestedPartial) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start1"), IsFalse());
   EXPECT_THAT(IsSync(module.get(), "start2"), IsTrue());
 }
@@ -360,15 +360,15 @@ TEST_F(GpuConvertAsyncCollectivesToSyncTest,
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  const HloInstruction *inst_orig = FindInstruction(module.get(), "start");
+  const HloInstruction* inst_orig = FindInstruction(module.get(), "start");
   const CollectiveBackendConfig backend_config_orig =
       inst_orig->backend_config<GpuBackendConfig>()
           .value()
           .collective_backend_config();
 
-  TF_ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
+  ASSERT_OK(RunPass(module.get(), /*expect_change=*/true));
   EXPECT_THAT(IsSync(module.get(), "start"), IsTrue());
-  const HloInstruction *inst = FindInstruction(module.get(), "start");
+  const HloInstruction* inst = FindInstruction(module.get(), "start");
   const CollectiveBackendConfig backend_config =
       inst->backend_config<GpuBackendConfig>()
           .value()

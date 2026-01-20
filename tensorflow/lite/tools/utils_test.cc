@@ -24,10 +24,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite::tools {
 namespace {
+using ::testing::ElementsAre;
 using ::testing::FloatEq;
+using ::testing::SizeIs;
 
 // Helper function to test TfLiteTensorToFloat32Array.
 template <typename T>
@@ -75,6 +78,30 @@ void TestTfLiteTensorToInt64Array(TfLiteType type) {
 TEST(Utils, TfLiteTensorToFloat32Array) {
   TestTfLiteTensorToFloat32Array<float>(kTfLiteFloat32);
   TestTfLiteTensorToFloat32Array<double>(kTfLiteFloat64);
+}
+
+// Tests TfLiteTensorToFloat32Array for kTfLiteFloat16.
+TEST(Utils, TfLiteTensorToFloat32ArrayFp16) {
+  half data[] = {
+      half(1.0f),
+      half(2.0f),
+      half(3.0f),
+      half(4.0f),
+  };
+  TfLiteTensor tensor;
+  tensor.data.data = data;
+  tensor.type = kTfLiteFloat16;
+  // Create an int array with 1 dimension and the array size is 4.
+  tensor.dims = TfLiteIntArrayCreate(1);
+  tensor.dims->data[0] = 4;
+  std::vector<float> result(4, 0.0);
+  const TfLiteStatus status =
+      utils::TfLiteTensorToFloat32Array(tensor, absl::MakeSpan(result));
+  TfLiteIntArrayFree(tensor.dims);
+  ASSERT_EQ(status, kTfLiteOk);
+  ASSERT_THAT(result, SizeIs(4));
+  EXPECT_THAT(result, ElementsAre(FloatEq(1.0f), FloatEq(2.0f), FloatEq(3.0f),
+                                  FloatEq(4.0f)));
 }
 
 TEST(Utils, TfLiteTensorToInt64Array) {

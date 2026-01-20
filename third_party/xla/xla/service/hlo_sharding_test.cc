@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -21,16 +20,26 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -38,11 +47,12 @@ namespace xla {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
                          absl::Span<const int64_t> contents) {
   Array<int64_t> a(dimensions);
-  std::copy(contents.begin(), contents.end(), a.begin());
+  absl::c_copy(contents, a.begin());
   return a;
 }
 
@@ -112,43 +122,47 @@ TEST_P(HloShardingRepresentationTest, DevicePlacement) {
 }
 
 TEST_F(HloShardingTest, ProtoRoundTrip) {
-  OpSharding proto;
-  proto.set_type(OpSharding::TUPLE);
-  auto* tiled = proto.add_tuple_shardings();
-  tiled->set_type(OpSharding::OTHER);
-  tiled->add_tile_assignment_devices(0);
-  tiled->add_tile_assignment_devices(1);
-  tiled->add_tile_assignment_dimensions(1);
-  tiled->add_tile_assignment_dimensions(2);
-  *tiled->add_metadata() = GetMetadata("a");
-  *tiled->add_metadata() = GetMetadata("b");
-  auto* replicated = proto.add_tuple_shardings();
-  replicated->set_type(OpSharding::REPLICATED);
-  *replicated->add_metadata() = GetMetadata("c");
-  auto* manual = proto.add_tuple_shardings();
-  manual->set_type(OpSharding::MANUAL);
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: TUPLE
+    tuple_shardings {
+      type: OTHER
+      tile_assignment_devices: 0
+      tile_assignment_devices: 1
+      tile_assignment_dimensions: 1
+      tile_assignment_dimensions: 2
+      metadata { op_name: "a" }
+      metadata { op_name: "b" }
+    }
+    tuple_shardings {
+      type: REPLICATED
+      metadata { op_name: "c" }
+    }
+    tuple_shardings { type: MANUAL }
+  )pb");
   HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
 TEST_F(HloShardingTest, IotaProtoRoundTrip) {
-  OpSharding proto;
-  proto.set_type(OpSharding::TUPLE);
-  auto* tiled = proto.add_tuple_shardings();
-  tiled->set_type(OpSharding::OTHER);
-  tiled->add_tile_assignment_dimensions(6);
-  tiled->add_tile_assignment_dimensions(1);
-  tiled->add_iota_reshape_dims(3);
-  tiled->add_iota_reshape_dims(2);
-  tiled->add_iota_transpose_perm(1);
-  tiled->add_iota_transpose_perm(0);
-  *tiled->add_metadata() = GetMetadata("a");
-  *tiled->add_metadata() = GetMetadata("b");
-  auto* replicated = proto.add_tuple_shardings();
-  replicated->set_type(OpSharding::REPLICATED);
-  *replicated->add_metadata() = GetMetadata("c");
-  auto* manual = proto.add_tuple_shardings();
-  manual->set_type(OpSharding::MANUAL);
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: TUPLE
+    tuple_shardings {
+      type: OTHER
+      tile_assignment_dimensions: 6
+      tile_assignment_dimensions: 1
+      iota_reshape_dims: 3
+      iota_reshape_dims: 2
+      iota_transpose_perm: 1
+      iota_transpose_perm: 0
+      metadata { op_name: "a" }
+      metadata { op_name: "b" }
+    }
+    tuple_shardings {
+      type: REPLICATED
+      metadata { op_name: "c" }
+    }
+    tuple_shardings { type: MANUAL }
+  )pb");
   HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
@@ -181,11 +195,6 @@ TEST_F(HloShardingTest, Tile) {
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
                                    /*num_devices=*/4));
-
-    EXPECT_EQ(0, sharding.DeviceForTileIndex({0, 0}));
-    EXPECT_EQ(3, sharding.DeviceForTileIndex({0, 1}));
-    EXPECT_EQ(2, sharding.DeviceForTileIndex({1, 0}));
-    EXPECT_EQ(1, sharding.DeviceForTileIndex({1, 1}));
 
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 0),
               (std::vector<int64_t>{0, 0}));
@@ -503,8 +512,9 @@ TEST_F(HloShardingTest, Hash) {
 using ShardingWithMetadataParamType =
     std::tuple<std::vector<OpMetadata>, std::string>;
 
-TEST_F(HloShardingTest, ToStringReplicatedTest) {
-  HloSharding sharding = HloSharding::Replicate();
+TEST_P(HloShardingRepresentationTest, ToStringReplicatedTest) {
+  bool use_named_sharding = GetParam();
+  HloSharding sharding = HloSharding::Replicate({}, use_named_sharding);
   EXPECT_EQ(sharding.ToString(), "{replicated}");
 }
 
@@ -528,8 +538,9 @@ INSTANTIATE_TEST_SUITE_P(
             ListMetadata(),
             "{replicated metadata={{op_name=\"b\"}, {op_name=\"c\"}}}")));
 
-TEST_F(HloShardingTest, ToStringAssignDeviceTest) {
-  HloSharding sharding = HloSharding::AssignDevice(7);
+TEST_P(HloShardingRepresentationTest, ToStringAssignDeviceTest) {
+  bool use_named_sharding = GetParam();
+  HloSharding sharding = HloSharding::AssignDevice(7, {}, use_named_sharding);
   EXPECT_EQ(sharding.ToString(), "{maximal device=7}");
 }
 
@@ -612,6 +623,32 @@ TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
             "{{replicated metadata={op_name=\"d\"}}, {devices=[1,2]3,5}, "
             "{maximal device=3 metadata={op_name=\"e\"}}}");
+}
+
+TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
+  Mesh mesh({2, 4}, {"a", "b"});
+  NamedSharding::DimensionSharding ds_a({AxisRef(0)},
+                                        /*is_closed=*/true);
+  NamedSharding::DimensionSharding ds_b({AxisRef(1)},
+                                        /*is_closed=*/true);
+  HloSharding sharding(NamedSharding(mesh, {{ds_a}, {ds_b}}));
+  EXPECT_EQ(sharding.ToString(), "{@mesh<a=2,b=4>, [{a}, {b}]}");
+
+  HloSharding sharding_with_metadata(
+      NamedSharding(mesh, {{ds_a}, {ds_b}}, {}, {}, {}, ListMetadata()));
+  EXPECT_EQ(sharding_with_metadata.ToString(/*include_metadata=*/true),
+            "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{op_name=\"c\"}}}");
+
+  HloSharding tuple_sharding(HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
+      {sharding, sharding, sharding_with_metadata}));
+  EXPECT_EQ(tuple_sharding.ToString(/*include_metadata=*/true),
+            "{{@mesh<a=2,b=4>, [{a}, {b}]}, {@mesh<a=2,b=4>, [{a}, {b}]}, "
+            "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{op_name=\"c\"}}}}");
 }
 
 TEST_F(HloShardingTest, OstreamTest) {

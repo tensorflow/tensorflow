@@ -289,10 +289,10 @@ Value CreateSendOp(OpBuilder& builder, Location loc, Value operand,
                                                /*handle=*/GetNextChannelId(),
                                                /*type=*/2);
   auto empty_source_target_pairs = builder.getI64TensorAttr({});
-  auto send = builder.create<SendOp>(
-      loc, token.getType(), operand, token, channel_handle,
-      /*is_host_transfer=*/builder.getBoolAttr(true),
-      /*source_target_pairs=*/empty_source_target_pairs);
+  auto send = SendOp::create(builder, loc, token.getType(), operand, token,
+                             channel_handle,
+                             /*is_host_transfer=*/builder.getBoolAttr(true),
+                             /*source_target_pairs=*/empty_source_target_pairs);
   SetFrontendAttributes(send, index, key, operand.getType(),
                         /*device_to_host=*/true, host_handler_name);
 
@@ -311,10 +311,10 @@ Value CreateRecvOp(OpBuilder& builder, Location loc, Value result,
                                                /*type=*/3);
   auto result_type = result.getType();
   SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
-  auto recv = builder.create<RecvOp>(
-      loc, recv_result_type, token, channel_handle,
-      /*is_host_transfer=*/builder.getBoolAttr(true),
-      /*source_target_pairs=*/builder.getI64TensorAttr({}));
+  auto recv =
+      RecvOp::create(builder, loc, recv_result_type, token, channel_handle,
+                     /*is_host_transfer=*/builder.getBoolAttr(true),
+                     /*source_target_pairs=*/builder.getI64TensorAttr({}));
 
   SetFrontendAttributes(recv, index, key, result_type,
                         /*device_to_host=*/false, host_handler_name);
@@ -336,7 +336,7 @@ Value CreateSinkToken(OpBuilder& builder, Location loc, ArrayRef<Value> tokens,
   } else if (llvm::hasSingleElement(tokens)) {
     return tokens[0];
   } else {
-    return builder.create<AfterAllOp>(loc, original_token.getType(), tokens)
+    return AfterAllOp::create(builder, loc, original_token.getType(), tokens)
         .getResult();
   }
 }
@@ -413,8 +413,8 @@ Value RewriteCallOp(OpBuilder& builder, func::CallOp call,
   new_operands.push_back(token);
   auto new_result_types = llvm::to_vector(call.getResultTypes());
   new_result_types.push_back(token.getType());
-  auto new_call = builder.create<func::CallOp>(
-      call.getLoc(), new_result_types,
+  auto new_call = func::CallOp::create(
+      builder, call.getLoc(), new_result_types,
       new_symbol ? *new_symbol : call.getCallee(), new_operands);
 
   for (auto results : llvm::zip(call.getResults(), new_call.getResults()))
@@ -435,7 +435,7 @@ struct OpVisitorState {
 
 // Creates a tuple from a sequence of values.
 Value CreateTuple(OpBuilder& builder, Location loc, ArrayRef<Value> operands) {
-  return builder.create<TupleOp>(loc, operands).getResult();
+  return TupleOp::create(builder, loc, operands).getResult();
 }
 
 // Extends `values` with the value `token` attached. If `flatten_tuple` is
@@ -480,7 +480,7 @@ SmallVector<Value> GetValueWithToken(
   SmallVector<Value, 4> tuple_operands;
   for (auto idx : llvm::seq<int32_t>(0, tuple_type.getTypes().size()))
     tuple_operands.push_back(
-        builder.create<GetTupleElementOp>(value.getLoc(), value, idx)
+        GetTupleElementOp::create(builder, value.getLoc(), value, idx)
             .getResult());
 
   tuple_operands.push_back(token);
@@ -518,7 +518,7 @@ Value CreateSubTuple(OpBuilder& builder, Value value, size_t end) {
   SmallVector<Value, 4> tuple_operands;
   for (auto idx : llvm::seq<int32_t>(0, end))
     tuple_operands.push_back(
-        builder.create<GetTupleElementOp>(value.getLoc(), value, idx)
+        GetTupleElementOp::create(builder, value.getLoc(), value, idx)
             .getResult());
 
   return CreateTuple(builder, value.getLoc(), tuple_operands);
@@ -543,8 +543,8 @@ void ReplaceWithTupleResult(OpBuilder& builder, ValueRange values,
   auto tuple_type = mlir::dyn_cast<TupleType>(value.getType());
   if (!tuple_type) {
     if (!value.use_empty()) {
-      auto new_element = builder.create<GetTupleElementOp>(replacement.getLoc(),
-                                                           replacement, 0);
+      auto new_element = GetTupleElementOp::create(
+          builder, replacement.getLoc(), replacement, 0);
       value.replaceAllUsesWith(new_element.getResult());
     }
     return;
@@ -620,8 +620,8 @@ void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
                        /*flatten_tuple=*/true);
 
   // Create new `mhlo.if` op with extra token operands and result.
-  auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_types,
-                                     region_if.getPred());
+  auto new_if = IfOp::create(builder, region_if.getLoc(), new_result_types,
+                             region_if.getPred());
 
   // Move all regions from the old `mhlo.if` op to its replacement.
   new_if.getTrueBranch().takeBody(region_if.getTrueBranch());
@@ -745,8 +745,8 @@ void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
                        /*flatten_tuple*/ true);
 
   // Create new `mhlo.while` op with extra token operand and result.
-  auto new_while = builder.create<WhileOp>(region_while.getLoc(),
-                                           new_result_types, new_val_operands);
+  auto new_while = WhileOp::create(builder, region_while.getLoc(),
+                                   new_result_types, new_val_operands);
 
   // Move all regions from the old `mhlo.while` op to its replacement.
   new_while.getCond().takeBody(region_while.getCond());
@@ -815,7 +815,7 @@ void RewriteFunctionTerminator(OpBuilder& builder,
   auto new_results = llvm::to_vector(terminator.getOperands());
   new_results.push_back(token);
   builder.setInsertionPoint(terminator);
-  builder.create<mlir::func::ReturnOp>(terminator.getLoc(), new_results);
+  mlir::func::ReturnOp::create(builder, terminator.getLoc(), new_results);
   terminator.erase();
 }
 
@@ -844,7 +844,7 @@ LogicalResult RewriteFunction(
   // a token will be created. Otherwise a token block argument is inserted.
   Value init_token =
       rewrite_block ? func_body.addArgument(token_type, func.getLoc())
-                    : builder.create<CreateTokenOp>(func.getLoc(), token_type)
+                    : CreateTokenOp::create(builder, func.getLoc(), token_type)
                           .getResult();
 
   // Stack to keep track of region based control flow op nesting and current

@@ -43,10 +43,11 @@ cc_library(
     textual_hdrs = ["cublas.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -74,9 +75,10 @@ cc_library(
     textual_hdrs = ["cublasLt.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -104,9 +106,10 @@ cc_library(
     textual_hdrs = ["cuda.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -138,12 +141,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "@local_xla//xla/tsl:is_cuda_enabled_and_oss": [
+            # keep sorted
             ":cuda",
+            "//xla/tsl/platform:logging",
             "@com_google_absl//absl/container:flat_hash_set",
             "@local_config_cuda//cuda:cuda_headers",
             "@local_tsl//tsl/platform:dso_loader",
             "@local_tsl//tsl/platform:load_library",
-            "@local_tsl//tsl/platform:logging",
         ],
         "//conditions:default": [],
     }),
@@ -173,10 +177,11 @@ cc_library(
     textual_hdrs = ["cudnn.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -227,9 +232,10 @@ cc_library(
     textual_hdrs = ["cufft.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -263,10 +269,11 @@ cc_library(
     textual_hdrs = ["cupti.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -299,9 +306,10 @@ cc_library(
     textual_hdrs = ["cusolver.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -334,10 +342,11 @@ cc_library(
     textual_hdrs = ["cusparse.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -366,11 +375,12 @@ cc_library(
     textual_hdrs = ["nccl.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_nccl//:nccl_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -400,8 +410,9 @@ cc_library(
     textual_hdrs = ["nvshmem.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
@@ -429,8 +440,10 @@ cc_library(
     textual_hdrs = ["nvml.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:dso_loader",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
 )

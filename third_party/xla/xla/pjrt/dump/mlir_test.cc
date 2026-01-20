@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
@@ -37,7 +38,7 @@ TEST(MlirTest, MlirModuleToFile) {
   context.loadDialect<mlir::mhlo::MhloDialect>();
   mlir::OpBuilder builder(&context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
+      xla::llvm_ir::CreateMlirModuleOp(builder.getUnknownLoc());
 
   std::string file_path =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "test_mlir_module.mlir");

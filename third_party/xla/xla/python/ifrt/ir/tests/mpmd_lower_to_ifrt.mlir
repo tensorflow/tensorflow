@@ -138,7 +138,6 @@ module @sdy_lowered_fragment attributes {
       topology = #mpmd.topology<<"m1" : <["x"=2]>>>} {
     // CHECK: ifrt.Call @f(%arg0) on devices [0, 1]
     // CHECK-SAME: {
-    // CHECK-DAG:    ifrt.is_sdy_partitioned
     // CHECK-DAG:    ifrt.mesh_name = "m1"
     // CHECK-SAME: }
     // CHECK-SAME: (!ifrt.array<tensor<4x8xf32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>) ->

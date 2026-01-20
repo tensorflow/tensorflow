@@ -24,12 +24,14 @@ from tensorflow.python.platform import test
 
 class GatherNdTest(xla_test.XLATestCase):
 
-  def _runGather(self, params, indices):
+  def _runGather(self, params, indices, bad_indices_policy=""):
     with self.session():
       paramsp = array_ops.placeholder(params.dtype)
       indicesp = array_ops.placeholder(indices.dtype)
       with self.test_scope():
-        gather_nd_t = array_ops.gather_nd(paramsp, indicesp)
+        gather_nd_t = array_ops.gather_nd(
+            paramsp, indicesp, bad_indices_policy=bad_indices_policy
+        )
       feed_dict = {paramsp: params, indicesp: indices}
       return gather_nd_t.eval(feed_dict=feed_dict)
 
@@ -138,6 +140,35 @@ class GatherNdTest(xla_test.XLATestCase):
     gather_nd_val = self._runGather(params, indices_reshaped)
     expected = params[tuple(indices.T)]
     self.assertAllEqual(expected.reshape([10, 10, 20]), gather_nd_val)
+
+  def testIgnoreBadIndices(self):
+    shape = (3, 4, 5)
+    params = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+    indices = np.array([[[0, 0], [-1, 3]], [[2, 4], [2, 3]]], dtype=np.int32)
+    gather_nd_val = self._runGather(
+        params, indices, bad_indices_policy="IGNORE"
+    )
+    expected = np.array(
+        [
+            [[0, 1, 2, 3, 4], [0, 0, 0, 0, 0]],
+            [[0, 0, 0, 0, 0], [55, 56, 57, 58, 59]],
+        ],
+        dtype=np.int32,
+    )
+    self.assertAllEqual(expected, gather_nd_val)
+
+  def testIgnoreBadIndicesNoFeatureDim(self):
+    shape = (3, 4)
+    params = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+    indices = np.array([[[0, 0], [-1, 3]], [[2, 4], [2, 3]]], dtype=np.int32)
+    gather_nd_val = self._runGather(
+        params, indices, bad_indices_policy="IGNORE"
+    )
+    expected = np.array(
+        [[0, 0], [0, 11]],
+        dtype=np.int32,
+    )
+    self.assertAllEqual(expected, gather_nd_val)
 
 
 if __name__ == "__main__":

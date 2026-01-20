@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/APInt.h"
@@ -36,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -44,12 +42,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace emitters {
@@ -63,6 +63,7 @@ using mlir::Value;
 namespace arith = ::mlir::arith;
 namespace ml = ::mlir::LLVM;
 namespace scf = mlir::scf;
+namespace se = stream_executor;
 
 // Tries to find the stride of a symbol or dimension in an affine expression.
 // Returns std::nullopt if the stride could not be determined.
@@ -199,7 +200,7 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
                                           mlir::ImplicitLocOpBuilder& b) {
   Value induction_var = loop.getInductionVar();
   if (index == induction_var) {
-    return b.create<arith::ConstantIndexOp>(0);
+    return arith::ConstantIndexOp::create(b, 0);
   }
 
   auto apply_indexing =
@@ -249,9 +250,9 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
   }
 
   auto operands = llvm::to_vector(apply_indexing.getOperands());
-  operands[induction_var_operand_index] = b.create<arith::ConstantIndexOp>(0);
+  operands[induction_var_operand_index] = arith::ConstantIndexOp::create(b, 0);
 
-  return b.create<ApplyIndexingOp>(operands, apply_indexing.getIndexingMap())
+  return ApplyIndexingOp::create(b, operands, apply_indexing.getIndexingMap())
       ->getResult(0);
 }
 
@@ -288,8 +289,8 @@ struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
       return rewriter.notifyMatchFailure(
           op, "the instruction does not access contiguous elements");
     }
-    auto loaded_vector = b.create<mlir::vector::TransferReadOp>(
-        vector_type, op.getTensor(), *vector_index, /*padding=*/std::nullopt,
+    auto loaded_vector = mlir::vector::TransferReadOp::create(
+        b, vector_type, op.getTensor(), *vector_index, /*padding=*/std::nullopt,
         llvm::ArrayRef<bool>{true});
     rewriter.replaceOpWithNewOp<mlir::vector::ExtractOp>(
         op, loaded_vector, loop.getInductionVar());
@@ -357,15 +358,15 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     }
 
     auto init =
-        b.create<arith::ConstantOp>(b.getZeroAttr(vector_type)).getResult();
+        arith::ConstantOp::create(b, b.getZeroAttr(vector_type)).getResult();
 
     auto yield_fn = [&](mlir::OpBuilder& yield_b, mlir::Location yield_loc,
                         llvm::ArrayRef<mlir::BlockArgument> bbarg) {
       auto induction_var =
           mlir::cast<scf::ForOp>(bbarg.front().getOwner()->getParentOp())
               .getInductionVar();
-      auto insert_op = yield_b.create<mlir::vector::InsertOp>(
-          yield_loc, atomic_modifier_parameters->first, bbarg.front(),
+      auto insert_op = mlir::vector::InsertOp::create(
+          yield_b, yield_loc, atomic_modifier_parameters->first, bbarg.front(),
           induction_var);
       return llvm::SmallVector<Value>{insert_op.getResult()};
     };
@@ -378,14 +379,14 @@ class VectorizeAtomicRMW : public mlir::OpRewritePattern<AtomicRMWOp> {
     rewriter.replaceOp(op, op->getOpOperand(0).get());
 
     auto filled_vector = new_for->getResults().back();
-    auto new_atomic_rmw = b.create<AtomicRMWOp>(
-        new_for.getInits()[result_index], *vector_index, vector_type);
+    auto new_atomic_rmw = AtomicRMWOp::create(
+        b, new_for.getInits()[result_index], *vector_index, vector_type);
     mlir::ImplicitLocOpBuilder body_builder(new_atomic_rmw.getLoc(),
                                             new_atomic_rmw.getBodyBuilder());
-    auto addf_op = body_builder.create<arith::AddFOp>(
-        body_builder.getLoc(), vector_type, new_atomic_rmw.getCurrentValue(),
-        filled_vector);
-    body_builder.create<xla::YieldOp>(addf_op.getResult());
+    auto addf_op =
+        arith::AddFOp::create(body_builder, body_builder.getLoc(), vector_type,
+                              new_atomic_rmw.getCurrentValue(), filled_vector);
+    xla::YieldOp::create(body_builder, addf_op.getResult());
     new_for->getResult(result_index)
         .replaceAllUsesWith(new_atomic_rmw.getResult());
 
@@ -423,15 +424,15 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     }
 
     auto init =
-        b.create<arith::ConstantOp>(b.getZeroAttr(vector_type)).getResult();
+        arith::ConstantOp::create(b, b.getZeroAttr(vector_type)).getResult();
 
     auto yield_fn = [&](mlir::OpBuilder& yield_b, mlir::Location yield_loc,
                         llvm::ArrayRef<mlir::BlockArgument> bbarg) {
       auto induction_var =
           mlir::cast<scf::ForOp>(bbarg.front().getOwner()->getParentOp())
               .getInductionVar();
-      auto insert_op = yield_b.create<mlir::vector::InsertOp>(
-          yield_loc, op.getScalar(), bbarg.front(), induction_var);
+      auto insert_op = mlir::vector::InsertOp::create(
+          yield_b, yield_loc, op.getScalar(), bbarg.front(), induction_var);
       return llvm::SmallVector<Value>{insert_op.getResult()};
     };
     int result_index = op->use_begin()->getOperandNumber();
@@ -443,8 +444,8 @@ struct VectorizeStore : mlir::OpRewritePattern<mlir::tensor::InsertOp> {
     rewriter.replaceOp(op, op.getDest());
 
     auto filled_vector = new_for->getResults().back();
-    auto written = b.create<mlir::vector::TransferWriteOp>(
-        filled_vector, new_for.getInits()[result_index], *vector_index,
+    auto written = mlir::vector::TransferWriteOp::create(
+        b, filled_vector, new_for.getInits()[result_index], *vector_index,
         llvm::ArrayRef<bool>{true});
     new_for->getResult(result_index).replaceAllUsesWith(written.getResult());
 
@@ -508,7 +509,7 @@ struct FoldVectorInsertExtractPairs
     auto bbarg = mlir::cast<mlir::BlockArgument>(insert.getDest());
     int64_t result_index = bbarg.getArgNumber() - 1;
     if (auto transfer_read =
-            extract.getVector().getDefiningOp<mlir::vector::TransferReadOp>()) {
+            extract.getSource().getDefiningOp<mlir::vector::TransferReadOp>()) {
       if (transfer_read.getBase().getType().getNumElements() ==
           vector_type.getNumElements()) {
         return rewriter.notifyMatchFailure(
@@ -540,7 +541,7 @@ struct FoldVectorInsertExtractPairs
       yield_op->setOperand(result_index, insert.getDest());
     });
     rewriter.replaceAllUsesWith(loop->getResult(result_index),
-                                extract.getVector());
+                                extract.getSource());
     return mlir::success();
   }
 };
@@ -564,7 +565,7 @@ class VectorizeLoadsAndStoresPass
                                                        &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());

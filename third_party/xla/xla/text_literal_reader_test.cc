@@ -89,5 +89,16 @@ TEST(TextLiteralReaderTest, MissingColonReturnsInvalidArgument) {
   EXPECT_THAT(literal, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(TextLiteralReaderTest, ShapeTooLargeReturnsResourceExhausted) {
+  // Shape requires too much memory, should fail gracefully rather than crash.
+  std::string contents = "f32[272222222222222222]\n";
+
+  std::string fname = tsl::testing::TmpDir() + "/ShapeTooLarge.data.txt";
+  ASSERT_THAT(tsl::WriteStringToFile(tsl::Env::Default(), fname, contents),
+              IsOk());
+  absl::StatusOr<Literal> literal = TextLiteralReader::ReadPath(fname);
+  EXPECT_THAT(literal, StatusIs(absl::StatusCode::kResourceExhausted));
+}
+
 }  // namespace
 }  // namespace xla

@@ -19,20 +19,9 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/util.h"  // IWYU pragma: keep
-                                                       //
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
-#else
 #include "third_party/nccl/nccl.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/tsl/platform/logging.h"
+#include "xla/util.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // Collection of helper macros for handling NCCL errors.

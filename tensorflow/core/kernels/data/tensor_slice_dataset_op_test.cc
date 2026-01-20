@@ -33,10 +33,10 @@ TensorSliceDatasetParams PlainTensorSliceDatasetParams() {
   std::vector<Tensor> components = {
       CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
       CreateTensor<int64_t>(TensorShape({2, 2}), {1, 2, 3, 4}),
-      CreateTensor<uint32>(TensorShape({2}), {2, 3}),
-      CreateTensor<uint32>(TensorShape({2, 2}), {2, 3, 4, 5}),
-      CreateTensor<uint64>(TensorShape({2}), {3, 4}),
-      CreateTensor<uint64>(TensorShape({2, 2}), {3, 4, 5, 6}),
+      CreateTensor<uint32_t>(TensorShape({2}), {2, 3}),
+      CreateTensor<uint32_t>(TensorShape({2, 2}), {2, 3, 4, 5}),
+      CreateTensor<uint64_t>(TensorShape({2}), {3, 4}),
+      CreateTensor<uint64_t>(TensorShape({2, 2}), {3, 4, 5, 6}),
       CreateTensor<double>(TensorShape({2, 1}), {37.0, 38.0}),
       CreateTensor<tstring>(TensorShape({2, 1}), {"a", "b"})};
 
@@ -63,18 +63,18 @@ std::vector<GetNextTestCase<TensorSliceDatasetParams>> GetNextTestCases() {
       {/*dataset_params=*/PlainTensorSliceDatasetParams(),
        /*expected_outputs=*/{CreateTensor<int64_t>(TensorShape({}), {1}),
                              CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
-                             CreateTensor<uint32>(TensorShape({}), {2}),
-                             CreateTensor<uint32>(TensorShape({2}), {2, 3}),
-                             CreateTensor<uint64>(TensorShape({}), {3}),
-                             CreateTensor<uint64>(TensorShape({2}), {3, 4}),
+                             CreateTensor<uint32_t>(TensorShape({}), {2}),
+                             CreateTensor<uint32_t>(TensorShape({2}), {2, 3}),
+                             CreateTensor<uint64_t>(TensorShape({}), {3}),
+                             CreateTensor<uint64_t>(TensorShape({2}), {3, 4}),
                              CreateTensor<double>(TensorShape({1}), {37.0}),
                              CreateTensor<tstring>(TensorShape({1}), {"a"}),
                              CreateTensor<int64_t>(TensorShape({}), {2}),
                              CreateTensor<int64_t>(TensorShape({2}), {3, 4}),
-                             CreateTensor<uint32>(TensorShape({}), {3}),
-                             CreateTensor<uint32>(TensorShape({2}), {4, 5}),
-                             CreateTensor<uint64>(TensorShape({}), {4}),
-                             CreateTensor<uint64>(TensorShape({2}), {5, 6}),
+                             CreateTensor<uint32_t>(TensorShape({}), {3}),
+                             CreateTensor<uint32_t>(TensorShape({2}), {4, 5}),
+                             CreateTensor<uint64_t>(TensorShape({}), {4}),
+                             CreateTensor<uint64_t>(TensorShape({2}), {5, 6}),
                              CreateTensor<double>(TensorShape({1}), {38.0}),
                              CreateTensor<tstring>(TensorShape({1}), {"b"})}},
       {/*dataset_params=*/NestedTensorSliceDatasetParams(),
@@ -104,7 +104,7 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
   auto test_case = GetParam();
   TF_ASSERT_OK(Initialize(test_case.dataset_params));
 
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   TF_ASSERT_OK(test_case.dataset_params.GetInputNames(&input_names));
   size_t num_tensors_per_slice = input_names.size();
   bool end_of_sequence = false;
@@ -226,18 +226,18 @@ IteratorSaveAndRestoreTestCases() {
        /*expected_outputs=*/
        {CreateTensor<int64_t>(TensorShape({}), {1}),
         CreateTensor<int64_t>(TensorShape({2}), {1, 2}),
-        CreateTensor<uint32>(TensorShape({}), {2}),
-        CreateTensor<uint32>(TensorShape({2}), {2, 3}),
-        CreateTensor<uint64>(TensorShape({}), {3}),
-        CreateTensor<uint64>(TensorShape({2}), {3, 4}),
+        CreateTensor<uint32_t>(TensorShape({}), {2}),
+        CreateTensor<uint32_t>(TensorShape({2}), {2, 3}),
+        CreateTensor<uint64_t>(TensorShape({}), {3}),
+        CreateTensor<uint64_t>(TensorShape({2}), {3, 4}),
         CreateTensor<double>(TensorShape({1}), {37.0}),
         CreateTensor<tstring>(TensorShape({1}), {"a"}),
         CreateTensor<int64_t>(TensorShape({}), {2}),
         CreateTensor<int64_t>(TensorShape({2}), {3, 4}),
-        CreateTensor<uint32>(TensorShape({}), {3}),
-        CreateTensor<uint32>(TensorShape({2}), {4, 5}),
-        CreateTensor<uint64>(TensorShape({}), {4}),
-        CreateTensor<uint64>(TensorShape({2}), {5, 6}),
+        CreateTensor<uint32_t>(TensorShape({}), {3}),
+        CreateTensor<uint32_t>(TensorShape({2}), {4, 5}),
+        CreateTensor<uint64_t>(TensorShape({}), {4}),
+        CreateTensor<uint64_t>(TensorShape({2}), {5, 6}),
         CreateTensor<double>(TensorShape({1}), {38.0}),
         CreateTensor<tstring>(TensorShape({1}), {"b"})}},
       {/*dataset_params=*/NestedTensorSliceDatasetParams(),

@@ -23,10 +23,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
-#include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -46,14 +45,14 @@ TEST(AttributeMapTest, MapElements) {
       {"float", AttributeMap::FloatValue(1.23f)},
   });
 
-  EXPECT_EQ(map.map(), AttributeMap::Map({
-                           {"string", AttributeMap::StringValue("value")},
-                           {"bool", AttributeMap::BoolValue(true)},
-                           {"int64", AttributeMap::Int64Value(123)},
-                           {"int64_list", AttributeMap::Int64ListValue(
-                                              {int64_t{1}, int64_t{2}})},
-                           {"float", AttributeMap::FloatValue(1.23f)},
-                       }))
+  EXPECT_EQ(map, AttributeMap({
+                     {"string", AttributeMap::StringValue("value")},
+                     {"bool", AttributeMap::BoolValue(true)},
+                     {"int64", AttributeMap::Int64Value(123)},
+                     {"int64_list",
+                      AttributeMap::Int64ListValue({int64_t{1}, int64_t{2}})},
+                     {"float", AttributeMap::FloatValue(1.23f)},
+                 }))
       << map.DebugString();
 }
 
@@ -67,21 +66,36 @@ TEST(AttributeMapTest, Get) {
   });
 
   EXPECT_THAT(map.Get<std::string>("string"), IsOkAndHolds("value"));
-  EXPECT_THAT(map.Get<absl::string_view>("string"), IsOkAndHolds("value"));
   EXPECT_THAT(map.Get<bool>("bool"), IsOkAndHolds(true));
   EXPECT_THAT(map.Get<int64_t>("int64"), IsOkAndHolds(123));
   EXPECT_THAT(map.Get<std::vector<int64_t>>("int64_list"),
-              IsOkAndHolds(std::vector<int64_t>{1, 2}));
-  EXPECT_THAT(map.Get<absl::Span<const int64_t>>("int64_list"),
               IsOkAndHolds(std::vector<int64_t>{1, 2}));
   EXPECT_THAT(map.Get<float>("float"), IsOkAndHolds(1.23f));
 
   EXPECT_THAT(map.Get<std::string>("float"),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Value type mismatch for key: float")));
-  EXPECT_THAT(map.Get<absl::Span<const int64_t>>("string"),
+  EXPECT_THAT(map.Get<std::vector<int64_t>>("string"),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Value type mismatch for key: string")));
+}
+
+TEST(AttributeMapTest, Set) {
+  AttributeMap map({});
+  TF_ASSERT_OK(map.Set("string", "value"));
+  TF_ASSERT_OK(map.Set("bool", true));
+  TF_ASSERT_OK(map.Set("int64", int64_t{123}));
+  TF_ASSERT_OK(map.Set("int64_list", std::vector<int64_t>{1, 2}));
+  TF_ASSERT_OK(map.Set("float", 1.23f));
+  EXPECT_EQ(map, AttributeMap({
+                     {"string", AttributeMap::StringValue("value")},
+                     {"bool", AttributeMap::BoolValue(true)},
+                     {"int64", AttributeMap::Int64Value(123)},
+                     {"int64_list",
+                      AttributeMap::Int64ListValue({int64_t{1}, int64_t{2}})},
+                     {"float", AttributeMap::FloatValue(1.23f)},
+                 }))
+      << map.DebugString();
 }
 
 class AttributeMapSerDesTest : public testing::TestWithParam<SerDesVersion> {
@@ -105,7 +119,7 @@ TEST_P(AttributeMapSerDesTest, ToFromProto) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto map_copy,
                           AttributeMap::FromProto(map.ToProto(version())));
-  EXPECT_EQ(map_copy.map(), map.map()) << map_copy.DebugString();
+  EXPECT_EQ(map_copy, map) << map_copy.DebugString();
 }
 
 INSTANTIATE_TEST_SUITE_P(

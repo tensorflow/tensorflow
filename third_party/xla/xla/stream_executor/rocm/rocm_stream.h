@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/kernel.h"
@@ -43,15 +45,15 @@ class RocmStream : public StreamCommon {
   absl::Status RecordEvent(Event* event) override;
   absl::Status WaitFor(Event* event) override;
 
-  absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                         uint64_t size) override;
-  absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  absl::Status MemZero(DeviceAddressBase* location, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                       uint64_t size) override;
-  absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                       uint64_t size) override;
-  absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                      const DeviceMemoryBase& gpu_src, uint64_t size) override;
+  absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                      const DeviceAddressBase& gpu_src, uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
   absl::Status BlockHostUntilDone() override;

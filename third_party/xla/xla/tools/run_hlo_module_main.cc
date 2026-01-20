@@ -16,14 +16,11 @@ limitations under the License.
 // A tool for reading a HloModule from a HloProto file and execute the module on
 // given platform(s). See kUsage for details.
 
-#include <cstdio>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
-#include <system_error>  // NOLINT(build/c++11): required to interface with LLVM
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -32,12 +29,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/translate/mhlo_to_hlo/translate.h"
-#include "xla/hlo/translate/stablehlo_to_hlo/translate.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
@@ -238,54 +230,6 @@ int main(int argc, char** argv) {
   for (int c = 1; c < argc; c++) {
     const char* hlo_filename = argv[c];
     std::cout << "\n ** Running " << hlo_filename << "** \n";
-
-    if (opts.input_format == "stablehlo" || opts.input_format == "mhlo") {
-      auto input_filename = hlo_filename;
-      hlo_filename = std::tmpnam(nullptr);
-
-      std::error_code error;
-      auto output = std::make_unique<llvm::ToolOutputFile>(
-          hlo_filename, error, llvm::sys::fs::OF_None);
-      if (error) {
-        LOG(QFATAL) << "cannot open output file '" << std::string(hlo_filename)
-                    << "': " << error.message();
-      }
-
-      auto input = llvm::MemoryBuffer::getFile(input_filename);
-      error = input.getError();
-      if (error) {
-        LOG(QFATAL) << "cannot open input file '" << std::string(input_filename)
-                    << "': " << error.message();
-      }
-
-      auto status =
-          opts.input_format == "mhlo"
-              ? xla::MlirHloToHloTextMain(
-                    std::move(*input), output->os(),
-                    /*emit_return_tuple=*/false,
-                    /*emit_use_tuple_arg=*/false,
-                    /*print_layouts=*/false,
-                    /*print_large_constants=*/true, /*print_sugar=*/false,
-                    /*via_builder=*/false, /*with_layouts=*/false)
-              : xla::StablehloToHloTextMain(
-                    std::move(*input), output->os(),
-                    /*emit_return_tuple=*/false,
-                    /*emit_use_tuple_arg=*/false,
-                    /*print_layouts=*/false,
-                    /*print_large_constants=*/true, /*print_sugar=*/false,
-                    /*via_builder=*/false, /*with_layouts=*/false);
-
-      if (status.failed()) {
-        LOG(QFATAL) << "Failed to translate input " << opts.input_format
-                    << " program to HLO text";
-      }
-
-      VLOG(1) << "Input " << opts.input_format
-              << " program translated to HLO text at " << hlo_filename << "\n";
-
-      output->keep();
-      opts.input_format = "hlo";
-    }
 
     xla::RunHloModuleLiterals literals_proto;
     std::unique_ptr<std::minstd_rand0> engine;

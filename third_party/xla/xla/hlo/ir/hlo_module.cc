@@ -40,20 +40,19 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "highwayhash/arch_specific.h"
-#include "highwayhash/hh_types.h"
-#include "highwayhash/highwayhash.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -73,7 +72,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -266,20 +264,27 @@ void HloModule::MarkFusionDuplications(
     const {
   for (const HloComputation* computation : computations()) {
     for (auto* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        auto rep =
-            replacements.find(instruction->fused_instructions_computation());
-        if (rep != replacements.end()) {
-          xla::HloComputation* new_comp = rep->second;
-          if (new_comp->IsFusionComputation()) {
-            auto dedup_name = new_comp->FusionInstruction()->name();
-            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
-                std::string(dedup_name));
-            instruction->set_metadata_deduplicated_name(
-                std::string(dedup_name));
-          }
-        }
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        continue;
       }
+      auto it =
+          replacements.find(instruction->fused_instructions_computation());
+      if (it == replacements.end()) {
+        continue;
+      }
+      HloComputation* representative = it->second;
+      // Follow chain to find the root representative.
+      for (auto it2 = replacements.find(representative);
+           it2 != replacements.end(); it2 = replacements.find(representative)) {
+        representative = it2->second;
+      }
+      if (!representative->IsFusionComputation()) {
+        continue;
+      }
+      std::string dedup_name(representative->FusionInstruction()->name());
+      representative->FusionInstruction()->set_metadata_deduplicated_name(
+          dedup_name);
+      instruction->set_metadata_deduplicated_name(dedup_name);
     }
   }
 }
@@ -339,7 +344,7 @@ void HloModule::ReplaceComputations(
     }
     auto& computation = *iterator;
     if (replacements.contains(computation.get())) {
-      TF_CHECK_OK(RemoveEmbeddedComputation(iterator));
+      CHECK_OK(RemoveEmbeddedComputation(iterator));
     }
   }
 
@@ -398,6 +403,7 @@ void HloModule::Print(
         },
         value);
   }
+  PrintStackFrameIndex(printer, options);
   printer->Append("\n\n");
   PrintComputations(printer, options);
 }
@@ -470,6 +476,44 @@ void HloModule::PrintComputations(Printer* printer,
   }
 }
 
+void HloModule::PrintStackFrameIndex(Printer* printer,
+                                     const HloPrintOptions& options) const {
+  if (!stack_frame_index_.has_value() ||
+      stack_frame_index_->file_names().empty() || !options.print_metadata()) {
+    return;
+  }
+  printer->Append("\n\nFileNames\n");
+  for (const auto& [index, file_name] :
+       llvm::enumerate(stack_frame_index_->file_names())) {
+    printer->Append(
+        absl::StrFormat("%d \"%s\"\n", index + 1, absl::CEscape(file_name)));
+  }
+  printer->Append("\nFunctionNames\n");
+  for (const auto& [index, function_name] :
+       llvm::enumerate(stack_frame_index_->function_names())) {
+    printer->Append(absl::StrFormat("%d \"%s\"\n", index + 1,
+                                    absl::CEscape(function_name)));
+  }
+  printer->Append("\nFileLocations\n");
+  for (const auto& [index, file_location] :
+       llvm::enumerate(stack_frame_index_->file_locations())) {
+    printer->Append(
+        absl::StrFormat("%d {file_name_id=%d function_name_id=%d line=%d "
+                        "end_line=%d column=%d end_column=%d}\n",
+                        index + 1, file_location.file_name_id(),
+                        file_location.function_name_id(), file_location.line(),
+                        file_location.end_line(), file_location.column(),
+                        file_location.end_column()));
+  }
+  printer->Append("\nStackFrames\n");
+  for (const auto& [index, frame] :
+       llvm::enumerate(stack_frame_index_->stack_frames())) {
+    printer->Append(absl::StrFormat(
+        "%d {file_location_id=%d parent_frame_id=%d}\n", index + 1,
+        frame.file_location_id(), frame.parent_frame_id() + 1));
+  }
+}
+
 std::string HloModule::ToString() const {
   const DebugOptions& db_options = config().debug_options();
   HloPrintOptions print_options = db_options.xla_dump_hlo_as_long_text()
@@ -495,46 +539,6 @@ absl::Cord HloModule::ToCord(const HloPrintOptions& options) const {
   return std::move(printer).ToCord();
 }
 
-namespace {
-// Generated using openssl rand.
-static constexpr highwayhash::HHKey kDefaultKey = {
-    0x9e0433b546e065d2ull,
-    0x0e7ecad49e703760ull,
-    0x83d29f20dae229b0ull,
-    0x40c1ce3ff9d19a42ull,
-};
-
-// HighwayHashPrinter is a Printer that computes the fingerprint of the added
-// data using a HighwayHash hasher.
-class HighwayHashPrinter : public Printer {
- public:
-  HighwayHashPrinter() : hasher_(kDefaultKey) {}
-
-  void Append(const absl::AlphaNum& a) override {
-    hasher_.Append(a.data(), a.size());
-  }
-
-  void AppendInt64List(absl::Span<const int64_t> list,
-                       bool _ /*leading_comma*/) override {
-    // Instead of separators, prefix with the length. This is fine since
-    // there's no way for the caller to distinguish between the two.
-    const uint64_t num = list.size();
-    hasher_.Append(reinterpret_cast<const char*>(&num), sizeof(num));
-    hasher_.Append(reinterpret_cast<const char*>(list.data()),
-                   list.size() * sizeof(list[0]));
-  }
-
-  uint64_t ToFingerprint() {
-    highwayhash::HHResult64 result;
-    hasher_.Finalize(&result);
-    return result;
-  }
-
- private:
-  highwayhash::HighwayHashCatT<HH_TARGET_PREFERRED> hasher_;
-};
-}  // namespace
-
 uint64_t HloModule::ToFingerprint(
     const HloPrintOptions& options,
     const absl::btree_map<std::string, NumericOrString>& custom_fields) const {
@@ -543,29 +547,27 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
-HloModuleProto HloModule::ToProto() const {
-  HloModuleProto proto;
-  proto.set_id(unique_id_);
-  proto.set_name(name_);
+void HloModule::ToProto(HloModuleProto* proto) const {
+  proto->set_id(unique_id_);
+  proto->set_name(name_);
   if (entry_computation_) {
-    *proto.mutable_entry_computation_name() =
+    *proto->mutable_entry_computation_name() =
         std::string(entry_computation_->name());
-    proto.set_entry_computation_id(entry_computation_->unique_id());
-    *proto.mutable_host_program_shape() =
+    proto->set_entry_computation_id(entry_computation_->unique_id());
+    *proto->mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
   }
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    HloComputationProto computation_proto = computation->ToProto();
-    proto.add_computations()->Swap(&computation_proto);
+    computation->ToProto(proto->add_computations());
   }
   if (has_schedule()) {
-    *proto.mutable_schedule() = schedule().ToProto().value();
+    *proto->mutable_schedule() = schedule().ToProto().value();
   }
-  *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
-  *proto.mutable_buffer_donor() = buffer_donor_config().ToProto();
+  *proto->mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto->mutable_buffer_donor() = buffer_donor_config().ToProto();
   for (const auto& [parameter, indices, alt_memory_offset] :
        CrossProgramPrefetches()) {
-    auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
+    auto* prefetch = proto->mutable_cross_program_prefetches()->Add();
     prefetch->set_parameter(parameter);
     for (auto index : indices) {
       prefetch->add_index(index);
@@ -574,24 +576,24 @@ HloModuleProto HloModule::ToProto() const {
       prefetch->set_offset(*alt_memory_offset);
     }
   }
-  proto.set_is_dynamic(is_dynamic_);
+  proto->set_is_dynamic(is_dynamic_);
   if (has_spmd_output_sharding()) {
-    *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+    *proto->mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
   }
 
-  *proto.mutable_frontend_attributes() = frontend_attributes_;
+  *proto->mutable_frontend_attributes() = frontend_attributes_;
 
   if (has_spmd_parameters_shardings()) {
     for (const auto& parameter_sharding : spmd_parameters_shardings()) {
-      *proto.add_spmd_parameters_shardings() = parameter_sharding.ToProto();
+      *proto->add_spmd_parameters_shardings() = parameter_sharding.ToProto();
     }
   }
 
-  proto.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning_);
+  proto->set_use_auto_spmd_partitioning(use_auto_spmd_partitioning_);
 
   for (const HloModuleProto::ProfileInfo& profile_info : profile_info_list_) {
     HloModuleProto::ProfileInfo& profile_info_proto =
-        *proto.mutable_profile_info()->Add();
+        *proto->mutable_profile_info()->Add();
     profile_info_proto.set_profile_type(profile_info.profile_type());
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
@@ -606,26 +608,22 @@ HloModuleProto HloModule::ToProto() const {
   if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
     config().static_device_assignment().Serialize(&device_assignment);
-    (*proto.mutable_device_assignment()) = device_assignment;
+    (*proto->mutable_device_assignment()) = device_assignment;
   }
 
   if (stack_frame_index_.has_value()) {
-    (*proto.mutable_stack_frame_index()) = *stack_frame_index_;
+    (*proto->mutable_stack_frame_index()) = *stack_frame_index_;
   }
 
   if (!original_value_recovery_table_.empty()) {
-    *proto.mutable_original_value_recovery_table() =
+    *proto->mutable_original_value_recovery_table() =
         original_value_recovery_table_.ToProto();
   }
-
-  return proto;
 }
 
-HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
-  HloModuleProtoWithConfig result;
-  *result.mutable_config() = config().ToProto();
-  *result.mutable_hlo_module() = ToProto();
-  return result;
+void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto) const {
+  *proto->mutable_config() = config().ToProto();
+  ToProto(proto->mutable_hlo_module());
 }
 
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
@@ -1039,8 +1037,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options,
     const ExecutionOptions* execution_options) {
   if (!module.has_host_program_shape()) {
-    return tsl::errors::FailedPrecondition(
-        "No program shape found in the proto");
+    return absl::FailedPreconditionError("No program shape found in the proto");
   }
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       ProgramShape::FromProto(module.host_program_shape()));
@@ -1144,7 +1141,7 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
             parameter_count, old_operand->shape(), "p"));
         ++parameter_count;
       }
-      TF_CHECK_OK(
+      CHECK_OK(
           outlined_instruction->ReplaceOperandWith(operand_num, *operand_slot));
     }
 
@@ -1185,10 +1182,10 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   VLOG(2) << "as a call " << call->ToString();
   VLOG(2) << "to " << nested_computation->ToString();
 
-  TF_CHECK_OK(output->ReplaceAllUsesWith(call));
+  CHECK_OK(output->ReplaceAllUsesWith(call));
   for (auto i = instructions_to_outline.rbegin();
        i != instructions_to_outline.rend(); ++i) {
-    TF_CHECK_OK(computation->RemoveInstruction(*i));
+    CHECK_OK(computation->RemoveInstruction(*i));
   }
 
   return call;
@@ -1437,6 +1434,13 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
   module->set_frontend_attributes(frontend_attributes());
+  *module->metadata() = metadata();
+  // The canonical module id should be the same as the unique id from the
+  // module. We don't want to copy the id from the other metadata.
+  module->metadata()->set_canonical_module_id(module->unique_id());
+  if (stack_frame_index().has_value()) {
+    module->set_stack_frame_index(stack_frame_index().value());
+  }
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module);
     for (HloComputation* computation : computations()) {
@@ -1455,7 +1459,7 @@ void HloModule::Clone(const std::string& suffix, HloCloneContext* context,
         }
       }
     }
-    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+    CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
   for (const auto& [parameter, indices, offset] : CrossProgramPrefetches()) {
     module->AddCrossProgramPrefetch(parameter, indices, offset);
@@ -1714,7 +1718,7 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     std::optional<OriginalArray>* new_original_array =
         new_inst->original_value()->mutable_original_array(shape_index);
     if (!*new_original_array) {
-      if (recovery_computation->get() == nullptr) {
+      if (*recovery_computation == nullptr) {
         // If the recovery computation is a nullptr, it means this is an
         // identity computation and we can just pass through the original array.
         new_original_array->emplace(*old_original_array);

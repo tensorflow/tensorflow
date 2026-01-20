@@ -91,7 +91,7 @@ class CTCDecodeHelper {
           " batch_size: ", batch_size);
     }
 
-    auto seq_len_t = (*seq_len)->vec<int32>();
+    auto seq_len_t = (*seq_len)->vec<int32_t>();
 
     for (int b = 0; b < batch_size; ++b) {
       if (!(seq_len_t(b) <= max_time)) {
@@ -220,7 +220,7 @@ class CTCGreedyDecoderOp : public OpKernel {
       input_list_t.emplace_back(inputs_t.data() + t * batch_size * num_classes,
                                 batch_size, num_classes);
     }
-    auto seq_len_t = seq_len->vec<int32>();
+    auto seq_len_t = seq_len->vec<int32_t>();
     auto log_prob_t = log_prob->matrix<T>();
 
     log_prob_t.setZero();
@@ -309,7 +309,7 @@ class CTCBeamSearchDecoderOp : public OpKernel {
                             &decoded_values, &decoded_shape));
 
     auto inputs_t = inputs->tensor<T, 3>();
-    auto seq_len_t = seq_len->vec<int32>();
+    auto seq_len_t = seq_len->vec<int32_t>();
     auto log_prob_t = log_prob->matrix<T>();
 
     const TensorShape& inputs_shape = inputs->shape();

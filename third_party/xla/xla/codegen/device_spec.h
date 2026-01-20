@@ -56,9 +56,7 @@ class DeviceSpec {
     return IsGpu() && gpu().gpu_compute_capability().IsCuda();
   }
   bool IsIntelGpu() const {
-    // TODO(intel-gpu): Align with CUDA and ROCM approach of detecting Intel
-    // GPU.
-    return absl::StrContains(gpu().name(), "Intel");
+    return IsGpu() && gpu().gpu_compute_capability().IsOneAPI();
   }
 
  private:

@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
-#include "xla/hlo/transforms/expanders/real_imag_expander.h"
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
@@ -246,9 +245,10 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<AsyncCollectiveCreator>(
       AsyncCollectiveCreator::CollectiveCreatorConfig());
   RegisterPass<BFloat16ConversionFolding>(
-      /*bfloat16_support=*/bfloat16_support);
+      /*bfloat16_support=*/bfloat16_support, alias_info_.get());
   RegisterPass<BFloat16MixedPrecisionRemoval>();
-  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support);
+  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support,
+                                    alias_info_.get());
   RegisterPass<BatchDotSimplification>();
   RegisterPass<BroadcastCanonicalizer>();
   RegisterPass<CholeskyExpander>();
@@ -304,7 +304,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<OptimizationBarrierExpander>();
   RegisterPass<OptimizeInputOutputBufferAlias>(true);
   RegisterPass<QrExpander>();
-  RegisterPass<RealImagExpander>();
   RegisterPass<ReduceDecomposer>();
   RegisterPass<ReduceWindowRewriter>(/*base_length=*/16);
   RegisterPass<ReorderConvertReduceAdd>();

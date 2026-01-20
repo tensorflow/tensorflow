@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -30,8 +31,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/xla.pb.h"
@@ -45,7 +46,7 @@ struct DeviceConfig {
   // If the `allocator` parameter is not null, we will use it to allocate temp
   // memory while timing the various convolution algorithms.  If it's null,
   // we'll use the default allocator on the StreamExecutor.
-  se::DeviceMemoryAllocator* allocator = nullptr;  // may be null
+  se::DeviceAddressAllocator* allocator = nullptr;  // may be null
 };
 
 struct DevicelessConfig {
@@ -66,7 +67,7 @@ class DeviceOrDevicelessConfig {
     return std::get<DeviceConfig>(config_).stream_exec;
   }
 
-  se::DeviceMemoryAllocator* GetAllocator() const {
+  se::DeviceAddressAllocator* GetAllocator() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     auto& cf = std::get<DeviceConfig>(config_);
     if (cf.allocator != nullptr) {
@@ -74,7 +75,8 @@ class DeviceOrDevicelessConfig {
     }
     if (allocator_ == nullptr) {
       allocator_ =
-          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+              GetExecutor());
     }
     return allocator_.get();
   }
@@ -101,7 +103,7 @@ class DeviceOrDevicelessConfig {
 
  private:
   std::variant<DeviceConfig, DevicelessConfig> config_;
-  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  mutable std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 };
 
 class AutotuneConfig {
@@ -123,6 +125,10 @@ class AutotuneConfig {
   const DebugOptions::AutotuneCacheMode& autotune_cache_mode() const {
     return autotune_cache_mode_;
   }
+  const std::optional<std::vector<AutotuneResult::TritonGemmKey>>&
+  gemm_config_overrides() const {
+    return gemm_config_overrides_;
+  }
 
   AutotuneConfig(const DeviceOrDevicelessConfig& config,
                  bool should_init_buffers, bool should_reinit_output_buffer,
@@ -131,7 +137,9 @@ class AutotuneConfig {
                  bool exhaustive_tiling_search,
                  bool should_require_complete_aot_autotune_results,
                  absl::string_view autotune_cache_dir,
-                 DebugOptions::AutotuneCacheMode autotune_cache_mode)
+                 DebugOptions::AutotuneCacheMode autotune_cache_mode,
+                 std::optional<std::vector<AutotuneResult::TritonGemmKey>>
+                     gemm_config_overrides)
       : config_(config),
         should_init_buffers_(should_init_buffers),
         should_reinit_output_buffer_(should_reinit_output_buffer),
@@ -142,15 +150,16 @@ class AutotuneConfig {
         should_require_complete_aot_autotune_results_(
             should_require_complete_aot_autotune_results),
         autotune_cache_dir_(autotune_cache_dir),
-        autotune_cache_mode_(autotune_cache_mode) {}
+        autotune_cache_mode_(autotune_cache_mode),
+        gemm_config_overrides_(gemm_config_overrides) {}
 
   // Derives the autotune config parameters from the DebugOptions `opts`.
-  static AutotuneConfig FromDebugOptions(const DeviceOrDevicelessConfig& config,
-                                         const DebugOptions& opts);
+  static absl::StatusOr<AutotuneConfig> FromDebugOptions(
+      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   se::StreamExecutor* GetExecutor() const { return config_.GetExecutor(); }
 
-  se::DeviceMemoryAllocator* GetAllocator() const {
+  se::DeviceAddressAllocator* GetAllocator() const {
     return config_.GetAllocator();
   }
 
@@ -181,6 +190,8 @@ class AutotuneConfig {
   bool should_require_complete_aot_autotune_results_;
   std::string autotune_cache_dir_;
   DebugOptions::AutotuneCacheMode autotune_cache_mode_;
+  std::optional<std::vector<AutotuneResult::TritonGemmKey>>
+      gemm_config_overrides_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;

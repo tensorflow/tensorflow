@@ -42,6 +42,7 @@ class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
  protected:
   ComputationPartitionerTest() {
     mlir_context_.loadDialect<mlir::func::FuncDialect>();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   mlir::MLIRContext mlir_context_;

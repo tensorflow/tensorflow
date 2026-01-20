@@ -122,11 +122,11 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                              options.experimental().use_unified_memory());
   if (use_unified_memory) {
     auto unified_memory_allocator =
-        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+        executor->CreateMemoryAllocator(stream_executor::MemorySpace::kUnified)
             .value();
     return std::make_unique<se::StreamExecutorAllocator>(
         std::move(unified_memory_allocator),
-        stream_executor::MemoryType::kUnified, platform_device_id.value(),
+        stream_executor::MemorySpace::kUnified, platform_device_id.value(),
         alloc_visitors);
   } else {
     return std::make_unique<se::DeviceMemAllocator>(
@@ -140,7 +140,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
   CHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  const string& allocator_type = options.allocator_type();
+  const std::string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
   tsl::CheckValidTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
@@ -172,7 +172,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
 
     auto gpu_bfc_allocator = std::make_unique<GPUBFCAllocator>(
         std::move(sub_allocator), total_bytes,
-        strings::StrCat("GPU_", tf_device_id.value(), "_bfc"), [&] {
+        absl::StrCat("GPU_", tf_device_id.value(), "_bfc"), [&] {
           GPUBFCAllocator::Options o;
           o.allow_growth = options.allow_growth();
           o.allow_retry_on_failure =
@@ -366,9 +366,9 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       gpu_host_free_visitors_.push_back({});
     }
     auto host_memory_allocator =
-        se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+        se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
     SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-        std::move(host_memory_allocator), stream_executor::MemoryType::kHost,
+        std::move(host_memory_allocator), stream_executor::MemorySpace::kHost,
         numa_node, gpu_host_alloc_visitors_[numa_node],
         gpu_host_free_visitors_[numa_node]);
 

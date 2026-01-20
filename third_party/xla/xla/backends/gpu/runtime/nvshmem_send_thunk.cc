@@ -41,10 +41,11 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -120,8 +121,8 @@ absl::Status NvshmemSendThunk::RunNvshmemCollective(const ExecuteParams& params,
   if (recv_buffer_status.ok()) {
     void* recv_buffer_ptr = recv_buffer_status.value();
     VLOG(3) << "Using existing receive buffer for send: " << recv_buffer_ptr;
-    buffer.destination_buffer =
-        se::DeviceMemoryBase(recv_buffer_ptr, buffer.destination_buffer.size());
+    buffer.destination_buffer = se::DeviceAddressBase(
+        recv_buffer_ptr, buffer.destination_buffer.size());
   } else {
     VLOG(3) << "No receive buffer found";
   }

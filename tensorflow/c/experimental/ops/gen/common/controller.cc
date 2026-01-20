@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/controller.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"

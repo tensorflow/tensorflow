@@ -303,6 +303,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"Thread Id", kThreadId},
        {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
+       {"hbm_utilization_percent", kHbmUtilizationPercent},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
@@ -385,7 +386,14 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_map_value_id", kCudaGraphMapValueId},
        {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
        {"graph_metadata_line_id", kGraphMetadataLineId},
-       {"marker_payload", kMarkerPayloadString}});
+       {"offload_core_id", kOffloadCoreId},
+       {"tc_offload_start_id", kTcOffloadStartId},
+       {"offload_execution_index", kOffloadExecutionIndex},
+       {"marker_payload", kMarkerPayloadString},
+       {"cuda_version", kMetadataCudaVersion},
+       {"libtpu_version", kMetadataLibtpuVersion},
+       {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
+       {"cuda_driver_version", kMetadataCudaDriverVersion}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

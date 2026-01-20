@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -36,7 +34,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -61,7 +59,7 @@ absl::StatusOr<hipGraph_t> CreateGraph() {
   return graph;
 }
 
-hipDeviceptr_t AsDevicePtr(const DeviceMemoryBase& mem) {
+hipDeviceptr_t AsDevicePtr(const DeviceAddressBase& mem) {
   return absl::bit_cast<hipDeviceptr_t>(mem.opaque());
 }
 
@@ -109,7 +107,7 @@ RocmCommandBuffer::CreateConditionalNode(
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetCaseConditionNode(
     absl::Span<const GraphConditionalHandle> conditionals,
-    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
     bool enable_conditional_default,
     absl::Span<const GraphNodeHandle> dependencies) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
@@ -118,26 +116,27 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetCaseConditionNode(
 absl::Status RocmCommandBuffer::UpdateSetCaseConditionNode(
     GraphNodeHandle handle,
     absl::Span<const GraphConditionalHandle> conditionals,
-    DeviceMemory<uint8_t> index, bool index_is_bool, int32_t batch_offset,
+    DeviceAddress<uint8_t> index, bool index_is_bool, int32_t batch_offset,
     bool enable_conditional_default) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateSetWhileConditionNode(
-    GraphConditionalHandle conditional, DeviceMemory<bool> predicate,
+    GraphConditionalHandle conditional, DeviceAddress<bool> predicate,
     absl::Span<const GraphNodeHandle> dependencies) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
 absl::Status RocmCommandBuffer::UpdateSetWhileConditionNode(
     GraphNodeHandle handle, GraphConditionalHandle conditional,
-    DeviceMemory<bool> predicate) {
+    DeviceAddress<bool> predicate) {
   return absl::UnimplementedError("Conditionals are not supported on ROCM.");
 }
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
     absl::Span<const GraphNodeHandle> dependencies,
-    DeviceMemoryBase destination, BitPattern bit_pattern, size_t num_elements) {
+    DeviceAddressBase destination, BitPattern bit_pattern,
+    size_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph_
           << "; dst: " << destination.opaque()
           << "; bit_pattern: " << bit_pattern.ToString()
@@ -163,7 +162,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
 }
 
 absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
-                                                 DeviceMemoryBase destination,
+                                                 DeviceAddressBase destination,
                                                  BitPattern bit_pattern,
                                                  size_t num_elements) {
   VLOG(2) << "Set memset node params " << node_handle << " in graph executable "
@@ -186,7 +185,7 @@ absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
     absl::Span<const GraphNodeHandle> dependencies,
-    DeviceMemoryBase destination, DeviceMemoryBase source, uint64_t size) {
+    DeviceAddressBase destination, DeviceAddressBase source, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
           << "; size: " << size << "; deps: " << dependencies.size();
@@ -204,8 +203,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
 }
 
 absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
-    GraphNodeHandle node_handle, DeviceMemoryBase destination,
-    DeviceMemoryBase source, uint64_t size) {
+    GraphNodeHandle node_handle, DeviceAddressBase destination,
+    DeviceAddressBase source, uint64_t size) {
   VLOG(2) << "Set memcpy d2d node params " << node_handle
           << " in graph executable " << exec_
           << "; dst: " << destination.opaque() << "; src: " << source.opaque()
@@ -218,13 +217,11 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
       "Failed to set memcpy d2d node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
-    ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
-    CommandBuffer& nested) {
-  CHECK(type == ChildCommandType::kCloned)
-      << "Moved child node creation is not supported";
-  auto& child_command_buffer =
-      tensorflow::down_cast<RocmCommandBuffer&>(nested);
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
+    absl::Span<const GraphNodeHandle> dependencies,
+    const CommandBuffer& nested) {
+  auto& child_command_buffer = tensorflow::down_cast<RocmCommandBuffer&>(
+      const_cast<CommandBuffer&>(nested));
   CHECK(child_command_buffer.parent_ == nullptr)
       << "Nested command buffer's parent is not null";
   child_command_buffer.parent_ = this;
@@ -242,11 +239,13 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
   return FromHipGraphHandle(node_handle);
 }
 
-absl::Status RocmCommandBuffer::UpdateChildNode(ChildCommandType type,
-                                                GraphNodeHandle node_handle,
-                                                const CommandBuffer& nested) {
-  CHECK(type == ChildCommandType::kCloned)
-      << "Moved child node update is not supported";
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMovedChildNode(
+    absl::Span<const GraphNodeHandle> dependencies, CommandBuffer* nested) {
+  return absl::UnimplementedError("Moved child nodes are not supported");
+}
+
+absl::Status RocmCommandBuffer::UpdateClonedChildNode(
+    GraphNodeHandle node_handle, const CommandBuffer& nested) {
   hipGraph_t child_graph =
       tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
 

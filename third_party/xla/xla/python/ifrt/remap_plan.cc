@@ -79,11 +79,9 @@ absl::StatusOr<RemapPlan::Mapping> MappingFromProto(
 }
 
 // Serializes `RemapPlan::Mapping` into `RemapPlanProto::MappingProto`.
-absl::StatusOr<RemapPlanProto::MappingProto> MappingToProto(
-    const RemapPlan::Mapping& mapping) {
+absl::Status MappingToProto(const RemapPlan::Mapping& mapping,
+                            RemapPlanProto::MappingProto& proto) {
   TF_RET_CHECK(mapping.from.size() == mapping.to.size());
-
-  RemapPlanProto::MappingProto proto;
 
   proto.set_in_array(mapping.in_array);
   proto.set_out_array(mapping.out_array);
@@ -103,7 +101,7 @@ absl::StatusOr<RemapPlanProto::MappingProto> MappingToProto(
     proto.add_to_end(mapping.to[i].end);
     proto.add_to_step(mapping.to[i].step);
   }
-  return proto;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<RemapPlan::InputDeviceRange> InputDeviceRangeFromProto(
@@ -115,17 +113,16 @@ absl::StatusOr<RemapPlan::InputDeviceRange> InputDeviceRangeFromProto(
   return range;
 }
 
-RemapPlanProto::InputDevicesForOutput InputDeviceToOutputToProto(
+void InputDeviceToOutputToProto(
     SerDesVersion version, int out_array,
-    absl::Span<const RemapPlan::InputDeviceRange> input_devices) {
-  RemapPlanProto::InputDevicesForOutput proto;
+    absl::Span<const RemapPlan::InputDeviceRange> input_devices,
+    RemapPlanProto::InputDevicesForOutput& proto) {
   proto.set_out_array(out_array);
   for (const RemapPlan::InputDeviceRange& input : input_devices) {
     RemapPlanProto::InputDevices* input_proto = proto.add_input_devices();
     input_proto->set_in_array(input.in_array);
-    *input_proto->mutable_device_list() = input.input_devices->ToProto(version);
+    input.input_devices->ToProto(*input_proto->mutable_device_list(), version);
   }
-  return proto;
 }
 
 // Checks if `interval` is in a valid range for the given number of shards.
@@ -501,39 +498,39 @@ absl::StatusOr<RemapPlan> RemapPlan::FromProto(Client* client,
   return plan;
 }
 
-absl::StatusOr<RemapPlanProto> RemapPlan::ToProto(SerDesVersion version) const {
+absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
+                                SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for RemapPlan serialization"));
   }
 
-  RemapPlanProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_input_specs()->Reserve(input_specs.size());
   for (const auto& input_spec : input_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), input_spec.ToProto(version));
+    TF_RETURN_IF_ERROR(input_spec.ToProto(*proto.add_input_specs(), version));
   }
   proto.mutable_output_specs()->Reserve(output_specs.size());
   for (const auto& output_spec : output_specs) {
-    TF_ASSIGN_OR_RETURN(*proto.add_output_specs(),
-                        output_spec.ToProto(version));
+    TF_RETURN_IF_ERROR(output_spec.ToProto(*proto.add_output_specs(), version));
   }
 
   proto.mutable_mappings()->Reserve(mappings->size());
   for (const auto& mapping : *mappings) {
-    TF_ASSIGN_OR_RETURN(*proto.add_mappings(), MappingToProto(mapping));
+    TF_RETURN_IF_ERROR(MappingToProto(mapping, *proto.add_mappings()));
   }
 
   proto.mutable_input_devices_for_output()->Reserve(
       input_devices_for_output_map.size());
   for (const auto& [out_array, input_devices] : input_devices_for_output_map) {
-    *proto.add_input_devices_for_output() =
-        InputDeviceToOutputToProto(version, out_array, input_devices);
+    InputDeviceToOutputToProto(version, out_array, input_devices,
+                               *proto.add_input_devices_for_output());
   }
 
-  return proto;
+  return absl::OkStatus();
 }
 
 std::string RemapPlan::DebugString() const {

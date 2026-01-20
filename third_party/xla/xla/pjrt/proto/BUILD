@@ -13,12 +13,12 @@ package(
 tf_proto_library(
     name = "compile_options_proto",
     srcs = ["compile_options.proto"],
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",
         "//xla/stream_executor:device_description_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -38,6 +38,14 @@ tf_proto_library(
 tf_proto_library(
     name = "executable_metadata_proto",
     srcs = ["executable_metadata.proto"],
+    protodeps = ["@com_google_protobuf//:any_proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "pjrt_abi_version_proto",
+    srcs = ["pjrt_abi_version.proto"],
+    protodeps = [],
     visibility = ["//visibility:public"],
 )
 
@@ -64,6 +72,6 @@ tf_proto_library(
     name = "topology_description_proto",
     srcs = ["topology_description.proto"],
     compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
-    protodeps = ["@com_google_protobuf//:any_proto"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:any_proto"],
 )

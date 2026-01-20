@@ -105,13 +105,13 @@ class RewriteXlaHostComputeMlir
       rewriter.setInsertionPointToStart(&cloned_func.getBody().front());
       auto result_type =
           RankedTensorType::get({3}, rewriter.getType<TF::StringType>());
-      auto dynamic_key =
-          rewriter.create<TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
-              func.getLoc(), /*program=*/result_type, llvm::ArrayRef<Value>{});
+      auto dynamic_key = TF::_XlaCompileMlirPlaceholderProgramKeyOp::create(
+          rewriter, func.getLoc(), /*program=*/result_type,
+          llvm::ArrayRef<Value>{});
 
-      auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
-          func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
-          op.getSendKeyAttr(),
+      auto recv_at_host = TF::_XlaRecvAtHostOp::create(
+          rewriter, func.getLoc(), op.getOperandTypes(),
+          /*dynamic_key=*/dynamic_key, op.getSendKeyAttr(),
           /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
           rewriter.getStringAttr("TPU"));
       for (auto result :
@@ -120,8 +120,8 @@ class RewriteXlaHostComputeMlir
       }
 
       rewriter.setInsertionPoint(cloned_func.getBody().front().getTerminator());
-      rewriter.create<TF::_XlaSendFromHostOp>(
-          func.getLoc(),
+      TF::_XlaSendFromHostOp::create(
+          rewriter, func.getLoc(),
           cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.getRecvKeyAttr(),
           /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
@@ -157,8 +157,8 @@ void UpdateArgAttributes(mlir::func::FuncOp func) {
         // 'sharding' attribute.
         // TODO(b/414807890): Not sure whether we need to pass a V2 sharding to
         // the _XlaShardingV2, do this when we actually have a use case.
-        auto updated_arg = builder.create<TF::XlaShardingOp>(
-            func.getLoc(), arg.getType(), arg, /*sharding=*/sharding,
+        auto updated_arg = TF::XlaShardingOp::create(
+            builder, func.getLoc(), arg.getType(), arg, /*sharding=*/sharding,
             /*_XlaSharding=*/sharding, /*_XlaShardingV2=*/mlir::StringAttr());
         func.getArgument(i).replaceAllUsesExcept(
             updated_arg, llvm::SmallPtrSet<Operation*, 1>({updated_arg}));

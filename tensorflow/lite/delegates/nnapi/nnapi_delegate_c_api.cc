@@ -65,6 +65,5 @@ TfLiteNnapiDelegateOptions TfLiteNnapiDelegateOptionsDefault() {
 }
 
 void TfLiteNnapiDelegateDelete(TfLiteDelegate* delegate) {
-  if (delegate == nullptr) return;
   delete static_cast<tflite::StatefulNnApiDelegate*>(delegate);
 }

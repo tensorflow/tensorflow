@@ -162,6 +162,7 @@ common --incompatible_enforce_config_setting_visibility
 
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
+common --enable_workspace
 
 common --incompatible_enable_cc_toolchain_resolution
 common --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
@@ -234,7 +235,7 @@ common:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 common:macos_arm64 --cpu=darwin_arm64
 common:macos_arm64 --macos_minimum_os=11.0
 common:macos_arm64 --config=clang_local
-common:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
+common:macos_arm64 --platforms=@build_bazel_apple_support//platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 common:ios --apple_platform_type=ios
@@ -247,16 +248,16 @@ common:ios_armv7 --cpu=ios_armv7
 common:ios_armv7 --platforms=@org_tensorflow//tensorflow/tools/toolchains/ios:ios_armv7
 common:ios_arm64 --config=ios
 common:ios_arm64 --cpu=ios_arm64
-common:ios_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64
+common:ios_arm64 --platforms=@build_bazel_apple_support//platforms:ios_arm64
 common:ios_arm64e --config=ios
 common:ios_arm64e --cpu=ios_arm64e
-common:ios_arm64e --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64e
+common:ios_arm64e --platforms=@build_bazel_apple_support//platforms:ios_arm64e
 common:ios_sim_arm64 --config=ios
 common:ios_sim_arm64 --cpu=ios_sim_arm64
-common:ios_sim_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_sim_arm64
+common:ios_sim_arm64 --platforms=@build_bazel_apple_support//platforms:ios_sim_arm64
 common:ios_x86_64 --config=ios
 common:ios_x86_64 --cpu=ios_x86_64
-common:ios_x86_64 --platforms=@build_bazel_apple_support//configs/platforms:ios_x86_64
+common:ios_x86_64 --platforms=@build_bazel_apple_support//platforms:ios_x86_64
 common:ios_fat --config=ios
 common:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
@@ -285,28 +286,29 @@ common:mkl_threadpool -c opt
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 common:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
+common:mkl_aarch64_threadpool --@compute_library//:openmp=false
 common:mkl_aarch64_threadpool -c opt
 
 # This is an alias for the mkl_aarch64_threadpool build.
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
-# Default CUDA, CUDNN and NVSHMEM versions.
+# Default CUDA, CUDNN, NCCL and NVSHMEM versions.
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
-common:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 common:cuda --@local_config_cuda//:enable_cuda
 common:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 common:cuda --@local_config_cuda//cuda:include_cuda_libs=true
-common:cuda --@cuda_driver//:include_cuda_umd_libs=true
 
 # This configuration is used for building the wheels.
 common:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
-common:cuda_wheel --@cuda_driver//:include_cuda_umd_libs=false
+
+common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 common:cuda_clang --config=cuda
@@ -332,8 +334,6 @@ common:cuda_clang --linkopt="-lm"
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 common:cuda_clang_official --config=cuda_clang
 common:cuda_clang_official --config=cuda_version
-common:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
-common:cuda_clang_official --crosstool_top="@local_config_cuda//crosstool:toolchain"
 
 # Build with nvcc for CUDA and clang for host
 common:cuda_nvcc --config=cuda
@@ -637,12 +637,6 @@ common:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
-# Download CUDA/CUDNN redistributions to preserve the repositories cache between
-# CPU and GPU builds.
-# TODO(ybaturina): Uncomment when RBE is ready to support this.
-common:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
-common:rbe_linux_cpu --config=cuda_version
-
 # Deprecated RBE config with non-hermetic toolchains.
 common:rbe_linux_cpu_clang_local --config=rbe_linux_cpu
 common:rbe_linux_cpu_clang_local --config=clang_local
@@ -667,6 +661,8 @@ common:rbe_linux_cuda --config=cuda_clang_official
 common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
+# Update UMD version when RBE CUDA driver is updated.
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
@@ -767,13 +763,17 @@ common:release_gpu_linux_clang_local --config=release_cpu_linux_clang_local
 
 common:release_arm64_linux --config=release_linux_base
 common:release_arm64_linux --config=linux_arm64
-common:release_arm64_linux --config=clang_local
-common:release_arm64_linux --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-common:release_arm64_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
-common:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
 common:release_arm64_linux --config=mkl_aarch64_threadpool
 common:release_arm64_linux --copt=-flax-vector-conversions
 test:release_arm64_linux --flaky_test_attempts=3
+
+# Deprecated release CPU config with non-hermetic toolchains.
+common:release_arm64_linux_clang_local --config=release_arm64_linux
+common:release_arm64_linux_clang_local --config=clang_local
+common:release_arm64_linux_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+common:release_arm64_linux_clang_local --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
+common:release_arm64_linux_clang_local --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
+test:release_arm64_linux_clang_local --flaky_test_attempts=3
 
 common:release_cpu_macos --config=avx_linux
 
@@ -851,28 +851,28 @@ common:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload
 # PYTHON TESTS run a suite of Python tests intended for verifying that the Python wheel
 # will work properly. These are usually run Nightly or upon Release.
 # CPU WHEEL
-test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
-test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
+test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
 test:linux_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cpu_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_cpu_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # CUDA WHEEL
-test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
-test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
 test:linux_cuda_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cuda_wheel_test --repo_env=HERMETIC_CUDA_UMD_VERSION=12.8.1 --@local_xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # ARM64 WHEEL
-test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
-test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
+test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
 test:linux_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_arm64_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_arm64_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...  -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # MACOS ARM64 WHEEL
-test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_arm64_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=macos_arm64_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # MACOS X86 WHEEL
-test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
-test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
 test:macos_x86_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_x86_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=macos_x86_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # WINDOWS X86 WHEEL
@@ -914,15 +914,15 @@ common:cross_compile_linux_arm64_pycpp_test --config=linux_arm64_pycpp_test
 # Tests that fail only when cross-compiled
 common:cross_compile_linux_arm64_pycpp_test -//tensorflow/compiler/mlir/quantization/stablehlo:convert_tf_quant_to_mhlo_int_test
 # MACOS ARM64 PYCPP
-test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/... -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # MACOS X86 PYCPP
 # These are defined as build configs so that we can run a build only job. See
 # the note under "ARM64 PYCPP" for more details.
-common:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
-common:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+common:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+common:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
 common:macos_x86_pycpp_test_filters --keep_going --test_lang_filters=cc,py --test_size_filters=small,medium
 common:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/...
 # CROSS-COMPILE MACOS X86 PYCPP

@@ -16,16 +16,16 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 
 #include <cstdint>
-#include <numeric>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -83,66 +83,68 @@ TEST_F(RaggedAllToAllKernelTest, SimpleKernelTest) {
   constexpr int64_t num_row_elements = 2;
   constexpr int64_t n = num_input_rows * num_row_elements;
 
-  stream_executor::DeviceMemoryHandle input_buffer(
+  stream_executor::DeviceAddressHandle input_buffer(
       executor, executor->AllocateArray<T>(n));
 
-  std::vector<stream_executor::DeviceMemoryHandle> output_buffers;
+  std::vector<stream_executor::DeviceAddressHandle> output_buffers;
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_buffers.emplace_back(executor, executor->AllocateArray<T>(n));
-    ASSERT_TRUE(!output_buffers[i].memory().is_null());
+    ASSERT_TRUE(!output_buffers[i].address().is_null());
     TF_ASSERT_OK(
-        stream->MemZero(output_buffers[i].memory_ptr(), n * sizeof(T)));
+        stream->MemZero(output_buffers[i].address_ptr(), n * sizeof(T)));
   }
 
-  stream_executor::DeviceMemoryHandle input_offsets_buffer(
+  stream_executor::DeviceAddressHandle input_offsets_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
-  stream_executor::DeviceMemoryHandle send_sizes_buffer(
+  stream_executor::DeviceAddressHandle send_sizes_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
-  stream_executor::DeviceMemoryHandle output_offsets_buffer(
+  stream_executor::DeviceAddressHandle output_offsets_buffer(
       executor,
       executor->AllocateArray<int64_t>(num_outputs * num_update_per_output));
 
-  ASSERT_TRUE(!(input_offsets_buffer.memory().is_null() ||
-                input_offsets_buffer.memory().is_null() ||
-                output_offsets_buffer.memory().is_null()));
+  ASSERT_TRUE(!(input_offsets_buffer.address().is_null() ||
+                input_offsets_buffer.address().is_null() ||
+                output_offsets_buffer.address().is_null()));
 
   std::vector<T> input_data(n);
-  std::iota(input_data.begin(), input_data.end(), 0);
-  TF_ASSERT_OK(stream->Memcpy(input_buffer.memory_ptr(), input_data.data(),
+  absl::c_iota(input_data, 0);
+  TF_ASSERT_OK(stream->Memcpy(input_buffer.address_ptr(), input_data.data(),
                               n * sizeof(T)));
 
   std::vector<int64_t> input_offsets = {1, 4, 0, 3};
   std::vector<int64_t> send_sizes = {2, 3, 1, 2};
   std::vector<int64_t> output_offsets = {0, 4, 1, 5};
 
-  TF_ASSERT_OK(stream->Memcpy(input_offsets_buffer.memory_ptr(),
+  TF_ASSERT_OK(stream->Memcpy(input_offsets_buffer.address_ptr(),
                               input_offsets.data(),
                               input_offsets.size() * sizeof(int64_t)));
-  TF_ASSERT_OK(stream->Memcpy(send_sizes_buffer.memory_ptr(), send_sizes.data(),
+  TF_ASSERT_OK(stream->Memcpy(send_sizes_buffer.address_ptr(),
+                              send_sizes.data(),
                               send_sizes.size() * sizeof(int64_t)));
-  TF_ASSERT_OK(stream->Memcpy(output_offsets_buffer.memory_ptr(),
+  TF_ASSERT_OK(stream->Memcpy(output_offsets_buffer.address_ptr(),
                               output_offsets.data(),
                               output_offsets.size() * sizeof(int64_t)));
 
-  std::vector<se::DeviceMemoryBase> output_buffers_span;
+  std::vector<se::DeviceAddressBase> output_buffers_span;
   for (auto& output_buffer : output_buffers) {
-    output_buffers_span.push_back(output_buffer.memory());
+    output_buffers_span.push_back(output_buffer.address());
   }
 
   TF_ASSERT_OK(RunRaggedAllToAllKernel(
       stream.get(), primitive_util::NativeToPrimitiveType<T>(),
-      input_buffer.memory(), output_buffers_span, input_offsets_buffer.memory(),
-      send_sizes_buffer.memory(), output_offsets_buffer.memory(), num_outputs,
-      num_update_per_output, num_input_rows, num_row_elements));
+      input_buffer.address(), output_buffers_span,
+      input_offsets_buffer.address(), send_sizes_buffer.address(),
+      output_offsets_buffer.address(), num_outputs, num_update_per_output,
+      num_input_rows, num_row_elements));
 
   std::vector<std::vector<T>> output_results(num_outputs);
 
   for (int64_t i = 0; i < num_outputs; ++i) {
     output_results[i].resize(n);
     TF_ASSERT_OK(stream->Memcpy(output_results[i].data(),
-                                output_buffers[i].memory(), n * sizeof(T)));
+                                output_buffers[i].address(), n * sizeof(T)));
   }
 
   std::vector<std::vector<T>> expected_output_results =

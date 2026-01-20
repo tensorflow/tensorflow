@@ -34,12 +34,14 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
@@ -104,6 +106,9 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   if (gpu_target_config.has_value()) {
     *output.mutable_target_config() = gpu_target_config->ToProto();
   }
+  if (compiler_variant.has_value()) {
+    output.set_compiler_variant(*compiler_variant);
+  }
   return output;
 }
 
@@ -143,7 +148,22 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
         output.gpu_target_config,
         Compiler::GpuTargetConfig::FromProto(proto.target_config()));
   }
+  if (proto.has_compiler_variant()) {
+    output.compiler_variant = proto.compiler_variant();
+  }
   return output;
+}
+
+bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options) {
+  for (int i = compile_options.env_option_overrides.size() - 1; i >= 0; --i) {
+    const auto& [k, v] = compile_options.env_option_overrides[i];
+    if (k == "xla_early_exit_with_layouts") {
+      return std::get<bool>(v);
+    }
+  }
+  return compile_options.executable_build_options.has_debug_options() &&
+         compile_options.executable_build_options.debug_options()
+             .xla_early_exit_with_layouts();
 }
 
 MultiSliceConfig::~MultiSliceConfig() = default;
@@ -242,6 +262,7 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
   proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
   proto.set_peak_memory_in_bytes(peak_memory_in_bytes);
+  proto.set_total_size_in_bytes(total_size_in_bytes);
   return proto;
 }
 
@@ -261,6 +282,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
   stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
   stats.peak_memory_in_bytes = proto.peak_memory_in_bytes();
+  stats.total_size_in_bytes = proto.total_size_in_bytes();
   return stats;
 }
 

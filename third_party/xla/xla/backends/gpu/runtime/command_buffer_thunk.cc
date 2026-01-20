@@ -27,13 +27,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -102,7 +103,7 @@ CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
   // We check only allocations referenced by commands in a cmd sequence, and
   // leave every other entry default initialized (nullptr device memory).
   for (BufferAllocation::Index index : commands.allocs_indices()) {
-    se::DeviceMemoryBase alloc = allocs->GetDeviceAddress(index);
+    se::DeviceAddressBase alloc = allocs->GetDeviceAddress(index);
 
     if (recorded_allocs.size() <= index) {
       recorded_allocs.resize(index + 1);
@@ -118,20 +119,19 @@ CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
   return updated_allocs;
 }
 
-absl::Status CommandBufferThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(commands_.Prepare(params));
 
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
-    TF_RETURN_IF_ERROR(thunks_->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(thunks_->Prepare(params));
   }
 
   return absl::OkStatus();
@@ -204,11 +204,10 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
     auto updated_allocs =
         cmd_buffer->UpdateBufferAllocations(commands_, execute_params);
 
-    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
-                                                    std::move(updated_allocs),
-                                                    /*is_initialization=*/true};
+    Command::RecordParams record_params = {cmd_buffer->state,
+                                           std::move(updated_allocs),
+                                           /*is_initialization=*/true};
     TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
-                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -275,10 +274,9 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
-                                                    std::move(updated_allocs)};
+    Command::RecordParams record_params = {cmd_buffer->state,
+                                           std::move(updated_allocs)};
     TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
-                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();

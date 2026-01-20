@@ -19,8 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -46,6 +48,9 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOkAndHolds;
+using ::testing::SizeIs;
 
 constexpr absl::string_view kProgram = R"(HloModule Computation
 
@@ -75,7 +80,7 @@ void ValidateResult(
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   ASSERT_EQ(result_buffers.size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
-                          result_buffers[0]->ToLiteralSync());
+                          result_buffers[0]->ToLiteral().Await());
   EXPECT_TRUE(
       LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
 }
@@ -100,6 +105,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           compiler.Compile(opts, mlir_module.get(), *topology,
                                            /*client=*/nullptr));
+  EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       se_client->Load(std::move(executable), LoadOptions()));
@@ -129,6 +135,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
       se_client->Load(std::move(executable), LoadOptions()));
@@ -155,6 +162,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
 
   // Serialize the executable and load it.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
@@ -192,6 +200,7 @@ TEST(StreamExecutorGpuCompilerTest, SuccessSerializeDeserialize) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(opts, computation, *topology, /*client=*/nullptr));
+  EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
       se_client->Load(std::move(executable), LoadOptions()));
@@ -242,6 +251,7 @@ TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtExecutable> executable,
       compiler.Compile(options, computation, *topology, /*client=*/nullptr));
+  EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
 
   TF_ASSERT_OK_AND_ASSIGN(CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());
@@ -251,6 +261,7 @@ TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   EXPECT_GT(compiled_memory_stats.temp_size_in_bytes, 0);
   EXPECT_EQ(compiled_memory_stats.host_temp_size_in_bytes, 0);
   EXPECT_EQ(compiled_memory_stats.host_output_size_in_bytes, 16);
+  EXPECT_GT(compiled_memory_stats.peak_memory_in_bytes, 0);
 }
 
 }  // namespace

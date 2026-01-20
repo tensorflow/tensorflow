@@ -18,20 +18,25 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/map_util.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -109,7 +114,7 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
   reachability_->Replace(base, input_fusion);
   all_fusion_candidates_.emplace_back(input_fusion,
                                       reachability_->GetIndex(input_fusion));
-  TF_CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
+  CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
 
@@ -286,11 +291,11 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
   // If both nodes are in-place operations and they use a common in-place
   // operand, we can't fuse these two.
   for (const auto& operand_and_output_index1 :
-       HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr1)) {
+       alias_info_->GetInPlaceInputOutputPairs(instr1)) {
     const HloInstruction* operand =
         instr1->operand(operand_and_output_index1.first.operand_number);
     for (const auto& operand_and_output_index2 :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr2)) {
+         alias_info_->GetInPlaceInputOutputPairs(instr2)) {
       if (operand ==
           instr2->operand(operand_and_output_index2.first.operand_number)) {
         return false;
@@ -315,7 +320,7 @@ void MultiOutputFusion::UpdateReachability(
   auto instr2_i = reachability_->GetIndex(instr2);
   for (auto& instr_and_index : instrs_to_update) {
     HloInstruction* instr = instr_and_index.first;
-    if (skip != std::nullopt && (*skip)(instr)) {
+    if (skip.has_value() && skip.value()(instr)) {
       continue;
     }
     auto instr_i = instr_and_index.second;

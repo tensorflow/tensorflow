@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_COPY_REMOVAL_H_
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -289,8 +290,8 @@ class Relation {
 class ComputeRelativeLocation {
  public:
   typedef LiveRangeRegions::InstructionEntry InstructionEntry;
-  explicit ComputeRelativeLocation(HloOrdering* ordering)
-      : ordering_(ordering) {
+  ComputeRelativeLocation(HloOrdering* ordering, const AliasInfo* alias_info)
+      : ordering_(ordering), alias_info_(alias_info) {
     VLOG(3) << "New analysis";
   }
 
@@ -352,6 +353,7 @@ class ComputeRelativeLocation {
                                                 HloInstruction* instr2);
 
   HloOrdering* ordering_;
+  const AliasInfo* alias_info_;
   absl::flat_hash_map<
       HloInstruction*,
       absl::flat_hash_map<HloInstruction*, Relation::RuntimeOrder>>
@@ -436,7 +438,9 @@ class CopyRemover {
   // elision is possible, then the internal state (value lists) are updated,
   // and true is returned. Returns false otherwise.
   bool TryElideCopy(const HloInstruction* copy, int64_t* region_analysis_limit,
-                    bool insert_post_scheduling_control_dependencies);
+                    bool insert_post_scheduling_control_dependencies,
+                    std::function<bool(const HloInstruction* copy)>
+                        should_skip_removal = nullptr);
 
   // Delete the given ValueNode associated with a elided kCopy
   // instruction. This should be called after splicing the value lists of the

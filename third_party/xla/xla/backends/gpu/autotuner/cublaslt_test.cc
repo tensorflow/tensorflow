@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/blas.h"
@@ -194,6 +195,51 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"2\""),
               absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(CublasLtBackendTest, CompileFp8SwapOperands) {
+  if (!stream_executor_->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(8, 9)) {
+    GTEST_SKIP() << "FP8 requires compute capability 8.9 or higher";
+  }
+  // CuBLASLt requires the operands to be in a specific layout (transposed /
+  // non-transposed) for FP8 matrix multiplication. This HLO defines a
+  // row-major output which forces the backend to swap operands, implicitly
+  // satisfying the layout requirements.
+  const char kFp8MatmulWithSwapHlo[] = R"(
+  HloModule module
+
+  ENTRY %main (lhs: f8e4m3fn[16,16], rhs: f8e4m3fn[16,16], lhs_scale: f32[], rhs_scale: f32[]) -> f32[16,16] {
+    %lhs = f8e4m3fn[16,16]{1,0} parameter(0)
+    %rhs = f8e4m3fn[16,16]{1,0} parameter(1)
+    %lhs_scale = f32[] parameter(2)
+    %rhs_scale = f32[] parameter(3)
+
+    %custom-call = (f32[16,16]{1,0}, s8[100]{0}) custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__cublas$lt$matmul$f8",
+      backend_config={"gemm_backend_config":{
+        "dot_dimension_numbers":{
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
+        },
+        "alpha_real": 1,
+        "beta": 0
+      }}
+    ROOT %get-tuple-element = f32[16,16]{1,0} get-tuple-element(%custom-call), index=0
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kFp8MatmulWithSwapHlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BackendConfig> config,
+      backend_.GetDefaultConfig(
+          *(module->entry_computation()->root_instruction()->operand(0))));
+  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
+      *(module->entry_computation()->root_instruction()->operand(0)), *config);
+  EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
 }  // namespace gpu

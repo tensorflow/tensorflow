@@ -29,7 +29,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -37,9 +40,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#if GOOGLE_CUDA
 #include "tsl/platform/tensor_float_32_utils.h"
-#endif
 
 namespace stream_executor {
 
@@ -203,9 +204,19 @@ xla::GemmConfigProto::MatrixLayout MatrixLayout::ToProto() const {
   return proto;
 }
 
+xla::Shape MatrixLayout::ToShape() const {
+  switch (order) {
+    case Order::kRowMajor:
+      return xla::ShapeUtil::MakeShape(dtype, {num_cols, num_rows, batch_size});
+    case Order::kColumnMajor:
+      return xla::ShapeUtil::MakeShape(dtype, {num_rows, num_cols, batch_size});
+  }
+}
+
 absl::StatusOr<ComputationType> GetBlasComputationType(
     xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
-    xla::PrimitiveType output_dtype, int64_t compute_precision) {
+    xla::PrimitiveType output_dtype, int64_t compute_precision,
+    const GpuComputeCapability& cc) {
   if (algorithm == xla::PrecisionConfig::ALG_UNSET) {
     switch (output_dtype) {
       case PrimitiveType::F8E5M2:      // fall-through
@@ -222,14 +233,12 @@ absl::StatusOr<ComputationType> GetBlasComputationType(
         return ComputationType::kF32;
       case PrimitiveType::F32:  // fall-through
       case PrimitiveType::C64:
-#if GOOGLE_CUDA
-        if (tsl::tensor_float_32_execution_enabled() &&
+        if (cc.IsCuda() && tsl::tensor_float_32_execution_enabled() &&
             compute_precision <= 1 && lhs_dtype == output_dtype) {
           // CublasLt requires compute type to be F32 for F8 matmul.
           // TF32 should only be chosen for FP32 or C64 gemm
           return ComputationType::kTF32AsF32;
         }
-#endif
         return ComputationType::kF32;
       case PrimitiveType::F64:  // fall-through
       case PrimitiveType::C128:

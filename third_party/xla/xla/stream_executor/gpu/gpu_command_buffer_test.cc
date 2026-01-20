@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -85,9 +85,9 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
   TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
@@ -111,7 +111,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   ASSERT_EQ(dst, expected);
 
   // Prepare argument for graph update: d = 0
-  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->MemZero(&d, byte_length));
 
   // Update command buffer to write into `d` buffer.
@@ -143,16 +143,16 @@ TEST(GpuCommandBufferTest, TraceSingleKernel) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
   TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
   TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Use an array of device memory base pointers as argument to test packing.
-  KernelArgsDeviceMemoryArray args({a, b, c}, 0);
+  KernelArgsDeviceAddressArray args({a, b, c}, 0);
 
   // Create a command buffer by tracing kernel launch operations.
   TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer, TraceCommandBufferFactory::Create(
@@ -186,9 +186,9 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
   TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
@@ -201,10 +201,8 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
                           executor->CreateCommandBuffer(nested));
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* nested_command,
-      primary_cmd->CreateChildCommand(CommandBuffer::ChildCommandType::kCloned,
-                                      *nested_cmd, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto* nested_command,
+                          primary_cmd->CreateChildCommand(*nested_cmd, {}));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -217,7 +215,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   ASSERT_EQ(dst, expected);
 
   // Prepare argument for graph update: d = 0
-  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->MemZero(&d, byte_length));
 
   // Update command buffer to write into `d` buffer by creating a new nested
@@ -226,8 +224,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, d));
   TF_ASSERT_OK(primary_cmd->Update());
-  TF_ASSERT_OK(primary_cmd->UpdateChildCommand(
-      CommandBuffer::ChildCommandType::kCloned, nested_command, *nested_cmd));
+  TF_ASSERT_OK(primary_cmd->UpdateChildCommand(nested_command, *nested_cmd));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -248,8 +245,8 @@ TEST(GpuCommandBufferTest, MemcpyDeviceToDevice) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42, b=uninitialized
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
 
@@ -294,7 +291,7 @@ TEST(GpuCommandBufferTest, Memset) {
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
 
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
 
   // Create a command buffer with a single memset command.
   auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
@@ -344,10 +341,10 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=2, b=3, c=0, index=0
-  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
   TF_ASSERT_OK(stream->Memset32(&a, 2, byte_length));
@@ -438,12 +435,12 @@ TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
   int64_t byte_length = sizeof(int32_t) * kLength;
 
   // Prepare arguments: index=0
-  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
   TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
 
   const int kNumCases = GetNumCases();
-  std::vector<DeviceMemory<int32_t>> values;
-  std::vector<DeviceMemory<int32_t>> results;
+  std::vector<DeviceAddress<int32_t>> values;
+  std::vector<DeviceAddress<int32_t>> results;
   std::vector<CommandBuffer::CreateCommands> branches;
   values.resize(kNumCases);
   results.resize(kNumCases);
@@ -521,10 +518,10 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=2, b=3, c=0, index=0
-  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
   TF_ASSERT_OK(stream->Memset32(&a, 2, byte_length));
@@ -608,11 +605,11 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
   // Value of `pred` is not important, as it will be updated by `cond_builder`
   // below.
-  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
-  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> num_iters = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceAddress<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> num_iters = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   static constexpr bool kFalse = false;
   TF_ASSERT_OK(stream->Memcpy(&pred, &kFalse, 1));
@@ -670,12 +667,12 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
   // Value of `pred` is not important, as it will be updated by `cond_builder`
   // below.
-  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
-  DeviceMemory<bool> pred_then = executor->AllocateArray<bool>(1, 0);
-  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> num_iters = executor->AllocateArray<int32_t>(1, 0);
-  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceAddress<bool> pred_then = executor->AllocateArray<bool>(1, 0);
+  DeviceAddress<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> num_iters = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
 
   static constexpr bool kFalse = false;
   static constexpr bool kTrue = true;
@@ -719,8 +716,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 
   CommandBuffer::CreateCommands create_body = [&](CommandBuffer* body_cmd,
                                                   auto deps) {
-    return Wrap(body_cmd->CreateChildCommand(
-        CommandBuffer::ChildCommandType::kCloned, *nested_cmd, deps));
+    return Wrap(body_cmd->CreateChildCommand(*nested_cmd, deps));
   };
 
   // Create a command buffer with a single conditional operation.
@@ -739,6 +735,30 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
   ASSERT_EQ(dst, expected);
 }
 
+struct TestResource : public CommandBuffer::Resource {
+  TestResource() = default;
+  explicit TestResource(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+TEST(GpuCommandBufferTest, GetOrCreateResource) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(CommandBuffer::Mode::kNested));
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), nullptr);
+
+  TestResource* resource = command_buffer->GetOrCreateResource<TestResource>(
+      [] { return std::make_unique<TestResource>(42); });
+  EXPECT_NE(resource, nullptr);
+  EXPECT_EQ(resource->value, 42);
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), resource);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
@@ -753,7 +773,7 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
 
   for (auto s : state) {
     auto cmd_buffer = executor->CreateCommandBuffer(nested).value();
@@ -774,7 +794,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
   TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
 
   for (auto s : state) {
     auto launch_kernels = [&](Stream* stream) {
@@ -796,7 +816,7 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
-  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
 
   auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
   for (int i = 1; i < state.range(0); ++i) {

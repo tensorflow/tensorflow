@@ -50,7 +50,7 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 })"));
 
   BlockLevelParameters block_params;
-  block_params.output_tile_sizes = {{64, 64}};
+  block_params.output_tile_sizes = {{128, 256}};
   block_params.num_warps = 4;
   block_params.num_ctas = 1;
   block_params.num_stages = 1;

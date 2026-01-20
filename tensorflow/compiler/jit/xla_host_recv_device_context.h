@@ -49,7 +49,8 @@ namespace tensorflow {
 class XlaHostRecvDeviceContext : public DeviceContext {
  public:
   XlaHostRecvDeviceContext(
-      se::Stream* stream, const se::DeviceMemoryBase& device_memory_base,
+      se::Stream* stream,
+      const stream_executor::DeviceAddressBase& device_memory_base,
       const xla::Shape& shape,
       tsl::AsyncValueRef<std::unique_ptr<se::Event>>& done_event)
       : stream_(stream),
@@ -80,7 +81,7 @@ class XlaHostRecvDeviceContext : public DeviceContext {
   // This is copied rather than a reference or pointer since its lifetime
   // is not guaranteed to outlast the original object.  Object slicing is
   // not an issue here since only DeviceMemoryBase methods/members are used.
-  const se::DeviceMemoryBase device_memory_base_;
+  const stream_executor::DeviceAddressBase device_memory_base_;
   const xla::Shape shape_;
   tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event_;
 

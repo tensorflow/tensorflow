@@ -400,8 +400,9 @@ class PushForwardDrqFQ : public OpRewritePattern<stablehlo::CompositeOp> {
         drq_fq_op.getOperand(drq_fq_op.getNumOperands() - 1);
 
     // Create a new pad op.
-    auto new_pad_op = rewriter.create<TFL::PadOp>(
-        pad_op.getLoc(), pad_op.getType(), float_input, pad_op.getPadding());
+    auto new_pad_op =
+        TFL::PadOp::create(rewriter, pad_op.getLoc(), pad_op.getType(),
+                           float_input, pad_op.getPadding());
 
     // Create a new drq fake quant op.
     // Operands are the same, except for the last one.
@@ -411,8 +412,8 @@ class PushForwardDrqFQ : public OpRewritePattern<stablehlo::CompositeOp> {
     }
     new_drq_operands.push_back(new_pad_op.getResult());
 
-    auto new_drq_fq_op = rewriter.create<stablehlo::CompositeOp>(
-        drq_fq_op.getLoc(), pad_op.getType(), new_drq_operands,
+    auto new_drq_fq_op = stablehlo::CompositeOp::create(
+        rewriter, drq_fq_op.getLoc(), pad_op.getType(), new_drq_operands,
         drq_fq_op->getAttrs());
 
     rewriter.replaceOp(pad_op, new_drq_fq_op.getResult(0));
@@ -489,7 +490,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
       Attribute quantized_attr = mlir::TFL::Quantize(attr, qtype.getValue());
       if (quantized_attr) {
         auto qconst_op =
-            rewriter.create<QConstOp>(op.getLoc(), qtype, quantized_attr);
+            QConstOp::create(rewriter, op.getLoc(), qtype, quantized_attr);
         if (auto volatile_attr = op->getAttr(mlir::TFL::kVolatileOpAttrName)) {
           qconst_op->setAttr(mlir::TFL::kVolatileOpAttrName, volatile_attr);
         }

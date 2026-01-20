@@ -358,7 +358,7 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
         std::move(tracked_user_context));
   }
 
-  auto [promise, future] = tsl::Future<std::shared_ptr<Resp>>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<Resp>>();
   auto on_ready = [promise = std::move(promise),
                    user_contexts_referenced_by_proxy_server =
                        std::move(user_contexts_referenced_by_proxy_server),
@@ -462,6 +462,7 @@ RPC(MakeErrorArrays, make_error_arrays);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);
+RPC(ReshardArrays, reshard_arrays);
 RPC(DisassembleIntoSingleDeviceArrays, disassemble_into_single_device_arrays);
 RPC(CopyToHostBuffer, copy_to_host_buffer);
 RPC(IsArrayDeleted, is_array_deleted);
@@ -471,10 +472,13 @@ RPC(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);
 RPC(Compile, compile);
 RPC(LoadedExecutableMetadata, loaded_executable_metadata);
+RPC(LoadedExecutableMpmdMetadata, loaded_executable_mpmd_metadata);
 RPC(LoadedExecutableCostAnalysis, loaded_executable_cost_analysis);
+RPC(LoadedExecutableMpmdCostAnalysis, loaded_executable_mpmd_cost_analysis);
 RPC(LoadedExecutableHumanReadableProgramText,
     loaded_executable_human_readable_program_text);
 RPC(LoadedExecutableExecute, loaded_executable_execute);
+RPC(LoadedExecutableFetchExecuteResult, loaded_executable_fetch_execute_result);
 RPC(LoadedExecutableDelete, loaded_executable_delete);
 RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);
 RPC(LoadedExecutableDestruct, loaded_executable_destruct);
@@ -486,7 +490,7 @@ tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   CheckFuture(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckFutureResponse>>

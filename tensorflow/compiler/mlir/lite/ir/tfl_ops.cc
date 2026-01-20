@@ -247,16 +247,26 @@ bool ShouldFoldOperation(Operation* inst) {
     return size;
   };
 
-  int64_t results_size = get_size(inst->getResultTypes());
-  int64_t operands_size = get_size(inst->getOperandTypes());
+  int64_t inputs_size = get_size(inst->getOperandTypes());
+  int64_t outputs_size = get_size(inst->getResultTypes());
 
-  constexpr int kSizeFactor = 2;
-  constexpr int64_t kResultsSizeThreshold = (1 << 19);                // 64 KiB
-  constexpr int64_t kOperandsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
+  constexpr int64_t kInputsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
+  constexpr int64_t kOutputsSizeThreshold =
+      2 * kInputsSizeThreshold;  // 400 MiB
 
-  return (operands_size <= kOperandsSizeThreshold) &&
-         ((results_size <= kResultsSizeThreshold) ||
-          (results_size <= kSizeFactor * operands_size));
+  auto output_size_is_smaller_than_inputs = outputs_size <= inputs_size;
+
+  auto inputs_and_outputs_smaller_than_arbitrary_thresholds =
+      (inputs_size <= kInputsSizeThreshold) &&
+      (outputs_size <= kOutputsSizeThreshold);
+
+  // Folding rules are:
+  // 1. if the size of the resulting outputs are smaller than the inputs then
+  // just do the fold. The model size will be smaller as a result.
+  // 2. if the inputs and outputs sizes are smaller than certain thresholds, do
+  // the fold regardless of their impact on model size.
+  return output_size_is_smaller_than_inputs ||
+         inputs_and_outputs_smaller_than_arbitrary_thresholds;
 }
 
 // Returns dimension index for the given axis that supports negative
@@ -487,8 +497,8 @@ struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
   LogicalResult matchAndRewrite(ConcreteOpType op,
                                 PatternRewriter& rewriter) const override {
     if (EqualsZero(op.getBias())) {
-      auto none_value = rewriter.create<TFL::NoValueOp>(
-          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+      auto none_value = TFL::NoValueOp::create(
+          rewriter, rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getBiasMutable().assign(none_value);
       return success();
@@ -1289,8 +1299,8 @@ OpFoldResult ConcatenationOp::fold(FoldAdaptor adaptor) {
 
   // Otherwise, build a new concatenation op with non-empty values.
   mlir::OpBuilder builder(getOperation());
-  auto new_concat = builder.create<TFL::ConcatenationOp>(
-      getLoc(), getType(), non_empty_values,
+  auto new_concat = TFL::ConcatenationOp::create(
+      builder, getLoc(), getType(), non_empty_values,
       builder.getIntegerAttr(builder.getIntegerType(32), getAxis()),
       builder.getStringAttr(getFusedActivationFunction()));
   return new_concat.getResult();
@@ -1572,7 +1582,7 @@ struct ConvertBroadcastToReshape : public OpRewritePattern<BroadcastToOp> {
         mlir::cast<RankedTensorType>(op.getShape().getType()).getShape(),
         rewriter.getI32Type());
     auto cast_op =
-        rewriter.create<TFL::CastOp>(op->getLoc(), result_type, op.getShape());
+        TFL::CastOp::create(rewriter, op->getLoc(), result_type, op.getShape());
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getInput(),
                                            cast_op);
@@ -2766,12 +2776,13 @@ struct ReplacePackWithReshape : public RewritePattern {
       new_shape_array.push_back(ConvertToTfliteSize(size));
     }
 
-    auto new_shape = rewriter.create<TFL::ConstOp>(
-        loc, DenseIntElementsAttr::get(
-                 tensorflow::GetTypeFromTFTensorShape(
-                     {static_cast<int64_t>(new_shape_array.size())},
-                     rewriter.getIntegerType(32)),
-                 new_shape_array));
+    auto new_shape = TFL::ConstOp::create(
+        rewriter, loc,
+        DenseIntElementsAttr::get(
+            tensorflow::GetTypeFromTFTensorShape(
+                {static_cast<int64_t>(new_shape_array.size())},
+                rewriter.getIntegerType(32)),
+            new_shape_array));
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, output_type,
                                            pack_op.getOperand(0), new_shape);
@@ -2975,7 +2986,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation* input_op,
   auto new_value_i32_attr =
       mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
 
-  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+  return TFL::ConstOp::create(*builder, loc, new_value_i32_attr);
 }
 
 // This will cast down int64 values for TFL slice op.
@@ -3481,16 +3492,16 @@ struct RemoveLSTMOpZeroBias : public OpRewritePattern<LSTMOp> {
   LogicalResult matchAndRewrite(LSTMOp op,
                                 PatternRewriter& rewriter) const override {
     if (EqualsZero(op.getInputGateBias())) {
-      auto none_value = rewriter.create<TFL::NoValueOp>(
-          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+      auto none_value = TFL::NoValueOp::create(
+          rewriter, rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getInputGateBiasMutable().assign(none_value);
       return success();
     }
 
     if (EqualsZero(op.getProjectionBias())) {
-      auto none_value = rewriter.create<TFL::NoValueOp>(
-          rewriter.getUnknownLoc(), rewriter.getNoneType(),
+      auto none_value = TFL::NoValueOp::create(
+          rewriter, rewriter.getUnknownLoc(), rewriter.getNoneType(),
           rewriter.getUnitAttr());
       op.getProjectionBiasMutable().assign(none_value);
       return success();
@@ -4374,10 +4385,23 @@ OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
     return DenseFPElementsAttr::get(result_type,
                                     MapStaticCast<double, float>(data));
   }
+
+  if (in_type.isF32() && out_type.isF16()) {
+    return data.mapValues(out_type, [&](const APFloat& old_value) {
+      APFloat value(old_value);
+      bool unused_loses_info;
+      value.convert(out_type.getFloatSemantics(), APFloat::rmNearestTiesToEven,
+                    &unused_loses_info);
+      return value.bitcastToAPInt();
+    });
+  }
   return {};
 }
 
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto in_type = getInput().getType().getElementType();
+  auto out_type = getType().getElementType();
+
   if (!ShouldFoldOperation(this->getOperation())) return {};
 
   auto operands = adaptor.getOperands();
@@ -4389,9 +4413,6 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   }
 
   auto input = operands[0];
-
-  auto in_type = getInput().getType().getElementType();
-  auto out_type = getType().getElementType();
 
   if (auto int_in_type = llvm::dyn_cast_or_null<IntegerType>(in_type)) {
     auto in_data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(input);
@@ -5527,8 +5548,8 @@ ParseResult ControlNodeOp::parse(OpAsmParser& parser, OperationState& result) {
     if (!controlled_op) return failure();
     OpBuilder builder(parser.getBuilder().getContext());
     builder.setInsertionPointToEnd(&block);
-    builder.create<YieldOp>(controlled_op->getLoc(),
-                            controlled_op->getResults());
+    YieldOp::create(builder, controlled_op->getLoc(),
+                    controlled_op->getResults());
     result.location = controlled_op->getLoc();
   } else if (parser.parseRegion(body)) {
     return failure();
@@ -5758,11 +5779,12 @@ Operation* TFLDialect::materializeConstant(OpBuilder& builder, Attribute value,
   if (mlir::isa<ConstBytesAttr>(value) ||
       (mlir::isa<ElementsAttr>(value) &&
        mlir::cast<ElementsAttr>(value).getType() != type))
-    return builder.create<ConstOp>(loc, type, mlir::cast<ElementsAttr>(value));
+    return ConstOp::create(builder, loc, type, mlir::cast<ElementsAttr>(value));
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type, cast<TypedAttr>(value));
+    return arith::ConstantOp::create(builder, loc, type,
+                                     cast<TypedAttr>(value));
   if (NoValueOp::isBuildableWith(value, type))
-    return builder.create<NoValueOp>(loc, type, mlir::cast<UnitAttr>(value));
+    return NoValueOp::create(builder, loc, type, mlir::cast<UnitAttr>(value));
   return nullptr;
 }
 

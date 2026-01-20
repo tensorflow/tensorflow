@@ -27,14 +27,14 @@ namespace odml {
 
 mhlo::ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
                                       OpBuilder* builder) {
-  return builder->create<mhlo::ConstantOp>(loc,
-                                           hlo::getScalarOfType(ty, raw_value));
+  return mhlo::ConstantOp::create(*builder, loc,
+                                  hlo::getScalarOfType(ty, raw_value));
 }
 
 mhlo::ConstantOp GetScalarNegZeroOfType(Type ty, Location loc,
                                         OpBuilder* builder) {
-  return builder->create<mhlo::ConstantOp>(loc,
-                                           hlo::getScalarNegZeroOfType(ty));
+  return mhlo::ConstantOp::create(*builder, loc,
+                                  hlo::getScalarNegZeroOfType(ty));
 }
 
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {

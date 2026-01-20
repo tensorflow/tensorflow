@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/tsl/platform/status.h"
 
 namespace xla {
 // Type holding a unique identifier for each Buffer object.
@@ -116,7 +115,7 @@ using UsesList = absl::InlinedVector<HloRematItemUse, 3>;
 class HloRematInstructionList {
  public:
   explicit HloRematInstructionList(const HloInstructionSequence& order) {
-    TF_CHECK_OK(UpdateFromSequence(order, /*preserve_denylist=*/false));
+    CHECK_OK(UpdateFromSequence(order, /*preserve_denylist=*/false));
   }
 
   absl::Status UpdateFromSequence(const HloInstructionSequence& order,

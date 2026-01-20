@@ -48,7 +48,7 @@ TEST(GrpcEagerClientCache, TestGetClientThreadSafety) {
 
   for (int i = 0; i < num_calls; i++) {
     Env::Default()->SchedClosure([&client_cache, i, &counter]() {
-      string target = absl::StrCat("/job:worker/replica:0/task:", i);
+      std::string target = absl::StrCat("/job:worker/replica:0/task:", i);
       core::RefCountPtr<EagerClient> eager_client;
       absl::Status s = client_cache->GetClient(target, &eager_client);
       // With 6 tasks added to the job, querying client for 0--5 should be OK,

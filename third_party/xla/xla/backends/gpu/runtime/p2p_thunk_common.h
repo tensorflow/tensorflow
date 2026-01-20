@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -77,7 +78,9 @@ struct P2PConfig {
   static SourceTargetMapEntry GetSourceTarget(
       const IdToSourceTargetMap& id_to_source_target, int64_t id) {
     auto it = id_to_source_target.find(id);
-    if (it != id_to_source_target.end()) return it->second;
+    if (it != id_to_source_target.end()) {
+      return it->second;
+    }
     return SourceTargetMapEntry{};
   }
 
@@ -104,7 +107,7 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
 
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
-    Thunk::CollectiveExecuteParams* collective_params, const P2PConfig& config);
+    CollectiveParams* collective_params, const P2PConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

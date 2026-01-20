@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -571,6 +572,12 @@ class PjRtClient {
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
 
+  // Returns PjRtRuntimeAbiVersion containing the ABI version of the runtime.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  RuntimeAbiVersion() const {
+    return absl::UnimplementedError("RuntimeAbiVersion is not supported.");
+  }
+
   // Returns the key value store used by the client.
   virtual std::optional<std::shared_ptr<KeyValueStoreInterface>>
   key_value_store() const {
@@ -1032,7 +1039,7 @@ class PjRtClient {
       absl::Span<PjRtBuffer* const> buffers,
       absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) {
-    return absl::InternalError(
+    return absl::UnimplementedError(
         "Cross-host data transfers are not supported by this client.");
   }
 

@@ -1,0 +1,37 @@
+flowchart TD
+    InitialHlo("HLO before optimizations")
+    OptimizedSheduledHlo("Optimized and scheduled HLO")
+    BufferAssignment("BufferAssignment")
+    ThunkSequence("ThunkSequence")
+    LlvmIr("LLVM IR")
+    MachineCode("Machine Code<br/><i>PTX, obj, ..</i>")
+    Executable("Executable")
+
+    %% Stages (Processes - Subroutine Shape)
+    HloPasses[[HLO Optimization]]
+    Scheduling[[Scheduling]]
+    BufferAssigner[[Buffer Assignment]]
+    ThunkEmitter[[Thunk Emission]]
+    LlvmCompiler[[LLVM Compilation]]
+    ExecutableBuilder[[Build Executable]]
+
+    %% Edges (Flow of Artifacts through Stages)
+    InitialHlo --> HloPasses
+    HloPasses --> Scheduling
+    Scheduling --> OptimizedSheduledHlo
+    OptimizedSheduledHlo --> BufferAssigner
+    BufferAssigner --> BufferAssignment
+
+    OptimizedSheduledHlo --> ThunkEmitter
+    BufferAssignment --> ThunkEmitter
+    ThunkEmitter --> ThunkSequence
+    ThunkEmitter -->
+
+    LlvmIr --> LlvmCompiler
+    LlvmCompiler --> MachineCode
+
+    MachineCode --> ExecutableBuilder
+    ThunkSequence --> ExecutableBuilder
+    BufferAssignment --> ExecutableBuilder
+
+    ExecutableBuilder --> Executable

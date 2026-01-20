@@ -127,7 +127,7 @@ absl::Status RemoteMgr::GetMirroredResourceShape(
 
 absl::Status RemoteMgr::GetRemoteTensorHandle(
     const tensorflow::TensorHandle* handle, const bool wait_until_ready,
-    int64_t* op_id, int32* output_num) {
+    int64_t* op_id, int32_t* output_num) {
   TF_RETURN_IF_ERROR(handle->RemoteAddress(handle->device(), wait_until_ready,
                                            op_id, output_num));
   tensorflow::TensorHandle* h;
@@ -213,7 +213,7 @@ absl::Status RemoteMgr::DeserializeRemoteTensorHandle(
   } else {
     // Create a remote TensorHandle for remote tensors which have not been
     // copied to the local worker yet (e.g. remote function inputs).
-    const string& device_name =
+    const std::string& device_name =
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
@@ -241,7 +241,7 @@ absl::Status RemoteMgr::DeserializeRemoteTensorHandle(
   return absl::OkStatus();
 }
 
-EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64_t stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {
@@ -254,7 +254,7 @@ EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
   return it->second;
 }
 
-void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
+void RemoteMgr::DeleteExecutorForStream(uint64_t stream_id) {
   mutex_lock l(executor_map_mu_);
   auto it = executor_map_.find(stream_id);
   if (it == executor_map_.end()) {

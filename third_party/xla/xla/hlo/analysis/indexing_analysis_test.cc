@@ -15,20 +15,33 @@ limitations under the License.
 
 #include "xla/hlo/analysis/indexing_analysis.h"
 
+#include <utility>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Visitors.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/stablehlo_indexing_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using ::llvm::dyn_cast;
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
@@ -42,9 +55,84 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
                             result_listener);
 }
 
-using IndexingAnalysisTest = IndexingTestBase;
+class IndexingAnalysisTest : public IndexingTestBase,
+                             public ::testing::WithParamInterface<bool> {
+ public:
+  using IndexingTestBase::GetInputToOutputIndexing;
+  using IndexingTestBase::GetOutputToInputIndexing;
 
-TEST_F(IndexingAnalysisTest, GroupIndexingMapsByProducers) {
+  HloInstructionIndexing GetOutputToInputIndexing(
+      const HloInstruction* instr, int output_id,
+      bool use_physical_layout) override {
+    if (GetParam()) {
+      // StableHLO mode
+      auto module_ref =
+          xla::ConvertHloToStablehlo(mlir_context_, instr->GetModule());
+      if (!module_ref.ok()) {
+        ADD_FAILURE() << "HLO to StableHLO conversion failed: "
+                      << module_ref.status();
+        return HloInstructionIndexing::FromIndexingMaps({});
+      }
+      stablehlo_modules_.push_back(std::move(module_ref.value()));
+      auto module_op = *stablehlo_modules_.back();
+      mlir::Operation* op = nullptr;
+      module_op->walk([&](mlir::Operation* nested_op) {
+        if (auto name_loc = dyn_cast<mlir::NameLoc>(nested_op->getLoc())) {
+          if (name_loc.getName() == instr->name()) {
+            op = nested_op;
+            return mlir::WalkResult::interrupt();
+          }
+        }
+        return mlir::WalkResult::advance();
+      });
+      if (!op) {
+        ADD_FAILURE() << "Could not find corresponding StableHLO op for "
+                      << instr->name();
+        return HloInstructionIndexing::FromIndexingMaps({});
+      }
+      return ComputeOutputToInputIndexing(op, output_id);
+    }
+    return IndexingTestBase::GetOutputToInputIndexing(instr, output_id,
+                                                      use_physical_layout);
+  }
+
+  void SetUp() override {
+    IndexingTestBase::SetUp();
+    mlir_context_.loadDialect<mlir::stablehlo::StablehloDialect,
+                              mlir::func::FuncDialect>();
+
+    static const auto* unsupported_tests =
+        new absl::flat_hash_set<absl::string_view>{
+            // StableHLO indexing analysis does not support physical layout /
+            // permutations yet.
+            "PhysicalLayoutTestInputPermutation/1",
+            "PhysicalLayoutTestOutputPermutation/1",
+            "PhysicalLayoutTestInputAndOutputPermutation/1",
+
+            // Custom call / MHLO unknown handling.
+            "ScaledDotOp/1",
+        };
+
+    if (GetParam()) {
+      const testing::TestInfo* test_info =
+          testing::UnitTest::GetInstance()->current_test_info();
+      absl::string_view test_name = test_info->name();
+      // Here we rely on exact match of "TestName/1" which corresponds to
+      // GetParam() == true.
+      if (unsupported_tests->contains(test_name)) {
+        GTEST_SKIP() << "Skipping unsupported StableHLO test: " << test_name;
+      }
+    }
+  }
+
+ private:
+  std::vector<mlir::OwningOpRef<mlir::ModuleOp>> stablehlo_modules_;
+};
+
+INSTANTIATE_TEST_SUITE_P(StablehloIndexingAnalysis, IndexingAnalysisTest,
+                         ::testing::Values(false, true));
+
+TEST_P(IndexingAnalysisTest, GroupIndexingMapsByProducers) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -75,7 +163,7 @@ TEST_F(IndexingAnalysisTest, GroupIndexingMapsByProducers) {
                   )")))));
 }
 
-TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
+TEST_P(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -119,7 +207,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
                       )")))));
 }
 
-TEST_F(IndexingAnalysisTest,
+TEST_P(IndexingAnalysisTest,
        ComputeGroupedOutputToInputIndexing_VariadicReduce) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -180,7 +268,7 @@ TEST_F(IndexingAnalysisTest,
                   )")))));
 }
 
-TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
+TEST_P(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -211,7 +299,7 @@ TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing_SingleOp) {
                                                    )")))));
 }
 
-TEST_F(IndexingAnalysisTest,
+TEST_P(IndexingAnalysisTest,
        ComputeGroupedOutputToInputIndexing_StartNotAtRoot) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
@@ -263,7 +351,7 @@ TEST_F(IndexingAnalysisTest,
           )")))));
 }
 
-TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
+TEST_P(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -294,7 +382,7 @@ TEST_F(IndexingAnalysisTest, PhysicalLayoutTestOutputPermutation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, CopyNothing) {
+TEST_P(IndexingAnalysisTest, CopyNothing) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -313,7 +401,7 @@ TEST_F(IndexingAnalysisTest, CopyNothing) {
               MatchIndexingString("operand id = 0 KNOWN EMPTY"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeNothing) {
+TEST_P(IndexingAnalysisTest, ReshapeNothing) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -340,7 +428,7 @@ TEST_F(IndexingAnalysisTest, ReshapeNothing) {
             1);
 }
 
-TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
+TEST_P(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -371,7 +459,7 @@ TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputPermutation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputAndOutputPermutation) {
+TEST_P(IndexingAnalysisTest, PhysicalLayoutTestInputAndOutputPermutation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -402,7 +490,7 @@ TEST_F(IndexingAnalysisTest, PhysicalLayoutTestInputAndOutputPermutation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ElementwiseOp) {
+TEST_P(IndexingAnalysisTest, ElementwiseOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -444,7 +532,7 @@ TEST_F(IndexingAnalysisTest, ElementwiseOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, Map) {
+TEST_P(IndexingAnalysisTest, Map) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     mapper {
@@ -491,7 +579,7 @@ TEST_F(IndexingAnalysisTest, Map) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, BitcastIsReshape) {
+TEST_P(IndexingAnalysisTest, BitcastIsReshape) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -509,7 +597,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsReshape) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, BitcastIsTranspose) {
+TEST_P(IndexingAnalysisTest, BitcastIsTranspose) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -528,7 +616,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsTranspose) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
+TEST_P(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -555,7 +643,7 @@ TEST_F(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, BroadcastOp) {
+TEST_P(IndexingAnalysisTest, BroadcastOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -583,7 +671,7 @@ TEST_F(IndexingAnalysisTest, BroadcastOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConstantOp) {
+TEST_P(IndexingAnalysisTest, ConstantOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -594,7 +682,7 @@ TEST_F(IndexingAnalysisTest, ConstantOp) {
   EXPECT_THAT(input_indexing.ToString(), IsEmpty());
 }
 
-TEST_F(IndexingAnalysisTest, ConcatenateOp) {
+TEST_P(IndexingAnalysisTest, ConcatenateOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -658,7 +746,7 @@ TEST_F(IndexingAnalysisTest, ConcatenateOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
+TEST_P(IndexingAnalysisTest, DynamicSliceOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -682,11 +770,11 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
         rt1 in [0, 0],
         rt2 in [0, 226]
       runtime variables:
-        rt0: %of1 = s32[] parameter(1); (d0, d1, d2) -> (),
+        rt0: parameter(1); (d0, d1, d2) -> (),
           domain: d0 in [0, 0], d1 in [0, 1], d2 in [0, 31]
-        rt1: %of2 = s32[] parameter(2); (d0, d1, d2) -> (),
+        rt1: parameter(2); (d0, d1, d2) -> (),
           domain: d0 in [0, 0], d1 in [0, 1], d2 in [0, 31]
-        rt2: %of3 = s32[] parameter(3); (d0, d1, d2) -> (),
+        rt2: parameter(3); (d0, d1, d2) -> (),
           domain: d0 in [0, 0], d1 in [0, 1], d2 in [0, 31]
     operand id = 1
       (d0, d1, d2) -> (),
@@ -709,7 +797,7 @@ TEST_F(IndexingAnalysisTest, DynamicSliceOp) {
     )"));
 }
 
-TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
+TEST_P(IndexingAnalysisTest, DynamicUpdateSliceOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -735,9 +823,9 @@ TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
         rt0 in [0, 15],
         rt1 in [0, 20]
       runtime variables:
-        rt0: %of1 = s32[] parameter(2); (d0, d1) -> (),
+        rt0: parameter(2); (d0, d1) -> (),
           domain: d0 in [0, 19], d1 in [0, 29]
-        rt1: %of2 = s32[] parameter(3); (d0, d1) -> (),
+        rt1: parameter(3); (d0, d1) -> (),
           domain: d0 in [0, 19], d1 in [0, 29]
     operand id = 2
       (d0, d1) -> (),
@@ -752,7 +840,7 @@ TEST_F(IndexingAnalysisTest, DynamicUpdateSliceOp) {
       )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
+TEST_P(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -778,7 +866,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
+TEST_P(IndexingAnalysisTest, FusionOpWithDot) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     f {
       p0 = s8[3,12288,6,128]{3,2,1,0} parameter(0)
@@ -900,7 +988,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDot) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithSoftmax) {
+TEST_P(IndexingAnalysisTest, FusionOpWithSoftmax) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     add_computation {
       p0 = f32[] parameter(0)
@@ -964,7 +1052,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSoftmax) {
                           )"))));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpTensorPlusTransposedTensor) {
+TEST_P(IndexingAnalysisTest, FusionOpTensorPlusTransposedTensor) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -992,7 +1080,7 @@ TEST_F(IndexingAnalysisTest, FusionOpTensorPlusTransposedTensor) {
                           )"))));
 }
 
-TEST_F(IndexingAnalysisTest, FusionExponentialDuplication) {
+TEST_P(IndexingAnalysisTest, FusionExponentialDuplication) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule test_module
 
@@ -1047,7 +1135,7 @@ TEST_F(IndexingAnalysisTest, FusionExponentialDuplication) {
                           )"))));
 }
 
-TEST_F(IndexingAnalysisTest, GatherOp) {
+TEST_P(IndexingAnalysisTest, GatherOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY main {
@@ -1069,9 +1157,9 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
         rt0 in [0, 26],
         rt1 in [0, 68]
       runtime variables:
-        rt0: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 0),
+        rt0: parameter(1); (d0, d1, d2, d3) -> (d0, 0),
           domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
-        rt1: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 1),
+        rt1: parameter(1); (d0, d1, d2, d3) -> (d0, 1),
           domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
     operand id = 1
       (d0, d1, d2, d3)[s0] -> (d0, s0),
@@ -1084,7 +1172,7 @@ TEST_F(IndexingAnalysisTest, GatherOp) {
     )"));
 }
 
-TEST_F(IndexingAnalysisTest, GatherOpWithShuffledStartIndexMap) {
+TEST_P(IndexingAnalysisTest, GatherOpWithShuffledStartIndexMap) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY main {
@@ -1106,9 +1194,9 @@ TEST_F(IndexingAnalysisTest, GatherOpWithShuffledStartIndexMap) {
         rt0 in [0, 26],
         rt1 in [0, 68]
       runtime variables:
-        rt0: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 1),
+        rt0: parameter(1); (d0, d1, d2, d3) -> (d0, 1),
           domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
-        rt1: %indices = s32[1806,2]{1,0} parameter(1); (d0, d1, d2, d3) -> (d0, 0),
+        rt1: parameter(1); (d0, d1, d2, d3) -> (d0, 0),
           domain: d0 in [0, 1805], d1 in [0, 6], d2 in [0, 7], d3 in [0, 3]
     operand id = 1
       (d0, d1, d2, d3)[s0] -> (d0, s0),
@@ -1121,7 +1209,7 @@ TEST_F(IndexingAnalysisTest, GatherOpWithShuffledStartIndexMap) {
     )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1158,7 +1246,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfReduce) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfBroadcast) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReduceOfBroadcast) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1195,7 +1283,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReduceOfBroadcast) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithTransposeOfTranspose) {
+TEST_P(IndexingAnalysisTest, FusionOpWithTransposeOfTranspose) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1230,7 +1318,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithTransposeOfTranspose) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReducedSlice) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReducedSlice) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1266,7 +1354,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReducedSlice) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1287,7 +1375,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_CollapseOfExpand) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1309,7 +1397,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ExpandOfCollapse) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
+TEST_P(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1332,7 +1420,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithReshape_ChainedGenericReshapes) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithSliceOfSlice) {
+TEST_P(IndexingAnalysisTest, FusionOpWithSliceOfSlice) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1357,7 +1445,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithSliceOfSlice) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
+TEST_P(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1394,11 +1482,11 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
         rt2 in [0, 25],
         rt3 in [0, 16]
       runtime variables:
-        rt0: %of21 = s32[] parameter(3); (d0, d1) -> (),
+        rt0: parameter(3); (d0, d1) -> (),
           domain: d0 in [0, 24], d1 in [0, 15]
-        rt1: %of22 = s32[] parameter(4); (d0, d1) -> (),
+        rt1: parameter(4); (d0, d1) -> (),
           domain: d0 in [0, 24], d1 in [0, 15]
-        rt2: %of11 = s32[] parameter(1); (d0, d1){rt0, rt1} -> (),
+        rt2: parameter(1); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24],
             d1 in [0, 15],
@@ -1406,7 +1494,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
             rt1 in [0, 16],
             d0 + rt0 in [0, 49],
             d1 + rt1 in [0, 31]
-        rt3: %of12 = s32[] parameter(2); (d0, d1){rt0, rt1} -> (),
+        rt3: parameter(2); (d0, d1){rt0, rt1} -> (),
           domain:
             d0 in [0, 24], d1 in [0, 15],
             rt0 in [0, 25], rt1 in [0, 16],
@@ -1435,7 +1523,7 @@ TEST_F(IndexingAnalysisTest, FusionOpWithDynSliceOfDynSlice) {
     )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpSliceOfAllConcatenateOpInputs) {
+TEST_P(IndexingAnalysisTest, FusionOpSliceOfAllConcatenateOpInputs) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1476,7 +1564,7 @@ TEST_F(IndexingAnalysisTest, FusionOpSliceOfAllConcatenateOpInputs) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpSliceOfOneOfConcatenateOpInputs) {
+TEST_P(IndexingAnalysisTest, FusionOpSliceOfOneOfConcatenateOpInputs) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1509,7 +1597,7 @@ TEST_F(IndexingAnalysisTest, FusionOpSliceOfOneOfConcatenateOpInputs) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
+TEST_P(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     f {
@@ -1540,7 +1628,7 @@ TEST_F(IndexingAnalysisTest, FusionOpReshapeOfConcat) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, IotaOp) {
+TEST_P(IndexingAnalysisTest, IotaOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1551,7 +1639,7 @@ TEST_F(IndexingAnalysisTest, IotaOp) {
   EXPECT_THAT(input_indexing.indexing_maps, IsEmpty());
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpCollapseShape) {
+TEST_P(IndexingAnalysisTest, ReshapeOpCollapseShape) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1567,7 +1655,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpCollapseShape) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpExpandShape) {
+TEST_P(IndexingAnalysisTest, ReshapeOpExpandShape) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1584,7 +1672,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandShape) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
+TEST_P(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1613,7 +1701,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandAndCollapseShape) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpExpandSubshapeOnly) {
+TEST_P(IndexingAnalysisTest, ReshapeOpExpandSubshapeOnly) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1631,7 +1719,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpExpandSubshapeOnly) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
+TEST_P(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1649,7 +1737,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape2DTo3D) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
+TEST_P(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1668,7 +1756,7 @@ TEST_F(IndexingAnalysisTest, ReshapeOpGenericReshape3DTo2D) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, PadOp) {
+TEST_P(IndexingAnalysisTest, PadOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1692,7 +1780,7 @@ TEST_F(IndexingAnalysisTest, PadOp) {
                                 )"));
 }
 
-TEST_F(IndexingAnalysisTest, PadOpNoInterior) {
+TEST_P(IndexingAnalysisTest, PadOpNoInterior) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -1715,7 +1803,7 @@ TEST_F(IndexingAnalysisTest, PadOpNoInterior) {
                                 )"));
 }
 
-TEST_F(IndexingAnalysisTest, PadOpNegativePadding) {
+TEST_P(IndexingAnalysisTest, PadOpNegativePadding) {
   // The interior padding is applied first (even with negative padding), so we
   // get a size of 5 (7 + 6 - 8).
   // in:     0 1 2 3 4 5 6
@@ -1742,7 +1830,7 @@ TEST_F(IndexingAnalysisTest, PadOpNegativePadding) {
                                 )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceOp) {
+TEST_P(IndexingAnalysisTest, ReduceOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1793,7 +1881,7 @@ TEST_F(IndexingAnalysisTest, ReduceOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
+TEST_P(IndexingAnalysisTest, VariadicReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     min {
@@ -1895,7 +1983,7 @@ TEST_F(IndexingAnalysisTest, VariadicReduceOp) {
                   ElementsAre(MatchOperandIndexing(kInitToOutputIndexing))));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_NoPadding) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_NoPadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1926,7 +2014,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_NoPadding) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_4DWithTrivalDims_NoPadding) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_4DWithTrivalDims_NoPadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1961,7 +2049,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_4DWithTrivalDims_NoPadding) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -1995,7 +2083,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_PaddingAndWindowStride) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_BaseDilation) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_BaseDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -2027,7 +2115,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_BaseDilation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -2058,7 +2146,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReduceWindowOp_Variadic) {
+TEST_P(IndexingAnalysisTest, ReduceWindowOp_Variadic) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     combiner {
@@ -2136,7 +2224,7 @@ TEST_F(IndexingAnalysisTest, ReduceWindowOp_Variadic) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_NoPadding) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_NoPadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2171,7 +2259,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_NoPadding) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_4DWithTrivialDims_NoPadding) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_4DWithTrivialDims_NoPadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2208,7 +2296,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_4DWithTrivialDims_NoPadding) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2245,7 +2333,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_PaddingAndWindowStride) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2282,7 +2370,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_LhsDilation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2317,7 +2405,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2352,7 +2440,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_FeatureGroups) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ConvolutionOp_BatchGroups) {
+TEST_P(IndexingAnalysisTest, ConvolutionOp_BatchGroups) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2388,7 +2476,7 @@ TEST_F(IndexingAnalysisTest, ConvolutionOp_BatchGroups) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReverseOp) {
+TEST_P(IndexingAnalysisTest, ReverseOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2419,7 +2507,7 @@ TEST_F(IndexingAnalysisTest, ReverseOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, ReverseReshape) {
+TEST_P(IndexingAnalysisTest, ReverseReshape) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     fused_computation {
@@ -2444,7 +2532,7 @@ TEST_F(IndexingAnalysisTest, ReverseReshape) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, SliceOp) {
+TEST_P(IndexingAnalysisTest, SliceOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2479,7 +2567,7 @@ TEST_F(IndexingAnalysisTest, SliceOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, TransposeOp) {
+TEST_P(IndexingAnalysisTest, TransposeOp) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2508,7 +2596,7 @@ TEST_F(IndexingAnalysisTest, TransposeOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, TransposeOp4D) {
+TEST_P(IndexingAnalysisTest, TransposeOp4D) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2527,7 +2615,7 @@ TEST_F(IndexingAnalysisTest, TransposeOp4D) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, DotOp) {
+TEST_P(IndexingAnalysisTest, DotOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2564,7 +2652,7 @@ TEST_F(IndexingAnalysisTest, DotOp) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, ScaledDotOp) {
+TEST_P(IndexingAnalysisTest, ScaledDotOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2605,7 +2693,7 @@ TEST_F(IndexingAnalysisTest, ScaledDotOp) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, UnsupportedOps) {
+TEST_P(IndexingAnalysisTest, UnsupportedOps) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2633,7 +2721,7 @@ TEST_F(IndexingAnalysisTest, UnsupportedOps) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
+TEST_P(IndexingAnalysisTest, FusionWithUnsupportedOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     fused_computation {
@@ -2670,7 +2758,7 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
                           )"));
 }
 
-TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
+TEST_P(IndexingAnalysisTest, EpilogueIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
     fused_computation {
@@ -2703,7 +2791,7 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
+TEST_P(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
     fused_computation {
@@ -2732,7 +2820,7 @@ TEST_F(IndexingAnalysisTest, EpilogueIndexing_NoEpilogue) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
+TEST_P(IndexingAnalysisTest, BroadcastingElementwise) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -2758,7 +2846,7 @@ TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
               )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_ScalarConstant) {
+TEST_P(IndexingAnalysisTest, FusionWithRTVarsSimplification_ScalarConstant) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
       HloModule m
       fused_computation {
@@ -2781,7 +2869,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_ScalarConstant) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest,
+TEST_P(IndexingAnalysisTest,
        FusionWithRTVarsSimplification_ScalarConstantOutsideOfRangeIsKept) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
       HloModule m
@@ -2804,12 +2892,12 @@ TEST_F(IndexingAnalysisTest,
         d0 in [0, 9],
         rt0 in [0, 90]
       runtime variables:
-        rt0: %offset = s64[] constant(99); (d0) -> (),
+        rt0: constant(99); (d0) -> (),
           domain: d0 in [0, 9]
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Iota) {
+TEST_P(IndexingAnalysisTest, FusionWithRTVarsSimplification_Iota) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
       HloModule m
       fused_computation {
@@ -2837,7 +2925,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_Iota) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_IotaAsConstant) {
+TEST_P(IndexingAnalysisTest, FusionWithRTVarsSimplification_IotaAsConstant) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
       HloModule m
       fused_computation {
@@ -2865,7 +2953,7 @@ TEST_F(IndexingAnalysisTest, FusionWithRTVarsSimplification_IotaAsConstant) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, FusionOpWithPadAndDynamicSlice) {
+TEST_P(IndexingAnalysisTest, FusionOpWithPadAndDynamicSlice) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
       HloModule m
       fused_computation {
@@ -2884,7 +2972,10 @@ TEST_F(IndexingAnalysisTest, FusionOpWithPadAndDynamicSlice) {
           calls=fused_computation
       }
     )hlo"));
-  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+  // HLO uses instruction name, StableHLO uses op name
+  EXPECT_THAT(input_indexing.ToString(),
+              MatchIndexingString(
+                  absl::StrFormat(R"(
     operand id = 0
       (d0, d1){rt0} -> (0, d1 + rt0 - 4096),
       domain:
@@ -2893,17 +2984,18 @@ TEST_F(IndexingAnalysisTest, FusionOpWithPadAndDynamicSlice) {
         rt0 in [0, 4096],
         d1 + rt0 in [4096, 8191]
       runtime variables:
-        rt0: %bitcast.4 = s32[] bitcast(%slice); (d0, d1) -> (),
+        rt0: %s; (d0, d1) -> (),
           domain: d0 in [0, 0], d1 in [0, 4095]
     operand id = 1
       (d0, d1) -> (0),
       domain:
         d0 in [0, 0],
         d1 in [0, 4095]
-  )"));
+    )",
+                                  GetParam() ? "mhlo.bitcast" : "bitcast.4")));
 }
 
-TEST_F(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
+TEST_P(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule t
 
@@ -2946,7 +3038,7 @@ TEST_F(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
     operand id = 1 (d0, d1)[s0]{rt0} -> (rt0, d1, s0),
       domain: d0 in [0, 3], d1 in [0, 4], s0 in [0, 1], rt0 in [0, 3]
     runtime variables:
-      rt0: %p1 = s32[] parameter(1);
+      rt0: parameter(1);
         (d0, d1)[s0] -> (), domain: d0 in [0, 3], d1 in [0, 4], s0 in [0, 1]
     operand id = 2 (d0, d1) -> (),
       domain: d0 in [0, 3], d1 in [0, 4]
@@ -2957,7 +3049,7 @@ TEST_F(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, AllGatherOp) {
+TEST_P(IndexingAnalysisTest, AllGatherOp) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m, replica_count=4
     ENTRY e {
@@ -2980,7 +3072,7 @@ TEST_F(IndexingAnalysisTest, AllGatherOp) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, AllGatherFusionWithTranspose) {
+TEST_P(IndexingAnalysisTest, AllGatherFusionWithTranspose) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
 
@@ -3019,7 +3111,7 @@ TEST_F(IndexingAnalysisTest, AllGatherFusionWithTranspose) {
   )"));
 }
 
-TEST_F(IndexingAnalysisTest, AllGatherFusionWithReshape) {
+TEST_P(IndexingAnalysisTest, AllGatherFusionWithReshape) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
 
@@ -3063,7 +3155,7 @@ TEST_F(IndexingAnalysisTest, AllGatherFusionWithReshape) {
   )")));
 }
 
-TEST_F(IndexingAnalysisTest, ChainedAllGatherFusion) {
+TEST_P(IndexingAnalysisTest, ChainedAllGatherFusion) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
 
@@ -3086,7 +3178,7 @@ TEST_F(IndexingAnalysisTest, ChainedAllGatherFusion) {
               ElementsAre(UndefinedOperandIndexing()));
 }
 
-TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
+TEST_P(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
 
@@ -3121,7 +3213,7 @@ TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
   )")));
 }
 
-TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherContractingDim) {
+TEST_P(IndexingAnalysisTest, AllGatherDotFusion_GatherContractingDim) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
 

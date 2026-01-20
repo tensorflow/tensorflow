@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/host_offloading/gpu_host_offloading_allocator.h"
-#include "xla/backends/gpu/runtime/shaped_slice.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/host_offloading/host_offloading_allocator.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
@@ -49,6 +48,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/shaped_slice.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -98,7 +98,8 @@ tsl::thread::ThreadPool* GetHostExecuteThreadPool(
 
 bool IsBufferOnDevice(se::Stream* stream, const void* ptr) {
   auto memory_type = stream->parent()->GetPointerMemorySpace(ptr);
-  return memory_type.ok() && *memory_type == se::MemoryType::kDevice;
+  return memory_type.ok() &&
+         *memory_type == stream_executor::MemorySpace::kDevice;
 }
 
 // We ignore memory spaces in shape comparison since the memory can be on
@@ -383,9 +384,9 @@ HostExecuteStartThunk::Create(
     const HostOffloadingExecutableProto& host_offloading_executable_proto,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> args,
     absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4> results) {
-  auto thunk = absl::WrapUnique(new HostExecuteStartThunk(
+  auto thunk = std::make_unique<HostExecuteStartThunk>(
       std::move(thunk_info), host_offloading_executable_proto, std::move(args),
-      std::move(results)));
+      std::move(results));
   if (host_offloading_executable_proto.has_aot_compilation_result()) {
     TF_RETURN_IF_ERROR(thunk->LoadExecutable());
   }

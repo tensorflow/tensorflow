@@ -17,11 +17,14 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,10 +33,11 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -95,8 +99,8 @@ class MultiOutputFusionTest
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 0));
       auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape2, tuple, 1));
-      TF_CHECK_OK(dot->ReplaceOperandWith(0, gte0));
-      TF_CHECK_OK(dot->ReplaceOperandWith(1, gte1));
+      CHECK_OK(dot->ReplaceOperandWith(0, gte0));
+      CHECK_OK(dot->ReplaceOperandWith(1, gte1));
 
       CHECK_NE(
           computation->CreateFusionInstruction(
@@ -159,8 +163,8 @@ class MultiOutputFusionTest
           HloInstruction::CreateGetTupleElement(elem_shape_U8, tuple, 0));
       auto gte1 = computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(elem_shape_F32, tuple, 1));
-      TF_CHECK_OK(sub->ReplaceOperandWith(0, gte0));
-      TF_CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
+      CHECK_OK(sub->ReplaceOperandWith(0, gte0));
+      CHECK_OK(reshape->ReplaceOperandWith(0, gte1));
 
       CHECK_NE(computation->CreateFusionInstruction(
                    {tuple, sub_U8, add, param0_U8, param1_F32},
@@ -379,22 +383,38 @@ TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
 TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
-      p0 = f32[32,32,2]{2,1,0} parameter(0)
+      p0 = f32[$0,$0,2]{2,1,0} parameter(0)
       c0 = f32[] constant(0)
-      r1 = f32[32,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
-      mul = f32[32,32,2]{2,1,0} multiply(p0, p0)
+      r1 = f32[$0,2]{1,0} reduce(p0, c0), dimensions={0}, to_apply=Add
+      mul = f32[$0,$0,2]{2,1,0} multiply(p0, p0)
       c1 = f32[] constant(5)
-      r2 = f32[32,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
-      ROOT tuple = (f32[32,2]{1,0}, f32[32,32,2]{2,1,0}, f32[32,2]{1,0})
+      r2 = f32[$0,2]{1,0} reduce(mul, c1), dimensions={0}, to_apply=Max
+      ROOT tuple = (f32[$0,2]{1,0}, f32[$0,$0,2]{2,1,0}, f32[$0,2]{1,0})
                      tuple(r1, mul, r2)
     }
 
     ENTRY reduce {
-      p = f32[32,32,2]{2,1,0} parameter(0)
-      ROOT fusion = (f32[32,2]{1,0}, f32[32,32,2]{2,1,0}, f32[32,2]{1,0})
+      p = f32[$0,$0,2]{2,1,0} parameter(0)
+      ROOT fusion = (f32[$0,2]{1,0}, f32[$0,$0,2]{2,1,0}, f32[$0,2]{1,0})
         fusion(p), kind=kInput, calls=fused_reduce
     })");
-  auto module = ParseAndReturnVerifiedModule(testcase).value();
+
+  // This test requires the input tensor's dimensions to match the warp size of
+  // a target architecture (which could be different on ROCM). This is because
+  // the decision on whether to Elemental IR Emitter for reductions
+  // (IsUnnestedReductionFasterThanElemental) is based on the warp size.
+  ASSERT_OK_AND_ASSIGN(auto client, GetGlobalPjRtClientTestFactory().Get()());
+  ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
+  auto it = topology->Attributes().find("target_config");
+  CHECK(it != topology->Attributes().end());
+  CHECK(std::holds_alternative<std::string>(it->second));
+  stream_executor::GpuTargetConfigProto target_config;
+  std::string proto_text = std::get<std::string>(it->second);
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(proto_text, &target_config));
+  int warp_size = target_config.gpu_device_info().threads_per_warp();
+
+  std::string hlo = absl::Substitute(testcase, warp_size);
+  auto module = ParseAndReturnVerifiedModule(hlo).value();
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 

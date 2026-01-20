@@ -58,13 +58,6 @@ ENTRY %entry (x: f32[], y: f32[]) -> f32[] {
       group.module(0).entry_computation()->instructions(),
       ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Add()));
 
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleGroup group_copy,
-                          HloModuleGroup::CreateFromProto(
-                              group.ToProto(), {group.module(0).config()}));
-  EXPECT_EQ(group_copy.modules().size(), 1);
-  EXPECT_THAT(
-      group_copy.module(0).entry_computation()->instructions(),
-      ::testing::ElementsAre(op::Parameter(), op::Parameter(), op::Add()));
 
   std::vector<std::unique_ptr<HloModule>> modules = group.ConsumeModules();
   EXPECT_EQ(modules.size(), 1);

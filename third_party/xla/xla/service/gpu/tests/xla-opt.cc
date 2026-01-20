@@ -43,8 +43,6 @@ limitations under the License.
 
 namespace {
 
-mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-
 struct TritonPipelineOptions
     : public mlir::PassPipelineOptions<TritonPipelineOptions> {
   Option<std::string> target{*this, "target", llvm::cl::init("8.0")};
@@ -71,12 +69,12 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
               rocm_cc.is_supported_gfx_version()) {
             gpu_cc = rocm_cc;
           }
-          xla::gpu::CreateTritonXlaPipeline(&pm, gpu_cc, options.rewrite_int4,
-                                            options.allow_tma,
-                                            options.num_stages);
+          bool warp_specialization_allowed = true;
+          xla::gpu::CreateTritonXlaPipeline(
+              &pm, gpu_cc, options.rewrite_int4, options.allow_tma,
+              options.num_stages, warp_specialization_allowed);
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
-                                         options.num_ctas, options.num_stages,
-                                         cluster_info);
+                                         options.num_ctas, options.num_stages);
         });
 
 }  // namespace

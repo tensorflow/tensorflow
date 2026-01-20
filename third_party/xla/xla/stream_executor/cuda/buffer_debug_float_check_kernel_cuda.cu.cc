@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <tuple>
 
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
@@ -24,10 +29,28 @@ limitations under the License.
 #include "xla/stream_executor/gpu/buffer_debug_float_check_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/util.h"
 
 namespace se = stream_executor;
 
 namespace {
+
+using xla::gpu::FloatCheckResult;
+
+// https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/:
+// > CUDA architecture limits the numbers of threads per block (1024 threads
+// > per block limit).
+static constexpr uint64_t kBlockSize = 1024;
+// warpSize is not a compile time constant on all OSS CI builds, but we need it
+// to be one for static array initialization. We assert this value matches
+// warpSize at runtime.
+static constexpr uint64_t kWarpSize = 32;
+static constexpr uint64_t kMaxWarpsPerBlock = kBlockSize / kWarpSize;
+template <typename T>
+static constexpr uint64_t kElementsPerMemoryAccess =
+    std::max<uint64_t>(16 / sizeof(T), 1);
+template <typename T>
+using Chunk = std::array<T, kElementsPerMemoryAccess<T>>;
 
 __device__ unsigned int ThreadIdx() {
   return threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x +
@@ -39,16 +62,57 @@ __device__ unsigned int BlockIdx() {
          blockIdx.x;
 }
 
-// Based on
-// https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf
-template <unsigned int BLOCK_SIZE>
-__device__ void WarpReduceSum(unsigned int tid, volatile uint32_t* data) {
-  if (BLOCK_SIZE >= 64) data[tid] += data[tid + 32];
-  if (BLOCK_SIZE >= 32) data[tid] += data[tid + 16];
-  if (BLOCK_SIZE >= 16) data[tid] += data[tid + 8];
-  if (BLOCK_SIZE >= 8) data[tid] += data[tid + 4];
-  if (BLOCK_SIZE >= 4) data[tid] += data[tid + 2];
-  if (BLOCK_SIZE >= 2) data[tid] += data[tid + 1];
+// Reduce a warp worth of values into a single one and have the 0th thread in
+// the warp return it.
+__device__ uint32_t WarpReduceSum(uint32_t value) {
+  static constexpr uint32_t kFullMask = ~0;
+  for (unsigned int offset = 1; offset < kWarpSize; offset <<= 1) {
+    value += __shfl_down_sync(kFullMask, value, offset);
+  }
+  return value;
+}
+
+// Sum up a block worth of FloatCheckResults into a single one and have the 0th
+// thread in the block return it.
+__device__ FloatCheckResult BlockReduceSum(uint32_t tid,
+                                           FloatCheckResult value) {
+  assert(kWarpSize == warpSize);
+  static_assert(kBlockSize == kWarpSize * kMaxWarpsPerBlock);
+  // Required to do the second warp reduction.
+  static_assert(kMaxWarpsPerBlock == kWarpSize);
+
+  const size_t warp_idx = tid / kWarpSize;
+  const size_t lane_idx = tid % kWarpSize;
+
+  value.nan_count = WarpReduceSum(value.nan_count);
+  value.inf_count = WarpReduceSum(value.inf_count);
+  value.zero_count = WarpReduceSum(value.zero_count);
+
+  __shared__ uint32_t scratch_nan[kMaxWarpsPerBlock];
+  __shared__ uint32_t scratch_inf[kMaxWarpsPerBlock];
+  __shared__ uint32_t scratch_zero[kMaxWarpsPerBlock];
+  if (lane_idx == 0) {
+    scratch_nan[warp_idx] = value.nan_count;
+    scratch_inf[warp_idx] = value.inf_count;
+    scratch_zero[warp_idx] = value.zero_count;
+  }
+
+  __syncthreads();
+  // The first warp reduces the results from all warps.
+  if (warp_idx == 0) {
+    value.nan_count = scratch_nan[lane_idx];
+    value.inf_count = scratch_inf[lane_idx];
+    value.zero_count = scratch_zero[lane_idx];
+    value.nan_count = WarpReduceSum(value.nan_count);
+    value.inf_count = WarpReduceSum(value.inf_count);
+    value.zero_count = WarpReduceSum(value.zero_count);
+  } else {
+    value.nan_count = 0;
+    value.inf_count = 0;
+    value.zero_count = 0;
+  }
+
+  return value;
 }
 
 __device__ inline bool IsNan(float v) { return isnan(v); }
@@ -60,173 +124,126 @@ __device__ inline bool IsZero(__nv_bfloat16 v) {
   return v == __nv_bfloat16(0.0f);
 }
 
-// Calculates count of NaNs of all elements of `input` and puts result in
-// `output`.
-//
-// Optimized implementation based on
-// https://developer.download.nvidia.com/assets/cuda/files/reduction.pdf
-// that takes advantage of `BLOCK_SIZE` threads.
-//
-// `BLOCK_SIZE` must be a power of 2 no larger than 1024.
-template <typename T, unsigned int BLOCK_SIZE>
-__device__ void ReduceSum(const T* input, uint64_t input_size,
-                          uint32_t* nan_counter, uint32_t* inf_counter,
-                          uint32_t* zero_counter) {
-  __shared__ uint32_t nan_count[BLOCK_SIZE];
-  __shared__ uint32_t inf_count[BLOCK_SIZE];
-  __shared__ uint32_t zero_count[BLOCK_SIZE];
-
-  assert(BlockIdx() == 0);
-  const unsigned int tid = ThreadIdx();
-
-  nan_count[tid] = 0;
-  inf_count[tid] = 0;
-  zero_count[tid] = 0;
-  for (unsigned int i = tid; i < input_size; i += BLOCK_SIZE) {
-    if (IsNan(input[i])) {
-      nan_count[tid]++;
-    }
-    if (IsInf(input[i])) {
-      inf_count[tid]++;
-    }
-    if (IsZero(input[i])) {
-      zero_count[tid]++;
-    }
+// Get a part of the input buffer current thread block is responsible for
+// processing, assuming the load is spread up to max_blocks across the entire
+// grid. If max_blocks is not provided, the entire grid is used.
+template <typename T>
+__device__ inline std::tuple<const T*, uint64_t> GetBlockInput(
+    const T* input, uint64_t input_size,
+    std::optional<uint64_t> max_blocks = std::nullopt) {
+  size_t grid_size = gridDim.x * gridDim.y * gridDim.z;
+  if (max_blocks.has_value()) {
+    grid_size = std::min<size_t>(grid_size, *max_blocks);
   }
-
-  __syncthreads();
-
-  if (BLOCK_SIZE >= 1024) {
-    if (tid < 512) {
-      nan_count[tid] += nan_count[tid + 512];
-      inf_count[tid] += inf_count[tid + 512];
-      zero_count[tid] += zero_count[tid + 512];
-    }
-    __syncthreads();
-  }
-  if (BLOCK_SIZE >= 512) {
-    if (tid < 256) {
-      nan_count[tid] += nan_count[tid + 256];
-      inf_count[tid] += inf_count[tid + 256];
-      zero_count[tid] += zero_count[tid + 256];
-    }
-    __syncthreads();
-  }
-  if (BLOCK_SIZE >= 256) {
-    if (tid < 128) {
-      nan_count[tid] += nan_count[tid + 128];
-      inf_count[tid] += inf_count[tid + 128];
-      zero_count[tid] += zero_count[tid + 128];
-    }
-    __syncthreads();
-  }
-  if (BLOCK_SIZE >= 128) {
-    if (tid < 64) {
-      nan_count[tid] += nan_count[tid + 64];
-      inf_count[tid] += inf_count[tid + 64];
-      zero_count[tid] += zero_count[tid + 64];
-    }
-    __syncthreads();
-  }
-  if (tid < 32) {
-    WarpReduceSum<BLOCK_SIZE>(tid, nan_count);
-    WarpReduceSum<BLOCK_SIZE>(tid, inf_count);
-    WarpReduceSum<BLOCK_SIZE>(tid, zero_count);
-  }
-  if (tid == 0) {
-    *nan_counter = nan_count[0];
-    *inf_counter = inf_count[0];
-    *zero_counter = zero_count[0];
-  }
+  const uint64_t max_block_input_size = xla::RoundUpTo(
+      xla::CeilOfRatio(input_size, grid_size), kElementsPerMemoryAccess<T>);
+  const uint64_t block_input_offset = BlockIdx() * max_block_input_size;
+  const uint64_t block_input_size =
+      std::min(max_block_input_size, input_size - block_input_offset);
+  return {input + block_input_offset, block_input_size};
 }
 
-// Attempts to append the NaN count of the `input` buffer to the
-// `float_check_entries`, using `log_header` to track available capacity and
-// used space.
-//
-// The log entry is tagged with `entry_id`. The NaN count is parallelized as
-// much as block dimensions allow it.
-//
-// If the log does not have enough space for the new entry, the entry is
-// discarded.
-//
-// `input_size_in_bytes` is the size of the input buffer in bytes.
-//
-// LIMITATIONS:
-// - Only a single thread block is supported.
-// - Block dimensions must be a power of 2.
 template <typename T>
-__global__ void AppendFloatCheck(
-    xla::gpu::BufferDebugLogEntryId entry_id, const T* input,
-    uint64_t input_size_in_bytes, xla::gpu::BufferDebugLogHeader* log_header,
-    xla::gpu::BufferDebugFloatCheckEntry* float_check_entries) {
-  const uint32_t block_size = blockDim.x * blockDim.y * blockDim.z;
-  const uint64_t input_size = input_size_in_bytes / sizeof(T);
-  uint32_t nan_count = 0;
-  uint32_t inf_count = 0;
-  uint32_t zero_count = 0;
+__device__ FloatCheckResult CheckFloats(const T* input, uint64_t input_size,
+                                        uint64_t max_blocks) {
+  const unsigned int tid = ThreadIdx();
+  const auto [block_input, block_input_size] =
+      GetBlockInput(input, input_size, max_blocks);
 
-  assert(gridDim.x == 1 && gridDim.y == 1 && gridDim.z == 1);
-  if (BlockIdx() != 0) {
+  const Chunk<T>* chunked_input =
+      reinterpret_cast<const Chunk<T>*>(block_input);
+  const uint64_t input_chunks =
+      xla::FloorOfRatio(block_input_size, kElementsPerMemoryAccess<T>);
+  // This may be less than block_input_size only for the last block.
+  const uint64_t chunked_input_size =
+      xla::RoundDownTo(block_input_size, kElementsPerMemoryAccess<T>);
+
+  FloatCheckResult result{};
+  for (uint64_t i = tid; i < input_chunks; i += kBlockSize) {
+    Chunk<T> values = chunked_input[i];
+    for (const T value : values) {
+      result.nan_count += IsNan(value);
+      result.inf_count += IsInf(value);
+      result.zero_count += IsZero(value);
+    }
+  }
+
+  if (tid == 0 && chunked_input_size < block_input_size) {
+    const size_t rest = block_input_size - chunked_input_size;
+    for (uint64_t j = 0; j < rest; ++j) {
+      const T value = block_input[input_chunks + j];
+      result.nan_count += IsNan(value);
+      result.inf_count += IsInf(value);
+      result.zero_count += IsZero(value);
+    }
+  }
+
+  return BlockReduceSum(tid, result);
+}
+
+__device__ FloatCheckResult ReduceResults(const FloatCheckResult* input,
+                                          uint64_t input_size) {
+  const unsigned int tid = ThreadIdx();
+  const auto [block_input, block_input_size] = GetBlockInput(input, input_size);
+
+  FloatCheckResult result{};
+  for (uint64_t i = tid; i < input_size; i += kBlockSize) {
+    const FloatCheckResult value = block_input[i];
+    result.nan_count += value.nan_count;
+    result.inf_count += value.inf_count;
+    result.zero_count += value.zero_count;
+  }
+
+  // Now reduce a block worth of values into a single one.
+  return BlockReduceSum(tid, result);
+}
+
+// Count the number of floats for NaNs, Infs and zeros in input buffer and store
+// partially accumulated results in the tmp array.
+template <typename T>
+__global__ void FloatCheck(const T* input, uint64_t input_size,
+                           xla::gpu::FloatCheckResult* tmp, uint64_t tmp_size) {
+  assert(blockDim.x * blockDim.y * blockDim.z == kBlockSize);
+  assert(BlockIdx() < tmp_size);
+  if (BlockIdx() >= tmp_size) {
     return;
   }
 
-  // https://developer.nvidia.com/blog/cuda-refresher-cuda-programming-model/:
-  // > CUDA architecture limits the numbers of threads per block (1024 threads
-  // > per block limit).
-  switch (block_size) {
-    case 1024:
-      ReduceSum<T, 1024>(input, input_size, &nan_count, &inf_count,
-                         &zero_count);
-      break;
-    case 512:
-      ReduceSum<T, 512>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 256:
-      ReduceSum<T, 256>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 128:
-      ReduceSum<T, 128>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 64:
-      ReduceSum<T, 64>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 32:
-      ReduceSum<T, 32>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 16:
-      ReduceSum<T, 16>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 8:
-      ReduceSum<T, 8>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 4:
-      ReduceSum<T, 4>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 2:
-      ReduceSum<T, 2>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    case 1:
-      ReduceSum<T, 1>(input, input_size, &nan_count, &inf_count, &zero_count);
-      break;
-    default:
-      // Unsupported block size.
-      assert(false);
-      return;
+  const FloatCheckResult result = CheckFloats(input, input_size, tmp_size);
+  if (ThreadIdx() == 0) {
+    tmp[BlockIdx()] = result;
+  }
+}
+
+// Reduce the partially accumulated results from `FloatCheck` invocations and
+// append the result to the buffer debug log.
+__global__ void ReduceFloatCheckResults(
+    xla::gpu::FloatCheckResult* tmp, uint64_t tmp_size,
+    xla::gpu::BufferDebugLogEntryId entry_id,
+    xla::gpu::BufferDebugLogHeader* log_header,
+    xla::gpu::BufferDebugFloatCheckEntry* log_entries) {
+  assert(blockDim.x * blockDim.y * blockDim.z == kBlockSize);
+  assert(BlockIdx() == 0);
+  if (BlockIdx() >= 1) {
+    return;
   }
 
-  if (ThreadIdx() == 0) {
-    cuda::atomic_ref<uint32_t, cuda::thread_scope_system>
-        nan_count_log_write_idx(log_header->write_idx);
+  assert(tmp_size > 0);
+  FloatCheckResult total = ReduceResults(tmp, tmp_size);
+
+  if (BlockIdx() == 0 && ThreadIdx() == 0) {
+    cuda::atomic_ref<uint32_t, cuda::thread_scope_system> log_write_idx(
+        log_header->write_idx);
 #if __CUDA_ARCH__ >= 600
-    const uint32_t write_idx = nan_count_log_write_idx.fetch_add(1);
-    if (nan_count_log_write_idx.load() < log_header->capacity) {
-      float_check_entries[write_idx] = xla::gpu::BufferDebugFloatCheckEntry{
-          entry_id, nan_count, inf_count, zero_count};
+    const uint32_t write_idx = log_write_idx.fetch_add(1);
+    if (write_idx < log_header->capacity) {
+      log_entries[write_idx] = xla::gpu::BufferDebugFloatCheckEntry{
+          entry_id, total.nan_count, total.inf_count, total.zero_count};
     }
 #else
     // Our toolchains generate a fetch_add PTX instructions with system scope,
     // which is not supported on pre-Pascal architectures.
+    (void)total;
     assert(false);
 #endif
   }
@@ -234,14 +251,20 @@ __global__ void AppendFloatCheck(
 
 se::KernelLoaderSpec GetFloatCheckF32KernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&AppendFloatCheck<float>),
+      absl::bit_cast<void*>(&FloatCheck<float>),
       "BufferDebugFloatCheckF32Kernel", arity);
 }
 
 se::KernelLoaderSpec GetFloatCheckBf16KernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
-      absl::bit_cast<void*>(&AppendFloatCheck<__nv_bfloat16>),
+      absl::bit_cast<void*>(&FloatCheck<__nv_bfloat16>),
       "BufferDebugFloatCheckBf16Kernel", arity);
+}
+
+se::KernelLoaderSpec GetReduceFloatCheckResultsKernelSpec(int arity) {
+  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
+      absl::bit_cast<void*>(&ReduceFloatCheckResults),
+      "BufferDebugReduceFloatCheckResultsKernel", arity);
 }
 
 }  // namespace
@@ -253,3 +276,8 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugFloatCheckBf16Kernel, se::gpu::BufferDebugFloatCheckBf16Kernel,
     se::cuda::kCudaPlatformId, GetFloatCheckBf16KernelSpec);
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    BufferDebugReduceFloatCheckResultsKernel,
+    se::gpu::BufferDebugAppendReducedFloatCheckResultsKernel,
+    se::cuda::kCudaPlatformId, GetReduceFloatCheckResultsKernelSpec);

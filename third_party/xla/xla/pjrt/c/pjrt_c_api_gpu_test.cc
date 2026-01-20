@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -30,6 +29,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -69,9 +69,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 #include "tsl/platform/mem.h"
 
 namespace pjrt {
@@ -99,7 +97,7 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   // Prepares a device memory ptr on GPU.
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
   device_buffer_ptr_args.struct_size =
       PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
@@ -170,10 +168,10 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   ASSERT_EQ(to_host_error, nullptr);
   xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
-  TF_CHECK_OK(transfer_to_host.Await());
+  CHECK_OK(transfer_to_host.Await());
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
@@ -207,15 +205,15 @@ class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
 
   size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = 0;
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -223,8 +221,9 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
   xla::Future<> copy_to_host_event = ConvertCEventToCppFuture(args.event, api_);
   TF_EXPECT_OK(copy_to_host_event.Await());
   EXPECT_EQ(*(static_cast<float*>(args.dst)), 41);
-  tsl::port::AlignedSizedFree(args.dst, tsl::Allocator::kAllocatorAlignment,
-                              size);
+  tsl::port::AlignedSizedFree(
+      args.dst, size,
+      static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
 }
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
@@ -233,8 +232,8 @@ TEST_F(PjrtCApiGpuBufferTest, CopyRawToHostWithInvalidOffset) {
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.buffer = buffer_.get();
-  args.dst =
-      tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
+  args.dst = tsl::port::AlignedMalloc(
+      size, static_cast<std::align_val_t>(tsl::Allocator::kAllocatorAlignment));
   args.offset = size + 1;  // offset is invalid
   args.transfer_size = size;
   PJRT_Error* error = api_->PJRT_Buffer_CopyRawToHost(&args);
@@ -378,10 +377,12 @@ TEST_F(PjrtCApiGpuTest, CreateAndDestroyExecuteContext) {
 TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   size_t dma_size = 1024 * 1024;
   size_t alignment = 1024 * 1024;
-  void* host_dma_ptr = tsl::port::AlignedMalloc(dma_size, alignment);
+  void* host_dma_ptr = tsl::port::AlignedMalloc(
+      dma_size, static_cast<std::align_val_t>(alignment));
   auto host_dma_ptr_deleter =
       absl::Cleanup([host_dma_ptr, dma_size, alignment] {
-        tsl::port::AlignedSizedFree(host_dma_ptr, alignment, dma_size);
+        tsl::port::AlignedSizedFree(host_dma_ptr, dma_size,
+                                    static_cast<std::align_val_t>(alignment));
       });
 
   PJRT_Client_DmaMap_Args dma_args;
@@ -402,6 +403,50 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
   PJRT_Error* unmap_error = api_->PJRT_Client_DmaUnmap(&unmap_args);
   ASSERT_EQ(unmap_error, nullptr);
   MakeErrorDeleter(api_)(unmap_error);
+}
+
+TEST_F(PjrtCApiGpuTest, CreateAndSetEvent) {
+  // Create an event.
+  PJRT_Event_Create_Args event_create_args;
+  event_create_args.struct_size = PJRT_Event_Create_Args_STRUCT_SIZE;
+  event_create_args.extension_start = nullptr;
+  PJRT_Error* error = api_->PJRT_Event_Create(&event_create_args);
+  EXPECT_EQ(error, nullptr);
+
+  // Check that the event is not ready prior to setting it.
+  PJRT_Event_IsReady_Args event_is_ready_args;
+  event_is_ready_args.struct_size = PJRT_Event_IsReady_Args_STRUCT_SIZE;
+  event_is_ready_args.extension_start = nullptr;
+  event_is_ready_args.event = event_create_args.event;
+  PJRT_Error* event_is_ready_error =
+      api_->PJRT_Event_IsReady(&event_is_ready_args);
+  EXPECT_EQ(event_is_ready_error, nullptr);
+  EXPECT_EQ(event_is_ready_args.is_ready, 0);
+
+  // Set the event to ready.
+  PJRT_Event_Set_Args event_set_args;
+  event_set_args.struct_size = PJRT_Event_Set_Args_STRUCT_SIZE;
+  event_set_args.extension_start = nullptr;
+  event_set_args.event = event_create_args.event;
+  event_set_args.error_code = PJRT_Error_Code_OK;
+  event_set_args.error_message = nullptr;
+  event_set_args.error_message_size = 0;
+  PJRT_Error* promise_set_error = api_->PJRT_Event_Set(&event_set_args);
+  EXPECT_EQ(promise_set_error, nullptr);
+
+  // Check that the event is ready.
+  event_is_ready_error = api_->PJRT_Event_IsReady(&event_is_ready_args);
+  EXPECT_EQ(event_is_ready_error, nullptr);
+  EXPECT_EQ(event_is_ready_args.is_ready, 1);
+
+  // Destroy the event.
+  PJRT_Event_Destroy_Args event_destroy_args;
+  event_destroy_args.struct_size = PJRT_Event_Destroy_Args_STRUCT_SIZE;
+  event_destroy_args.extension_start = nullptr;
+  event_destroy_args.event = event_create_args.event;
+  PJRT_Error* event_destroy_error =
+      api_->PJRT_Event_Destroy(&event_destroy_args);
+  EXPECT_EQ(event_destroy_error, nullptr);
 }
 
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
@@ -470,7 +515,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
           &set_buffer_error_args);
   ASSERT_EQ(set_buffer_error_error, nullptr);
 
-  EXPECT_THAT(buffer_out->buffer->ToLiteralSync(),
+  EXPECT_THAT(buffer_out->buffer->ToLiteral().Await(),
               absl_testing::StatusIs(absl::StatusCode::kInternal,
                                      HasSubstr(error_message)));
 
@@ -540,7 +585,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
       transfer_args.done_with_h2d_transfer, MakeEventDeleter(api_));
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
-                          buffer_out->buffer->ToLiteralSync());
+                          buffer_out->buffer->ToLiteral().Await());
   EXPECT_EQ(literal->element_count(), 8);
   EXPECT_THAT(literal->data<uint32_t>(), ElementsAreArray(data));
 
@@ -831,7 +876,9 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client =
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
-  EXPECT_TRUE(gpu_client->should_stage_host_to_device_transfers());
+  std::vector<float> data(4, 0.0f);
+  EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;
@@ -870,7 +917,9 @@ TEST(PjrtCApiGpuExtensionTest,
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
   auto* gpu_client =
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
-  EXPECT_FALSE(gpu_client->should_stage_host_to_device_transfers());
+  std::vector<float> data(4, 0.0f);
+  EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
+      data.data(), sizeof(float) * data.size()));
 
   PJRT_Client_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_Client_Destroy_Args_STRUCT_SIZE;

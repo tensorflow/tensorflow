@@ -10,6 +10,7 @@ load("@rules_ml_toolchain//gpu/sycl:sycl_init_repository.bzl", "sycl_init_reposi
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/absl:workspace.bzl", absl = "repo")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
+load("//third_party/brotli:workspace.bzl", brotli = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
@@ -24,6 +25,7 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/gloo:workspace.bzl", gloo = "repo")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
+load("//third_party/gutil:workspace.bzl", gutil = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
 load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
@@ -41,6 +43,7 @@ load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/raft:workspace.bzl", raft = "repo")
 load("//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
+load("//third_party/riegeli:workspace.bzl", riegeli = "repo")
 load("//third_party/rmm:workspace.bzl", rmm = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
@@ -75,8 +78,11 @@ def _initialize_third_party():
     farmhash()
     fmt()
     fxdiv()
+    riegeli()
+    brotli()
     gemmlowp()
     gloo()
+    gutil()
     highwayhash()
     hwloc()
     implib_so()
@@ -161,9 +167,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "fb4f8180171d035a08432b086194121f627d00a76d58cebaad57d7a87ad40dbd",
-        strip_prefix = "kleidiai-7a3a609a3278106df7157bdd27b8f0e75ab00b60",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/7a3a609a3278106df7157bdd27b8f0e75ab00b60.zip"),
+        sha256 = "5e922c9afb7a0c881fc4359b58488f3faa840e8435de1a2207a6525935ed83c2",
+        strip_prefix = "kleidiai-63205aa90afa6803d8f58bc3081b69288e9f1906",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/63205aa90afa6803d8f58bc3081b69288e9f1906.zip"),
     )
 
     tf_http_archive(
@@ -310,9 +316,9 @@ def _tf_repositories():
         sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
         strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
         # Patch googletest to:
-        #   - avoid dependencies on @fuchsia_sdk,
-        #   - refer to re2 as @com_googlesource_code_re2,
-        #   - refer to abseil as @com_google_absl.
+        #   - make the gtest_main target export the gtest.h header.
+        #   - add status assert macros for consistency with internal gmock (see
+        #     README.add-status-macros.md).
         #
         # To update the patch, run:
         # $ cd ~
@@ -325,8 +331,16 @@ def _tf_repositories():
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/xla.
-        patch_file = ["//third_party/googletest:googletest.patch"],
+        patch_file = [
+            "//third_party/googletest:googletest.patch",
+            "//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
+            "//third_party/googletest:0002-Rename-dependencies-for-workspace.bzl-build.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+            "@re2": "@com_googlesource_code_re2",
+        },
     )
 
     tf_http_archive(
@@ -381,9 +395,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "snappy",
         build_file = "//third_party:snappy.BUILD",
-        sha256 = "2e458b7017cd58dcf1469ab315389e85e7f445bd035188f2983f81fb19ecfb29",
-        strip_prefix = "snappy-984b191f0fefdeb17050b42a90b7625999c13b8d",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/984b191f0fefdeb17050b42a90b7625999c13b8d.tar.gz"),
+        sha256 = "736aeb64d86566d2236ddffa2865ee5d7a82d26c9016b36218fcc27ea4f09f86",
+        strip_prefix = "snappy-1.2.1",
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.1.tar.gz"),
     )
 
     tf_http_archive(
@@ -424,6 +438,7 @@ def _tf_repositories():
         sha256 = "9dc53f851107eaf87b391136d13b815df97ec8f76dadb487b58b2fc45e624d2c",
         strip_prefix = "boringssl-c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc",
         system_build_file = "//third_party:boringssl.BUILD",
+        patch_file = ["//third_party:boringssl.patch"],
         urls = tf_mirror_urls("https://github.com/google/boringssl/archive/c00d7ca810e93780bd0c8ee4eea28f4f2ea4bcdc.tar.gz"),
     )
 
@@ -431,7 +446,14 @@ def _tf_repositories():
         name = "com_google_ortools",
         sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
         strip_prefix = "or-tools-9.11",
-        patch_file = ["//third_party/ortools:ortools.patch"],
+        patch_file = [
+            "//third_party/ortools:ortools.patch",
+            # On a version upgrade, this patch can be regenerated with the command:
+            # third_party/gen_disable_layering_check_patch.sh \
+            #   https://github.com/google/or-tools/archive/v9.11.tar.gz \
+            #   > third_party/ortools/layering_check.patch
+            "//third_party/ortools:layering_check.patch",
+        ],
         urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",
@@ -583,8 +605,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "d71b02d6df0500f43279e22400db6680024c1c439115c57a9a82e9effe199d7b",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.18.1/apple_support.1.18.1.tar.gz"),
+        sha256 = "1ae6fcf983cff3edab717636f91ad0efff2e5ba75607fdddddfd6ad0dbdfaf10",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.24.5/apple_support.1.24.5.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases

@@ -81,7 +81,8 @@ class CollectiveInterpolator {
 
     bool operator==(const ExactInterpolatorKey& other) const {
       if (opcode != other.opcode ||
-          collective_params.index() != other.collective_params.index()) {
+          collective_params.index() != other.collective_params.index() ||
+          data_type != other.data_type) {
         return false;
       }
       return std::visit(

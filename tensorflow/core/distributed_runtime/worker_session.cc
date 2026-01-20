@@ -43,16 +43,16 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<std::string>* workers) const override {
     wrapped_->ListWorkers(workers);
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
     wrapped_->ListWorkersInJob(job_name, workers);
   }
 
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     {
       // Fast path if worker has been created.
       tf_shared_lock l(mu_);
@@ -88,16 +88,18 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     return wrapped_->GetCoordinationClientCache(coordination_client_cache);
   }
 
-  void ReleaseWorker(const string& target, WorkerInterface* worker) override {
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {
     // TODO(jeff,sanjay): Should decrement ref-count when we implement eviction.
   }
 
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     return wrapped_->GetDeviceLocalityNonBlocking(device, locality);
   }
 
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
     wrapped_->GetDeviceLocalityAsync(device, locality, done);
   }
@@ -121,13 +123,13 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   // TODO(jeff,sanjay): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, WorkerState> workers_ TF_GUARDED_BY(mu_);
+  std::unordered_map<std::string, WorkerState> workers_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
 
 WorkerSession::WorkerSession(
-    const string& session_name, const string& worker_name,
+    const std::string& session_name, const std::string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     std::unique_ptr<DeviceMgr> device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
@@ -165,7 +167,7 @@ absl::Status WorkerSession::UpdateWorkerCacheAndDevices(
 
 /* static */
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
-    const string& session_name, const string& worker_name,
+    const std::string& session_name, const std::string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
@@ -177,7 +179,7 @@ std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
 }
 
 WorkerSession::WorkerSession(
-    const string& session_name, const string& worker_name,
+    const std::string& session_name, const std::string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
     std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,

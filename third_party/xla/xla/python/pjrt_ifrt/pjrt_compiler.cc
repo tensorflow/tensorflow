@@ -88,6 +88,11 @@ absl::Status TranslateDeviceIds(PjRtClient* client,
 absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
+  if (client_ == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtCompiler must be constructed with a Client to call "
+        "CompileAndLoad.");
+  }
   const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
   if (xla_program == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
@@ -113,23 +118,30 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
-  TF_RETURN_IF_ERROR(
-      TranslateDeviceIds(client_, xla_compile_options->compile_options));
+  if (client_ != nullptr) {
+    // Device ID translation is unnecessary because it is a property of the
+    // client.
+    TF_RETURN_IF_ERROR(
+        TranslateDeviceIds(client_, xla_compile_options->compile_options));
+  }
   const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
   }
-  TF_ASSIGN_OR_RETURN(
-      auto executable,
-      PjRtCompile(xla_compile_options->compile_options,
-                  xla_program->mlir_module(), *pjrt_topology->description()));
-  return PjRtExecutable::Create(std::move(executable));
+  return PjRtExecutable::Create(xla_program->mlir_module(),
+                                std::move(xla_compile_options->compile_options),
+                                *pjrt_topology->description());
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
+  if (client_ == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtCompiler must be constructed with a Client to call "
+        "DeserializeLoadedExecutable.");
+  }
   TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
                       GetXlaDeserializeExecutableOptions(std::move(options)));
   if (xla_deserialize_options->compile_options.has_value()) {

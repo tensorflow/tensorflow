@@ -29,8 +29,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
 
@@ -46,7 +47,7 @@ class ChunkDestination : public tsl::ReferenceCounted<ChunkDestination> {
   virtual void Poison(absl::Status s) = 0;
 
   // For testing.
-  static std::pair<xla::Future<std::string>, tsl::RCReference<ChunkDestination>>
+  static std::pair<tsl::Future<std::string>, tsl::RCReference<ChunkDestination>>
   MakeStringDest();
 };
 
@@ -166,6 +167,12 @@ class BulkTransportFactory {
   virtual BulkTransportRecvResult RecvBulkTransport(
       const SocketTransferEstablishBulkTransport&
           remote_bulk_transport_info) = 0;
+
+  // Shutsdown in a blocking fashion to allow avoiding
+  // destroying the ifrt client on a background thread.
+  // This may make the BulkTransportFactory unusable, so be careful
+  // to only call it right before destruction.
+  virtual void BlockingShutdown() {}
 
   // Creates a factory (mostly for testing) which runs entirely
   // locally.

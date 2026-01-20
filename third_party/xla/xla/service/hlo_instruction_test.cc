@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -3379,6 +3380,40 @@ TEST_F(HloInstructionTest, DifferentResultAccuracy) {
   result_accuracy_rtol.mutable_tolerance()->set_rtol(0.4);
   exp2->set_result_accuracy(result_accuracy_rtol);
   EXPECT_FALSE(exp1->equal_result_accuracy(exp2));
+}
+
+TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fusion_computation {
+    p0 = f32[] parameter(0)
+    p1 = f32[32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    bcast0 = f32[32,32] broadcast(p0), dimensions={}
+    bcast1 = f32[32,32] broadcast(p1), dimensions={0}
+    sub = f32[32,32] subtract(bcast0, bcast1)
+    ROOT add = f32[32,32] add(sub, p2)
+  }
+
+  ENTRY reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    ROOT root = f32[32,32] fusion(p0, p1, p2), kind=kLoop, calls=fusion_computation
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_OK(fusion->PermuteFusionOperands({1, 2, 0}));
+
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion(m::Parameter(2), m::Parameter(0),
+                                           m::Parameter(1))));
+  HloComputation* fusion_computation = fusion->fused_instructions_computation();
+  EXPECT_THAT(fusion_computation->root_instruction(),
+              GmockMatch(m::Add(m::Subtract(m::Broadcast(m::Parameter(1)),
+                                            m::Broadcast(m::Parameter(2))),
+                                m::Parameter(0))));
 }
 
 }  // namespace

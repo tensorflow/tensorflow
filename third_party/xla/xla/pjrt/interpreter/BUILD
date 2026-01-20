@@ -28,6 +28,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/transforms/expanders:cholesky_expander",
+        "//xla/hlo/transforms/expanders:convolution_type_canonicalizer",
         "//xla/hlo/transforms/expanders:dynamic_index_splitter",
         "//xla/hlo/transforms/expanders:eigh_expander",
         "//xla/hlo/transforms/expanders:qr_expander",

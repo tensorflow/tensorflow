@@ -67,7 +67,11 @@ class CompileCommand:
       if arg.endswith(".cc"):
         cc_file = arg
 
-      filtered_args.append(arg)
+      # Split generated commands, because otherwise they get wrapped
+      # into "command with spaces" when passed to clangd, and clangd
+      # can't parse them correctly.
+      for s in arg.split(" "):
+        filtered_args.append(s)
 
     return cls(cc_file, filtered_args)
 

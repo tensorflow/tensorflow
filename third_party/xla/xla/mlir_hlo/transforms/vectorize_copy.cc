@@ -88,7 +88,7 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
                          targetType.getNumElements() <= tileSize;
 
     if (isContiguous || isSmall) {
-      rewriter.create<memref::CopyOp>(loc, src, target);
+      memref::CopyOp::create(rewriter, loc, src, target);
       return;
     }
 
@@ -99,14 +99,14 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
     const int64_t remainderSize = dimSize % sliceSize;
     const int64_t upperBound = shape[dim] - remainderSize;
 
-    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    Value zero = arith::ConstantIndexOp::create(rewriter, loc, 0);
     Value tileSizeValue =
-        rewriter.create<arith::ConstantIndexOp>(loc, sliceSize);
+        arith::ConstantIndexOp::create(rewriter, loc, sliceSize);
     Value upperBoundValue =
-        rewriter.create<arith::ConstantIndexOp>(loc, upperBound);
+        arith::ConstantIndexOp::create(rewriter, loc, upperBound);
 
-    auto loop = rewriter.create<scf::ForOp>(loc, zero, upperBoundValue,
-                                            tileSizeValue, target);
+    auto loop = scf::ForOp::create(rewriter, loc, zero, upperBoundValue,
+                                   tileSizeValue, target);
 
     OpBuilder::InsertionGuard g(rewriter);
     rewriter.setInsertionPointToStart(loop.getBody());
@@ -123,7 +123,7 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
     createLoopsNest(rewriter, loc, dim + 1, srcSubview, targetSubview, shape,
                     offsets, sizes, strides);
 
-    rewriter.create<scf::YieldOp>(loc, loop.getRegionIterArgs()[0]);
+    scf::YieldOp::create(rewriter, loc, loop.getRegionIterArgs()[0]);
 
     // Remainder copy can only be created for the innermost loop, for other
     // loops remainder size is guaranteed to be 0.
@@ -138,8 +138,8 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
       Value targetRemainderSubview =
           getSubView(rewriter, loc, target, shape, offsets, sizes, strides);
 
-      rewriter.create<memref::CopyOp>(loc, srcRemainderSubview,
-                                      targetRemainderSubview);
+      memref::CopyOp::create(rewriter, loc, srcRemainderSubview,
+                             targetRemainderSubview);
     }
   }
 
@@ -154,8 +154,8 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
         cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
             shape, valType, offsets, sizes, strides));
 
-    return rewriter.create<memref::SubViewOp>(loc, valSubviewType, val, offsets,
-                                              sizes, strides);
+    return memref::SubViewOp::create(rewriter, loc, valSubviewType, val,
+                                     offsets, sizes, strides);
   }
 
   int64_t tileSize;

@@ -152,8 +152,10 @@ cc_library(
     srcs = ["highwayhash/hh_avx2.cc"],
     hdrs = ["highwayhash/highwayhash_target.h"],
     copts = select({
-        ":k8": ["-mavx2"],
-        ":haswell": ["-mavx2"],
+        "@platforms//cpu:x86_64": [
+            "-mavx2",
+            "-march=haswell",
+        ],
         "//conditions:default": ["-DHH_DISABLE_TARGET_SPECIFIC"],
     }),
     textual_hdrs = [
@@ -178,8 +180,7 @@ cc_library(
     srcs = ["highwayhash/hh_sse41.cc"],
     hdrs = ["highwayhash/highwayhash_target.h"],
     copts = select({
-        ":k8": ["-msse4.1"],
-        ":haswell": ["-msse4.1"],
+        "@platforms//cpu:x86_64": ["-msse4.1"],
         "//conditions:default": ["-DHH_DISABLE_TARGET_SPECIFIC"],
     }),
     textual_hdrs = [
@@ -206,8 +207,8 @@ cc_library(
     ],
     hdrs = ["highwayhash/highwayhash_target.h"],
     copts = select({
-        ":cpu_aarch64": [],
-        ":cpu_darwin_arm64": [],
+        "@platforms//cpu:aarch64": [],
+        "@platforms//cpu:armv7": ["-mfpu=neon"],
         "//conditions:default": ["-DHH_DISABLE_TARGET_SPECIFIC"],
     }),
     textual_hdrs = [
@@ -255,6 +256,7 @@ cc_library(
     deps = [
         ":arch_specific",
         ":compiler_specific",
+        ":endianess",
         ":hh_types",
         ":iaca",
         ":load3",

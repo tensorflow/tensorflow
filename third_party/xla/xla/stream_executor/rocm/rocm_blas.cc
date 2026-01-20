@@ -40,8 +40,8 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
@@ -71,17 +71,17 @@ extern void rocm_Broadcast_fp32(void *stream, float *dst, int dst_stride,
                                 int size);
 
 template <class T>
-const RocBlasType_t<T> *const *complex_cast(const DeviceMemory<T *> &a) {
+const RocBlasType_t<T>* const* complex_cast(const DeviceAddress<T*>& a) {
   return reinterpret_cast<const RocBlasType_t<T> *const *>(GpuMemory(a));
 }
 
 template <class T>
-RocBlasType_t<T> *const *complex_cast(DeviceMemory<T *> &a) {
+RocBlasType_t<T>* const* complex_cast(DeviceAddress<T*>& a) {
   return reinterpret_cast<RocBlasType_t<T> *const *>(GpuMemory(a));
 }
 
 template <class T>
-const RocBlasType_t<T> *complex_cast(const DeviceMemory<T> &a) {
+const RocBlasType_t<T>* complex_cast(const DeviceAddress<T>& a) {
   return reinterpret_cast<const RocBlasType_t<T> *>(GpuMemory(a));
 }
 
@@ -90,7 +90,7 @@ const RocBlasType_t<T> *complex_cast(const T &a) {
   return reinterpret_cast<const RocBlasType_t<T> *>(&a);
 }
 template <class T>
-RocBlasType_t<T> *complex_cast(DeviceMemory<T> *a) {
+RocBlasType_t<T>* complex_cast(DeviceAddress<T>* a) {
   return reinterpret_cast<RocBlasType_t<T> *>(GpuMemoryMutable(a));
 }
 
@@ -414,8 +414,8 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
 }
 
 #define Impl_DoBlasScal(Fun, T, Ta)                                         \
-  bool ROCMBlas::DoBlasScal(Stream *stream, uint64_t elem_count, Ta alpha,  \
-                            DeviceMemory<T> *x, int incx) {                 \
+  bool ROCMBlas::DoBlasScal(Stream* stream, uint64_t elem_count, Ta alpha,  \
+                            DeviceAddress<T>* x, int incx) {                \
     return DoBlasInternal(Fun, stream, /* pointer_mode_host = */ true,      \
                           elem_count, complex_cast(alpha), complex_cast(x), \
                           incx);                                            \
@@ -430,10 +430,10 @@ Impl_DoBlasScal(wrap::rocblas_sscal, float, float)
                     Impl_DoBlasScal(wrap::rocblas_zscal, std::complex<double>,
                                     std::complex<double>)
 #define Impl_DoBlasGemv(fun, T)                                                \
-  bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64_t m, \
-                            uint64_t n, T alpha, const DeviceMemory<T> &a,     \
-                            int lda, const DeviceMemory<T> &x, int incx,       \
-                            T beta, DeviceMemory<T> *y, int incy) {            \
+  bool ROCMBlas::DoBlasGemv(Stream* stream, blas::Transpose trans, uint64_t m, \
+                            uint64_t n, T alpha, const DeviceAddress<T>& a,    \
+                            int lda, const DeviceAddress<T>& x, int incx,      \
+                            T beta, DeviceAddress<T>* y, int incy) {           \
     return DoBlasInternal(fun, stream, /* pointer_mode_host = */ true,         \
                           ROCMBlasTranspose(trans), m, n, complex_cast(alpha), \
                           complex_cast(a), lda, complex_cast(x), incx,         \
@@ -474,9 +474,9 @@ void ROCMBlas::MaybeLogGemmOp(GemmCallTrace::GemmType op,
 absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
                                   blas::Transpose transb, uint64_t m,
                                   uint64_t n, uint64_t k, blas::DataType dtype,
-                                  const void* alpha, const DeviceMemoryBase& a,
-                                  int lda, const DeviceMemoryBase& b, int ldb,
-                                  const void* beta, DeviceMemoryBase* c,
+                                  const void* alpha, const DeviceAddressBase& a,
+                                  int lda, const DeviceAddressBase& b, int ldb,
+                                  const void* beta, DeviceAddressBase* c,
                                   int ldc, const EngineOptions& engine_options,
                                   blas::CallContext context) {
   MaybeLogGemmOp(GemmCallTrace::GemmType::kPlain, context,
@@ -560,9 +560,9 @@ absl::Status ROCMBlas::DoBlasGemm(Stream* stream, blas::Transpose transa,
 
 absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, const void* alpha, const DeviceMemoryBase& a,
-    blas::DataType type_a, int lda, const DeviceMemoryBase& b,
-    blas::DataType type_b, int ldb, const void* beta, DeviceMemoryBase* c,
+    uint64_t n, uint64_t k, const void* alpha, const DeviceAddressBase& a,
+    blas::DataType type_a, int lda, const DeviceAddressBase& b,
+    blas::DataType type_b, int ldb, const void* beta, DeviceAddressBase* c,
     blas::DataType type_c, int ldc, blas::ComputationType computation_type,
     blas::AlgorithmType algorithm, const EngineOptions& engine_options,
     blas::ProfileResult* profile_result, blas::CallContext context) {
@@ -620,13 +620,14 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
 
 absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, const void* alpha, const DeviceMemoryBase& a,
-    blas::DataType type_a, int lda, int64_t stride_a, const DeviceMemoryBase& b,
-    blas::DataType type_b, int ldb, int64_t stride_b, const void* beta,
-    DeviceMemoryBase* c, blas::DataType type_c, int ldc, int64_t stride_c,
-    int batch_count, blas::ComputationType computation_type,
-    blas::AlgorithmType algorithm, const EngineOptions& engine_options,
-    blas::ProfileResult* profile_result, blas::CallContext context) {
+    uint64_t n, uint64_t k, const void* alpha, const DeviceAddressBase& a,
+    blas::DataType type_a, int lda, int64_t stride_a,
+    const DeviceAddressBase& b, blas::DataType type_b, int ldb,
+    int64_t stride_b, const void* beta, DeviceAddressBase* c,
+    blas::DataType type_c, int ldc, int64_t stride_c, int batch_count,
+    blas::ComputationType computation_type, blas::AlgorithmType algorithm,
+    const EngineOptions& engine_options, blas::ProfileResult* profile_result,
+    blas::CallContext context) {
   if (type_a != type_b) {
     return absl::InternalError(absl::StrFormat(
         "DoBlasGemmStridedBatchedWithAlgorithm: different "
@@ -820,9 +821,9 @@ bool MemCopyOpsFold(MemoryCopyOp &y, const MemoryCopyOp &x) {
 // The below algorithm tries to minimize the number of memcpy by consolidating
 // neighboring memcpy into a single request.
 template <typename MAPPED_T>
-absl::Status ReorganizeMemory(Stream *stream,
-                              DeviceMemory<MAPPED_T> *device_memory,
-                              const std::vector<MAPPED_T *> &raw_ptrs,
+absl::Status ReorganizeMemory(Stream* stream,
+                              DeviceAddress<MAPPED_T>* device_memory,
+                              const std::vector<MAPPED_T*>& raw_ptrs,
                               int batch_count, uint64_t batch_stride,
                               bool gather) {
   if (gather == false) {
@@ -869,8 +870,8 @@ absl::Status ReorganizeMemory(Stream *stream,
           reinterpret_cast<float *>(x.dst_ptr), x.dst_stride >> 2, x.count,
           x.src_count, reinterpret_cast<float *>(x.src_ptr), x.size >> 2);
     } else {
-      DeviceMemoryBase src_mem = DeviceMemoryBase(x.src_ptr, x.size);
-      DeviceMemoryBase target_mem = DeviceMemoryBase(x.dst_ptr, x.size);
+      DeviceAddressBase src_mem = DeviceAddressBase(x.src_ptr, x.size);
+      DeviceAddressBase target_mem = DeviceAddressBase(x.dst_ptr, x.size);
       TF_RETURN_IF_ERROR(stream->Memcpy(&target_mem, src_mem, x.size));
     }
     i++;
@@ -881,7 +882,7 @@ absl::Status ReorganizeMemory(Stream *stream,
 template <typename T>
 struct AllocateStridedResult {
   using Type = RocBlasType_t<T>;
-  DeviceMemory<Type> device_mem;
+  DeviceAddress<Type> device_mem;
   bool reallocated;
 };
 
@@ -909,8 +910,8 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
 
   // No need to do re-allocation, take the short cut and return
   if (!needs_allocate_strided) {
-    res.device_mem = DeviceMemory<MAPPED_T>(
-        DeviceMemoryBase(raw_ptrs[0], matrix_batch_byte_size));
+    res.device_mem = DeviceAddress<MAPPED_T>(
+        DeviceAddressBase(raw_ptrs[0], matrix_batch_byte_size));
     res.reallocated = false;
     return res;
   }
@@ -918,9 +919,9 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
   if (scratch_allocator == nullptr) {
     return absl::InternalError("scratch_allocator is null");
   }
-  TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> batch_matrix_bytes,
+  TF_ASSIGN_OR_RETURN(DeviceAddress<uint8_t> batch_matrix_bytes,
                       scratch_allocator->AllocateBytes(matrix_batch_byte_size));
-  res.device_mem = DeviceMemory<MAPPED_T>(batch_matrix_bytes);
+  res.device_mem = DeviceAddress<MAPPED_T>(batch_matrix_bytes);
   res.reallocated = true;
   if (copy_data) {
     TF_RETURN_IF_ERROR(ReorganizeMemory(stream, &res.device_mem, raw_ptrs,
@@ -933,12 +934,12 @@ absl::StatusOr<AllocateStridedResult<T>> AllocateStridedBuffer(
 
 template <typename T, typename FuncT>
 absl::Status ROCMBlas::DoBlasGemmBatchedInternal(
-    FuncT rocblas_func, Stream *stream, blas::Transpose transa,
+    FuncT rocblas_func, Stream* stream, blas::Transpose transa,
     blas::Transpose transb, uint64_t m, uint64_t n, uint64_t k, T alpha,
-    DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,
-    DeviceMemorySlice<T> b_ptrs_to_wrappers, int ldb, T beta,
-    DeviceMemorySlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
-    ScratchAllocator *scratch_allocator) {
+    DeviceAddressSlice<T> a_ptrs_to_wrappers, int lda,
+    DeviceAddressSlice<T> b_ptrs_to_wrappers, int ldb, T beta,
+    DeviceAddressSlice<T> c_ptrs_to_wrappers, int ldc, int batch_count,
+    ScratchAllocator* scratch_allocator) {
   using MAPPED_T = RocBlasType_t<T>;
 
   // Sanity checks before making any further progress
@@ -1073,9 +1074,9 @@ const char *rocblas_gemm_strided_batched_bf16::kName =
     "rocblas_gemm_strided_batched_bf16";
 bool ROCMBlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
-    uint64_t n, uint64_t k, float alpha, DeviceMemorySlice<Eigen::half> a,
-    int lda, DeviceMemorySlice<Eigen::half> b, int ldb, float beta,
-    DeviceMemorySlice<Eigen::half> c, int ldc, int batch_count,
+    uint64_t n, uint64_t k, float alpha, DeviceAddressSlice<Eigen::half> a,
+    int lda, DeviceAddressSlice<Eigen::half> b, int ldb, float beta,
+    DeviceAddressSlice<Eigen::half> c, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a.size(),
@@ -1109,9 +1110,9 @@ bool ROCMBlas::DoBlasGemmBatched(
 bool ROCMBlas::DoBlasGemmBatched(
     Stream* stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
     uint64_t n, uint64_t k, float alpha,
-    DeviceMemorySlice<Eigen::bfloat16> a_array, int lda,
-    DeviceMemorySlice<Eigen::bfloat16> b_array, int ldb, float beta,
-    DeviceMemorySlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
+    DeviceAddressSlice<Eigen::bfloat16> a_array, int lda,
+    DeviceAddressSlice<Eigen::bfloat16> b_array, int ldb, float beta,
+    DeviceAddressSlice<Eigen::bfloat16> c_array, int ldc, int batch_count,
     const EngineOptions& engine_options, ScratchAllocator* scratch_allocator,
     blas::CallContext context) {
   MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(),
@@ -1133,9 +1134,9 @@ bool ROCMBlas::DoBlasGemmBatched(
   bool ROCMBlas::DoBlasGemmBatched(                                            \
       Stream* stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64_t n, uint64_t k, T alpha,                             \
-      DeviceMemorySlice<T> a_array, int lda, DeviceMemorySlice<T> b_array,     \
-      int ldb, T beta, DeviceMemorySlice<T> c_array, int ldc, int batch_count, \
-      const EngineOptions& engine_options,                                     \
+      DeviceAddressSlice<T> a_array, int lda, DeviceAddressSlice<T> b_array,   \
+      int ldb, T beta, DeviceAddressSlice<T> c_array, int ldc,                 \
+      int batch_count, const EngineOptions& engine_options,                    \
       ScratchAllocator* scratch_allocator, blas::CallContext context) {        \
     MaybeLogGemmOp(GemmCallTrace::GemmType::kBatched, context, a_array.size(), \
                    b_array.size());                                            \
@@ -1155,11 +1156,11 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
             IMPL_DoBlasGemmBatched(std::complex<double>,
                                    wrap::rocblas_zgemm_strided_batched)
 #define IMPL_DoBlasTrsm(T, Fun, Fun2)                                        \
-  bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,                 \
+  bool ROCMBlas::DoBlasTrsm(Stream* stream, blas::Side side,                 \
                             blas::UpperLower uplo, blas::Transpose transa,   \
                             blas::Diagonal diag, uint64_t m, uint64_t n,     \
-                            T alpha, const DeviceMemory<T> &a, int lda,      \
-                            DeviceMemory<T> *b, int ldb) {                   \
+                            T alpha, const DeviceAddress<T>& a, int lda,     \
+                            DeviceAddress<T>* b, int ldb) {                  \
     return DoBlasInternal(Fun, stream, /* pointer_mode_host = */ true,       \
                           ROCMBlasSide(side), ROCMBlasUpperLower(uplo),      \
                           ROCMBlasTranspose(transa), ROCMBlasDiagonal(diag), \
@@ -1168,9 +1169,9 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
   }                                                                          \
                                                                              \
   bool ROCMBlas::DoBlasTrsmBatched(                                          \
-      Stream *stream, blas::Side side, blas::UpperLower uplo,                \
+      Stream* stream, blas::Side side, blas::UpperLower uplo,                \
       blas::Transpose transa, blas::Diagonal diag, uint64_t m, uint64_t n,   \
-      T alpha, const DeviceMemory<T *> &as, int lda, DeviceMemory<T *> *bs,  \
+      T alpha, const DeviceAddress<T*>& as, int lda, DeviceAddress<T*>* bs,  \
       int ldb, int batch_count) {                                            \
     return DoBlasInternal(Fun2, stream, true /* = pointer_mode_host */,      \
                           ROCMBlasSide(side), ROCMBlasUpperLower(uplo),      \
@@ -1194,10 +1195,11 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
     ROCMBlas::DoBlasGemmStridedBatched(
         Stream* stream, blas::Transpose transa, blas::Transpose transb,
         uint64_t m, uint64_t n, uint64_t k, blas::DataType dtype,
-        const void* alpha, const DeviceMemoryBase& a, int lda, int64_t stride_a,
-        const DeviceMemoryBase& b, int ldb, int64_t stride_b, const void* beta,
-        DeviceMemoryBase* c, int ldc, int64_t stride_c, int batch_count,
-        const EngineOptions& engine_options, blas::CallContext context) {
+        const void* alpha, const DeviceAddressBase& a, int lda,
+        int64_t stride_a, const DeviceAddressBase& b, int ldb, int64_t stride_b,
+        const void* beta, DeviceAddressBase* c, int ldc, int64_t stride_c,
+        int batch_count, const EngineOptions& engine_options,
+        blas::CallContext context) {
   VLOG(1) << absl::StreamFormat(
       "doing rocBLAS GEMM Strided Batched: at=%d bt=%d m=%u n=%u "
       "k=%llu alpha=%p a=%p lda=%d b=%p ldb=%d beta=%p "

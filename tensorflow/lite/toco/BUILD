@@ -175,6 +175,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )
@@ -339,7 +340,6 @@ cc_library(
         ":model_flags_proto_cc",
         ":runtime",
         ":toco_flags_proto_cc",
-        ":toco_graphviz_dump_options",
         ":toco_port",
         ":tooling_util",
         ":types_proto_cc",

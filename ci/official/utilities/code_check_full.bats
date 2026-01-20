@@ -216,6 +216,7 @@ EOF
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
     --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -240,6 +241,7 @@ EOF
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
     --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\

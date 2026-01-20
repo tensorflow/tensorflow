@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -65,7 +65,7 @@ class HloRunner : public HloRunnerInterface {
   // the backend allocator.
   explicit HloRunner(
       se::Platform* platform, int intra_op_parallelism_threads = -1,
-      std::unique_ptr<se::DeviceMemoryAllocator> allocator = nullptr);
+      std::unique_ptr<se::DeviceAddressAllocator> allocator = nullptr);
 
   ~HloRunner() override;
 
@@ -173,6 +173,16 @@ class HloRunner : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) override;
+
+  // Same as above, but with specified device assignment.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) override;
+
   // Same as above, but with a reusable Executable.  This may update the profile
   // information in *executable.
   //
@@ -274,7 +284,7 @@ class HloRunner : public HloRunnerInterface {
       DeviceAssignment* device_assignment);
 
   // Gets or creates the `DeviceMemoryAllocator`.
-  se::DeviceMemoryAllocator* GetAllocator();
+  se::DeviceAddressAllocator* GetAllocator();
 
   // Calls `UpdateEntryComputationLayout` if HloRunner has not called it on the
   // module before. This method is called before the module is executed. The
@@ -287,7 +297,7 @@ class HloRunner : public HloRunnerInterface {
   std::unique_ptr<Backend> backend_;
   TransferManager::DeviceShapeRepresentationFn device_shape_representation_fn_;
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 
   absl::Mutex mu_;
   // Set of module unique_ids that we already called

@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
@@ -35,7 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -72,7 +74,7 @@ static absl::Status PlatformInitialize() {
 
 }  // namespace
 
-CudaPlatform::CudaPlatform() : name_("CUDA") {}
+CudaPlatform::CudaPlatform() : name_(cuda::kCudaPlatformId->ToName()) {}
 
 CudaPlatform::~CudaPlatform() {
   nvmlReturn_t shutdown_result = nvmlShutdown();
@@ -121,7 +123,13 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
-  auto executor = std::make_unique<CudaExecutor>(this, ordinal);
+  // TODO(b/468297040): We should not be using DebugOptions here.
+  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  auto executor = std::make_unique<CudaExecutor>(
+      this, ordinal,
+      debug_options.xla_gpu_experimental_enable_nvshmem()
+          ? CollectiveAllocatorType::kNvshmem
+          : CollectiveAllocatorType::kNccl);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }
@@ -129,7 +137,7 @@ CudaPlatform::GetUncachedExecutor(int ordinal) {
 }  // namespace gpu
 
 static void InitializeCudaPlatform() {
-  TF_CHECK_OK(
+  CHECK_OK(
       PlatformManager::RegisterPlatform(std::make_unique<gpu::CudaPlatform>()));
 }
 

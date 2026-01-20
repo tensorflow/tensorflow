@@ -70,19 +70,31 @@ Flag                                            | Type                 | Notes
 `xla_tpu_enable_ag_backward_pipelining`         | Boolean (true/false) | Pipelines all-gathers (currently megascale all-gathers) backwards through scan loops.
 
 ### GPU XLA flags
-| Flag | Type | Notes |
-| :---- | :---- | :----- |
-| `xla_gpu_enable_latency_hiding_scheduler` | Boolean (true/false) |This flag enables latency hiding schedulers to overlap asynchronous communication with computation efficiently. The default value is False. |
-| `xla_gpu_enable_analytical_sol_latency_estimator` | Boolean (true/false) | Enables platform specific scheduling decisions, which in turn improve compute-communication overlap. The default value is true. |
-| `xla_gpu_analytical_latency_estimator_options` | Structured string | Configures parameters for the `xla_gpu_enable_analytical_sol_latency_estimator`. Adjust by setting `nic_speed_gbps=$NIC_SPEED,nccl_op_launch_us=$LAUNCH_OVERHEAD,chunk_prep_us=$CHUNK_PREP,rtt_us=$RTT,chunk_size_bytes=$CHUNK_SIZE,gpus_per_node=$GPUS_PER_NODE`. The default value depends on a detected platform. |
-| `xla_gpu_enable_triton_gemm` | Boolean (true/false) | Use Triton-based matrix multiplication. |
-| `xla_gpu_enable_command_buffer` | List of CommandBufferCmdType | Which kind of commands should be captured in command buffers. |
-| `xla_gpu_all_reduce_combine_threshold_bytes` | Integer (bytes) | These flags tune when to combine multiple small AllGather / ReduceScatter / AllReduce into one big AllGather / ReduceScatter / AllReduce to reduce time spent on cross-device communication. For example, for the AllGather / ReduceScatter thresholds on a Transformer-based workload, consider tuning them high enough so as to combine at least a Transformer Layer’s weight AllGather / ReduceScatter. By default, the combine_threshold_bytes is set to 256. |
-| `xla_gpu_all_gather_combine_threshold_bytes` | Integer (bytes) | See xla_gpu_all_reduce_combine_threshold_bytes above. |
-| `xla_gpu_reduce_scatter_combine_threshold_bytes` | Integer (bytes) | See xla_gpu_all_reduce_combine_threshold_bytes above. |
-| `xla_gpu_enable_pipelined_all_gather` | Boolean (true/false) | Enable pipelinling of all-gather instructions. |
-| `xla_gpu_enable_pipelined_reduce_scatter` | Boolean (true/false) | Enable pipelinling of reduce-scatter instructions. |
-| `xla_gpu_enable_pipelined_all_reduce` | Boolean (true/false) | Enable pipelinling of all-reduce instructions. |
-| `xla_gpu_enable_while_loop_double_buffering` | Boolean (true/false) | Enable double-buffering for while loop. |
-| `xla_gpu_enable_all_gather_combine_by_dim` | Boolean (true/false) | Combine all-gather ops with the same gather dimension or irrespective of their dimension. |
-| `xla_gpu_enable_reduce_scatter_combine_by_dim` | Boolean (true/false) | Combine reduce-scatter ops with the same dimension or irrespective of their dimension. |
+
+The `-O1` optimization level enables advanced compiler passes for improved GPU
+performance, including several categories of flags below: pipelining of
+data-parallel collectives (`xla_gpu_enable_pipelined_all_gather`,
+`xla_gpu_enable_pipelined_all_reduce`,
+`xla_gpu_enable_pipelined_reduce_scatter`), while loop unrolling
+(`xla_gpu_enable_while_loop_double_buffering`), latency hiding scheduling
+(`xla_gpu_enable_latency_hiding_scheduler`), and SOL latency estimator on
+Hopper/Blackwell (`xla_gpu_enable_analytical_sol_latency_estimator`). See
+[GPU Effort Levels](https://openxla.org/xla/effort_levels) for details.
+
+Flag                                              | Type                         | Notes
+:------------------------------------------------ | :--------------------------- | :----
+`xla_gpu_enable_latency_hiding_scheduler`         | Boolean (true/false)         | This flag enables latency hiding schedulers to overlap asynchronous communication with computation efficiently. The default value is False.
+`xla_gpu_enable_analytical_sol_latency_estimator` | Boolean (true/false)         | Enables platform specific scheduling decisions, which in turn improve compute-communication overlap. The default value is true.
+`xla_gpu_analytical_latency_estimator_options`    | Structured string            | Configures parameters for the `xla_gpu_enable_analytical_sol_latency_estimator`. Adjust by setting `nic_speed_gbps=$NIC_SPEED,nccl_op_launch_us=$LAUNCH_OVERHEAD,chunk_prep_us=$CHUNK_PREP,rtt_us=$RTT,chunk_size_bytes=$CHUNK_SIZE,gpus_per_node=$GPUS_PER_NODE`. The default value depends on a detected platform.
+`xla_gpu_enable_triton_gemm`                      | Boolean (true/false)         | Use Triton-based matrix multiplication.
+`xla_gpu_enable_command_buffer`                   | List of CommandBufferCmdType | Which kind of commands should be captured in command buffers.
+`xla_gpu_all_reduce_combine_threshold_bytes`      | Integer (bytes)              | These flags tune when to combine multiple small AllGather / ReduceScatter / AllReduce into one big AllGather / ReduceScatter / AllReduce to reduce time spent on cross-device communication. For example, for the AllGather / ReduceScatter thresholds on a Transformer-based workload, consider tuning them high enough so as to combine at least a Transformer Layer’s weight AllGather / ReduceScatter. By default, the combine_threshold_bytes is set to 256.
+`xla_gpu_all_gather_combine_threshold_bytes`      | Integer (bytes)              | See xla_gpu_all_reduce_combine_threshold_bytes above.
+`xla_gpu_reduce_scatter_combine_threshold_bytes`  | Integer (bytes)              | See xla_gpu_all_reduce_combine_threshold_bytes above.
+`xla_gpu_enable_pipelined_all_gather`             | Boolean (true/false)         | Enable pipelinling of all-gather instructions.
+`xla_gpu_enable_pipelined_reduce_scatter`         | Boolean (true/false)         | Enable pipelinling of reduce-scatter instructions.
+`xla_gpu_enable_pipelined_all_reduce`             | Boolean (true/false)         | Enable pipelinling of all-reduce instructions.
+`xla_gpu_enable_pipelined_host_offloading`        | Boolean (true/false)         | Enable pipelining of host offloading instructions.
+`xla_gpu_enable_while_loop_double_buffering`      | Boolean (true/false)         | Enable double-buffering for while loop.
+`xla_gpu_enable_all_gather_combine_by_dim`        | Boolean (true/false)         | Combine all-gather ops with the same gather dimension or irrespective of their dimension.
+`xla_gpu_enable_reduce_scatter_combine_by_dim`    | Boolean (true/false)         | Combine reduce-scatter ops with the same dimension or irrespective of their dimension.

@@ -84,7 +84,7 @@ func::FuncOp CreateOutlineFuncAndEraseRegion(
   type = FunctionType::get(context, types, result_types);
 
   // Create outlined function and move region body to it.
-  auto outlined_func = func_builder.create<func::FuncOp>(loc, name, type);
+  auto outlined_func = func::FuncOp::create(func_builder, loc, name, type);
   outlined_func.getBody().takeBody(region);
   Region& func_region = outlined_func.getBody();
 
@@ -97,8 +97,8 @@ func::FuncOp CreateOutlineFuncAndEraseRegion(
   // Replace yield op with return.
   Operation* yield_op = outlined_func.getBody().front().getTerminator();
   OpBuilder return_builder(yield_op);
-  return_builder.create<func::ReturnOp>(yield_op->getLoc(),
-                                        yield_op->getOperands());
+  func::ReturnOp::create(return_builder, yield_op->getLoc(),
+                         yield_op->getOperands());
   yield_op->erase();
 
   SymbolTable(region.getParentOfType<ModuleOp>()).insert(outlined_func);
@@ -121,8 +121,8 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
     new_operands.push_back(block->addArgument(t, loc));
   }
   new_operands.append(extern_values.begin(), extern_values.end());
-  auto call = b.create<func::CallOp>(loc, func, new_operands);
-  b.create<YieldOp>(loc, call.getResults());
+  auto call = func::CallOp::create(b, loc, func, new_operands);
+  YieldOp::create(b, loc, call.getResults());
 }
 
 void IfOutlinePass::OutlineIf(IfOp if_op) {

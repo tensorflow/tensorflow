@@ -394,8 +394,8 @@ bool hoistAllocs(Block& block) {
 void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
-  auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
+  auto alloca = memref::AllocaOp::create(
+      b, alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();

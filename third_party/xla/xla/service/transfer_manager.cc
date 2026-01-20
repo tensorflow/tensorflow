@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -104,7 +104,7 @@ absl::Status TransferManager::TransferLiteralToDevice(
 }
 
 absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
-    se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
+    se::Stream* stream, const Shape& shape, const se::DeviceAddressBase& source,
     const TransferMetadata* transfer_metadata) {
   TF_RET_CHECK(shape.IsArray());
   TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
@@ -119,7 +119,7 @@ absl::StatusOr<Literal> TransferManager::TransferArrayFromDevice(
 
 absl::Status TransferManager::TransferArrayToDevice(
     se::Stream* stream, const LiteralSlice& literal,
-    const se::DeviceMemoryBase& dest,
+    const se::DeviceAddressBase& dest,
     const TransferMetadata* transfer_metadata) {
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
@@ -134,7 +134,7 @@ absl::Status TransferManager::TransferArrayToDevice(
 
 absl::Status TransferManager::TransferArrayToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
-    const se::DeviceMemoryBase& dest,
+    const se::DeviceAddressBase& dest,
     const TransferMetadata* transfer_metadata) {
   TF_RET_CHECK(literal.shape().IsArray());
   ShapedBuffer shaped_buffer(HostShapeToDeviceShape(literal.shape()),
@@ -152,10 +152,11 @@ absl::Status TransferManager::ReadDynamicShapes(
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   TF_ASSIGN_OR_RETURN(
-      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
+      auto compiler,
+      Compiler::GetForPlatform(stream->parent()->GetPlatform()->id()));
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
       [&](const ShapeIndex& index,
-          const se::DeviceMemoryBase& buffer) -> absl::Status {
+          const se::DeviceAddressBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -176,7 +177,7 @@ absl::Status TransferManager::ReadDynamicShapes(
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
-        auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
+        auto buffer_8 = se::DeviceAddress<uint8_t>(buffer);
         auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
         TF_ASSIGN_OR_RETURN(
             auto metadata,
@@ -246,11 +247,11 @@ absl::Status TransferManager::WriteTupleIndexTablesAsync(
           const ShapeIndex& index) -> absl::Status {
         if (device_subshape.IsTuple() &&
             ShapeUtil::TupleElementCount(device_subshape) > 0) {
-          se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          se::DeviceAddressBase device_memory = device_buffer.buffer(index);
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
 
-          std::vector<se::DeviceMemoryBase> elements;
+          std::vector<se::DeviceAddressBase> elements;
           ShapeIndex element_index = index;
           for (int64_t i = 0; i < ShapeUtil::TupleElementCount(device_subshape);
                ++i) {
@@ -272,11 +273,11 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
   if (ShapeUtil::TupleElementCount(device_buffer.on_device_shape()) == 0) {
     return absl::OkStatus();
   }
-  se::DeviceMemoryBase device_memory = device_buffer.buffer({});
+  se::DeviceAddressBase device_memory = device_buffer.buffer({});
   TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
                device_memory.size());
 
-  std::vector<se::DeviceMemoryBase> elements;
+  std::vector<se::DeviceAddressBase> elements;
   elements.reserve(
       ShapeUtil::TupleElementCount(device_buffer.on_device_shape()));
   for (int64_t i = 0;
@@ -288,28 +289,29 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
 }
 
 absl::Status TransferManager::WriteRootTupleIndexTable(
-    se::Stream* stream, const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree) {
+    se::Stream* stream,
+    const ShapeTree<MaybeOwningDeviceAddress>& buffer_tree) {
   TF_RET_CHECK(buffer_tree.shape().IsTuple());
   if (ShapeUtil::TupleElementCount(buffer_tree.shape()) == 0) {
     return absl::OkStatus();
   }
-  se::DeviceMemoryBase device_memory =
-      buffer_tree.element({}).AsDeviceMemoryBase();
+  se::DeviceAddressBase device_memory =
+      buffer_tree.element({}).AsDeviceAddress();
   TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
                device_memory.size());
 
-  std::vector<se::DeviceMemoryBase> elements;
+  std::vector<se::DeviceAddressBase> elements;
   elements.reserve(ShapeUtil::TupleElementCount(buffer_tree.shape()));
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
        ++i) {
-    elements.push_back(buffer_tree.element({i}).AsDeviceMemoryBase());
+    elements.push_back(buffer_tree.element({i}).AsDeviceAddress());
   }
   return WriteSingleTupleIndexTable(stream, elements, buffer_tree.shape(),
                                     &device_memory);
 }
 
 absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
-    const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
+    const Shape& on_host_shape, se::DeviceAddressAllocator* allocator,
     int device_ordinal, int physical_device_ordinal,
     DeviceShapeRepresentationFn shape_representation_fn) {
   if (!LayoutUtil::HasLayout(on_host_shape)) {
@@ -329,7 +331,7 @@ absl::StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
   // including the tuple pointer arrays.
   for (auto& pair : shaped_buffer.buffers()) {
     const ShapeIndex& index = pair.first;
-    se::DeviceMemoryBase& memory_base = pair.second;
+    se::DeviceAddressBase& memory_base = pair.second;
     const Shape& subshape =
         ShapeUtil::GetSubshape(shaped_buffer.on_device_shape(), index);
     TF_ASSIGN_OR_RETURN(auto memory,

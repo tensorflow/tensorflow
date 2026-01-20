@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -115,7 +116,7 @@ void RecordGemmCostModelEstimateIfApplicable(
           << gemm_reification_cost->DebugString()
           << "\nInstruction: " << instruction.ToString();
 
-  TF_CHECK_OK(instruction.set_backend_config(*gpu_config));
+  CHECK_OK(instruction.set_backend_config(*gpu_config));
 }
 
 }  // namespace
@@ -127,7 +128,7 @@ absl::StatusOr<bool> GpuCostModelStatsCollection::RunImpl(
 
   GpuPerformanceModelOwning gpu_performance_model{device_info_, mlir_context_};
   for (auto* computation : module->MakeComputationPostOrder()) {
-    TF_CHECK_OK(computation->Accept(&cost_analysis_));
+    CHECK_OK(computation->Accept(&cost_analysis_));
 
     for (auto* fusion_instr : computation->instructions()) {
       if (fusion_instr->opcode() != HloOpcode::kFusion) {

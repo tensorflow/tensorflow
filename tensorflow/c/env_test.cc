@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/env.h"
 
 #include <cstring>
+#include <string>
 
 #include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"

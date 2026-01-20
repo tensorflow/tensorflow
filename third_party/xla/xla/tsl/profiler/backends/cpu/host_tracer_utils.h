@@ -23,7 +23,7 @@ namespace tsl {
 namespace profiler {
 
 // Convert complete events to XPlane format.
-void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
+void ConvertCompleteEventsToXPlane(uint64_t start_timestamp_ns,
                                    TraceMeRecorder::Events&& events,
                                    tensorflow::profiler::XPlane* raw_plane);
 

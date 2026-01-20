@@ -36,7 +36,7 @@ class NextPluggableDeviceFactory : public DeviceFactory {
         device_type_(device_type),
         compilation_device_name_(compilation_device_name) {}
 
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override;
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override;
 
   absl::Status CreateDevices(
       const SessionOptions& session_options, const std::string& name_prefix,

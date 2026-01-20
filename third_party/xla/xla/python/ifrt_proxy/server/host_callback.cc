@@ -165,7 +165,7 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
   to_buffer(host_callback().results, result_ptrs, request.results);
 
   tsl::Future<> status;
-  std::tie(request.status, status) = tsl::Future<>::MakePromise();
+  std::tie(request.status, status) = tsl::MakePromise<>();
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.

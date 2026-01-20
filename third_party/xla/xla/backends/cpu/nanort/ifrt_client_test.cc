@@ -324,6 +324,7 @@ int main(int argc, char** argv) {
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
       "ArrayImplTest.MakeErrorArrays:"
       "ArrayImplTest.CopyPoisonedArray:"
+      "ArrayImplTest.PoisonedZeroSizedBuffers:"
       // Sub-byte types are not supported in NanoIfrtClient.
       "ArrayImplTest.HostBufferInt4:"
       "ArrayImplTest.CopyArraysSubByteDType:"
@@ -337,6 +338,8 @@ int main(int argc, char** argv) {
       "*LoadedExecutableImplTest.GetHloModules*:"
       "*LoadedExecutableImplTest.ProgramText*:"
       "*LoadedExecutableImplTest.Analysis*:"
+      // NanoRT does not support portable execution.
+      "*LoadedExecutableImplTest.CompileAndExecutePortable*:"
       // Serialization is not implemented.
       "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);

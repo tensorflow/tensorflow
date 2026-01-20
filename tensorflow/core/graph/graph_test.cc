@@ -100,13 +100,13 @@ class GraphTest : public ::testing::Test {
     EXPECT_EQ(edges, graph_.num_edges());
   }
 
-  Node* AddNodeWithName(const string& name) {
+  Node* AddNodeWithName(const std::string& name) {
     Node* node;
     TF_CHECK_OK(NodeBuilder(name, "NoOp").Finalize(&graph_, &node));
     return node;
   }
 
-  Node* FromNodeDef(const string& name, const string& node_type,
+  Node* FromNodeDef(const std::string& name, const std::string& node_type,
                     int num_inputs) {
     auto builder = NodeDefBuilder(name, node_type);
     for (int i = 0; i < num_inputs; ++i) {
@@ -122,14 +122,14 @@ class GraphTest : public ::testing::Test {
     return node;
   }
 
-  void FromGraphDef(const string& gdef_ascii) {
+  void FromGraphDef(const std::string& gdef_ascii) {
     GraphDef gdef;
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef));
     GraphConstructorOptions opts;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef, &graph_));
   }
 
-  Node* FindNode(const string& name) {
+  Node* FindNode(const std::string& name) {
     for (Node* node : graph_.nodes()) {
       if (node->name() == name) return node;
     }
@@ -158,8 +158,8 @@ class GraphTest : public ::testing::Test {
  private:
   // Convert a list of nodes to a sorted list of strings so failure messages
   // are readable.
-  static std::vector<string> Stringify(const std::vector<Node*>& nodes) {
-    std::vector<string> result;
+  static std::vector<std::string> Stringify(const std::vector<Node*>& nodes) {
+    std::vector<std::string> result;
     result.reserve(nodes.size());
     for (Node* n : nodes) {
       result.push_back(n->DebugString());
@@ -322,14 +322,14 @@ TEST_F(GraphTest, NodeIteration) {
   graph_.RemoveNode(c);
 
   // expected = set of all node DebugStrings we expect in the graph
-  std::set<string> expected;
+  std::set<std::string> expected;
   expected.insert(graph_.source_node()->DebugString());
   expected.insert(a->DebugString());
   expected.insert(d->DebugString());
   expected.insert(graph_.sink_node()->DebugString());
 
   // Verify that iterating through ids gets the same set of nodes.
-  std::set<string> actual;
+  std::set<std::string> actual;
   for (int id = 0; id < graph_.num_node_ids(); ++id) {
     Node* node = graph_.FindNodeId(id);
     if (node != nullptr) {
@@ -370,7 +370,7 @@ TEST_F(GraphTest, AddAttr) {
 
   n1->AddAttr("_a", "new_attr");
 
-  string attr;
+  std::string attr;
   EXPECT_EQ(absl::OkStatus(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
 
@@ -389,13 +389,13 @@ TEST_F(GraphTest, AddAttr) {
 }
 
 // Convert edge iteration results into a sorted string.
-static string EdgeIter(const Graph& g) {
+static std::string EdgeIter(const Graph& g) {
   std::vector<std::pair<int, int> > edges;
   for (const Edge* e : g.edges()) {
     edges.push_back(std::make_pair(e->src()->id(), e->dst()->id()));
   }
   std::sort(edges.begin(), edges.end());
-  string result;
+  std::string result;
   for (auto& p : edges) {
     absl::StrAppend(&result, p.first, "->", p.second, ";");
   }
@@ -422,9 +422,9 @@ TEST_F(GraphTest, EdgeIteration) {
 }
 
 TEST_F(GraphTest, NewName) {
-  string a1 = graph_.NewName("A");
-  string a2 = graph_.NewName("A");
-  string b1 = graph_.NewName("B");
+  std::string a1 = graph_.NewName("A");
+  std::string a2 = graph_.NewName("A");
+  std::string b1 = graph_.NewName("B");
   EXPECT_NE(a1, a2);
   EXPECT_NE(a1, b1);
   EXPECT_NE(a2, b1);
@@ -446,19 +446,19 @@ TEST_F(GraphTest, IsValidNode) {
   // nullptr
   absl::Status s = graph_.IsValidNode(nullptr);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(string("Node is null"), s.message());
+  EXPECT_EQ(std::string("Node is null"), s.message());
 
   // node id_ is too high
   s = graph_.IsValidNode(g2_node2);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
+  EXPECT_EQ(std::string("node id 3 is >= than number of nodes in graph 3"),
             s.message());
 
   // valid id_ but different ptr
   s = graph_.IsValidNode(g2_node1);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
-                   "Does it belong to a different graph?"),
+  EXPECT_EQ(std::string("Node with id 2 is different from the passed in node. "
+                        "Does it belong to a different graph?"),
             s.message());
 }
 
@@ -695,8 +695,8 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
   auto node_name_index = graph_.BuildNodeNameIndex();
   EXPECT_EQ(node_name_index.size(), 5);
 
-  std::vector<string> node_names{"_SOURCE", "_SINK", "A", "B", "C"};
-  for (const string& node_name : node_names) {
+  std::vector<std::string> node_names{"_SOURCE", "_SINK", "A", "B", "C"};
+  for (const std::string& node_name : node_names) {
     EXPECT_NE(node_name_index.find(node_name), node_name_index.end());
     EXPECT_EQ(node_name_index[node_name], FindNode(node_name));
   }

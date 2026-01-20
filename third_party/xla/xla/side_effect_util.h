@@ -18,7 +18,7 @@ limitations under the License.
 
 namespace xla {
 
-// XLA frontend attribute name which specifies TensorFlow rendezvous name.
+// XLA frontend attribute name which specifies the rendezvous name.
 extern const char kXlaHostTransferRendezvousNameAttr[];
 
 // XLA frontend attribute name which specifies the name of host side handler
@@ -28,6 +28,10 @@ extern const char kXlaHostTransferHandlerNameAttr[];
 // XLA frontend attribute value of the name of TensorFlow Rendezvous Host
 // Command Handler.
 extern const char kXlaHostTransferTfRendezvousHandlerName[];
+
+// XLA frontend attribute value of the name of PjRt Rendezvous Host
+// Transfer Handler.
+extern const char kXlaHostTransferPjRtRendezvousHandlerName[];
 
 // XLA frontend attribute name which specifies the type of computation.
 extern const char kXlaComputeTypeAttr[];
@@ -114,6 +118,9 @@ extern const char kNumHyperparameters[];
 
 // XLA frontend attribute for specifying the tag of a log instruction.
 extern const char kLogTag[];
+
+// XLA frontend attribute for specifying the table name for SparseDenseMatmulOp.
+extern const char kXlaTableNameAttr[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_

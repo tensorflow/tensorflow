@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -51,7 +51,7 @@ Literal createR1ScatterIndices(int64_t domain_size, int64_t scatter_size,
   Literal scatter_indices;
 
   std::vector<int32_t> scatter_indices_vector(domain_size);
-  std::iota(scatter_indices_vector.begin(), scatter_indices_vector.end(), 0);
+  absl::c_iota(scatter_indices_vector, 0);
   std::shuffle(scatter_indices_vector.begin(), scatter_indices_vector.end(),
                engine);
   scatter_indices_vector.resize(scatter_size);

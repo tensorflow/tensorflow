@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -36,13 +37,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -120,7 +119,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64_t block_size) {
       TF_ASSIGN_OR_RETURN(Shape blocks_shape, builder->GetShape(last_blocks));
       auto shape_dims = blocks_shape.dimensions();
       auto last_blocks_dims = std::vector<int64_t>(ndims);
-      std::copy(shape_dims.begin(), shape_dims.end(), last_blocks_dims.begin());
+      absl::c_copy(shape_dims, last_blocks_dims.begin());
       last_blocks_dims.insert(last_blocks_dims.end() - 2, 1);
       last_blocks = Reshape(last_blocks, last_blocks_dims);
 

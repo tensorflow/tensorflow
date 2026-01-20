@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -121,7 +121,7 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
 
   bool is_root = dot->user_count() == 0;
 
-  TF_CHECK_OK(parent->ReplaceInstruction(dot, slice));
+  CHECK_OK(parent->ReplaceInstruction(dot, slice));
 
   if (is_root) {
     parent->set_root_instruction(slice);

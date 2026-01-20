@@ -15,21 +15,27 @@ limitations under the License.
 
 #include "xla/tsl/framework/device_id_utils.h"
 
+#include <climits>
+#include <cstddef>
 #include <cstdint>
-#include <numeric>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/framework/device_id_manager.h"
+#include "xla/tsl/framework/device_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/device_name_utils.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
@@ -44,9 +50,9 @@ absl::StatusOr<int> ParsePlatformDeviceIdString(
         tsl::str_util::Split(platform_device_id_str, ':');  // non-absl ok
     if (device_type_and_id.size() != 2 ||
         !absl::SimpleAtoi(device_type_and_id[1], &platform_device_id)) {
-      return tsl::errors::InvalidArgument(
-          "Could not parse entry in 'visible_device_list': '",
-          platform_device_id_str, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse entry in 'visible_device_list': '",
+                       platform_device_id_str, "'."));
     }
     if (!device_type.empty() && device_type_and_id[0] != device_type) {
       return -1;  // Return -1 to indicate that the device type doesn't match.
@@ -61,8 +67,8 @@ void CheckValidTfDeviceId(const DeviceType& type,
                           const int visible_device_count,
                           const TfDeviceId tf_device_id) {
   PlatformDeviceId platform_device_id;
-  TF_CHECK_OK(DeviceIdManager::TfToPlatformDeviceId(type, tf_device_id,
-                                                    &platform_device_id));
+  CHECK_OK(DeviceIdManager::TfToPlatformDeviceId(type, tf_device_id,
+                                                 &platform_device_id));
   CHECK_LT(platform_device_id.value(), visible_device_count)  // Crash OK
       << "platform_device_id is outside discovered device range."
       << " TF " << type << " id: " << tf_device_id << ", platform " << type
@@ -81,7 +87,7 @@ absl::Status ParseVisibleDeviceList(
   if (visible_device_list.empty()) {
     visible_device_order->resize(visible_device_count);
     // By default, visible to virtual mapping is unchanged.
-    std::iota(visible_device_order->begin(), visible_device_order->end(), 0);
+    absl::c_iota(*visible_device_order, 0);
   } else {
     const std::vector<std::string> order_str =
         tsl::str_util::Split(visible_device_list, ',');  // non-absl ok
@@ -95,10 +101,10 @@ absl::Status ParseVisibleDeviceList(
       }
       if (platform_device_id < 0 ||
           platform_device_id >= visible_device_count) {
-        return tsl::errors::InvalidArgument(
-            "'visible_device_list' listed an invalid Device id '",
-            platform_device_id, "' but visible device count is ",
-            visible_device_count);
+        return absl::InvalidArgumentError(
+            absl::StrCat("'visible_device_list' listed an invalid Device id '",
+                         platform_device_id, "' but visible device count is ",
+                         visible_device_count));
       }
       visible_device_order->push_back(
           tsl::PlatformDeviceId(platform_device_id));
@@ -109,9 +115,9 @@ absl::Status ParseVisibleDeviceList(
   std::set<PlatformDeviceId> visible_device_set(visible_device_order->begin(),
                                                 visible_device_order->end());
   if (visible_device_set.size() != visible_device_order->size()) {
-    return tsl::errors::InvalidArgument(
-        "visible_device_list contained a duplicate entry: ",
-        visible_device_list);
+    return absl::InvalidArgumentError(
+        absl::StrCat("visible_device_list contained a duplicate entry: ",
+                     visible_device_list));
   }
   return absl::OkStatus();
 }

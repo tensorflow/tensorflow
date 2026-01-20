@@ -72,6 +72,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "hlo_pjrt_gpu_test_base",
+    testonly = True,
+    srcs = ["hlo_pjrt_gpu_test_base.cc"],
+    hdrs = ["hlo_pjrt_gpu_test_base.h"],
+    deps = [
+        "//xla/backends/gpu/target_config",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/service:gpu_plugin",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tests:aot_utils",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:hlo_runner_agnostic_test_base",
+        "//xla/tests:pjrt_client_registry",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
 xla_test(
     name = "dynamic_slice_fusion_test",
     srcs = if_gpu_is_configured(["dynamic_slice_fusion_test.cc"]),
@@ -86,6 +111,7 @@ xla_test(
         [
             "//xla:error_spec",
             "//xla:shape_util",
+            "//xla/backends/gpu:ffi",
             "//xla/ffi",
             "//xla/ffi:ffi_api",
             "@com_google_absl//absl/algorithm:container",
@@ -93,7 +119,7 @@ xla_test(
             "@local_tsl//tsl/platform:test",
         ],
     ) + [
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -119,6 +145,8 @@ xla_test(
     name = "pred_arithmetic_test",
     srcs = ["pred_arithmetic_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:literal_util",
@@ -156,20 +184,30 @@ xla_test(
     env = {"TSAN_OPTIONS": "ignore_noninstrumented_modules=1"},
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
+        "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -180,7 +218,7 @@ xla_test(
 xla_cc_test(
     name = "async_command_buffer_test",
     srcs = ["async_command_buffer_test.cc"],
-    tags = tf_gpu_tests_tags(),
+    tags = tf_gpu_tests_tags() + ["pjrt_migration_candidate"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -199,6 +237,8 @@ xla_test(
     name = "float_conversions_test",
     srcs = ["float_conversions_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -216,6 +256,8 @@ xla_test(
     timeout = "moderate",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:debug_options_flags",
@@ -238,7 +280,11 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -257,7 +303,11 @@ xla_test(
         "swap_conv_operands_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -275,13 +325,14 @@ xla_test(
         "reduction_vectorization_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -294,6 +345,8 @@ xla_test(
         "parallel_reduction_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -319,6 +372,8 @@ xla_test(
         "b200": ["broken"],
     },
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -337,6 +392,8 @@ xla_test(
         "b200": ["broken"],
     },
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -345,7 +402,6 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
-        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -358,6 +414,8 @@ xla_test(
         "gpu_copy_alone_test.cc",
     ],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -371,6 +429,8 @@ xla_test(
     name = "gpu_dyn_shape_test",
     srcs = ["gpu_dyn_shape_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -390,6 +450,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -412,6 +474,8 @@ xla_test(
     name = "gpu_ftz_test",
     srcs = ["gpu_ftz_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -426,6 +490,8 @@ xla_test(
     name = "gpu_index_test",
     srcs = ["gpu_index_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:comparison_util",
@@ -444,6 +510,8 @@ xla_test(
     name = "gpu_infeed_test",
     srcs = ["infeed_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",  # build_cleaner: keep
         "//xla:array3d",
@@ -466,6 +534,8 @@ xla_test(
     backends = [
         "gpu",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -474,7 +544,6 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -482,6 +551,8 @@ xla_test(
     name = "gpu_ldg_test",
     srcs = ["gpu_ldg_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:literal_util",
@@ -497,6 +568,8 @@ xla_test(
     name = "gpu_noalias_test",
     srcs = ["gpu_noalias_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
@@ -511,6 +584,8 @@ xla_test(
     name = "gpu_unrolling_test",
     srcs = ["gpu_unrolling_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:debug_options_flags",
@@ -525,6 +600,8 @@ xla_test(
     name = "gpu_alignment_test",
     srcs = ["gpu_alignment_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "@com_google_googletest//:gtest_main",
@@ -536,6 +613,8 @@ xla_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -555,11 +634,12 @@ xla_test(
         "manual",
         "no_oss",
         "notap",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         "//xla:debug_options_flags",
         "//xla/service:hlo_module_config",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
@@ -570,6 +650,8 @@ xla_test(
     name = "select_and_scatter_test",
     srcs = ["select_and_scatter_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -594,6 +676,22 @@ xla_test(
 )
 
 xla_test(
+    name = "regression_dot_test",
+    srcs = ["regression_dot_test.cc"],
+    backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:test_utils",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     backends = ["gpu"],
@@ -601,6 +699,8 @@ xla_test(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     shard_count = 15,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -636,6 +736,7 @@ lit_test_suite_for_gpus(
             "slice_to_dynamic.hlo",
             "sorting.hlo",
             "sub_byte_collectives.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
             "zero_clamp_abs_index.hlo",
         ],
@@ -648,10 +749,12 @@ lit_test_suite_for_gpus(
     disabled_on_gpus = {
         "v100": [
             "kernel_reuse.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
         ],
         "p100": [
             "kernel_reuse.hlo",
+            "triton_calling_convention.hlo",
             "triton_naming.hlo",
         ],
         "mi200": [
@@ -718,6 +821,8 @@ xla_test(
     name = "kernel_launch_test",
     srcs = ["kernel_launch_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -729,6 +834,8 @@ xla_test(
     name = "mock_custom_call_test",
     srcs = ["mock_custom_call_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:xla_proto_cc",
@@ -767,6 +874,7 @@ xla_test(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -775,7 +883,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
     ] + if_cuda_is_configured([
         "//xla/service/gpu:stream_executor_util",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
     ]),
 )
 
@@ -807,15 +915,22 @@ xla_test(
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
     shard_count = 15,
-    tags = ["nodebug"],
+    tags = [
+        "nodebug",
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
         "//xla/service/gpu/transforms:sort_rewriter",
-        "//xla/tests:hlo_test_base",
-        "//xla/tsl/platform:statusor",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
@@ -827,6 +942,8 @@ xla_test(
     backend_tags = {
         # TODO(b/445172709): Re-enable once fixed.
         "b200": ["broken"],
+        # TODO(b/445172709): Re-enable once fixed.
+        "h100": ["broken"],
     },
     backends = [
         "a100",
@@ -835,6 +952,8 @@ xla_test(
         "amdgpu_any",
     ],
     shard_count = 2,
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "//xla:array4d",
@@ -947,6 +1066,8 @@ xla_test(
     name = "gpu_int4_test",
     srcs = ["gpu_int4_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":gpu_codegen_test",
         "@com_google_absl//absl/strings:string_view",
@@ -959,9 +1080,10 @@ xla_test(
     name = "simplify_fp_conversions_test",
     srcs = ["simplify_fp_conversions_test.cc"],
     backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         "//xla:xla_proto_cc",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -998,5 +1120,72 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "collective_ops_e2e_test_base",
+    testonly = True,
+    srcs = ["collective_ops_e2e_test_base.cc"],
+    hdrs = ["collective_ops_e2e_test_base.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/service:hlo_runner_pjrt",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+        "@com_google_protobuf//:protobuf",
+    ] + if_google([
+        # In OSS this dependency is added automatically for xla_test targets. See
+        # third_party/tensorflow/compiler/xla/xla.default.bzl.
+        "//xla/tsl/framework:allocator",
+    ]),
+)
+
+xla_test(
+    name = "collective_ops_command_buffer_test",
+    srcs = ["collective_ops_command_buffer_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = ["gpu"],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
@@ -388,10 +389,16 @@ IfrtCompileAndPropagateShardingsPass::GetInputShardingParams(
     if (llvm::isa<IfrtUnspecifiedShardingAttr>(
             in_array_type.getShardingAttr())) {
       if (!in_shardings.has_value()) {
-        in_shardings = compile_result.executable->GetParameterShardings();
-        if (!in_shardings.has_value()) {
-          return call_op.emitError()
-                 << "executable does not have input shardings";
+        if (call_op.getDevices().size() == 1) {
+          // Use replicated sharding for single-device inputs without calling
+          // `GetParameterShardings` since it may return `std::nullopt`.
+          in_shardings.emplace(call_op.getOutputs().size());
+        } else {
+          in_shardings = compile_result.executable->GetParameterShardings();
+          if (!in_shardings.has_value()) {
+            return call_op.emitError()
+                   << "executable does not have input shardings";
+          }
         }
         if (in_shardings->size() != call_op.getOutputs().size()) {
           return call_op.emitError()
@@ -443,10 +450,16 @@ IfrtCompileAndPropagateShardingsPass::GetOutputShardingParams(
     if (llvm::isa<IfrtUnspecifiedShardingAttr>(
             out_array_type.getShardingAttr())) {
       if (!out_shardings.has_value()) {
-        out_shardings = compile_result.executable->GetOutputShardings();
-        if (!out_shardings.has_value()) {
-          return call_op.emitError()
-                 << "executable does not have output shardings";
+        if (call_op.getDevices().size() == 1) {
+          // Use replicated sharding for single-device inputs without calling
+          // `GetParameterShardings` since it may return `std::nullopt`.
+          out_shardings.emplace(call_op.getOutputs().size());
+        } else {
+          out_shardings = compile_result.executable->GetOutputShardings();
+          if (!out_shardings.has_value()) {
+            return call_op.emitError()
+                   << "executable does not have output shardings";
+          }
         }
         if (out_shardings->size() != call_op.getOutputs().size()) {
           return call_op.emitError()

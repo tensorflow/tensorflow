@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,6 +35,10 @@ using ::testing::HasSubstr;
 
 class TiledHloFusionInstructionTest : public HloHardwareIndependentTestBase {
  public:
+  TiledHloFusionInstructionTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
   mlir::MLIRContext mlir_context_;
 };
 

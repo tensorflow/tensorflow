@@ -34,19 +34,20 @@ namespace eager {
 // generate and then copy the data instead of just generating the data on the
 // device directly.
 static bool IsPinnableOp(absl::string_view op_name) {
-  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
-      "RandomUniform",
-      "RandomUniformInt",
-      "RandomStandardNormal",
-      "StatelessRandomUniform",
-      "StatelessRandomUniformInt",
-      "StatelessRandomUniformFullInt",
-      "StatelessRandomNormal",
-  });
+  static const gtl::FlatSet<std::string>* unpinnable_ops =
+      new gtl::FlatSet<std::string>({
+          "RandomUniform",
+          "RandomUniformInt",
+          "RandomStandardNormal",
+          "StatelessRandomUniform",
+          "StatelessRandomUniformInt",
+          "StatelessRandomUniformFullInt",
+          "StatelessRandomNormal",
+      });
 
   // XRT ops refer to per-device handles that are not safe to move between
   // devices.
-  return unpinnable_ops->find(string(op_name)) == unpinnable_ops->end() &&
+  return unpinnable_ops->find(std::string(op_name)) == unpinnable_ops->end() &&
          !absl::StartsWith(op_name, "XRT");
 }
 // Validate if the remote device with the given incarnation is valid in the
@@ -64,12 +65,12 @@ static absl::Status ValidateTensorHandleRemoteDevice(
 
 bool IsColocationExempt(absl::string_view op_name) {
   const auto& exempt_ops = InputColocationExemptionRegistry::Global()->Get();
-  return exempt_ops.find(string(op_name)) != exempt_ops.end();
+  return exempt_ops.find(std::string(op_name)) != exempt_ops.end();
 }
 
 bool IsFunction(absl::string_view op_name) {
   const OpDef* op_def = nullptr;
-  absl::Status s = OpDefForOp(string(op_name), &op_def);
+  absl::Status s = OpDefForOp(std::string(op_name), &op_def);
   if (!s.ok()) {
     if (!absl::IsNotFound(s)) {
       LOG(WARNING) << "Looking up OpDef failed with error: " << s;

@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +31,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -92,6 +97,33 @@ Mesh::Mesh(TileAssignment device_assignment,
     : device_assignment_(std::move(device_assignment)),
       axes_names_(axes_names.begin(), axes_names.end()) {
   CHECK_OK(ValidateMesh());
+}
+
+std::string Mesh::ToString() const {
+  if (IsMaximal()) {
+    return absl::StrCat(
+        "@maximal_mesh<device_id=", device_assignment_.array()(0), ">");
+  }
+
+  std::string mesh_str = "@mesh";
+  // Add the mesh axes names and sizes.
+  std::vector<std::string> formatted_axes_names;
+  formatted_axes_names.reserve(axes_names_.size());
+  for (int64_t i = 0; i < axes_names_.size(); ++i) {
+    formatted_axes_names.push_back(
+        absl::StrCat(axes_names_[i], "=", device_assignment_.dim(i)));
+  }
+
+  // Add the device assignment if it is not an iota case.
+  std::optional<IotaTileAssignment> iota = device_assignment_.iota();
+  std::string device_assignment_str = "";
+  if (!(iota.has_value() && iota->reshape_dims().size() == 1)) {
+    device_assignment_str =
+        absl::StrCat(", device_ids=(", device_assignment_.ArrayToString(), ")");
+  }
+  absl::StrAppend(&mesh_str, "<", absl::StrJoin(formatted_axes_names, ","), ">",
+                  device_assignment_str);
+  return mesh_str;
 }
 
 MeshProto Mesh::ToProto() const {
@@ -168,26 +200,19 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 
-absl::Status AxisRef::Validate(const Mesh& mesh) const {
-  if (mesh_axis_index_ >= mesh.axis_names().size()) {
-    return absl::InvalidArgumentError(
-        "Axis index must be less than number of axes.");
+std::string AxisRef::ToString(const Mesh* mesh) const {
+  // TODO(b/474013054): Remove these checks if they have significant overhead.
+  CHECK_GE(mesh_axis_index_, 0);
+  if (mesh) {
+    CHECK_LT(mesh_axis_index_, mesh->axis_names().size());
   }
-  if (!sub_axis_info_.has_value()) {
-    return absl::OkStatus();
+  std::string axis_str = mesh ? mesh->axis_names()[mesh_axis_index_]
+                              : std::to_string(mesh_axis_index_);
+  if (sub_axis_info_.has_value()) {
+    absl::StrAppend(&axis_str, ":(", sub_axis_info_->pre_size, ")",
+                    sub_axis_info_->size);
   }
-
-  int64_t axis_size = mesh.axis_size(mesh_axis_index_);
-  if (axis_size % sub_axis_info_->pre_size != 0 ||
-      axis_size % sub_axis_info_->size != 0) {
-    return absl::InvalidArgumentError(
-        "Pre-size and size must divide the full axis size.");
-  }
-  if (sub_axis_info_->size >= axis_size) {
-    return absl::InvalidArgumentError(
-        "Sub-axis size must be strictly less than the full axis size.");
-  }
-  return absl::OkStatus();
+  return axis_str;
 }
 
 AxisRefProto AxisRef::ToProto() const {
@@ -215,61 +240,6 @@ AxisRef::AxisRef(int64_t mesh_axis_index, SubAxis sub_axis_info)
     : mesh_axis_index_(mesh_axis_index), sub_axis_info_(sub_axis_info) {
   CHECK_GT(sub_axis_info_->pre_size, 0) << "sub-axis pre-size must be >= 1";
   CHECK_GT(sub_axis_info_->size, 1) << "sub-axis size must be > 1";
-}
-
-bool canSubAxesCoexist(int64_t minPreSize, int64_t maxPreSize,
-                       int64_t minNextPreSize, int64_t maxNextPreSize) {
-  if (minNextPreSize > maxPreSize) {
-    // Sub-axes overlap, check if overlapping and non-overlapping parts are
-    // valid.
-    return minNextPreSize % maxPreSize == 0 && maxPreSize % minPreSize == 0 &&
-           maxNextPreSize % minNextPreSize == 0;
-  }
-  // Sub-axes don't overlap, check if the gap is valid.
-  return maxPreSize % minNextPreSize == 0;
-}
-
-bool AxisRef::CanCoexist(const AxisRef& other) const {
-  if (mesh_axis_index() != other.mesh_axis_index()) {
-    return true;
-  }
-  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
-    // If one is a full axis and the other is a sub-axis, they can coexist.
-    return true;
-  }
-
-  const SubAxis& this_sub_axis = sub_axis_info_.value();
-  const SubAxis& other_sub_axis = other.sub_axis_info_.value();
-
-  int64_t this_pre_size = this_sub_axis.pre_size;
-  int64_t other_pre_size = other_sub_axis.pre_size;
-  int64_t this_next_pre_size = this_sub_axis.next_pre_size();
-  int64_t other_next_pre_size = other_sub_axis.next_pre_size();
-
-  auto [min_pre_size, max_pre_size] =
-      std::minmax(this_pre_size, other_pre_size);
-  auto [min_next_pre_size, max_next_pre_size] =
-      std::minmax(this_next_pre_size, other_next_pre_size);
-
-  return canSubAxesCoexist(min_pre_size, max_pre_size, min_next_pre_size,
-                           max_next_pre_size);
-}
-
-bool AxisRef::Overlaps(const AxisRef& other) const {
-  if (mesh_axis_index() != other.mesh_axis_index()) {
-    return false;
-  }
-
-  // If one is a full axis then they must overlap.
-  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
-    return true;
-  }
-
-  const SubAxis& this_sub_axis = sub_axis_info_.value();
-  const SubAxis& other_sub_axis = other.sub_axis_info_.value();
-
-  return this_sub_axis.pre_size < other_sub_axis.next_pre_size() &&
-         other_sub_axis.pre_size < this_sub_axis.next_pre_size();
 }
 
 bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
@@ -309,10 +279,74 @@ bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
   return max_pre_size % min_next_pre_size == 0;
 }
 
+bool AxisRef::CanMerge(const AxisRef& other) const {
+  if (mesh_axis_index_ != other.mesh_axis_index()) {
+    return false;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    return false;
+  }
+  return sub_axis_info_->next_pre_size() == other.sub_axis_info_->pre_size;
+}
+
+bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
+  if (!CanMerge(other)) {
+    return false;
+  }
+
+  sub_axis_info_->size *= other.sub_axis_info_->size;
+  if (sub_axis_info_->size == mesh.axis_size(mesh_axis_index_)) {
+    assert(sub_axis_info_->pre_size == 1);
+    sub_axis_info_ = std::nullopt;
+  }
+  return true;
+}
+
+absl::Status AxisRef::Validate(const Mesh& mesh) const {
+  if (mesh_axis_index_ >= mesh.axis_names().size()) {
+    return absl::InvalidArgumentError(
+        "Axis index must be less than number of axes.");
+  }
+  if (!sub_axis_info_.has_value()) {
+    return absl::OkStatus();
+  }
+
+  int64_t axis_size = mesh.axis_size(mesh_axis_index_);
+  if (axis_size % sub_axis_info_->pre_size != 0 ||
+      axis_size % sub_axis_info_->size != 0) {
+    return absl::InvalidArgumentError(
+        "Pre-size and size must divide the full axis size.");
+  }
+  if (sub_axis_info_->size >= axis_size) {
+    return absl::InvalidArgumentError(
+        "Sub-axis size must be strictly less than the full axis size.");
+  }
+  return absl::OkStatus();
+}
+
+int64_t AxisRef::size(const Mesh& mesh) const {
+  if (sub_axis_info_.has_value()) {
+    return sub_axis_info_->size;
+  }
+
+  return mesh.axis_size(mesh_axis_index_);
+}
+
+std::ostream& operator<<(std::ostream& out, const Mesh& mesh) {
+  return out << mesh.ToString();
+}
+
+std::ostream& operator<<(std::ostream& out, const AxisRef& axis) {
+  return out << axis.ToString();
+}
+
 bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {
-  for (int64_t i = 0; i < axes.size() - 1; ++i) {
-    for (int64_t j = i + 1; j < axes.size(); ++j) {
-      if (!axes[i].CanCoexistWithoutOverlap(axes[j])) {
+  if (axes.size() < 2) {
+    return true;
+  }
+  for (auto it1 = axes.begin(); it1 != std::prev(axes.end()); ++it1) {
+    for (auto it2 = std::next(it1); it2 != axes.end(); ++it2) {
+      if (!it1->CanCoexistWithoutOverlap(*it2)) {
         return false;
       }
     }

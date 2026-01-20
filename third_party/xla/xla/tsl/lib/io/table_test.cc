@@ -15,20 +15,29 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/table.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/block_builder.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_builder.h"
+#include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
 
@@ -98,7 +107,7 @@ class StringSink : public WritableFile {
   absl::Status Close() override { return absl::OkStatus(); }
   absl::Status Flush() override { return absl::OkStatus(); }
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSink does not support Name()");
+    return absl::UnimplementedError("StringSink does not support Name()");
   }
   absl::Status Sync() override { return absl::OkStatus(); }
   absl::Status Tell(int64_t* pos) override {
@@ -125,13 +134,13 @@ class StringSource : public RandomAccessFile {
   uint64_t Size() const { return contents_.size(); }
 
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSource does not support Name()");
+    return absl::UnimplementedError("StringSource does not support Name()");
   }
 
   absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset > contents_.size()) {
-      return errors::InvalidArgument("invalid Read offset");
+      return absl::InvalidArgumentError("invalid Read offset");
     }
     if (offset + n > contents_.size()) {
       n = contents_.size() - offset;
@@ -228,10 +237,10 @@ class TableConstructor : public Constructor {
 
     for (KVMap::const_iterator it = data.begin(); it != data.end(); ++it) {
       builder.Add(it->first, it->second);
-      TF_CHECK_OK(builder.status());
+      CHECK_OK(builder.status());
     }
     absl::Status s = builder.Finish();
-    TF_CHECK_OK(s) << s;
+    CHECK_OK(s) << s;
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());
 

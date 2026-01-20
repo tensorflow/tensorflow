@@ -26,11 +26,11 @@ namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-string OpArgumentView::Declaration() const {
+std::string OpArgumentView::Declaration() const {
   return absl::Substitute("$0 $1", type_name_, variable_name_);
 }
 
-string OpArgumentView::Initializer() const {
+std::string OpArgumentView::Initializer() const {
   if (default_value_.empty()) {
     return "";
   }
@@ -39,7 +39,8 @@ string OpArgumentView::Initializer() const {
 
 bool OpArgumentView::HasDefaultValue() const { return !default_value_.empty(); }
 
-OpArgumentView::OpArgumentView(string type, string var, string def)
+OpArgumentView::OpArgumentView(std::string type, std::string var,
+                               std::string def)
     : type_name_(type), variable_name_(var), default_value_(def) {}
 
 OpArgumentView::OpArgumentView(ArgSpec arg)

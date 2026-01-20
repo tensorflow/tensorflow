@@ -15,19 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
 
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -47,23 +59,23 @@ static std::unique_ptr<Graph> MakeOuterGraph(
   auto w = ops::Placeholder(scope.WithOpName("W"), DT_RESOURCE);
 
   NodeDef def;
-  TF_CHECK_OK(NodeDefBuilder("launch0", function, &flib_def)
-                  .Input(a.node()->name(), 0, DT_INT32)
-                  .Input(b.node()->name(), 0, DT_FLOAT)
-                  .Input(c.node()->name(), 0, DT_INT32)
-                  .Input(d.node()->name(), 0, DT_FLOAT)
-                  .Input(u.node()->name(), 0, DT_RESOURCE)
-                  .Input(v.node()->name(), 0, DT_RESOURCE)
-                  .Input(w.node()->name(), 0, DT_RESOURCE)
-                  .Device("/gpu:0")
-                  .Attr(kXlaClusterIdAttr, "launch0")
-                  .Attr("_variable_start_index", 4)
-                  .Finalize(&def));
+  CHECK_OK(NodeDefBuilder("launch0", function, &flib_def)
+               .Input(a.node()->name(), 0, DT_INT32)
+               .Input(b.node()->name(), 0, DT_FLOAT)
+               .Input(c.node()->name(), 0, DT_INT32)
+               .Input(d.node()->name(), 0, DT_FLOAT)
+               .Input(u.node()->name(), 0, DT_RESOURCE)
+               .Input(v.node()->name(), 0, DT_RESOURCE)
+               .Input(w.node()->name(), 0, DT_RESOURCE)
+               .Device("/gpu:0")
+               .Attr(kXlaClusterIdAttr, "launch0")
+               .Attr("_variable_start_index", 4)
+               .Finalize(&def));
 
   absl::Status status;
   Node* launch = scope.graph()->AddNode(def, &status);
-  TF_CHECK_OK(status);
-  TF_CHECK_OK(scope.DoShapeInference(launch));
+  CHECK_OK(status);
+  CHECK_OK(scope.DoShapeInference(launch));
   scope.graph()->AddEdge(a.node(), 0, launch, 0);
   scope.graph()->AddEdge(b.node(), 0, launch, 1);
   scope.graph()->AddEdge(c.node(), 0, launch, 2);
@@ -89,7 +101,7 @@ static std::unique_ptr<Graph> MakeOuterGraph(
   auto consumer3 = ops::Identity(scope.WithOpName("consumer3"), out3);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  CHECK_OK(scope.ToGraph(graph.get()));
   return graph;
 }
 
@@ -135,7 +147,7 @@ static std::unique_ptr<Graph> MakeBodyGraph() {
       ops::_Retval(scope.WithOpName("readu_0_retval_RetVal"), read_u, 3);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(scope.ToGraph(graph.get()));
+  CHECK_OK(scope.ToGraph(graph.get()));
   return graph;
 }
 
@@ -160,7 +172,7 @@ TEST(EncapsulateXlaComputations, DeterministicEncapsulate) {
       };
       add_attrs(e.node());
 
-      TF_CHECK_OK(scope.ToGraph(graph.get()));
+      CHECK_OK(scope.ToGraph(graph.get()));
       auto get_node_in_graph = [&graph](Node* node) {
         return graph->FindNodeId(node->id());
       };
@@ -178,7 +190,7 @@ TEST(EncapsulateXlaComputations, DeterministicEncapsulate) {
                               get_node_in_graph(e.node()), true);
       }
     }
-    TF_CHECK_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
+    CHECK_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
     return SerializeGraphDeterministic(*graph).value();
   };
 

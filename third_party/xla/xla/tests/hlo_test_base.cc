@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
@@ -40,14 +39,13 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
@@ -140,13 +138,13 @@ HloTestBase::HloTestBase(
 
 /*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
-  TF_CHECK_OK(result.status()) << "could not get interpreter platform";
+  CHECK_OK(result.status()) << "could not get interpreter platform";
   return result.value();
 }
 
 /*static*/ se::Platform* HloTestBase::GetTestPlatform() {
   auto result = PlatformUtil::GetDefaultPlatform();
-  TF_CHECK_OK(result.status()) << "could not get test platform";
+  CHECK_OK(result.status()) << "could not get test platform";
   return result.value();
 }
 
@@ -176,10 +174,11 @@ HloTestBase::HloTestBase(
                                   reference_preprocessor);
 }
 
-se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
+se::DeviceAddressAllocator* HloTestBase::GetAllocator() {
   if (allocator_ == nullptr) {
-    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
-        backend().default_stream_executor());
+    allocator_ =
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            backend().default_stream_executor());
   }
   return allocator_.get();
 }

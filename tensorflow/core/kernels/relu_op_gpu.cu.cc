@@ -44,10 +44,10 @@ namespace functor {
 __global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
                                    const Eigen::half* __restrict__ feature,
                                    Eigen::half* __restrict__ backprop,
-                                   int32 count) {
-  int32 half2_count = count >> 1;
-  int32 index = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_device_threads = gridDim.x * blockDim.x;
+                                   int32_t count) {
+  int32_t half2_count = count >> 1;
+  int32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t total_device_threads = gridDim.x * blockDim.x;
 
   while (index < half2_count) {
     // The fast branch.
@@ -97,9 +97,9 @@ __global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
 __global__ void ReluGradHalfKernelVector(
     const Eigen::half* __restrict__ gradient,
     const Eigen::half* __restrict__ feature, Eigen::half* __restrict__ backprop,
-    int32 count) {
-  int32 half8_count = count / VectorSizeElements;
-  int32 index = blockIdx.x * blockDim.x + threadIdx.x;
+    int32_t count) {
+  int32_t half8_count = count / VectorSizeElements;
+  int32_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (index < half8_count) {
     // Cast to xx_h8 for vector load and store.
@@ -174,17 +174,17 @@ struct ReluGrad<Device, Eigen::half> {
     auto backprop_ptr = reinterpret_cast<uintptr_t>(backprop.data());
     bool aligned = gradient_ptr % 16 == 0 && feature_ptr % 16 == 0 &&
                    backprop_ptr % 16 == 0;
-    int32 count = gradient.size();
-    constexpr int32 kThreadInBlock = 512;
+    int32_t count = gradient.size();
+    constexpr int32_t kThreadInBlock = 512;
     if (count == 0) return;
     if (aligned) {
-      int32 half8_count = Eigen::divup(count, VectorSizeElements);
-      int32 kBlock = Eigen::divup(half8_count, kThreadInBlock);
+      int32_t half8_count = Eigen::divup(count, VectorSizeElements);
+      int32_t kBlock = Eigen::divup(half8_count, kThreadInBlock);
       TF_CHECK_OK(GpuLaunchKernel(
           ReluGradHalfKernelVector, kBlock, kThreadInBlock, 0, d.stream(),
           gradient.data(), feature.data(), backprop.data(), count));
     } else {
-      int32 half2_count = Eigen::divup(count, 2);
+      int32_t half2_count = Eigen::divup(count, 2);
       GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
           half2_count, d, ReluGradHalfKernel, 0, kThreadInBlock);
       TF_CHECK_OK(GpuLaunchKernel(
@@ -195,8 +195,8 @@ struct ReluGrad<Device, Eigen::half> {
 };
 
 __global__ void Relu_int8x4_kernel(int vect_count,
-                                   const int32* __restrict__ input,
-                                   int32* __restrict__ output) {
+                                   const int32_t* __restrict__ input,
+                                   int32_t* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
 #if GOOGLE_CUDA
     output[index] = __vmaxs4(input[index], 0);
@@ -221,17 +221,17 @@ struct Relu<Device, qint8> {
   // 'output' should have the same size as 'input'.
   void operator()(const Device& d, typename TTypes<qint8>::ConstTensor input,
                   typename TTypes<qint8>::Tensor output) {
-    int32 count = input.size();
+    int32_t count = input.size();
     if (count == 0) return;
 
-    int32 vect_count = Eigen::divup(count, 4);
-    constexpr int32 kThreadInBlock = 512;
+    int32_t vect_count = Eigen::divup(count, 4);
+    constexpr int32_t kThreadInBlock = 512;
     GpuLaunchConfig config = GetGpuLaunchConfigFixedBlockSize(
         vect_count, d, Relu_int8x4_kernel, 0, kThreadInBlock);
     TF_CHECK_OK(GpuLaunchKernel(
         Relu_int8x4_kernel, config.block_count, config.thread_per_block, 0,
-        d.stream(), vect_count, reinterpret_cast<const int32*>(input.data()),
-        reinterpret_cast<int32*>(output.data())));
+        d.stream(), vect_count, reinterpret_cast<const int32_t*>(input.data()),
+        reinterpret_cast<int32_t*>(output.data())));
   }
 };
 

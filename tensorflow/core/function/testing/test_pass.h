@@ -101,7 +101,8 @@ struct TestPassTfDialect
     DCHECK(target != nullptr);
 
     builder.setInsertionPoint(target);
-    auto replacement = builder.create<mlir::TF::AddV2Op>(
+    auto replacement = mlir::TF::AddV2Op::create(
+        builder,
         mlir::NameLoc::get(
             mlir::StringAttr::get(builder.getContext(), "x_plus_y")),
         target->getResultTypes(), target->getOperand(0), target->getOperand(1));

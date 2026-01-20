@@ -29,7 +29,7 @@ cc_library(
     hdrs = ["xla_gpu_client_options.h"],
     deps = [
         ":xla_gpu_allocator_config",
-        "//xla/pjrt/distributed:client",
+        "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt/distributed:key_value_store_interface",
     ],
 )
@@ -64,7 +64,6 @@ cc_library(
     name = "gpu_static_registration",
     srcs = ["gpu_static_registration.cc"],
     deps = [
-        ":xla_gpu_client_options",
         "//xla/pjrt/c:pjrt_c_api_gpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",

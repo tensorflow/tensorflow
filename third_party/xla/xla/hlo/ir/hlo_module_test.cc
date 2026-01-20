@@ -29,9 +29,11 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -43,20 +45,19 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compilation_environments.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -222,7 +223,8 @@ TEST(HloModuleTest, CloneGeneral) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
-  TF_CHECK_OK(m1.set_schedule(schedule));
+  m1.metadata()->set_module_group_name("test");
+  CHECK_OK(m1.set_schedule(schedule));
   m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
 
   std::unique_ptr<HloModule> m2 = m1.Clone(kCloneSuffix);
@@ -241,6 +243,10 @@ TEST(HloModuleTest, CloneGeneral) {
                 .instructions()
                 .front()
                 ->name());
+  EXPECT_EQ(m1.metadata()->proto().module_group_name(), "test");
+  EXPECT_EQ(m2->metadata()->proto().module_group_name(), "test");
+  EXPECT_EQ(m1.metadata()->proto().canonical_module_id(), m1.unique_id());
+  EXPECT_EQ(m2->metadata()->proto().canonical_module_id(), m2->unique_id());
 
   EXPECT_EQ(m1.CrossProgramPrefetches().front().alt_memory_offset,
             m2->CrossProgramPrefetches().front().alt_memory_offset);
@@ -264,7 +270,7 @@ TEST(HloModuleTest, CloneWithContextGeneral) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
-  TF_CHECK_OK(m1.set_schedule(schedule));
+  CHECK_OK(m1.set_schedule(schedule));
   m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
 
   auto [m2, clone_context] = m1.CloneWithContext(kCloneSuffix);
@@ -325,6 +331,32 @@ TEST(HloModuleTest, CloneWithNewConfig) {
   EXPECT_EQ(pm2->config().device_type(), m1.config().device_type());
   EXPECT_NE(pm2->config().device_memory_size(),
             m1.config().device_memory_size());
+}
+
+TEST(HloModuleTest, ClonePreservesStackFrameIndex) {
+  HloModule m1("temp_module", HloModuleConfig());
+  HloSchedule schedule(&m1);
+  CreateComputation(m1, "TestComputation1", true, schedule);
+  CHECK_OK(m1.set_schedule(schedule));
+
+  StackFrameIndexProto stack_frame_index;
+  stack_frame_index.add_file_names("file1.cc");
+  stack_frame_index.add_function_names("func1");
+  auto* file_location = stack_frame_index.add_file_locations();
+  file_location->set_file_name_id(1);
+  file_location->set_function_name_id(1);
+  file_location->set_line(10);
+  file_location->set_column(5);
+  auto* stack_frame = stack_frame_index.add_stack_frames();
+  stack_frame->set_file_location_id(1);
+  stack_frame->set_parent_frame_id(0);
+  m1.set_stack_frame_index(stack_frame_index);
+
+  std::unique_ptr<HloModule> m2 = m1.Clone(kCloneSuffix);
+
+  EXPECT_TRUE(m2->stack_frame_index().has_value());
+  EXPECT_THAT(m2->stack_frame_index().value(),
+              tsl::proto_testing::EqualsProto(stack_frame_index));
 }
 
 TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
@@ -1165,6 +1197,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   };
 
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer_assignment,
       BufferAssigner::Run(
@@ -1174,7 +1208,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
           /*buffer_size=*/std::move(buffer_size_func),
           /*alias_info=*/&alias_info,
           /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
-          /*allocate_buffers_for_constants=*/true));
+          /*options=*/std::move(opts)));
 
   BufferAssignmentProto buffer_assignment_proto = buffer_assignment->ToProto();
   *opt_hlo_module_proto.mutable_buffer_assignment() = buffer_assignment_proto;

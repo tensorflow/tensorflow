@@ -17,19 +17,28 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/ffi.h"
+#include "xla/error_spec.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -69,6 +78,9 @@ class CommandBufferTest
       public ::testing::WithParamInterface<
           DebugOptions::CommandBufferSchedulingMode> {
  protected:
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
@@ -120,7 +132,7 @@ class CommandBufferTest
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
       const std::optional<ErrorSpec>& error) {
     // Verify module then clone for reference.
-    TF_CHECK_OK(this->verifier().Run(module.get()).status());
+    CHECK_OK(this->verifier().Run(module.get()).status());
     std::unique_ptr<HloModule> reference_module = module->Clone();
 
     // Prepare fake args for both runners.
@@ -232,7 +244,65 @@ TEST_P(CommandBufferTest, Fusions) {
                               /*run_hlo_passes=*/false);
 }
 
+// Empty memcpy state to test stateful custom calls.
+struct MemcpyState {};
+
+static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInstantiate() {
+  return std::make_unique<MemcpyState>();
+}
+
+static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
+                           ffi::AnyBuffer src,
+                           ffi::Result<ffi::AnyBuffer> dst) {
+  EXPECT_NE(state, nullptr);
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyInstantiate, MemcpyInstantiate,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ctx<ffi::State<MemcpyState>>()
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
+                         {kMemcpyInstantiate, nullptr, nullptr, kMemcpy});
+
+TEST_P(CommandBufferTest, TracedCustomCalls) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  command_buffer {
+    p0 = f32[2,2] parameter(0)
+    ROOT f3 = f32[2,2] custom-call(p0),
+      custom_call_target="__xla_test$$memcpy",
+      api_version=API_VERSION_TYPED_FFI
+  }
+
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    ROOT call = f32[2,2] call(p0), to_apply=command_buffer
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal expected = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
+}
+
 TEST_P(CommandBufferTest, TrueFalseConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -292,6 +362,9 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 }
 
 TEST_P(CommandBufferTest, IndexConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -359,6 +432,9 @@ TEST_P(CommandBufferTest, IndexConditional) {
 }
 
 TEST_P(CommandBufferTest, WhileLoop) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -559,6 +635,10 @@ ENTRY main.49 {
 }
 
 TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
+  if (GpuExecutor() != nullptr) {
+    GTEST_SKIP() << "This test leads to segfault in CommandBuffer #36087";
+  }
+
   constexpr absl::string_view hlo_text = R"(
     dynamic_slice {
       p0 = s32[4,8,8]{2,1,0} parameter(0)
@@ -847,7 +927,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   // Flatten tuple parameter into individual leaves for PJRT replicated execute.
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
   ASSERT_EQ(results.size(), 2);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));

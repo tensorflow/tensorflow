@@ -87,7 +87,7 @@ class PyRecordReader {
   }
 
  private:
-  static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
+  static constexpr uint64_t kReaderBufferSize = 16 * 1024 * 1024;
 
   PyRecordReader(const std::string& filename,
                  const std::string& compression_type)
@@ -108,7 +108,7 @@ class PyRecordReader {
 
   const std::string filename_;
   const tensorflow::io::RecordReaderOptions options_;
-  tensorflow::uint64 offset_;
+  uint64_t offset_;
   std::unique_ptr<tensorflow::RandomAccessFile> file_;
   std::unique_ptr<tensorflow::io::RecordReader> reader_;
 
@@ -135,8 +135,7 @@ class PyRecordRandomReader {
   PyRecordRandomReader() = delete;
   ~PyRecordRandomReader() { Close(); }
 
-  absl::Status ReadRecord(tensorflow::uint64* offset,
-                          tensorflow::tstring* out) {
+  absl::Status ReadRecord(uint64_t* offset, tensorflow::tstring* out) {
     if (IsClosed()) {
       return tensorflow::errors::FailedPrecondition(
           "Random TFRecord Reader is closed.");
@@ -152,7 +151,7 @@ class PyRecordRandomReader {
   }
 
  private:
-  static constexpr tensorflow::uint64 kReaderBufferSize = 16 * 1024 * 1024;
+  static constexpr uint64_t kReaderBufferSize = 16 * 1024 * 1024;
 
   PyRecordRandomReader(std::unique_ptr<tensorflow::RandomAccessFile> file,
                        std::unique_ptr<tensorflow::io::RecordReader> reader)
@@ -288,8 +287,8 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
         return self;
       }))
       .def("read",
-           [](PyRecordRandomReader* self, tensorflow::uint64 offset) {
-             tensorflow::uint64 temp_offset = offset;
+           [](PyRecordRandomReader* self, uint64_t offset) {
+             uint64_t temp_offset = offset;
              tensorflow::tstring record;
              absl::Status status;
              {

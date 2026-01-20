@@ -38,7 +38,7 @@ CastFunctorType GetCpuCastFromInt64(DataType dst_dtype) {
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromInt64(DataType dst_dtype) {
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
-  CAST_CASE(GPUDevice, int64, bfloat16);
+  CAST_CASE(GPUDevice, int64_t, bfloat16);
 #else
   CURRY_TYPES3(CAST_CASE, GPUDevice, int64);
 #endif

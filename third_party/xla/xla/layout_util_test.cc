@@ -26,9 +26,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,8 +34,6 @@ namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:

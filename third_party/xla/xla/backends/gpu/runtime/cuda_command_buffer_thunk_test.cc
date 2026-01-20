@@ -31,8 +31,10 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,9 +44,9 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -146,7 +148,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   }
 
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<CuDnnCmd>(
       args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -156,28 +158,28 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
-  std::vector<se::DeviceMemoryBase> operands;
+  std::vector<se::DeviceAddressBase> operands;
   operands.reserve(3);
 
-  se::DeviceMemory<int8_t> input =
+  se::DeviceAddress<int8_t> input =
       stream_executor->AllocateArray<int8_t>(kTotalElements);
   TF_ASSERT_OK(stream->MemZero(&input, input.size()));
 
-  se::DeviceMemory<int32_t> output0 =
+  se::DeviceAddress<int32_t> output0 =
       stream_executor->AllocateArray<int32_t>(kTotalElements);
   TF_ASSERT_OK(stream->Memset32(&output0, 123, output0.size()));
 
   operands.push_back(input);  // multiplying the input by itself
   operands.push_back(output0);
 
-  se::DeviceMemoryBase workspace;
+  se::DeviceAddressBase workspace;
   if (workspace_size > 0) {
     workspace = stream_executor->Allocate(workspace_size);
     operands.push_back(workspace);
   }
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations(operands, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
@@ -199,7 +201,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(kTotalElements, 0));
 
   // Prepare buffer allocation for updating command buffer.
-  se::DeviceMemory<int32_t> output1 =
+  se::DeviceAddress<int32_t> output1 =
       stream_executor->AllocateArray<int32_t>(kTotalElements);
   TF_ASSERT_OK(stream->Memset32(&output1, 456, output1.size()));
 

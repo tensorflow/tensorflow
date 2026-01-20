@@ -88,6 +88,11 @@ absl::Status CudaEvent::WaitForEventOnExternalStream(std::intptr_t stream) {
                            handle_);
 }
 
+absl::Status CudaEvent::Synchronize() {
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  return cuda::ToStatus(cuEventSynchronize(handle_));
+}
+
 absl::StatusOr<CudaEvent> CudaEvent::Create(StreamExecutor *executor,
                                             bool allow_timing) {
   TF_ASSIGN_OR_RETURN(

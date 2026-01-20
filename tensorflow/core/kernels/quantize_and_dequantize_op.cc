@@ -57,7 +57,7 @@ class QuantizeAndDequantizeV2Op : public OpKernel {
                                 " with signed_input_ ", signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
 
-    string round_mode_string;
+    std::string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
     OP_REQUIRES(
         ctx,
@@ -284,7 +284,7 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
                                 "be a scalar. Got dimensions: ",
                                 num_bits_tensor.dims()));
 
-    const int num_bits_val = num_bits_tensor.scalar<int32>()();
+    const int num_bits_val = num_bits_tensor.scalar<int32_t>()();
     OP_REQUIRES(ctx,
                 num_bits_val > 0 && num_bits_val < (signed_input_ ? 62 : 63),
                 InvalidArgument("num_bits is out of range: ", num_bits_val,

@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:portable_gif_internal",
@@ -70,7 +71,6 @@ cc_library(
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/kernels:aggregate_ops",
-        "//tensorflow/core/platform:strcat",
         "@local_tsl//tsl/platform:status",
     ],
 )

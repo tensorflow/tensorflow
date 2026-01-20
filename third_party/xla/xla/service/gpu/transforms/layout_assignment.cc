@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -58,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
@@ -75,8 +73,7 @@ using se::dnn::FilterLayout;
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          const se::GpuComputeCapability& gpu_version,
-                          const se::dnn::VersionInfo& dnn_version) {
+                          const se::GpuComputeCapability& gpu_version) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
@@ -181,8 +178,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
-                                        /*default_val=*/false, &is_enabled));
+    CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                     /*default_val=*/false, &is_enabled));
     if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
         instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
         !is_enabled) {
@@ -236,7 +233,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     FilterLayout filter;
     DataLayout output;
     std::tie(input, filter, output) =
-        HeuristicLayoutAssignment(instr, gpu_version_, dnn_version_);
+        HeuristicLayoutAssignment(instr, gpu_version_);
 
     TF_ASSIGN_OR_RETURN(
         std::tie(*input_shape->mutable_layout(),
@@ -525,7 +522,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if ((HloPredicateIsOp<HloOpcode::kSort>(instruction) ||
-                IsCubDeviceRadixSort(*instruction)) &&
+                IsCubDeviceRadixSortNoScratchSize(*instruction)) &&
                instruction->operand(0)->shape().dimensions().size() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();
@@ -801,17 +798,24 @@ absl::Status GpuLayoutAssignment::SetDotLayout(
 
 bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
     const HloInstruction* user) {
-  // We try to propagate a layout to make the reduction a row reduction. But
+  // We can propagate a layout to make the reduction a row reduction. But
   // propagating the layout is only beneficial if the reduction emitter would be
-  // used for the row reduction.
+  // used for the row reduction. Moreover, there's a tradeoff between the
+  // benefits of row reductions and the cost of providing a suitable layout.
   int64_t reduction_size = 1;
   for (int64_t reduction_dim : user->dimensions()) {
     reduction_size *= user->operand(0)->shape().dimensions(reduction_dim);
   }
-  int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
-  return IsUnnestedReductionFasterThanElemental(
-      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}},
-      device_description_);
+  // During layout assignment, we cannot tell the exact cost of creating a
+  // row reduction-friendly layout. The cost will depend on fusion decisions
+  // made at a later stage. However, it's reasonable to assume that it is
+  // non-zero and won't pay off, if the benefits of row reductions over column
+  // reductions are small. This is generally the case, if reduction dimensions
+  // are small. The following threshold has been determined empirically and may
+  // be conservative.
+  // TODO: b/466059465 - Holisitically evaluate the benefits of row reductions
+  // vs column reductions and refine this threshold.
+  return reduction_size >= 32;
 }
 
 bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(

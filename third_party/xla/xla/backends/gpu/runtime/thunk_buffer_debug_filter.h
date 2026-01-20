@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
