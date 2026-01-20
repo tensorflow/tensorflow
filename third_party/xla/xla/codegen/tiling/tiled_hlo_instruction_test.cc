@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
@@ -47,8 +47,8 @@ TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
+                       &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 
@@ -76,7 +76,7 @@ TEST_F(TiledHloInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (2 * d0)", &mlir_context_),
+      ParseSymbolicMap("(d0) -> (2 * d0)", &mlir_context_),
       /*dim_upper_bounds=*/{2},
       /*symbol_upper_bounds=*/{});
 
@@ -91,7 +91,7 @@ TEST_F(TiledHloInstructionTest,
           "must have the same number of results as the rank of the hlo shape"));
 
   IndexingMap tile_offsets_indexing2 = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1) -> (d0, d1)", &mlir_context_),
+      ParseSymbolicMap("(d0, d1) -> (d0, d1)", &mlir_context_),
       /*dim_upper_bounds=*/{8, 4},
       /*symbol_upper_bounds=*/{});
 
@@ -118,12 +118,12 @@ TEST_F(TiledHloInstructionTest,
           /*tile_sizes=*/{16},
           /*tile_strides=*/{1},
           IndexingMap::FromTensorSizes(
-              ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+              ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
               /*dim_upper_bounds=*/{4},
               /*symbol_upper_bounds=*/{})));
 
   IndexingMap indexing_map(
-      ParseAffineMap("(d0)[rt0] -> (d0 + rt0)", &mlir_context_),
+      ParseSymbolicMap("(d0)[rt0] -> (d0 + rt0)", &mlir_context_),
       /*dimensions=*/
       {IndexingMap::Variable{0, 32, "d0"}},
       /*range_vars=*/{},

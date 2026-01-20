@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/status/status.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -50,15 +52,26 @@ struct FlatbufferExportOptions {
   // Whether to disable buffer-deduping which emits tensors with shared
   // buffers.
   bool disable_buffer_deduping = false;
+  // If true, convert and serialize VHLO ops to equivalent StableHLO ops in
+  // flatbuffer.
+  bool serialize_stablehlo_ops = false;
 };
 
-// Translates the given MLIR `module` into a FlatBuffer and stores the
+// (Legacy) Translates the given MLIR `module` into a FlatBuffer and stores the
 // serialized flatbuffer into the string.
 // Returns true on successful exporting, false otherwise.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer,
                                        bool serialize_stablehlo_ops = false);
+
+// Translates the given MLIR `module` into a FlatBuffer and writes the
+// serialized flatbuffer into the export stream.
+// Returns true on successful exporting, false otherwise
+absl::Status MlirToFlatBufferTranslateFunction(
+    mlir::ModuleOp module, const FlatbufferExportOptions& options,
+    llvm::raw_pwrite_stream& export_stream);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
