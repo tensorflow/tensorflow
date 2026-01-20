@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -1039,6 +1040,9 @@ absl::Status BuildHloFromModule(mlir::ModuleOp module_op,
                                 std::vector<xla::XlaOp>& returns,
                                 llvm::ArrayRef<XlaArgument> args,
                                 llvm::StringRef device_type) {
+  // We need to guard against XLA resetting LLVM during translation.
+  xla::llvm_ir::LLVMCommandLineOptionsLock lock({});
+
   std::vector<int> remaining_params;
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
   TF_RETURN_IF_ERROR(
