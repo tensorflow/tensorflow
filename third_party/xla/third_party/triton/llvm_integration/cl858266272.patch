@@ -1,0 +1,26 @@
+
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp	2025-12-11 07:03:23.000000000 -0800
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp	2026-01-19 12:51:44.000000000 -0800
+@@ -978,7 +978,7 @@
+   // And the default region branches transparently back to the parent.
+   assert(src.getTerminatorPredecessorOrNull()->getParentRegion() ==
+          &getDefaultRegion());
+-  successors.push_back(RegionSuccessor(getOperation(), getResults()));
++  successors.push_back(RegionSuccessor::parent(getResults()));
+ }
+ 
+ LogicalResult WarpSpecializeOp::verify() {
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2025-11-12 02:33:41.000000000 -0800
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2026-01-19 12:51:45.000000000 -0800
+@@ -789,8 +789,8 @@
+         }
+         visitNonControlFlowArguments(
+             branch,
+-            RegionSuccessor(
+-                branch, branch->getResults().slice(firstIndex, inputs.size())),
++            RegionSuccessor::parent(
++                branch->getResults().slice(firstIndex, inputs.size())),
+             lattices, firstIndex);
+       } else {
+         if (!inputs.empty()) {
