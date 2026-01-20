@@ -1985,7 +1985,9 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
       rank = a.shape.rank
       if rank is not None:
         if len(perm) != rank:
-          raise ValueError("perm must have the same length as the rank of the tensor.")
+          raise ValueError(
+            "perm must have the same length as the rank of the tensor."
+            )
         if any(p < 0 or p>= rank for p in perm):
           raise ValueError("perm contains invalid axis.")
         if len(set(perm)) != len(perm):
