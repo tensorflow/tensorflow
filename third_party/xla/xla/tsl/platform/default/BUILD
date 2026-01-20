@@ -372,6 +372,7 @@ cc_library(
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform",
         "@snappy",
     ] + select({

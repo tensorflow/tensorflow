@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 #define TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 
+#include "absl/time/time.h"
 namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv);
+
+absl::Duration GetInitUptime();
 
 }  // namespace port
 }  // namespace tsl
