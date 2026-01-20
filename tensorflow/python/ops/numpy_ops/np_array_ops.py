@@ -907,6 +907,8 @@ def flatten(a, order='C'):
 def transpose(a, axes=None):
   a = asarray(a)
   if axes is not None:
+    if isinstance(axes, (list, tuple)) and a.shape.rank is not None:
+      axes = [x + a.shape.rank if x < 0 else x for x in axes]
     axes = asarray(axes)
   return array_ops.transpose(a=a, perm=axes)
 

@@ -1035,6 +1035,9 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [1, 2, 0])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 0, 1])
     run_test(np.arange(30).reshape(2, 3, 5).tolist(), [2, 1, 0])
+    run_test(np.arange(6).reshape(2, 3).tolist(), [-1, 0])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [-1, 1, 0])
+    run_test(np.arange(30).reshape(2, 3, 5).tolist(), [-1, -2, -3])
 
   def match_shape(self, actual, expected, msg=None):
     if msg:
