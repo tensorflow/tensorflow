@@ -5014,15 +5014,9 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
 inline bool IsXlaCpuGlobalJitOn() {
   std::vector<string> tf_xla_flags;
   const std::string tf_xla_cpu_global_jit = "--tf_xla_cpu_global_jit";
-  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags));
-  for (const auto& entry : tf_xla_flags) {
-    for (absl::string_view tok :
-         absl::StrSplit(entry, absl::ByAnyChar(" \t\n\r"), absl::SkipWhitespace())) {
-      absl::string_view flag = absl::StripAsciiWhitespace(tok);
-      if (flag == tf_xla_cpu_global_jit) return true;
-    }
-  }
-  return false;
+  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags, " ,\t"));
+  return std::find(tf_xla_flags.begin(), tf_xla_flags.end(),
+                   tf_xla_cpu_global_jit) != tf_xla_flags.end();
 }
 }  // namespace
 
