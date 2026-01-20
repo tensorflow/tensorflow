@@ -18,35 +18,44 @@ import tensorflow as tf
 from tensorflow.core.function.trace_type import trace_type_builder
 from tensorflow.python.platform import test
 
+
 class MockSymbolicTensor:
   """A class that mimics a Symbolic Tensor behavior during tracing.
-  
-  It has __array__ (which causes is_np_ndarray to return True in the buggy version)
-  but raises NotImplementedError when called (mimicking the XLA crash).
+
+  It has __array__ (which causes is_np_ndarray to return True in the buggy
+  version) but raises NotImplementedError when called.
   It also has a 'graph' attribute, which our fix in util.py detects.
   """
+
   def __init__(self):
     self.shape = (10,)
     self.dtype = tf.float32
-    self.graph = "FakeGraph" # This triggers the exclusion in util.is_np_ndarray
-  
+    # This triggers the exclusion in util.is_np_ndarray
+    self.graph = "FakeGraph"
+
   def __array__(self):
     # This simulates the crash seen in Issue #105728
-    raise NotImplementedError("numpy() is only available when eager execution is enabled.")
+    raise NotImplementedError(
+        "numpy() is only available when eager execution is enabled.")
+
 
 class JitCompileIntegrationTest(test.TestCase):
 
   def testSymbolicTensorExclusion(self):
     """Regression test for GitHub Issue #105728."""
     fake_tensor = MockSymbolicTensor()
-    
-    # How fix works (util.py): 
-    # util.is_np_ndarray sees .graph, returns False -> Skips __array__ -> Success.
-    
+
+    # IF THE BUG EXISTS:
+    # trace_type_builder sees __array__, calls it -> NotImplementedError.
+    # IF THE FIX WORKS (util.py):
+    # util.is_np_ndarray sees .graph, returns False -> Skips __array__.
+
     try:
       trace_type_builder.from_value(fake_tensor)
     except NotImplementedError:
-       self.fail("trace_type_builder crashed on symbolic tensor! util.is_np_ndarray fix failed.")
+      self.fail("trace_type_builder crashed on symbolic tensor! "
+                "util.is_np_ndarray fix failed.")
+
 
 if __name__ == '__main__':
   test.main()
