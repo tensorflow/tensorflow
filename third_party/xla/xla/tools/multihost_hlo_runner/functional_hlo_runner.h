@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -248,6 +249,9 @@ struct RunningOptions {
   // Option controlling the inputs of the HLO.
   ModuleArgumentMode module_argument_mode =
       ModuleArgumentMode::kUseRandomInputs;
+  // Option controlling the range of integer arguments. If set, the arguments
+  // will be generated from this range.
+  std::optional<std::pair<int64_t, int64_t>> argument_integer_range;
   // Option controlling the outputs of the HLO.
   ModuleOutputMode module_output_mode = ModuleOutputMode::kReturnOutputs;
   // Repeatedly execute the HLO for this many times.

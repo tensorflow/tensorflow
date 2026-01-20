@@ -64,13 +64,15 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_value",
         "//xla/service:hlo_verifier",
-        "//xla/service:transfer_manager",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
