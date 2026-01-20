@@ -94,6 +94,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
       xla::PlatformUtil::GetPlatformIdFromCanonicalName(platform_name));
   TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform_id));
 
+  LOG(ERROR) << "CompileGpuExecutable aot: " << aot;
   if (aot) {
     AotCompilationOptions aot_options(platform_id);
     GpuTopology topology =

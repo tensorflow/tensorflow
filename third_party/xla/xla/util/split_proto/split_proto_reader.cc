@@ -167,6 +167,8 @@ absl::Status ReadSplitProto(std::unique_ptr<riegeli::Reader> reader,
 absl::StatusOr<bool> IsSplitProto(riegeli::Reader& reader) {
   riegeli::RecordReader<riegeli::Reader&> record_reader(reader);
   if (!record_reader.CheckFileFormat()) {
+    LOG(WARNING)
+        << "eusebiodm IsSplitProto record_reader.CheckFileFormat false";
     return false;
   }
   riegeli::RecordPosition initial_pos = record_reader.pos();
@@ -181,6 +183,8 @@ absl::StatusOr<bool> IsSplitProto(riegeli::Reader& reader) {
     return record_reader.status();
   }
 
+  LOG(WARNING) << "eusebiodm IsSplitProto read_ok: " << read_ok
+               << " manifest_was_read: " << manifest_was_read;
   // Make its an actual manifest, and not an empty or other proto.
   return read_ok && manifest_was_read;
 }

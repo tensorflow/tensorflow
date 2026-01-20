@@ -85,6 +85,7 @@ LegacyGpuAotCompilationResult::FromProto(const GpuExecutableProto& proto,
 
 absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
     const {
+  LOG(WARNING) << "SerializeAsString LegacyGpuAotCompilationResult";
   return proto_.SerializeAsString();
 }
 
