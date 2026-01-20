@@ -148,6 +148,14 @@ class ArrayOpTest(test.TestCase):
     self.assertFalse(flags.config().tf_shape_default_int64.value())
     s1 = array_ops.shape_v2(array_ops.zeros([1, 2]))
     self.assertEqual(s1.dtype, dtypes.int32)
+  
+  def testConcatAxisMustBeScalar(self):
+    a = array_ops.constant([[1, 2], [3, 4]])
+    b = array_ops.constant([[5, 6], [7, 8]])
+
+    # axis must be a scalar int32 tensor
+    with self.assertRaisesRegex(Exception, "rank"):
+      array_ops.concat([a, b], axis=[0, 1])
 
 
 if __name__ == "__main__":
