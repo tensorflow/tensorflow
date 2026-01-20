@@ -1969,6 +1969,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo/mlir:stablehlo_canonicalize_from_hlo_import",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@stablehlo//:stablehlo_passes",

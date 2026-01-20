@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
+#include "xla/hlo/translate/hlo_to_mhlo/mlir/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"

@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cassert>
 #include <iterator>
+#include <memory>
 #include <utility>
 
+#include "passes.h"  // NOLINT: Used in passes.h.inc
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -28,7 +30,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Region.h"
 #include "mlir/IR/Value.h"
@@ -37,7 +41,11 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/optimization/Passes.h"
-#include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/xla_data.pb.h"
 
 #define DEBUG_TYPE "stablehlo-ext-canonicalize-from-hlo-import"
 
@@ -45,7 +53,7 @@ namespace mlir {
 namespace stablehlo_ext {
 
 #define GEN_PASS_DEF_STABLEHLOCANONICALIZEFROMHLOIMPORTPASS
-#include "stablehlo_ext/transforms/passes.h.inc"
+#include "passes.h.inc"
 
 namespace {
 
@@ -240,6 +248,121 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
   }
 };
 
+/////////////////////////////////
+// WhileOp
+/////////////////////////////////
+
+// This is a copy of the StableHLO pattern with the same name, but specialized
+// for the HLO import case to be able to handle original value.
+//
+// Turn loop invariant values into implicit capture.
+// Check if there is at least one value is forwarded from one iteration to
+// the next, or one of the yielded value is an implicit capture already.
+// Otherwise there is nothing to do here.
+//
+// Pattern: while -> while (loop invariants as implicit captures)
+struct WhileOpImplicitCapture : public OpRewritePattern<stablehlo::WhileOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(stablehlo::WhileOp whileOp,
+                                PatternRewriter& rewriter) const override {
+    Block* cond = whileOp.SingleBlock::getBody(0);
+    Block* body = whileOp.SingleBlock::getBody(1);
+    auto bodyReturnOp = cast<stablehlo::ReturnOp>(body->getTerminator());
+    if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
+                                bodyReturnOp->getOperands()),
+                      [&](auto zip) {
+                        return (std::get<0>(zip) == std::get<2>(zip) ||
+                                std::get<1>(zip) == std::get<2>(zip));
+                      })) {
+      return rewriter.notifyMatchFailure(whileOp, "no loop invariant found");
+    }
+
+    SmallVector<Value> newOperands, resultsToReplace;
+    SmallVector<unsigned> invariantArgIdxs;
+    BitVector invariantArgIdxBitVector(cond->getNumArguments());
+    for (const auto& enumeratedOperands : llvm::enumerate(llvm::zip(
+             whileOp.getOperands(), cond->getArguments(), body->getArguments(),
+             bodyReturnOp->getOperands(), whileOp->getResults()))) {
+      const auto& operands = enumeratedOperands.value();
+      Value whileOperand = std::get<0>(operands);
+      BlockArgument condBlockArg = std::get<1>(operands);
+      BlockArgument bodyBlockArg = std::get<2>(operands);
+      Value bodyReturnOperand = std::get<3>(operands);
+      Value whileResult = std::get<4>(operands);
+
+      bool forwarded = (whileOperand == bodyReturnOperand ||
+                        bodyBlockArg == bodyReturnOperand);
+      if (forwarded) {
+        invariantArgIdxs.push_back(enumeratedOperands.index());
+        invariantArgIdxBitVector.set(enumeratedOperands.index());
+        condBlockArg.replaceAllUsesWith(whileOperand);
+        bodyBlockArg.replaceAllUsesWith(whileOperand);
+        whileResult.replaceAllUsesWith(whileOperand);
+        continue;
+      }
+      newOperands.push_back(whileOperand);
+      resultsToReplace.push_back(whileResult);
+    }
+    cond->eraseArguments(invariantArgIdxBitVector);
+    body->eraseArguments(invariantArgIdxBitVector);
+    for (int idx : llvm::reverse(invariantArgIdxs)) {
+      bodyReturnOp->eraseOperand(idx);
+    }
+
+    stablehlo::WhileOp newWhileOp = stablehlo::WhileOp::create(
+        rewriter, whileOp.getLoc(), bodyReturnOp->getOperandTypes(),
+        newOperands, whileOp->getAttrs());
+
+    auto copy_original_value = [&](stablehlo::WhileOp whileOp,
+                                   stablehlo::WhileOp newWhileOp) {
+      std::shared_ptr<xla::OriginalValue> original_value = nullptr;
+      auto original_value_attr =
+          whileOp->getAttrOfType<StringAttr>("mhlo.original_value");
+      if (!original_value_attr) {
+        return;
+      }
+      auto status_or_original_value =
+          xla::ParseOriginalValue(original_value_attr.getValue());
+      if (!status_or_original_value.ok()) {
+        return;
+      }
+      original_value = status_or_original_value.value();
+      if (!original_value || !original_value->IsTuple()) {
+        return;
+      }
+
+      auto new_shape_or = xla::ExtractXlaShape(newWhileOp);
+      if (failed(new_shape_or)) {
+        newWhileOp->removeAttr("mhlo.original_value");
+        return;
+      }
+      std::shared_ptr<xla::OriginalValue> new_original_value =
+          std::make_shared<xla::OriginalValue>(new_shape_or.value());
+      llvm::DenseMap<unsigned int, unsigned int> old_to_new_tuple_idx;
+      for (unsigned int i = 0, j = 0; i < whileOp->getNumResults(); ++i) {
+        if (!invariantArgIdxBitVector[i]) {
+          old_to_new_tuple_idx[i] = j++;
+        }
+      }
+      xla::CopyOriginalValue(original_value, new_original_value,
+                             old_to_new_tuple_idx);
+      newWhileOp->setAttr(
+          "mhlo.original_value",
+          rewriter.getStringAttr(new_original_value->ToString()));
+    };
+    copy_original_value(whileOp, newWhileOp);
+
+    newWhileOp.getBodyRegion(0).takeBody(whileOp.getBodyRegion(0));
+    newWhileOp.getBodyRegion(1).takeBody(whileOp.getBodyRegion(1));
+    for (auto results : llvm::zip(resultsToReplace, newWhileOp->getResults())) {
+      std::get<0>(results).replaceAllUsesWith(std::get<1>(results));
+    }
+    rewriter.eraseOp(whileOp);
+    return success();
+  }
+};
+
 // Simplify a model after HLO import.
 struct StablehloCanonicalizeFromHloImportPass
     : public impl::StablehloCanonicalizeFromHloImportPassBase<
@@ -266,6 +389,7 @@ struct StablehloCanonicalizeFromHloImportPass
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     patterns.add<FlattenCustomCallOp>(context);
+    patterns.add<WhileOpImplicitCapture>(context);
     stablehlo::populateStablehloHloImportCanonicalizationPatterns(context,
                                                                   &patterns);
 

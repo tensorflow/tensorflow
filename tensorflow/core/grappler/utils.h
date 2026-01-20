@@ -18,9 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <set>
-#include <utility>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -34,16 +33,10 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -138,7 +131,7 @@ class NodeMapInternal {
   // Get unordered list of fanouts from node. Notice, that the order is
   // non-deterministic.
   const absl::flat_hash_set<NodeDefT*>& GetOutputs(
-      const std::string& node_name) const {
+      absl::string_view node_name) const {
     auto it = outputs_.find(node_name);
     if (it == outputs_.end()) {
       return empty_set_;

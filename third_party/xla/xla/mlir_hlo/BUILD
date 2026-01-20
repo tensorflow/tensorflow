@@ -966,7 +966,6 @@ cc_library(
         "stablehlo_ext/transforms/sink_constants_to_control_flow.cpp",
         "stablehlo_ext/transforms/stablehlo_add_quant_dequant_conv.cpp",
         "stablehlo_ext/transforms/stablehlo_canonicalize_dynamism.cpp",
-        "stablehlo_ext/transforms/stablehlo_canonicalize_from_hlo_import.cpp",
         "stablehlo_ext/transforms/stablehlo_legalize_quant_composite.cpp",
         "stablehlo_ext/transforms/stablehlo_prepare_for_hlo_export.cpp",
         "stablehlo_ext/transforms/stablehlo_refine_shapes.cpp",

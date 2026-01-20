@@ -418,19 +418,6 @@ class CStreamExecutor : public StreamExecutorCommon {
 };
 }  // namespace
 
-class InternalIdInfo : public Platform::IdInfo {
- public:
-  explicit InternalIdInfo(absl::string_view name)
-      : Platform::IdInfo([](const Platform::IdInfo& self) {
-          auto real_self = static_cast<const InternalIdInfo*>(&self);
-          return real_self->name_;
-        }),
-        name_(name) {}
-
- private:
-  absl::string_view name_;
-};
-
 CPlatform::CPlatform(SP_Platform platform,
                      void (*destroy_platform)(SP_Platform*),
                      SP_PlatformFns platform_fns,
@@ -445,7 +432,7 @@ CPlatform::CPlatform(SP_Platform platform,
       stream_executor_(std::move(stream_executor)),
       timer_fns_(std::move(timer_fns)),
       name_(platform_.name),
-      platform_id_info_(std::make_unique<InternalIdInfo>(platform_.name)) {}
+      platform_id_info_(platform_.name) {}
 
 CPlatform::~CPlatform() {
   platform_fns_.destroy_device_fns(&platform_, &device_fns_);

@@ -408,8 +408,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
         "//xla/service:algorithm_util",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -417,14 +415,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@stablehlo//:stablehlo_ops",
-        "@triton//:TritonDialects",
     ],
 )
 
