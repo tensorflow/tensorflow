@@ -1,6 +1,6 @@
 # Error code: 0100
 
-**Category:** Runtime: Buffer allocation failure
+**Category:** Runtime: Buffer Allocation Failure
 
 This error indicates that XLA:TPU runtime’s memory allocator failed to find a
 suitable block of memory on the accelerator’s HBM for the requested allocation.

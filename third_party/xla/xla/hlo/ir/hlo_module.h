@@ -746,8 +746,7 @@ class HloModule {
   HloModuleMetadata* metadata() { return &metadata_; }
 
   // Moves (not copies) metadata from this HloModule to `module`. To be used
-  // in cases like HloModuleGroup::ReplaceModule when metadata should be
-  // transferred out of a module before it's destroyed.
+  // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
     module->metadata_ = std::move(metadata_);
   }

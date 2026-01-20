@@ -1,6 +1,6 @@
 # Error code: E3001
 
-**Category:** SparseCore: No Viable Logical Replica Count
+**Category:** CompileTime: SparseCore No Viable Logical Replica Count
 
 This error occurs when the `XLA:SparseCore` compiler fails to determine a
 valid logical replica count configuration that allows the workload to fit within

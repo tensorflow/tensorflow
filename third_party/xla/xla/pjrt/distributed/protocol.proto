@@ -62,6 +62,10 @@ message DeviceProto {
   // partition may include multiple hosts.
   int32 partition_index = 5;
 
+  // The NUMA node of the device. If this information is not available, filled
+  // with `tsl::port::kNUMANoAffinity`.
+  int32 numa_node = 14;
+
   // Store vendor-specific compute capability.
   string compute_capability = 6;
 

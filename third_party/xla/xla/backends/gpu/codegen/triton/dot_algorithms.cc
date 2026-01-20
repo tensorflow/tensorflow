@@ -26,9 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -42,19 +40,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/service/algorithm_util.h"
-#include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/tensor_float_32_utils.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace xtile {
 
 namespace {
-
-namespace ttir = ::mlir::triton;
 
 using ::mlir::ShapedType;
 using ::mlir::Type;
@@ -78,43 +70,19 @@ mlir::stablehlo::Precision XlaPrecisionToStableHloPrecision(
 
 }  // namespace
 
-namespace internal {
-
-absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
-  auto type = getElementTypeOrSelf(value);
-  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E4M3;
-  }
-  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E5M2;
-  }
-  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
-    return ttir::ScaleDotElemType::E2M1;
-  }
-  if (type == mlir::BFloat16Type::get(value.getContext())) {
-    return ttir::ScaleDotElemType::BF16;
-  }
-  return absl::InvalidArgumentError(
-      absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
-}
-
-}  // namespace internal
-
 namespace {
 
 absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
                                 ScaledDotOperands& operands) {
-  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
-                      internal::GetScaleDotElemType(operands.lhs.getType()));
-  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
-                      internal::GetScaleDotElemType(operands.rhs.getType()));
+  mlir::Type lhs_dot_elem_type = getElementTypeOrSelf(operands.lhs.getType());
+  mlir::Type rhs_dot_elem_type = getElementTypeOrSelf(operands.rhs.getType());
 
   Value lhs_scale;
-  if (lhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+  if (lhs_dot_elem_type != b.getBF16Type()) {
     lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
   }
   Value rhs_scale;
-  if (rhs_dot_elem_type != ttir::ScaleDotElemType::BF16) {
+  if (rhs_dot_elem_type != b.getBF16Type()) {
     rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
     rhs_scale = mlir::stablehlo::TransposeOp::create(
         b, rhs_scale, b.getDenseI64ArrayAttr({1, 0}));

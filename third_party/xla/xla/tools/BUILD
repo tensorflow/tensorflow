@@ -1002,7 +1002,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/service:compiler",
         "//xla/service:executable",

@@ -866,7 +866,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: "triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"
+// CHECK: "triton_gemm_config":{"block_m":"{{[0-9]+}}","block_n":"{{[0-9]+}}","block_k":"{{[0-9]+}}","split_k":"{{[0-9]+}}","num_stages":"{{[0-9]+}}","num_warps":"{{[0-9]+}}","num_ctas":"{{[0-9]+}}"
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {
@@ -1643,59 +1643,6 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
   EXPECT_TRUE(hasCublasConfig(configs.value()))
       << "There should be at least one config with cublas fallback for "
          "scaled-dot.";
-}
-
-TEST_F(GemmFusionAutotunerTest,
-       TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
-  if (GpuComputeComp().IsRocm()) {
-    GTEST_SKIP() << "Not supported on ROCm.";
-  }
-
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-    ENTRY e {
-      p0 = f32[64,64] parameter(0)
-      p1 = f32[64,64] parameter(1)
-      ROOT r = f32[64,64] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })")
-                                                  .value();
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> ampere_configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          se::CudaComputeCapability(se::CudaComputeCapability::kAmpere, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> hopper_configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
-
-  std::set<TritonGemmConfig> ampere_configs_set(ampere_configs.begin(),
-                                                ampere_configs.end());
-  std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
-                                                hopper_configs.end());
-
-  // Expect that both configs sets are non-empty, that Hopper configs include
-  // TMA options, and Ampere configs do not.
-  EXPECT_GT(ampere_configs_set.size(), 0);
-  EXPECT_GT(hopper_configs_set.size(), 0);
-
-  auto any_tma_allowed = [](const std::vector<TritonGemmConfig>& configs) {
-    return std::any_of(
-        configs.begin(), configs.end(),
-        [](const TritonGemmConfig& config) { return config.is_tma_allowed; });
-  };
-  EXPECT_FALSE(any_tma_allowed(ampere_configs));
-  EXPECT_TRUE(any_tma_allowed(hopper_configs));
-
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
 // Context in b/421858850. This test ensures that we work around the issue

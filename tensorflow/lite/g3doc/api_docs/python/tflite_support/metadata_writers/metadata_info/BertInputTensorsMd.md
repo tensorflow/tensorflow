@@ -5,13 +5,12 @@ description: A container for the input tensor metadata information of Bert model
 
 <!-- DO NOT EDIT! Automatically generated file. -->
 
-
 <div itemscope itemtype="http://developers.google.com/ReferenceObject">
 <meta itemprop="name" content="tflite_support.metadata_writers.metadata_info.BertInputTensorsMd" />
 <meta itemprop="path" content="Stable" />
 <meta itemprop="property" content="__init__"/>
 <meta itemprop="property" content="create_input_process_unit_metadata"/>
-<meta itemprop="property" content="create_input_tesnor_metadata"/>
+<meta itemprop="property" content="create_input_tensor_metadata"/>
 <meta itemprop="property" content="get_tokenizer_associated_files"/>
 </div>
 
@@ -148,17 +147,15 @@ https://github.com/tensorflow/tflite-support/blob/b80289c4cd1224d0e1836c7654e82f
 
 Creates the input process unit metadata.
 
-
-<h3 id="create_input_tesnor_metadata"><code>create_input_tesnor_metadata</code></h3>
+<h3 id="create_input_tensor_metadata"><code>create_input_tensor_metadata</code></h3>
 
 <a target="_blank" class="external" href="https://github.com/tensorflow/tflite-support/blob/v0.4.4/tensorflow_lite_support/metadata/python/metadata_writers/metadata_info.py#L792-L801">View source</a>
 
 <pre class="devsite-click-to-copy prettyprint lang-py tfo-signature-link">
-<code>create_input_tesnor_metadata() -> List[<a href="../../../tflite_support/metadata_schema_py_generated/TensorMetadataT"><code>tflite_support.metadata_schema_py_generated.TensorMetadataT</code></a>]
+<code>create_input_tensor_metadata() -> List[<a href="../../../tflite_support/metadata_schema_py_generated/TensorMetadataT"><code>tflite_support.metadata_schema_py_generated.TensorMetadataT</code></a>]
 </code></pre>
 
-Creates the input metadata for the three input tesnors.
-
+Creates the input metadata for the three input tensors.
 
 <h3 id="get_tokenizer_associated_files"><code>get_tokenizer_associated_files</code></h3>
 

@@ -26,14 +26,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
@@ -54,7 +52,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -115,20 +112,9 @@ int64_t TotalCacheLineHits(
   return tiling.num_output_tiles() * per_tile_cost;
 }
 
-absl::StatusOr<std::vector<FlatTiling>> GetTiling(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
-  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
-  auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
-      *fusion.fused_instructions_computation(), &context, constraints_builder);
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in EmitGeneric: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
-  }
-
-  const auto& symbolic_tile_analysis =
-      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
-
+static absl::StatusOr<Tiling> GetTiling(
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    const SymbolicTileAnalysis& symbolic_tile_analysis) {
   ASSIGN_OR_RETURN(auto valid_tilings,
                    symbolic_tile_analysis.GetValidTilings());
   if (valid_tilings.empty()) {
@@ -155,7 +141,8 @@ absl::StatusOr<std::vector<FlatTiling>> GetTiling(
   }
 
   std::vector<FlatTiling> result{best_tile_sizes};
-  return result;
+  Tiling::TileMapping tile_mapping{{root_hlo, best_tile_sizes}};
+  return Tiling(tile_mapping);
 }
 
 // We don't currently support sub-byte types in the tiled CPU emitter.
@@ -229,8 +216,23 @@ static bool IsSupportedInstruction(const HloInstruction& inst) {
   }
 }
 
-absl::StatusOr<std::vector<FlatTiling>> GetTilingIfSupported(
+absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+  auto constraints_builder = TiledEmitterConstraints::GetBuilder();
+  auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
+      *fusion.fused_instructions_computation(), &context, constraints_builder);
+  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
+    return Internal(
+        "Unsupported fusion in EmitGeneric: %s",
+        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
+  }
+
+  return std::get<SymbolicTileAnalysis>(std::move(symbolic_tile_analysis_or));
+}
+
+absl::StatusOr<Tiling> GetTilingIfSupported(
+    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    const SymbolicTileAnalysis& symbolic_tile_analysis) {
   // TODO(willfroom): Support multi-output fusions.
   if (!fusion.shape().IsArray()) {
     return Internal(
@@ -259,33 +261,25 @@ absl::StatusOr<std::vector<FlatTiling>> GetTilingIfSupported(
     }
   }
 
-  return GetTiling(context, fusion);
+  return GetTiling(context, fusion, symbolic_tile_analysis);
 }
 
 absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name,
-    int64_t num_work_groups, absl::Span<const FlatTiling> tiling) {
-  // TODO(willfroom): Remove this once the tiled emitter is untangled from
-  // triton.
-  context.loadDialect<mlir::triton::xla::XlaTritonDialect>();
-
-  gpu::BlockLevelParameters block_level_parameters;
-  for (const auto& tile_sizes : tiling) {
-    block_level_parameters.output_tile_sizes.emplace_back(tile_sizes.begin(),
-                                                          tile_sizes.end());
-  }
-
+    int64_t num_work_groups, const SymbolicTileAnalysis& symbolic_tile_analysis,
+    const Tiling& tiling) {
   auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   ASSIGN_OR_RETURN(auto module,
-                   gpu::EmitXTileModule(name, constraints_builder, &fusion,
-                                        block_level_parameters, context));
+                   gpu::EmitXTileModule(name, &fusion, symbolic_tile_analysis,
+                                        tiling, context));
   module->setName(absl::StrCat("__compute_module", "_", name));
+
+  const HloInstruction* root = symbolic_tile_analysis.GetRoot(0);
 
   int64_t num_tiles = 1;
   for (auto [dim, tile_size] :
-       llvm::zip(fusion.shape().dimensions(),
-                 block_level_parameters.output_tile_sizes.front())) {
+       llvm::zip(root->shape().dimensions(), tiling.tile_sizes().at(root))) {
     num_tiles *= CeilOfRatio(dim, tile_size);
   }
   int64_t tiles_per_workgroup =

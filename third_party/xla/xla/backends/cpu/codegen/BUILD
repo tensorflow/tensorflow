@@ -714,6 +714,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_cluster",

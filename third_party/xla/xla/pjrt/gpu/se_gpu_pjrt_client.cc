@@ -1582,6 +1582,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_core_count(desc->core_count());
     device_proto->set_shared_memory_per_block_optin(
         desc->shared_memory_per_block_optin());
+    device_proto->set_numa_node(desc->numa_node());
 
     stream_executor::DeviceInterconnectInfo info =
         desc->device_interconnect_info();
@@ -1676,7 +1677,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           device_proto.compute_capability(), device_proto.core_count(),
           device_proto.shared_memory_per_block_optin(),
           device_proto.local_device_ordinal(), node.node_id(),
-          curr_process_index_in_partition, device_proto.partition_index());
+          curr_process_index_in_partition, device_proto.partition_index(),
+          device_proto.numa_node());
       devices.push_back(std::move(device));
     }
   }
@@ -1722,14 +1724,15 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     std::string device_kind, std::string device_vendor,
     std::string compute_capability, int core_count,
     int shared_memory_per_block_optin, int local_device_id, int process_index,
-    int process_index_in_partition, int partition_index)
+    int process_index_in_partition, int partition_index, int numa_node)
     : PjRtStreamExecutorDevice(
           id, std::move(local_device_state), local_device_id, process_index,
           process_index_in_partition, partition_index, std::move(device_kind)),
       device_vendor_(std::move(device_vendor)) {
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
       description(), device_vendor_, compute_capability, core_count,
-      static_cast<int64_t>(shared_memory_per_block_optin), partition_index);
+      static_cast<int64_t>(shared_memory_per_block_optin), partition_index,
+      numa_node);
 }
 
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
@@ -1875,7 +1878,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
         desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
         desc.core_count(), desc.shared_memory_per_block_optin(),
-        ordinal_and_device.second->local_device_id().value(), node_id);
+        ordinal_and_device.second->local_device_id().value(), node_id,
+        desc.numa_node());
     devices.push_back(std::move(device));
   }
   return devices;
