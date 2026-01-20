@@ -90,7 +90,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   ASSERT_EQ(plane.name(), ::tsl::profiler::kHostThreadsPlaneName);
   ASSERT_EQ(plane.lines_size(), 1);
   ASSERT_EQ(plane.event_metadata_size(), 7);
-  ASSERT_EQ(plane.stat_metadata_size(), 4);
+  ASSERT_EQ(plane.stat_metadata_size(), 11);
   const auto& line = plane.lines(0);
   EXPECT_EQ(line.id(), thread_id);
   EXPECT_EQ(line.name(), thread_name);
@@ -99,19 +99,19 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   XEventVisitor e0(&xplane, &line, &events[0]);
   EXPECT_EQ(e0.Name(), "hello");
-  ASSERT_EQ(events[0].stats_size(), 0);
+  ASSERT_EQ(events[0].stats_size(), 1);
 
   XEventVisitor e1(&xplane, &line, &events[1]);
   EXPECT_EQ(e1.Name(), "world");
-  ASSERT_EQ(events[1].stats_size(), 0);
+  ASSERT_EQ(events[1].stats_size(), 1);
 
   XEventVisitor e2(&xplane, &line, &events[2]);
-  EXPECT_EQ(e2.Name(), "contains#inside");
+  EXPECT_EQ(e2.Name(), "contains");
   ASSERT_EQ(events[2].stats_size(), 0);
 
   XEventVisitor e3(&xplane, &line, &events[3]);
   EXPECT_EQ(e3.Name(), "good");
-  ASSERT_EQ(events[3].stats_size(), 1);
+  ASSERT_EQ(events[3].stats_size(), 2);
   {
     std::optional<std::string> value;
     e3.ForEachStat([&](const XStatVisitor& stat) {
@@ -123,7 +123,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   XEventVisitor e4(&xplane, &line, &events[4]);
   EXPECT_EQ(e4.Name(), "morning");
-  ASSERT_EQ(events[4].stats_size(), 2);
+  ASSERT_EQ(events[4].stats_size(), 3);
   {
     std::optional<std::string> value1, value2;
     e4.ForEachStat([&](const XStatVisitor& stat) {
@@ -140,7 +140,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
   XEventVisitor e5(&xplane, &line, &events[5]);
   EXPECT_EQ(e5.Name(), "incomplete");
-  ASSERT_EQ(events[5].stats_size(), 1);
+  ASSERT_EQ(events[5].stats_size(), 2);
   {
     std::optional<std::string> value1, value2;
     e5.ForEachStat([&](const XStatVisitor& stat) {
