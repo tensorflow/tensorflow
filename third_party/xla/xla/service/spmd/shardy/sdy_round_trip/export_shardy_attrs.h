@@ -33,10 +33,7 @@ void registerSdyRoundTripExportShardyAttrsPass();
 // - Converts sharding rules from `kShardingRuleAttr` to
 //   `kShardingRuleRoundTripAttr`
 // - Saves the mesh symbols as `kMeshesRoundTripAttr`
-//
-// NOTE: The `kShardingAttr`s are not removed from the ops. They are kept around
-// because part of the `SdyRoundTripExportPipeline` also converts the
-// `kShardingAttr`s to `kXlaShardingAttr`s.
+// - Removes all SDY attributes from the module
 std::unique_ptr<mlir::Pass> createSdyRoundTripExportShardyAttrsPass();
 
 }  // namespace sdy
