@@ -3551,7 +3551,7 @@ class _TestModel(module.Module):
 class SavedModelLoadMemoryTests(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only
-  def test_no_oom_loading_large_tenor(self, use_cpp_bindings):
+  def test_no_oom_loading_large_tensor(self, use_cpp_bindings):
     # TODO(b/264882686) Fix DeferredInitModuleVariablesTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
