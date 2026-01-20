@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/bytes/read_all.h"  // from @riegeli
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
