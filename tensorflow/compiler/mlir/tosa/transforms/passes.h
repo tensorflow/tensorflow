@@ -58,7 +58,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
 
 std::unique_ptr<OperationPass<ModuleOp>> createRetainCallOnceFuncsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createStripModuleMetadataPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createConvertTFLUnsignedIntToSignedPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createConvertFunctionMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
@@ -74,7 +75,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFLStatefulPass();
 #define GEN_PASS_DECL_TOSALEGALIZETFLPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFTFLPASS
 #define GEN_PASS_DECL_TOSAFUSEBIASTFPASS
-#define GEN_PASS_DECL_TOSACONVERTTFLUINT8PASS
+#define GEN_PASS_DECL_TOSACONVERTTFLUNSIGNEDINTTOSIGNEDPASS
 #define GEN_PASS_DECL_TOSASTRIPQUANTTYPESPASS
 #define GEN_PASS_DECL_TOSALOWERCOMPLEXTYPESPASS
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS

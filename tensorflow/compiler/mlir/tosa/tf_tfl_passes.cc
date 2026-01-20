@@ -53,7 +53,7 @@ void createTFTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   pm.addPass(mlir::TFL::CreateLiftTfliteFlexOpsPass());
   pm.addPass(mlir::tosa::createFuseBiasTFPass());
-  pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
+  pm.addPass(mlir::tosa::createConvertTFLUnsignedIntToSignedPass());
   if (opts.dequantize_tfl_softmax) {
     pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
   }
