@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/lite/python/converter_python_api.h"
+#include "tensorflow/compiler/mlir/lite/python/model_utils_core/pybind_api.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -125,4 +126,8 @@ PYBIND11_MODULE(_pywrap_converter_api, m) {
       R"pbdoc(
       Returns MLIR dump of the given TFLite model.
     )pbdoc");
+
+#ifndef _WIN32
+  PopulateModelUtilsCoreApis(m);
+#endif  // !_WIN32
 }

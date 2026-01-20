@@ -1352,6 +1352,7 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python/model_utils_core:pybind_api_internal",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
