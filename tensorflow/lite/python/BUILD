@@ -1,10 +1,11 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -39,12 +40,13 @@ flatbuffer_py_library(
     srcs = ["//tensorflow/compiler/mlir/lite/schema:conversion_metadata.fbs"],
 )
 
-py_strict_library(
+py_library(
     name = "interpreter",
     srcs = [
         "interpreter.py",
     ],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
@@ -94,9 +96,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tflite_convert_main_lib",
     srcs = ["tflite_convert.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":convert",
@@ -111,9 +114,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_util",
     srcs = ["test_util.py"],
+    strict_deps = True,
     deps = [
         ":lite",
         ":schema_py",
@@ -181,9 +185,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lite",
     srcs = ["lite.py"],
+    strict_deps = True,
     tags = [
         "ignore_for_dep=third_party.py.keras",
     ],
@@ -327,10 +332,11 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lite_v2_test_util",
     testonly = 1,
     srcs = ["lite_v2_test_util.py"],
+    strict_deps = True,
     tags = [
         "no_windows",
     ],
@@ -384,9 +390,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "util",
     srcs = ["util.py"],
+    strict_deps = True,
     visibility = internal_visibility_allowlist(),
     deps = [
         ":conversion_metadata_schema_py",
@@ -434,11 +441,12 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tflite_keras_util",
     srcs = [
         "tflite_keras_util.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:tensor_spec",
@@ -448,9 +456,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lite_constants",
     srcs = ["lite_constants.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_py",
         "//tensorflow/python/framework:dtypes",
@@ -485,9 +494,10 @@ pytype_strict_library(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "op_hint",
     srcs = ["op_hint.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -528,9 +538,10 @@ pytype_strict_contrib_test(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "convert_saved_model",
     srcs = ["convert_saved_model.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
@@ -590,9 +601,10 @@ sh_test(
     data = [":convert_file_to_c_source"],
 )
 
-py_strict_library(
+py_library(
     name = "schema_util",
     srcs = ["schema_util.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
         "//tensorflow/python/util:all_util",
@@ -601,9 +613,10 @@ py_strict_library(
 
 # Use py_library since the metrics module is imported in a try-except block,
 # which doesn't work with the pytype_strict_library.
-py_strict_library(
+py_library(
     name = "convert_phase",
     srcs = ["convert_phase.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_py",
@@ -611,11 +624,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "analyzer",
     srcs = [
         "analyzer.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/python:wrap_converter",
@@ -657,8 +671,9 @@ py_strict_test(
 # by Tensorflow under tensorflow/python:_pywrap_tensorflow
 # This isolate LiteRT's pybind11 dependencies. To use, add pybind deps under pywrap_tflite
 # and refer pywrap_tflite to any target that needsd to selected shared objects.
-py_strict_library(
+py_library(
     name = "tflite_pywrap_deps",
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/experimental/genai:pywrap_genai_ops",

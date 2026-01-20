@@ -2,7 +2,7 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
@@ -12,6 +12,7 @@ load(
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -34,9 +35,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "visualize_lib",
     srcs = ["visualize.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//third_party/py/numpy",
@@ -69,9 +71,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "convert_image_to_csv_lib",
     srcs = ["convert_image_to_csv.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:errors",
@@ -128,9 +131,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "flatbuffer_utils",
     srcs = ["flatbuffer_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
@@ -152,9 +156,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",
