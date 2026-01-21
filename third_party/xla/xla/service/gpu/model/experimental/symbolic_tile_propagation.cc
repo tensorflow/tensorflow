@@ -135,6 +135,30 @@ std::optional<SymbolicTiles> PropagateTileToInputForConcatenateOp(
   return symbolic_tiles;
 }
 
+SymbolicTiles PropagateTileToOutputForConcatenateOp(
+    const HloConcatenateInstruction& concatenate,
+    const SymbolicTile& input_tile, int64_t input_index) {
+  // Offsets and upper bounds need to be adjusted in the concatenate dimension
+  // for the output.
+  int64_t concat_dim = concatenate.concatenate_dimension();
+
+  int64_t output_offset = 0;
+  for (int i = 0; i < input_index; ++i) {
+    output_offset += concatenate.operand(i)->shape().dimensions(concat_dim);
+  }
+
+  SmallVector<DimTile> output_dim_tiles(input_tile.dim_tiles().begin(),
+                                        input_tile.dim_tiles().end());
+
+  output_dim_tiles[concat_dim].offset =
+      output_offset + input_tile.dim_tiles()[concat_dim].offset;
+
+  output_dim_tiles[concat_dim].upper_bound =
+      input_tile.dim_tiles()[concat_dim].upper_bound + output_offset;
+
+  return {SymbolicTile{input_tile.tiling_space(), std::move(output_dim_tiles)}};
+}
+
 template <typename T>
 SmallVector<T> Concat(ArrayRef<T> c1, ArrayRef<T> c2) {
   SmallVector<T> result;
@@ -542,6 +566,10 @@ std::optional<SymbolicTiles> PropagateTileToOutput(
       return std::nullopt;
     }
     return PropagateTileToOutputForReduceOp(reduce, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kConcatenate) {
+    return PropagateTileToOutputForConcatenateOp(
+        *Cast<HloConcatenateInstruction>(&hlo), input_tile, input_index);
   }
   LOG(INFO) << "Input to output tile propagation not implemented for "
             << hlo.opcode();

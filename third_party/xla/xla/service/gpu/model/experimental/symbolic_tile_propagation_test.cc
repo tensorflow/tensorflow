@@ -199,6 +199,62 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 5] parameter(0)
+      p1 = f32[10, 8] parameter(1)
+      p2 = f32[10, 2] parameter(2)
+      ROOT concatenate = f32[10, 15] concatenate(p0, p1, p2), dimensions={1}
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+
+  // Operand 0
+  std::optional<SymbolicTiles> from_operand_0 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(0)->shape().dimensions()),
+      0);
+  EXPECT_THAT(from_operand_0, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 5]
+  )")));
+
+  // Operand 1
+  std::optional<SymbolicTiles> from_operand_1 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(1)->shape().dimensions()),
+      1);
+  EXPECT_THAT(from_operand_1, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 5]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 13]
+  )")));
+
+  // Operand 2
+  std::optional<SymbolicTiles> from_operand_2 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(2)->shape().dimensions()),
+      2);
+  EXPECT_THAT(from_operand_2, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 13]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 15]
+  )")));
+}
+
 TEST_F(SymbolicTilePropagationTest,
        CanPropagateToInputsOfConcatenateOpWithNonDefaultUpperBound) {
   HloInstruction* root = ParseAndGetRoot(R"(
