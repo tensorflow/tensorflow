@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_ATTR_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_CONVERT_ATTR_H_
 
+#include "absl/base/macros.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -22,10 +23,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // Converts non func AttrValue proto into an MLIR attribute. Func attribute is
-// exclused in this function because the function might be renamed when the
+// excluded in this function because the function might be renamed when the
 // function definition is imported.
 absl::StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(
     const AttrValue& value, mlir::Builder* builder);

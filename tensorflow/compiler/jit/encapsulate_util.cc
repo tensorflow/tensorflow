@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
-using tsl::StatusOr;
+using absl::StatusOr;
 
 namespace tensorflow {
 

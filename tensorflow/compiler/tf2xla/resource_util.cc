@@ -45,7 +45,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using tsl::StatusOr;
+using absl::StatusOr;
 
 const char kIdentityNOp[] = "IdentityN";
 const char kIfOp[] = "If";

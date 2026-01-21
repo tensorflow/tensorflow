@@ -141,9 +141,9 @@ namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 
+using absl::StatusOr;
 using ::mlir::NamedAttrList;
 using ::mlir::TensorType;
-using ::tsl::StatusOr;
 
 constexpr absl::string_view kOutputShapesAttrName = "_output_shapes";
 

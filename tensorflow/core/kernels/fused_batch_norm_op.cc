@@ -51,10 +51,10 @@ using GPUDevice = Eigen::GpuDevice;
 namespace functor {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+using absl::StatusOr;
 using se::DeviceMemory;
 using se::ScratchAllocator;
 using se::Stream;
-using tsl::StatusOr;
 #endif
 
 std::string ToString(FusedBatchNormActivationMode activation_mode) {

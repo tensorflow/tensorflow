@@ -33,7 +33,8 @@ namespace tfr {
 
 extern const char* const kTFRLibEnv;
 
-using tsl::StatusOr;
+template <typename T>
+using StatusOr ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusOr<T>;
 
 // An wrapper for all the objects used to decompose a module (graph mode) and
 // node_def (eager mode). Note that this class owns the decomposition library.

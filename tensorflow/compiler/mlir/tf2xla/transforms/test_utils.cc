@@ -28,11 +28,11 @@ namespace mlir {
 namespace hlo {
 namespace test {
 
+using absl::StatusOr;
 using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::tsl::StatusOr;
 
 absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* context) {
