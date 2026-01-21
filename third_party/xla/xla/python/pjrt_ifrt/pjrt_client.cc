@@ -99,7 +99,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -911,9 +910,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
-  client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
-      tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
-
   LogDeviceSummary(client.get());
   return client;
 }
@@ -1608,32 +1604,34 @@ absl::Status PjRtClient::CrossHostSendBuffers(
     return absl::InternalError(
         "CrossHostSendBuffers: keys must be the same size as buffers.");
   }
-  // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
-  // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
     auto [promise, descriptor_future] = tsl::MakePromise<std::string>();
-    work_queue_->Schedule(
-        [this, k = keys[i], promise = std::move(promise).ToShared()]() mutable {
-          std::string key = absl::StrCat(kKeyPrefix, k.value());
-          absl::StatusOr<std::string> descriptor =
-              kv_store_->Get(key, cross_host_transfer_timeout_);
-          if (!descriptor.ok()) {
-            LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
-                       << descriptor.status();
-          }
-          promise->Set(std::move(*descriptor));
+    std::shared_ptr<tsl::CallOptions> call_opts = kv_store_->AsyncGet(
+        absl::StrCat(kKeyPrefix, keys[i]),
+        [promise = std::move(promise).ToShared()](
+            const absl::StatusOr<std::string>& descriptor) mutable {
+          promise->Set(descriptor);
         });
-    auto on_done = [](absl::Status status, bool sends_were_enqueued) {
-      if (!status.ok()) {
-        LOG(ERROR) << "`xla::PjRtBuffer::CopyToRemoteDevice` failed: "
-                   << status;
-      }
-      if (!sends_were_enqueued) {
-        LOG(ERROR) << "`xla::PjRtBuffer::CopyToRemoteDevice` did not enqueue "
-                      "sends.";
-      }
-    };
-    buffers[i]->CopyToRemoteDevice(std::move(descriptor_future), on_done);
+    if (call_opts == nullptr) {
+      return absl::InternalError(
+          "CrossHostSendBuffers: kv_store_->AsyncGet returned nullptr.");
+    }
+    xla::PjRtBuffer::RemoteSendCallback on_done =
+        [call_opts = std::move(call_opts)](absl::Status status,
+                                           bool sends_were_enqueued) {
+          if (!status.ok()) {
+            call_opts->StartCancel();
+            LOG(ERROR) << "`xla::PjRtBuffer::CopyToRemoteDevice` failed: "
+                       << status;
+          }
+          if (!sends_were_enqueued) {
+            LOG(ERROR)
+                << "`xla::PjRtBuffer::CopyToRemoteDevice` did not enqueue "
+                   "sends.";
+          }
+        };
+    buffers[i]->CopyToRemoteDevice(std::move(descriptor_future),
+                                   std::move(on_done));
   }
   return absl::OkStatus();
 }
