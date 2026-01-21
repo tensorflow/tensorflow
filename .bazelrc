@@ -79,6 +79,8 @@ common --repo_env=ML_WHEEL_TYPE="snapshot"
 common --repo_env=ML_WHEEL_BUILD_DATE=""
 common --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 
+common --incompatible_default_to_explicit_init_py
+
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
