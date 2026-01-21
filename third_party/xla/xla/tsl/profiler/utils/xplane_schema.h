@@ -94,6 +94,8 @@ TF_CONST_INIT extern const absl::string_view kDeviceVendorAMD;
 
 // Name of Xplane that contains environment information
 TF_CONST_INIT extern const absl::string_view kTaskEnvPlaneName;
+TF_CONST_INIT extern const absl::string_view kServingPrefillStageName;
+TF_CONST_INIT extern const absl::string_view kServingDecodeStageName;
 
 // Max collectives to display per TPU.
 // Since in most cases there will be more than 9 collectives, the last line
