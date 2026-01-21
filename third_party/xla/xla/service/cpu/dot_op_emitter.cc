@@ -862,12 +862,17 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
     std::swap(transpose_lhs, transpose_rhs);
   }
 
+  // We work under the assumption that only M can be dynamic.
+  int batch_multiplier = target_array_.GetShape().outer_multiplier();
+  llvm::Value* m_val = (batch_multiplier > 0)
+                           ? xla::llvm_ir::GetBatchDimByName(b_, batch_multiplier)
+                           : b_->getInt64(mat_mult_dims.m);
+
   b_->CreateCall(matmul_func,
                  {executable_run_options_value_, target_array_.GetBasePointer(),
-                  lhs->GetBasePointer(), rhs->GetBasePointer(),
-                  b_->getInt64(mat_mult_dims.m), b_->getInt64(mat_mult_dims.n),
-                  b_->getInt64(mat_mult_dims.k), b_->getInt32(transpose_lhs),
-                  b_->getInt32(transpose_rhs)});
+                  lhs->GetBasePointer(), rhs->GetBasePointer(), m_val,
+                  b_->getInt64(mat_mult_dims.n), b_->getInt64(mat_mult_dims.k),
+                  b_->getInt32(transpose_lhs), b_->getInt32(transpose_rhs)});
   return absl::OkStatus();
 }
 
