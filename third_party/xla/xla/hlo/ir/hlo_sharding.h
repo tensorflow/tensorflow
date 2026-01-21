@@ -174,6 +174,9 @@ class HloSharding {
   // has usually a special meaning, with dedicated handling logic.
   static bool IsReservedDevice(int64_t device) { return device < 0; }
 
+  // Convert NamedSharding (HloShardingV3) to HloShardingV2.
+  static HloSharding V3ToV2Sharding(const NamedSharding& named_sharding);
+
   OpSharding ToProto() const;
 
   // Prints the string representation of this sharding.Note that this string

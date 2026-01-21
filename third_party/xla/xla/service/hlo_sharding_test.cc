@@ -834,5 +834,148 @@ TEST_F(HloShardingTest, WithoutMetadata) {
   }
 }
 
+TEST(V3ToV2Sharding, Replicated) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+  NamedSharding ns(mesh);
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::Replicate());
+}
+
+TEST(V3ToV2Sharding, Maximal) {
+  Mesh mesh(5);
+  NamedSharding ns(mesh);
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::AssignDevice(5));
+}
+
+TEST(V3ToV2Sharding, SimpleIotaTile) {
+  Mesh mesh({16}, {"a"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {}});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::IotaTile({16, 1}));
+}
+
+TEST(V3ToV2Sharding, MeshWithIotaReshapeTranspose) {
+  Mesh mesh(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"b"}, {"a"}});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::IotaTile({4, 2}));
+}
+
+TEST(V3ToV2Sharding, ResultantMeshWithIotaReshapeTranspose) {
+  Mesh mesh(TileAssignment({2, 4}, {4, 2}, {1, 0}), {"a", "b"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {"b"}});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::IotaTile({2, 4}, {4, 2}, {1, 0}));
+}
+
+TEST(V3ToV2Sharding, MeshWithDeviceList) {
+  Mesh mesh(Array<int64_t>({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}),
+            {"a", "b", "c"});
+  NamedSharding ns =
+      test_utils::FromAxisNames(mesh, {{"c"}, {"a", "b"}}, {}, {});
+  EXPECT_EQ(
+      HloSharding::V3ToV2Sharding(ns),
+      HloSharding::Tile(Array<int64_t>({2, 4}, {0, 4, 1, 5, 2, 6, 3, 7})));
+}
+
+TEST(V3ToV2Sharding, PartialTile) {
+  Mesh mesh({2, 4, 4}, {"a", "b", "c"});
+  NamedSharding ns =
+      test_utils::FromAxisNames(mesh, {{}, {"a"}}, /*replicated_axes=*/{"c"});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::PartialTile(TileAssignment({1, 2, 16})));
+}
+
+TEST(V3ToV2Sharding, TransposedIota1) {
+  Mesh mesh({2, 4, 4}, {"a", "b", "c"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"c"}, {"a", "b"}});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::IotaTile({4, 8}, {8, 4}, {1, 0}));
+}
+
+TEST(V3ToV2Sharding, TransposedIota2) {
+  Mesh mesh({2, 4, 4}, {"a", "b", "c"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"b"}, {"a", "c"}});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::IotaTile({4, 8}, {2, 4, 4}, {1, 0, 2}));
+}
+
+TEST(V3ToV2Sharding, PartialWithTranspose) {
+  Mesh mesh({2, 4, 4}, {"a", "b", "c"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{}, {"a", "c"}},
+                                               /*replicated_axes=*/{"b"});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::PartialTile(
+                TileAssignment({1, 8, 4}, {2, 4, 4}, {0, 2, 1})));
+}
+
+TEST(V3ToV2Sharding, Unreduced) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {}}, {},
+                                               /*unreduced_axes=*/{"b"});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::Subgroup(TileAssignment({2, 1, 2}),
+                                  {OpSharding::UNREDUCED}));
+}
+
+TEST(V3ToV2Sharding, Manual) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding ns = test_utils::FromAxisNames(mesh, {{"a"}, {}}, {}, {},
+                                               /*manual_axes=*/{"b"});
+  EXPECT_EQ(
+      HloSharding::V3ToV2Sharding(ns),
+      HloSharding::Subgroup(TileAssignment({2, 1, 2}), {OpSharding::MANUAL}));
+}
+
+TEST(V3ToV2Sharding, MultipleSubgroups) {
+  Mesh mesh({2, 3, 4, 5}, {"a", "b", "c", "d"});
+  NamedSharding ns =
+      test_utils::FromAxisNames(mesh, {{"a"}}, {"d"}, {"c"}, {"b"});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::Subgroup(TileAssignment({2, 3, 4, 5}),
+                                  {OpSharding::MANUAL, OpSharding::UNREDUCED,
+                                   OpSharding::REPLICATED}));
+}
+
+class V3ToV2ShardingSplitAxesTest : public ::testing::Test {
+ protected:
+  Mesh mesh_{{16, 4}, {"a", "b"}};
+  AxisRef a12_{0, {1, 2}};
+  AxisRef a24_{0, {2, 4}};
+  AxisRef a82_{0, {8, 2}};
+  AxisRef b_{1};
+};
+
+TEST_F(V3ToV2ShardingSplitAxesTest, SplitAxes1) {
+  NamedSharding::DimensionSharding ds({b_, a12_}, /*is_closed=*/true);
+  NamedSharding ns(mesh_, {ds});
+  EXPECT_EQ(
+      HloSharding::V3ToV2Sharding(ns),
+      HloSharding::PartialTile(TileAssignment({8, 8}, {2, 8, 4}, {2, 0, 1})));
+}
+
+TEST_F(V3ToV2ShardingSplitAxesTest, SplitAxes2) {
+  NamedSharding::DimensionSharding ds({b_, a24_}, /*is_closed=*/true);
+  NamedSharding ns(mesh_, {ds});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::PartialTile(
+                TileAssignment({16, 4}, {2, 4, 2, 4}, {3, 1, 0, 2})));
+}
+
+TEST_F(V3ToV2ShardingSplitAxesTest, SplitAxes3) {
+  NamedSharding::DimensionSharding ds_a({a12_, a82_}, /*is_closed=*/true);
+  NamedSharding::DimensionSharding ds_b({a24_, b_}, /*is_closed=*/true);
+  NamedSharding ns(mesh_, {ds_a, ds_b});
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns),
+            HloSharding::IotaTile({4, 16}, {2, 4, 2, 4}, {0, 2, 1, 3}));
+}
+
+TEST_F(V3ToV2ShardingSplitAxesTest, AllSubgroupTypesWithSplitAxes) {
+  NamedSharding::DimensionSharding ds_empty;
+  NamedSharding ns(mesh_, {ds_empty, ds_empty}, {a24_}, {a12_}, {a82_, b_});
+  EXPECT_EQ(
+      HloSharding::V3ToV2Sharding(ns),
+      HloSharding::Subgroup(
+          TileAssignment({8, 2, 4}, {2, 4, 2, 4}, {2, 3, 0, 1}),
+          {OpSharding::MANUAL, OpSharding::UNREDUCED, OpSharding::REPLICATED}));
+}
+
 }  // namespace
 }  // namespace xla

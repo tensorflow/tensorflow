@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 
 #include <cstdint>
-#include <map>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -24,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -228,14 +228,14 @@ NamedSharding FromAxisNames(
     absl::Span<const std::string> unreduced_axis_names,
     absl::Span<const std::string> manual_axis_names,
     absl::Span<const OpMetadata> metadata) {
-  std::map<std::string, int64_t> mesh_axis_to_index;
+  absl::flat_hash_map<std::string, int64_t> mesh_axis_to_index;
   for (int64_t i = 0; i < mesh.axis_names().size(); ++i) {
     mesh_axis_to_index[mesh.axis_names()[i]] = i;
   }
 
   std::vector<NamedSharding::DimensionSharding> dim_shardings;
   dim_shardings.reserve(dim_sharding_names.size());
-  for (const auto& axes_for_dim : dim_sharding_names) {
+  for (const std::vector<std::string>& axes_for_dim : dim_sharding_names) {
     std::vector<AxisRef> axis_refs;
     axis_refs.reserve(axes_for_dim.size());
     for (const std::string& axis_name : axes_for_dim) {
