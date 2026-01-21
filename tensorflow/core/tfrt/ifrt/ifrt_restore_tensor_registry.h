@@ -37,7 +37,11 @@ class IfrtRestoreTensorRegistry {
  public:
   struct RestoredTensorInfo {
     bool used_by_host = false;
-    DtypeAndShape dtype_and_shape;
+    // We have to use a separate future for dtype and shape because in
+    // `Freeze()` we will release the host tensor by resetting the
+    // `tensor_future` to an error while we want to keep the `dtype_and_shape`
+    // future unchanged.
+    tsl::Future<DtypeAndShape> dtype_and_shape;
     tsl::Future<tensorflow::Tensor> tensor_future;
   };
   // Tries to register a loaded variable with the given name.

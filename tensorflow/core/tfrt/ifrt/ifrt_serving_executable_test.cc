@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/framework/serving_device_selector.h"
@@ -302,8 +303,9 @@ TEST_P(VariableInputTest, InterleaveVariable) {
       auto [input_tensor_promise, input_tensor_future] =
           tsl::MakePromise<tensorflow::Tensor>();
       IfrtRestoreTensorRegistry::RestoredTensorInfo restore_tensor_info = {
-          .dtype_and_shape{.dtype = GetParam().in_tensors[i].dtype(),
-                           .shape = GetParam().in_tensors[i].shape()},
+          .dtype_and_shape = tsl::Future<DtypeAndShape>(
+              DtypeAndShape{.dtype = GetParam().in_tensors[i].dtype(),
+                            .shape = GetParam().in_tensors[i].shape()}),
           .tensor_future = input_tensor_future};
       std::string variable_name = absl::StrCat("variable_", i);
       ASSERT_OK(ifrt_restore_tensor_registry->TryRegister(variable_name,
