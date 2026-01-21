@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -146,6 +147,11 @@ class GpuCompiler : public LLVMCompiler {
 
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
+
+  // Returns the LLVM command line options that we use for compilation.
+  // THey need to be set globally whenever we call into LLVM.
+  virtual std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const = 0;
 
  protected:
   struct BackendCompileResult {
@@ -297,11 +303,6 @@ class GpuCompiler : public LLVMCompiler {
 
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
-
-  // Returns the LLVM command line options that we use for compilation.
-  // THey need to be set globally whenever we call into LLVM.
-  virtual std::vector<std::string> GetLLVMCommandLineOptions(
-      const DebugOptions& debug_options) const = 0;
 
   // A MLIR context that can be used by pre-codegen passes. For codegen, we will
   // need to have a context with more dialects registered.

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -73,6 +74,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const se::Platform* platform, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     bool split_constants_module = false);
 
 }  // namespace gpu

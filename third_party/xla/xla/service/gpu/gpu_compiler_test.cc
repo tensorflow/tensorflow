@@ -41,22 +41,29 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/error_spec.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -67,9 +74,11 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -86,7 +95,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -114,7 +122,6 @@ using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
 using ::tsl::gtl::ValueOrDie;
-using ::tsl::testing::TemporaryDirectory;
 
 class GpuCompilerTest : public HloTestBase {
  public:
@@ -1090,7 +1097,7 @@ class KernelCacheTest : public HloTestBase {
     TF_EXPECT_OK(tsl::ReadFileToString(tsl::Env::Default(), cache_file_name_,
                                        &serialized));
     CompilationCacheProto proto;
-    EXPECT_TRUE(proto.ParseFromString(std::string(serialized)));
+    EXPECT_TRUE(proto.ParseFromString(serialized));
     return proto.entries_size();
   }
 
@@ -2361,5 +2368,56 @@ auto SelectKTestParams() {
 INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
                          SelectKTestParams());
 }  // namespace
+
+XLA_FFI_DEFINE_HANDLER(
+    kAttemptsToAcquireLockInstantiate,
+    []() {
+      xla::llvm_ir::LLVMCommandLineOptionsLock lock(
+          /*client_options=*/{"--frame-pointer=all"});
+      return absl::OkStatus();
+    },
+    ffi::Ffi::BindInstantiate());
+XLA_FFI_DEFINE_HANDLER(
+    kAttemptsToAcquireLock,
+    [](se::Stream* stream, ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer> result) {
+      constexpr int32_t kReturnValue = 42;
+      se::DeviceAddressBase device_memory = result->device_memory();
+      return stream->Memset32(&device_memory, kReturnValue,
+                              sizeof(kReturnValue));
+    },
+    ffi::Ffi::Bind()
+        .Ctx<ffi::Stream>()
+        .Arg<ffi::AnyBuffer>()
+        .Ret<ffi::AnyBuffer>());
+
+TEST_F(GpuCompilerTest, GlobalLLVMLockGetsReleasedForCustomCallThunkCreation) {
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/kAttemptsToAcquireLockInstantiate,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/kAttemptsToAcquireLock,
+  };
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "xla.gpu.acquire_lock", "CUDA", bundle);
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "xla.gpu.acquire_lock", "ROCM", bundle);
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
+                                       "xla.gpu.acquire_lock", "SYCL", bundle);
+
+  constexpr absl::string_view kModuleStr = R"hlo(
+  HloModule test
+  ENTRY test_computation {
+    p = s32[] parameter(0)
+    ROOT v = s32[] custom-call(p), custom_call_target="xla.gpu.acquire_lock", api_version=API_VERSION_TYPED_FFI
+  })hlo";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnUnverifiedModule(kModuleStr));
+  Literal input = LiteralUtil::Zero(S32);
+  ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                               /*run_hlo_passes=*/true));
+  // Checking the result ensures that the custom call thunk was executed.
+  EXPECT_EQ(result.GetLinear<int32_t>(0), 42);
+}
 }  // namespace gpu
 }  // namespace xla

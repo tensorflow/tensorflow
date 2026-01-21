@@ -2608,17 +2608,18 @@ GpuCompiler::CompileToBackendResult(
   CompileModuleResults compile_module_results;
 
   {
-    xla::llvm_ir::LLVMCommandLineOptionsLock llvm_options_lock(
+    xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
         GetLLVMCommandLineOptions(module->config().debug_options()));
     BufferValue::SizeFunction buffer_size_bytes_function =
         BufferSizeBytesFunction();
     // Compile the module to thnks and llvm IR.
-    ASSIGN_OR_RETURN(compile_module_results,
-                     CompileModuleToLlvmIr(
-                         module, llvm_context, target_triple_, data_layout_,
-                         *platform, gpu_device_info, alias_info.get(),
-                         std::move(buffer_size_bytes_function),
-                         /*split_constants_module=*/use_cache));
+    ASSIGN_OR_RETURN(
+        compile_module_results,
+        CompileModuleToLlvmIr(
+            module, llvm_context, target_triple_, data_layout_, *platform,
+            gpu_device_info, alias_info.get(),
+            std::move(buffer_size_bytes_function), llvm_options_lock,
+            /*split_constants_module=*/use_cache));
   }
 
   if (user_pre_optimization_hook_) {
@@ -3231,7 +3232,11 @@ GpuCompiler::LoadExecutableFromAotResult(
     RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  ThunkEmitter thunk_emitter(&ir_emitter_context);
+  // We're not emitting any code, so we can start out with the LLVM options
+  // lock released.
+  llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock =
+      llvm_ir::LLVMCommandLineOptionsReleasableLock::CreateReleasedLock();
+  ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module.get()));
 
