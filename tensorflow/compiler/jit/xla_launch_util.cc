@@ -430,8 +430,26 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
     }
   } else {
     for (int i = 0; i < ctx->num_outputs(); ++i) {
-      output_tensor_shapes.push_back(compilation_result->outputs[i].shape);
+      xla::Shape output_host_shape = output.on_host_shape();
+      const xla::Shape& subshape = xla::ShapeUtil::GetSubshape(output_host_shape, {i});
+      VLOG(2) << "PopulateOutputs: subshape[" << i << "]: "<< subshape;
+      TensorShape shape;
+      TF_RETURN_IF_ERROR(XLAShapeToTensorShape(subshape, &shape));
+      if (subshape.outer_multiplier() > 0) {
+        SessionState* ss = ctx->session_state();
+        auto bsm = ss->GetBatchSize() * subshape.outer_multiplier() ;
+        shape.set_dim(0, bsm);
+        output_tensor_shapes.push_back(shape);
+      }
+      else {
+        output_tensor_shapes.push_back(compilation_result->outputs[i].shape);
+      }
     }
+  }
+
+  VLOG(2) << "output_tensor_shapes:";
+  for (auto s:output_tensor_shapes) {
+    VLOG(2) << s;
   }
 
   // Copy XLA results to the OpOutputList.

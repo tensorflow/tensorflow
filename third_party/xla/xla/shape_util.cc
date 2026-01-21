@@ -753,6 +753,11 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return;
   }
   PrintHumanString(printer, shape);
+  if (shape.outer_multiplier() > 0) {
+    printer->Append("(bm=");
+    printer->Append(shape.outer_multiplier());
+    printer->Append(")");
+  }
   if (!shape.IsArray()) return;
   if (!shape.has_layout()) return;
   if (IsScalar(shape)) {
@@ -811,6 +816,10 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
                                             const Shape& rhs) {
   if (!SameRank(lhs, rhs)) return false;
   for (int i = 0; i < lhs.dimensions().size(); ++i) {
+      if (i == 0 && (lhs.outer_multiplier() > 0 || rhs.outer_multiplier() > 0)) {
+        VLOG(3) << "CompareShapes: batch dimension found. Forcely compatible";
+        continue;
+      }
     if (!lhs.is_unbounded_dynamic_dimension(i) &&
         !rhs.is_unbounded_dynamic_dimension(i) &&
         lhs.dimensions(i) != rhs.dimensions(i)) {
@@ -826,7 +835,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
-  return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout()(lhs, rhs);
+  return Shape::Equal().IgnoreDynamicDimension().IgnoreLayout().IgnoreBatch()(lhs, rhs);
 }
 
 /* static */ bool ShapeUtil::CompatibleIgnoringElementType(const Shape& lhs,

@@ -377,13 +377,15 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
-  ExecutionOutput result(/*on_device_shape=*/result_shape(),
-                         run_options->allocator(),
-                         stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =
       module().input_output_alias_config();
   HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
   const Shape& root_shape = root->shape();
+  // Use root_shape to initialize ExecutionOuput as the batch multiplier info
+  // is only attached the ROOT
+  ExecutionOutput result(/*on_device_shape=*/root_shape, //result_shape(),
+                         run_options->allocator(),
+                         stream->parent()->device_ordinal());
 
   // Move se::OwningDeviceMemory values which contain the array(s) of the result
   // into the respective location in ScopedShapedBuffer which is returned to the

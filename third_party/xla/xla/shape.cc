@@ -136,6 +136,7 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
     TF_ASSIGN_OR_RETURN(*shape.mutable_layout(),
                         Layout::FromProto(shape_proto.layout()));
   }
+  shape.set_outer_multiplier(shape_proto.outer_multiplier());
   return shape;
 }
 
@@ -163,6 +164,7 @@ ShapeProto Shape::ToProto() const {
     proto.mutable_tuple_shapes()->Reserve(1);
     *proto.add_tuple_shapes() = state->buffer_shape[0].ToProto();
   }
+  proto.set_outer_multiplier(outer_multiplier());
   return proto;
 }
 
@@ -507,6 +509,10 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       if (ignore_dynamic_dimension_ &&
           (lhs.is_unbounded_dynamic_dimension(i) ||
            rhs.is_unbounded_dynamic_dimension(i))) {
+        continue;
+      }
+      if (i == 0 && ignore_batch_ && (lhs.outer_multiplier() > 0 || rhs.outer_multiplier() > 0)) {
+        VLOG(3) << "CompareShapes: batch dimension found. Forcely compatible";
         continue;
       }
       if (lhs.dimensions(i) != rhs.dimensions(i)) {

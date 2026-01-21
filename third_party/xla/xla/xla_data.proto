@@ -361,6 +361,8 @@ message ShapeProto {
   // The layout used to back this shape.
   LayoutProto layout = 5;
 
+  int64 outer_multiplier = 7;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
   // ShapeUtil::Compatible() and Shape::Hash() appropriately to account for the
   // new field.

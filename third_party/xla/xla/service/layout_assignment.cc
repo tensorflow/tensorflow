@@ -2571,7 +2571,7 @@ absl::Status LayoutAssignment::PropagateComputationLayouts(
     *result_layout = computed_computation_layout.result_layout();
   } else {
     TF_RET_CHECK(
-        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
+        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout().IgnoreBatch()(
             computed_computation_layout.result_layout().shape(),
             result_layout->shape()));
   }

@@ -434,6 +434,10 @@ class Shape {
 
     bool operator()(const Shape& lhs, const Shape& rhs);
 
+    Equal& IgnoreBatch(bool ignore_batch = true) {
+      ignore_batch_ = ignore_batch;
+      return *this;
+    }
     Equal& IgnoreLayout(bool ignore_layout = true) {
       ignore_layout_ = ignore_layout;
       return *this;
@@ -488,6 +492,7 @@ class Shape {
     }
 
    private:
+    bool ignore_batch_ = false;
     bool ignore_layout_ = false;
     bool ignore_tiles_in_layout_ = false;
     bool ignore_element_size_in_layout_ = false;
