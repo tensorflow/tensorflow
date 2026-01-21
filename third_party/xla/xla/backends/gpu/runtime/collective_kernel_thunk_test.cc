@@ -374,9 +374,9 @@ TEST_P(CollectiveKernelThunkParameterizedTest, ExecutesPtxKernel) {
 
   std::vector<uint64_t> output_data(kNumElements);
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor0->CreateStream());
-  TF_ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer,
-                              metadata.input_data_size_bytes));
-  TF_ASSERT_OK(stream->BlockHostUntilDone());
+  ASSERT_OK(stream->Memcpy(output_data.data(), result_buffer,
+                           metadata.input_data_size_bytes));
+  ASSERT_OK(stream->BlockHostUntilDone());
   for (auto i = 0; i < kNumElements; ++i) {
     ASSERT_EQ(expected_output_data[i], output_data[i])
         << "comparison failed at i = " << i;
@@ -398,7 +398,7 @@ TEST(CollectiveKernelThunkTest, MultimemSetupTest) {
       /*is_multimem_enabled=*/true, /*use_ptx=*/true);
   for (absl::StatusOr<se::DeviceAddressBase> result :
        RunCollectiveKernelThunkOnDevices(metadata)) {
-    TF_ASSERT_OK(result);
+    ASSERT_OK(result);
   }
 }
 

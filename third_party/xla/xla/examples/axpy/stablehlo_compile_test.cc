@@ -110,7 +110,7 @@ TEST_F(StableHloAxpyTest, RegisterAPIAndRetrieve) {
 
   const PJRT_Api* c_api = GetPjrtApi();
   EXPECT_THAT(c_api, NotNull());
-  TF_EXPECT_OK(pjrt::SetPjrtApi(device, c_api));
+  EXPECT_OK(pjrt::SetPjrtApi(device, c_api));
 
   EXPECT_THAT(GetCApiClient(device), absl_testing::IsOk());
   EXPECT_THAT(pjrt::PjrtApi(device), absl_testing::IsOk());

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1245,7 +1246,7 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
+  ASSERT_OK(module->input_output_alias_config().SetUpAlias(
       /*output_index=*/{},
       /*param_number=*/0,
       /*param_index=*/{},

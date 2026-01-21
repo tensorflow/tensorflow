@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -45,7 +46,7 @@ TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", GetParam()
                         /*"xla_aot_compile_test_gpu_executable"*/);
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient
@@ -96,7 +97,7 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
                         "xla_aot_compile_test_gpu_executable_constant");
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient
@@ -139,7 +140,7 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
                         "xla_aot_compile_test_gpu_executable_convolution");
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Check that GpuConvAlgorithmPicker successfully loaded autotune results.

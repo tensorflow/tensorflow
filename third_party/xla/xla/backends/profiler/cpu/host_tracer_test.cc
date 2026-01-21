@@ -68,18 +68,32 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 
         auto tracer = CreateHostTracer({});
 
-        TF_ASSERT_OK(tracer->Start());
-        { TraceMe traceme("hello"); }
-        { TraceMe traceme("world"); }
-        { TraceMe traceme("contains#inside"); }
-        { TraceMe traceme("good#key1=value1#"); }
-        { TraceMe traceme("morning#key1=value1,key2=value2#"); }
-        { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        ASSERT_OK(tracer->Start());
+        {
+          TraceMe traceme("hello");
+        }
+        {
+          TraceMe traceme("world");
+        }
+        {
+          TraceMe traceme("contains#inside");
+        }
+        {
+          TraceMe traceme("good#key1=value1#");
+        }
+        {
+          TraceMe traceme("morning#key1=value1,key2=value2#");
+        }
+        {
+          TraceMe traceme("incomplete#key1=value1,key2#");
+        }
         // Special cases for tf.data
-        { TraceMe traceme("Iterator::XXX::YYY::ParallelMap"); }
-        TF_ASSERT_OK(tracer->Stop());
+        {
+          TraceMe traceme("Iterator::XXX::YYY::ParallelMap");
+        }
+        ASSERT_OK(tracer->Stop());
 
-        TF_ASSERT_OK(tracer->CollectData(&space));
+        ASSERT_OK(tracer->CollectData(&space));
       }));
   traced_thread.reset();      // Join thread, waiting for completion.
   ASSERT_NO_FATAL_FAILURE();  // Test for failure in child thread.
@@ -168,7 +182,7 @@ TEST(HostTracerTest, CollectEventsFromThreadPool) {
                                                 /*num_threads=*/1);
   absl::BlockingCounter counter(1);
   auto tracer = CreateHostTracer({});
-  TF_EXPECT_OK(tracer->Start());
+  EXPECT_OK(tracer->Start());
   thread_pool->Schedule([&counter] {
     TraceMe traceme("hello");
     counter.DecrementCount();
@@ -179,9 +193,9 @@ TEST(HostTracerTest, CollectEventsFromThreadPool) {
   // and collecting the trace data.  This was the cause of this test being racy
   // in the past.
   thread_pool.reset();
-  TF_EXPECT_OK(tracer->Stop());
+  EXPECT_OK(tracer->Stop());
   tensorflow::profiler::XSpace space;
-  TF_EXPECT_OK(tracer->CollectData(&space));
+  EXPECT_OK(tracer->CollectData(&space));
 
   EXPECT_THAT(space.planes(), testing::SizeIs(1));
   XPlaneVisitor xplane = tsl::profiler::CreateTfXPlaneVisitor(&space.planes(0));

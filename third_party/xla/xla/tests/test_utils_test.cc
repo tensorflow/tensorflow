@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -38,7 +39,7 @@ TEST_F(TestUtilsTest, UnusedParam) {
   Parameter(&builder, 0, single_float, "unused");
   Parameter(&builder, 1, single_float, "used");
   auto computation_status = builder.Build();
-  TF_ASSERT_OK(computation_status.status());
+  ASSERT_OK(computation_status.status());
 
   // Make the reduction.
   Shape pair_float = ShapeUtil::MakeShape(F32, {2});
@@ -46,7 +47,7 @@ TEST_F(TestUtilsTest, UnusedParam) {
          Parameter(&builder, 1, single_float, "init"),
          computation_status.value(), {0});
   computation_status = builder.Build();
-  TF_ASSERT_OK(computation_status.status());
+  ASSERT_OK(computation_status.status());
 
   TF_ASSERT_OK_AND_ASSIGN(auto executables,
                           local_client_->Compile(computation_status.value(),
@@ -54,7 +55,7 @@ TEST_F(TestUtilsTest, UnusedParam) {
                                                  ExecutableBuildOptions()));
   HloModule& module =
       const_cast<HloModule&>(executables[0]->executable()->module());
-  TF_ASSERT_OK(MakeFakeArguments(&module).status());
+  ASSERT_OK(MakeFakeArguments(&module).status());
 }
 
 TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {

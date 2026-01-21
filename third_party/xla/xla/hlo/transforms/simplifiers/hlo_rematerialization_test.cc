@@ -75,12 +75,12 @@ class AsyncRematerializationTest : public RematerializationTestBase {
       const absl::flat_hash_map<HloComputation*, int64_t>&
           async_computation_parallelism,
       int64_t min_remat_size = 0) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ByteSizeOf(buffer.shape());
       });
-      TF_EXPECT_OK(scheduler.Run(module).status());
+      EXPECT_OK(scheduler.Run(module).status());
     }
     HloRematerialization::RematerializationModeConfig config(
         /*recompute=*/true, /*compress=*/true, /*host_offload=*/false);
@@ -161,12 +161,12 @@ class RecomputeAndCompressHloRematerializationTest
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ByteSizeOf(buffer.shape());
       });
-      TF_EXPECT_OK(scheduler.Run(module).status());
+      EXPECT_OK(scheduler.Run(module).status());
     }
 
     // First, get a set of instruction names before running remat.
@@ -1147,7 +1147,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
                                                int64_t min_remat_size = 0) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     HloRematerialization::RematerializationModeConfig config(
         /*recompute=*/false, /*compress=*/true, /*host_offload=*/false);
     auto shape_size_func = [](const Shape& shape) {
@@ -1343,12 +1343,12 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
   absl::StatusOr<bool> RunHloRematerialization(int64_t memory_limit_bytes,
                                                HloModule* module,
                                                int64_t min_remat_size = 0) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
         return ByteSizeOf(buffer.shape());
       });
-      TF_EXPECT_OK(scheduler.Run(module).status());
+      EXPECT_OK(scheduler.Run(module).status());
     }
     // Create a configuration where any compute is much much slower than any
     // number of number of copies.

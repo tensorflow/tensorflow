@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -879,7 +880,7 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForHopperWithHostOffloaded) {
       stream_executor::CudaComputeCapability::Hopper());
 
   auto module = CreateTestModule(config);
-  TF_ASSERT_OK(AddHostOffloaded(module.get()));
+  ASSERT_OK(AddHostOffloaded(module.get()));
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));

@@ -184,7 +184,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(TilingSpecification tiling_specification,
                           TilingSpecificationForModule(module.get()));
 
-  TF_EXPECT_OK(TransposedDotTiledHloSchedule::Create(tiling_specification));
+  EXPECT_OK(TransposedDotTiledHloSchedule::Create(tiling_specification));
 }
 
 TEST_F(TransposedDotTiledHloScheduleTest,

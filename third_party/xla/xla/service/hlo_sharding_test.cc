@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -215,7 +216,7 @@ TEST_F(HloShardingTest, Tile) {
     // {device_index, tile_offest, tile_limit}.
     std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
         tiles;
-    TF_ASSERT_OK(sharding.EachTile(
+    ASSERT_OK(sharding.EachTile(
         shape.dimensions(),
         [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
                  absl::Span<const int64_t> tile_limit) {
@@ -253,20 +254,20 @@ TEST_F(HloShardingTest, EachTile) {
     // 6-way sharded along axis 0, 1-way sharded along axis 1.
     HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
     Shape shape = ShapeUtil::MakeShape(U32, {12, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
   }
   {
     // 6-way sharded along axis 0, 1-way sharded along axis 1.
     HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
     Shape shape = ShapeUtil::MakeShape(U32, {11, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
   }
   {
     // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
     // replicated by 3 times.
     HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 1, 3}));
     Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
   }
   {
     // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
@@ -274,7 +275,7 @@ TEST_F(HloShardingTest, EachTile) {
     HloSharding sharding = HloSharding::Subgroup(TileAssignment({2, 1, 3}),
                                                  {OpSharding::REPLICATED});
     Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
-    TF_EXPECT_OK(validate(shape, sharding));
+    EXPECT_OK(validate(shape, sharding));
   }
 }
 

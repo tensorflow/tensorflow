@@ -66,7 +66,7 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
               HasSubstr("Type name foo already registered with type id"));
 
   // It's ok to register the same type with same type id.
-  TF_ASSERT_OK(TypeRegistry::RegisterExternalTypeId("foo", foo_id, type_info));
+  ASSERT_OK(TypeRegistry::RegisterExternalTypeId("foo", foo_id, type_info));
 
   // It's an error to register the same type with a different type id.
   auto wrong_foo_id = TypeRegistry::RegisterExternalTypeId(
@@ -82,7 +82,7 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // It's ok to register a new type with a user-provided type id.
   auto bar_id = TypeRegistry::TypeId(std::numeric_limits<int64_t>::max());
-  TF_ASSERT_OK(TypeRegistry::RegisterExternalTypeId(
+  ASSERT_OK(TypeRegistry::RegisterExternalTypeId(
       "bar", TypeRegistry::TypeId(std::numeric_limits<int64_t>::max()),
       type_info));
 

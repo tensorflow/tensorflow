@@ -131,7 +131,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvNotModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(5);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env)));
+  ASSERT_OK(envs.AddEnv(std::move(env)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 5);
 }
@@ -140,7 +140,7 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
   env->set_some_flag(1);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env)));
+  ASSERT_OK(envs.AddEnv(std::move(env)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
@@ -168,7 +168,7 @@ TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
   CompilationEnvironments envs;
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(5);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  ASSERT_OK(envs.AddEnv(std::move(env1)));
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 5);
   {
     auto env2 = std::make_unique<TestCompilationEnvironment1>();
@@ -180,7 +180,7 @@ TEST_F(CompilationEnvironmentsTest, ReplaceExistingEnv) {
   {
     auto env2 = std::make_unique<TestCompilationEnvironment1>();
     env2->set_some_flag(6);
-    TF_ASSERT_OK(envs.AddEnv(std::move(env2)));
+    ASSERT_OK(envs.AddEnv(std::move(env2)));
     EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 6);
   }
 }
@@ -190,9 +190,9 @@ TEST_F(CompilationEnvironmentsTest, CopyConstructor) {
   auto envs = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs->AddEnv(std::move(env1)));
+  ASSERT_OK(envs->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs->AddEnv(std::move(env2)));
+  ASSERT_OK(envs->AddEnv(std::move(env2)));
   envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Call the copy constructor and delete the original CompilationEnvironments
@@ -210,9 +210,9 @@ TEST_F(CompilationEnvironmentsTest, CopyAssignment) {
   auto envs1 = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs1->AddEnv(std::move(env1)));
+  ASSERT_OK(envs1->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs1->AddEnv(std::move(env2)));
+  ASSERT_OK(envs1->AddEnv(std::move(env2)));
   envs1->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   // Create envs2 with some environments that should be deleted on copy
@@ -220,10 +220,10 @@ TEST_F(CompilationEnvironmentsTest, CopyAssignment) {
   auto envs2 = std::make_unique<CompilationEnvironments>();
   auto env3 = std::make_unique<TestCompilationEnvironment1>();
   env3->set_some_flag(30);
-  TF_ASSERT_OK(envs2->AddEnv(std::move(env3)));
+  ASSERT_OK(envs2->AddEnv(std::move(env3)));
   auto env4 = std::make_unique<TestCompilationEnvironment3>();
   env4->set_a_third_flag(40);
-  TF_ASSERT_OK(envs2->AddEnv(std::move(env4)));
+  ASSERT_OK(envs2->AddEnv(std::move(env4)));
 
   // Assign envs1 to envs2, and delete envs1. After assignment, the environments
   // originaly added to envs2 should be deleted, and copies of the environments
@@ -246,9 +246,9 @@ TEST_F(CompilationEnvironmentsTest, ProtoRoundTrip) {
   auto envs = std::make_unique<CompilationEnvironments>();
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(10);
-  TF_ASSERT_OK(envs->AddEnv(std::move(env1)));
+  ASSERT_OK(envs->AddEnv(std::move(env1)));
   auto env2 = std::make_unique<TestCompilationEnvironment2>();
-  TF_ASSERT_OK(envs->AddEnv(std::move(env2)));
+  ASSERT_OK(envs->AddEnv(std::move(env2)));
   envs->GetMutableEnv<TestCompilationEnvironment2>().set_some_other_flag(20);
 
   auto proto = envs->ToProto();
@@ -275,10 +275,10 @@ TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
   CompilationEnvironments envs;
   auto env1 = std::make_unique<TestCompilationEnvironment1>();
   env1->set_some_flag(400);
-  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  ASSERT_OK(envs.AddEnv(std::move(env1)));
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
   EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 400);
-  TF_ASSERT_OK(envs.InitializeAllKnownEnvs());
+  ASSERT_OK(envs.InitializeAllKnownEnvs());
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 400);
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment2>());
@@ -319,7 +319,7 @@ TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
 
   // Add this dynamic instance to CompilationEnvironments.
   CompilationEnvironments envs;
-  TF_ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
+  ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
 
   // Trigger lookup by full_name.
   const auto& retrieved_env = envs.GetEnv<test::TestCompilationEnvironment1>();

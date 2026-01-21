@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
@@ -61,7 +62,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("transpose_fusion"),
       block_level_parameters,
       R"(
@@ -90,7 +91,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("bitcast_fusion"),
       block_level_parameters,
       R"(
@@ -117,7 +118,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("iota_fusion"),
       block_level_parameters,
       R"(
@@ -146,7 +147,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
       block_level_parameters,
       R"(
@@ -176,7 +177,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
       block_level_parameters,
       R"(
@@ -212,7 +213,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("reduce_fusion"),
       block_level_parameters,
       R"(
@@ -243,7 +244,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{1, 16}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("reshape_fusion"),
       block_level_parameters,
       R"(
@@ -297,7 +298,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{32, 8}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("dot_fusion"),
       block_level_parameters,
       R"(
@@ -419,7 +420,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{128, 256}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("triton_dot"),
       block_level_parameters,
       R"(
@@ -458,7 +459,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{4096}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *hlo_module->GetComputationWithName("wrapped_all-reduce-start"),
       block_level_parameters,
       R"(
@@ -488,7 +489,7 @@ ENTRY e {
   BlockLevelParameters block_level_parameters;
   block_level_parameters.output_tile_sizes = {{16}};
 
-  TF_EXPECT_OK(CreateXTileIrAndFileCheck(
+  EXPECT_OK(CreateXTileIrAndFileCheck(
       this, *module->GetComputationWithName("add_fusion"),
       block_level_parameters,
       R"(

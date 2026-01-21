@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/inputstream_interface.h"
 
+#include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
@@ -52,16 +53,16 @@ class TestStringStream : public InputStreamInterface {
 TEST(InputStreamInterface, Basic) {
   TestStringStream ss("This is a test string");
   tstring res;
-  TF_ASSERT_OK(ss.ReadNBytes(4, &res));
+  ASSERT_OK(ss.ReadNBytes(4, &res));
   EXPECT_EQ("This", res);
-  TF_ASSERT_OK(ss.SkipNBytes(6));
-  TF_ASSERT_OK(ss.ReadNBytes(11, &res));
+  ASSERT_OK(ss.SkipNBytes(6));
+  ASSERT_OK(ss.ReadNBytes(11, &res));
   EXPECT_EQ("test string", res);
   // Skipping past end of the file causes OutOfRange error.
   EXPECT_TRUE(absl::IsOutOfRange(ss.SkipNBytes(1)));
 
-  TF_ASSERT_OK(ss.Reset());
-  TF_ASSERT_OK(ss.ReadNBytes(4, &res));
+  ASSERT_OK(ss.Reset());
+  ASSERT_OK(ss.ReadNBytes(4, &res));
   EXPECT_EQ("This", res);
 }
 

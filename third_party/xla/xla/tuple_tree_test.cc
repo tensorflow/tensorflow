@@ -351,7 +351,7 @@ TEST_F(TupleTreeTest, CopyCompatibleSubtreeFromSuccess) {
       Node::Tuple(-1, {Node::Leaf(-2), Node::Tuple(-3, {Node::Leaf(-4)})}));
 
   // Copy entire tree
-  TF_EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {}, {}));
+  EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {}, {}));
   EXPECT_EQ(dst_tree.element({}), 100);
   EXPECT_EQ(dst_tree.element({0}), 1);
   EXPECT_EQ(dst_tree.element({1}), 200);
@@ -361,14 +361,14 @@ TEST_F(TupleTreeTest, CopyCompatibleSubtreeFromSuccess) {
   dst_tree = TupleTree<int>(
       Node::Tuple(-1, {Node::Leaf(-2), Node::Tuple(-3, {Node::Leaf(-4)})}));
   // Copy subtree from {1} in src to {1} in dst
-  TF_EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {1}, {1}));
+  EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {1}, {1}));
   EXPECT_EQ(dst_tree.element({}), -1);   // Unchanged
   EXPECT_EQ(dst_tree.element({0}), -2);  // Unchanged
   EXPECT_EQ(dst_tree.element({1}), 200);
   EXPECT_EQ(dst_tree.element({1, 0}), 2);
 
   // Copy leaf subtree
-  TF_EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {0}, {0}));
+  EXPECT_OK(dst_tree.CopyCompatibleSubtreeFrom(src_tree, {0}, {0}));
   EXPECT_EQ(dst_tree.element({0}), 1);
 }
 

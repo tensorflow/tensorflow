@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/io/random_inputstream.h"
@@ -73,25 +74,25 @@ void TestAllCombinations(CompressionOptions input_options,
     for (auto input_buf_size : InputBufferSizes()) {
       for (auto output_buf_size : OutputBufferSizes()) {
         std::unique_ptr<WritableFile> file_writer;
-        TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+        ASSERT_OK(env->NewWritableFile(fname, &file_writer));
         tstring result;
 
         ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                              output_options);
-        TF_ASSERT_OK(out.Init());
+        ASSERT_OK(out.Init());
 
-        TF_ASSERT_OK(out.Append(absl::string_view(data)));
-        TF_ASSERT_OK(out.Close());
-        TF_ASSERT_OK(file_writer->Flush());
-        TF_ASSERT_OK(file_writer->Close());
+        ASSERT_OK(out.Append(absl::string_view(data)));
+        ASSERT_OK(out.Close());
+        ASSERT_OK(file_writer->Flush());
+        ASSERT_OK(file_writer->Close());
 
         std::unique_ptr<RandomAccessFile> file_reader;
-        TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+        ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
         std::unique_ptr<RandomAccessInputStream> input_stream(
             new RandomAccessInputStream(file_reader.get()));
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
                            input_options);
-        TF_ASSERT_OK(in.ReadNBytes(data.size(), &result));
+        ASSERT_OK(in.ReadNBytes(data.size(), &result));
         EXPECT_EQ(result, data);
       }
     }
@@ -124,24 +125,24 @@ void TestMultipleWrites(uint8_t input_buf_size, uint8_t output_buf_size,
   std::string actual_result;
   std::string expected_result;
 
-  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  ASSERT_OK(env->NewWritableFile(fname, &file_writer));
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
-  TF_ASSERT_OK(out.Init());
+  ASSERT_OK(out.Init());
 
   for (int i = 0; i < num_writes; i++) {
-    TF_ASSERT_OK(out.Append(absl::string_view(data)));
+    ASSERT_OK(out.Append(absl::string_view(data)));
     if (with_flush) {
-      TF_ASSERT_OK(out.Flush());
+      ASSERT_OK(out.Flush());
     }
     absl::StrAppend(&expected_result, data);
   }
-  TF_ASSERT_OK(out.Close());
-  TF_ASSERT_OK(file_writer->Flush());
-  TF_ASSERT_OK(file_writer->Close());
+  ASSERT_OK(out.Close());
+  ASSERT_OK(file_writer->Flush());
+  ASSERT_OK(file_writer->Close());
 
   std::unique_ptr<RandomAccessFile> file_reader;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
   std::unique_ptr<RandomAccessInputStream> input_stream(
       new RandomAccessInputStream(file_reader.get()));
   ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
@@ -149,7 +150,7 @@ void TestMultipleWrites(uint8_t input_buf_size, uint8_t output_buf_size,
 
   for (int i = 0; i < num_writes; i++) {
     tstring decompressed_output;
-    TF_ASSERT_OK(in.ReadNBytes(data.size(), &decompressed_output));
+    ASSERT_OK(in.ReadNBytes(data.size(), &decompressed_output));
     absl::StrAppend(&actual_result, decompressed_output);
   }
 
@@ -177,19 +178,19 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
 
   std::string data = GenTestString(10);
   std::unique_ptr<WritableFile> file_writer;
-  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  ASSERT_OK(env->NewWritableFile(fname, &file_writer));
   tstring result;
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
-  TF_ASSERT_OK(out.Init());
+  ASSERT_OK(out.Init());
 
-  TF_ASSERT_OK(out.Append(absl::string_view(data)));
-  TF_ASSERT_OK(out.Close());
-  TF_ASSERT_OK(file_writer->Flush());
-  TF_ASSERT_OK(file_writer->Close());
+  ASSERT_OK(out.Append(absl::string_view(data)));
+  ASSERT_OK(out.Close());
+  ASSERT_OK(file_writer->Flush());
+  ASSERT_OK(file_writer->Close());
 
   std::unique_ptr<RandomAccessFile> file_reader;
-  TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+  ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
   std::unique_ptr<RandomAccessInputStream> input_stream(
       new RandomAccessInputStream(file_reader.get()));
   ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
@@ -204,16 +205,16 @@ void WriteCompressedFile(Env* env, const std::string& fname, int input_buf_size,
                          const CompressionOptions& output_options,
                          const std::string& data) {
   std::unique_ptr<WritableFile> file_writer;
-  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  ASSERT_OK(env->NewWritableFile(fname, &file_writer));
 
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
                        output_options);
-  TF_ASSERT_OK(out.Init());
+  ASSERT_OK(out.Init());
 
-  TF_ASSERT_OK(out.Append(absl::string_view(data)));
-  TF_ASSERT_OK(out.Close());
-  TF_ASSERT_OK(file_writer->Flush());
-  TF_ASSERT_OK(file_writer->Close());
+  ASSERT_OK(out.Append(absl::string_view(data)));
+  ASSERT_OK(out.Close());
+  ASSERT_OK(file_writer->Flush());
+  ASSERT_OK(file_writer->Close());
 }
 
 void TestTell(CompressionOptions input_options,
@@ -231,7 +232,7 @@ void TestTell(CompressionOptions input_options,
 
         // Boiler-plate to set up ZlibInputStream.
         std::unique_ptr<RandomAccessFile> file_reader;
-        TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+        ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
         std::unique_ptr<RandomAccessInputStream> input_stream(
             new RandomAccessInputStream(file_reader.get()));
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
@@ -242,15 +243,14 @@ void TestTell(CompressionOptions input_options,
 
         // Read the first half of the uncompressed file and expect that Tell()
         // returns half the uncompressed length of the file.
-        TF_ASSERT_OK(in.ReadNBytes(first_half.size(), &bytes_read));
+        ASSERT_OK(in.ReadNBytes(first_half.size(), &bytes_read));
         EXPECT_EQ(in.Tell(), first_half.size());
         EXPECT_EQ(bytes_read, first_half);
 
         // Read the remaining half of the uncompressed file and expect that
         // Tell() points past the end of file.
         tstring second_half;
-        TF_ASSERT_OK(
-            in.ReadNBytes(data.size() - first_half.size(), &second_half));
+        ASSERT_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
         EXPECT_EQ(in.Tell(), data.size());
         bytes_read.append(second_half);
 
@@ -276,7 +276,7 @@ void TestSkipNBytes(CompressionOptions input_options,
 
         // Boiler-plate to set up ZlibInputStream.
         std::unique_ptr<RandomAccessFile> file_reader;
-        TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+        ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
         std::unique_ptr<RandomAccessInputStream> input_stream(
             new RandomAccessInputStream(file_reader.get()));
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
@@ -288,13 +288,13 @@ void TestSkipNBytes(CompressionOptions input_options,
 
         // Skip past the first half of the file and expect Tell() returns
         // correctly.
-        TF_ASSERT_OK(in.SkipNBytes(data_half_size));
+        ASSERT_OK(in.SkipNBytes(data_half_size));
         EXPECT_EQ(in.Tell(), data_half_size);
 
         // Expect that second half is read correctly and Tell() returns past
         // end of file after reading complete file.
         tstring bytes_read;
-        TF_ASSERT_OK(in.ReadNBytes(second_half.size(), &bytes_read));
+        ASSERT_OK(in.ReadNBytes(second_half.size(), &bytes_read));
         EXPECT_EQ(bytes_read, second_half);
         EXPECT_EQ(in.Tell(), data.size());
       }
@@ -310,15 +310,15 @@ void TestSoftErrorOnDecompress(CompressionOptions input_options) {
   input_options.soft_fail_on_error = true;
 
   std::unique_ptr<WritableFile> file_writer;
-  TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
-  TF_ASSERT_OK(file_writer->Append("nonsense non-gzip data"));
-  TF_ASSERT_OK(file_writer->Flush());
-  TF_ASSERT_OK(file_writer->Close());
+  ASSERT_OK(env->NewWritableFile(fname, &file_writer));
+  ASSERT_OK(file_writer->Append("nonsense non-gzip data"));
+  ASSERT_OK(file_writer->Flush());
+  ASSERT_OK(file_writer->Close());
 
   // Test `ReadNBytes` returns an error.
   {
     std::unique_ptr<RandomAccessFile> file_reader;
-    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file_reader.get()));
     ZlibInputStream in(input_stream.get(), 100, 100, input_options);
@@ -330,7 +330,7 @@ void TestSoftErrorOnDecompress(CompressionOptions input_options) {
   // Test `SkipNBytes` returns an error.
   {
     std::unique_ptr<RandomAccessFile> file_reader;
-    TF_ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
+    ASSERT_OK(env->NewRandomAccessFile(fname, &file_reader));
     std::unique_ptr<RandomAccessInputStream> input_stream(
         new RandomAccessInputStream(file_reader.get()));
     ZlibInputStream in(input_stream.get(), 100, 100, input_options);

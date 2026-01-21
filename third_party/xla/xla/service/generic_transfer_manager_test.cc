@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
@@ -85,8 +86,8 @@ class GenericTransferManagerTest : public ::testing::Test {
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
   ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
   Literal literal = LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}});
-  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
-                                                         buffer));
+  ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                      buffer));
 
   se::DeviceAddressBase device_mem = buffer.buffers().element({});
   uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
@@ -119,8 +120,8 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
         AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
-    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(),
-                                                           literal, buffer));
+    ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                        buffer));
     se::DeviceAddressBase device_mem = buffer.buffers().element({});
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
     int8_t* device_ptr = static_cast<int8_t*>(device_mem.opaque());

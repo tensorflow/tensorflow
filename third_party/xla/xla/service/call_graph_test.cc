@@ -393,18 +393,17 @@ TEST_P(CallGraphTest, ComplexGraph) {
   // order.
   std::vector<const HloComputation*> visited;
   if (GetParam()) {
-    TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
+    ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
       visited.push_back(node.computation());
       return absl::OkStatus();
     }));
   } else {
-    TF_ASSERT_OK(
-        call_graph
-            ->VisitNodesWithReturn([&visited](const CallGraphNode& node) {
-              visited.push_back(node.computation());
-              return false;
-            })
-            .status());
+    ASSERT_OK(call_graph
+                  ->VisitNodesWithReturn([&visited](const CallGraphNode& node) {
+                    visited.push_back(node.computation());
+                    return false;
+                  })
+                  .status());
   }
   EXPECT_EQ(visited.size(), 5);
   // All values in visited should be unique.
@@ -684,7 +683,7 @@ TEST_F(CallGraphTest, VisitSingletonComputation) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
 
   std::vector<HloComputation*> visited;
-  TF_ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
+  ASSERT_OK(call_graph->VisitNodes([&visited](const CallGraphNode& node) {
     visited.push_back(node.computation());
     return absl::OkStatus();
   }));
@@ -703,7 +702,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
   // Test visitation of only reachable nodes.
   {
     std::vector<const HloComputation*> visited;
-    TF_ASSERT_OK(call_graph->VisitNodes(
+    ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
           return absl::OkStatus();
@@ -716,7 +715,7 @@ TEST_F(CallGraphTest, VisitUnreachableComputation) {
   // Test visitation of all nodes (reachable and unreachable).
   {
     std::vector<HloComputation*> visited;
-    TF_ASSERT_OK(call_graph->VisitNodes(
+    ASSERT_OK(call_graph->VisitNodes(
         [&visited](const CallGraphNode& node) {
           visited.push_back(node.computation());
           return absl::OkStatus();
@@ -750,7 +749,7 @@ TEST_F(CallGraphTest, VisitComputationWithReturn) {
       });
   EXPECT_THAT(visited_false,
               UnorderedElementsAre(entry_computation, callee_computation));
-  TF_ASSERT_OK(result);
+  ASSERT_OK(result);
   EXPECT_FALSE(result.value());
 
   std::vector<HloComputation*> visited_true_entry;
@@ -760,7 +759,7 @@ TEST_F(CallGraphTest, VisitComputationWithReturn) {
   });
   EXPECT_THAT(visited_true_entry,
               UnorderedElementsAre(entry_computation, callee_computation));
-  TF_ASSERT_OK(result);
+  ASSERT_OK(result);
   EXPECT_TRUE(result.value());
 
   std::vector<HloComputation*> visited_true_callee;
@@ -770,7 +769,7 @@ TEST_F(CallGraphTest, VisitComputationWithReturn) {
   });
   EXPECT_THAT(visited_true_callee,
               UnorderedElementsAre(entry_computation, callee_computation));
-  TF_ASSERT_OK(result);
+  ASSERT_OK(result);
   EXPECT_TRUE(result.value());
 }
 

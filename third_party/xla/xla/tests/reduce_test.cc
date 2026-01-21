@@ -40,6 +40,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
@@ -914,7 +915,7 @@ TEST_F(ReduceTest, ReduceIdentity) {
   Parameter(&builder, 0, single_float, "lhs-unused");
   Parameter(&builder, 1, single_float, "rhs-used");
   auto computation_status = builder.Build();
-  TF_ASSERT_OK(computation_status.status());
+  ASSERT_OK(computation_status.status());
 
   Shape operand_shape = ShapeUtil::MakeShape(F32, {1});
   Reduce(Parameter(&builder, 0, operand_shape, "operand"),

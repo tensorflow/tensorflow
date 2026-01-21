@@ -124,7 +124,7 @@ TEST(TargetMachineOptionsTest, FromProtoWithEmptyFeatureAfterPlus) {
 
 TEST(TargetMachineOptionsTest, SetFeatures) {
   TargetMachineOptions options("test_triple", "test_cpu", "");
-  TF_ASSERT_OK(options.SetFeatures("+avx2,-avx512"));
+  ASSERT_OK(options.SetFeatures("+avx2,-avx512"));
 
   EXPECT_EQ(options.GetTargetMachineFeatures(), "+avx2,-avx512");
 }

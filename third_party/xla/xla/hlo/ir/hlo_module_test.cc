@@ -365,7 +365,7 @@ TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
   CreateComputation(m1, "TestComputation1", true, schedule);
   CreateComputation(m1, "TestComputation2", false, schedule);
   CreateComputation(m1, "TestComputation3", false, schedule);
-  TF_EXPECT_OK(m1.set_schedule(schedule));
+  EXPECT_OK(m1.set_schedule(schedule));
 
   EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
                 ->GetInstructionWithName("p0")
@@ -821,7 +821,7 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
   EXPECT_NE(tparam->unique_id(), fparam->unique_id());
   // Lower 32 bits should be preserved and therefore the same
   EXPECT_EQ(tparam->unique_id() & 0xFFFFFFFF, fparam->unique_id() & 0xFFFFFFFF);
-  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 }
 
 TEST(HloModuleTest, TestRemapInstructionIdsResolvesOperands) {
@@ -1252,7 +1252,7 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   };
   // Will fail if buffer assignment is not updated in the HLO proto.
-  TF_EXPECT_OK(BufferAssignment::FromProto(
+  EXPECT_OK(BufferAssignment::FromProto(
       opt_hlo_module_proto_modified.buffer_assignment(),
       hlo_module_recreated.get(), std::move(buffer_size_func), &alias_info));
 }

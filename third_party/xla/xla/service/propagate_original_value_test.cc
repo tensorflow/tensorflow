@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -75,7 +76,7 @@ ENTRY %main (param: s32[2,8], param.1: s32[8,8]) -> s32[2,8] {
   HloInstruction* new_root = entry_computation->AddInstruction(root->Clone());
   new_root->set_original_value(nullptr);
 
-  TF_ASSERT_OK(root->ReplaceAllUsesWith(new_root));
+  ASSERT_OK(root->ReplaceAllUsesWith(new_root));
   EXPECT_NE(new_root->original_value(), nullptr);
 }
 

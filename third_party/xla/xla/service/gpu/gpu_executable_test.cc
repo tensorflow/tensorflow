@@ -191,7 +191,7 @@ TEST(GpuExecutableTest, RunThunkPasses) {
       ElementsAre(Pointee(Property(&Thunk::kind, Thunk::kCommandBuffer))));
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_dir.path(),
                         "*thunk_sequence_after_thunk_passes*.txt"),
       &dump_files));
@@ -430,16 +430,16 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
     return GpuExecutable::Create(std::move(params));
   };
 
-  TF_ASSERT_OK(create_executable());
+  ASSERT_OK(create_executable());
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+  ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(dump_dir.path(), "*thunk_metadata.txt"), &dump_files));
   ASSERT_THAT(dump_files, SizeIs(1));
 
   ThunkMetadataListProto metadata_list_proto;
-  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), dump_files.front(),
-                                  &metadata_list_proto));
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), dump_files.front(),
+                               &metadata_list_proto));
 
   EXPECT_THAT(metadata_list_proto, EqualsProto(R"pb(
                 thunk_metadata {
@@ -552,17 +552,16 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
   // Thread pool is not serializable, and should be ignored in the dump.
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 1);
   build_options.set_compile_thread_pool(&pool);
-  TF_ASSERT_OK(
-      executable->DumpExecutableIfEnabled(build_options, debug_options));
+  ASSERT_OK(executable->DumpExecutableIfEnabled(build_options, debug_options));
 
   std::vector<std::string> dump_files;
-  TF_ASSERT_OK(env->GetMatchingPaths(
+  ASSERT_OK(env->GetMatchingPaths(
       tsl::io::JoinPath(debug_options.xla_dump_to(), "*gpu_executable.txt"),
       &dump_files));
   ASSERT_EQ(dump_files.size(), 1);
 
   ExecutableAndOptionsProto dump_content;
-  TF_ASSERT_OK(tsl::ReadTextProto(env, dump_files[0], &dump_content));
+  ASSERT_OK(tsl::ReadTextProto(env, dump_files[0], &dump_content));
   EXPECT_THAT(dump_content.compile_options().executable_build_options(),
               Partially(EqualsProto(R"pb(
                 num_replicas: 2 num_partitions: 1

@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -3819,7 +3820,7 @@ TEST_F(AlgebraicSimplifierTest, DoNotRemoveUnaryConcatenateWithCtrlDep) {
 
   HloInstruction* concat = builder.AddInstruction(
       HloInstruction::CreateConcatenate(param0->shape(), {param0}, 0));
-  TF_ASSERT_OK(param1->AddControlDependencyTo(concat));
+  ASSERT_OK(param1->AddControlDependencyTo(concat));
   auto computation = m->AddEntryComputationWithLayouts(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -5466,9 +5467,9 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   Shape keys_shape = ShapeUtil::MakeShape(F32, {1});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  TF_ASSERT_OK(MakeSortHlo(keys_shape, {keys}, 0, /*is_stable=*/false, &builder,
-                           module.get())
-                   .status());
+  ASSERT_OK(MakeSortHlo(keys_shape, {keys}, 0, /*is_stable=*/false, &builder,
+                        module.get())
+                .status());
   HloComputation* computation =
       module->AddEntryComputationWithLayouts(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
@@ -5488,11 +5489,11 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
       HloInstruction::CreateParameter(1, values_shape, "values0"));
   auto values1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, values_shape, "values1"));
-  TF_ASSERT_OK(MakeSortHlo(ShapeUtil::MakeTupleShape(
-                               {keys_shape, values_shape, values_shape}),
-                           {keys, values0, values1}, 0, /*is_stable=*/false,
-                           &builder, module.get())
-                   .status());
+  ASSERT_OK(MakeSortHlo(ShapeUtil::MakeTupleShape(
+                            {keys_shape, values_shape, values_shape}),
+                        {keys, values0, values1}, 0, /*is_stable=*/false,
+                        &builder, module.get())
+                .status());
   HloComputation* computation =
       module->AddEntryComputationWithLayouts(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
@@ -13121,9 +13122,9 @@ ENTRY main {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(
                   m::Pad(m::Broadcast(m::Constant()), m::Constant()))));
-  TF_EXPECT_OK(VerifyHloModule(m.get(),
-                               /*layout_sensitive=*/true,
-                               /*allow_mixed_precision=*/true));
+  EXPECT_OK(VerifyHloModule(m.get(),
+                            /*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/true));
 }
 
 TEST_F(AlgebraicSimplifierTest, ConditionalWithConvert) {

@@ -469,6 +469,7 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],

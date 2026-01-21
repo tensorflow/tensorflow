@@ -296,7 +296,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   ASSERT_TRUE(module->has_schedule());
-  TF_ASSERT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Verify());
 
   HloInstruction* async_done = module->entry_computation()->root_instruction();
   ASSERT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
@@ -304,17 +304,16 @@ ENTRY main {
   HloInstruction* clone = module->entry_computation()->AddInstruction(
       async_start->CloneWithNewOperands(async_start->shape(),
                                         {async_start->mutable_operand(0)}));
-  TF_ASSERT_OK(async_start->ReplaceAllUsesWith(clone));
+  ASSERT_OK(async_start->ReplaceAllUsesWith(clone));
 
   // Cleanup the main thread.
-  TF_ASSERT_OK(HloDCE()
-                   .Run(module.get(), {HloInstruction::kMainExecutionThread})
-                   .status());
-  TF_ASSERT_OK(
-      module->schedule().Update({HloInstruction::kMainExecutionThread}));
+  ASSERT_OK(HloDCE()
+                .Run(module.get(), {HloInstruction::kMainExecutionThread})
+                .status());
+  ASSERT_OK(module->schedule().Update({HloInstruction::kMainExecutionThread}));
 
   // The schedule for the entire module should still be valid.
-  TF_EXPECT_OK(module->schedule().Verify());
+  EXPECT_OK(module->schedule().Verify());
 }
 
 TEST_F(HloInstructionTest, CloneImplCollectivePermuteOp) {
@@ -356,7 +355,7 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   EXPECT_EQ(
       root->ToString(),
       "%result = pred[] compare(null , null ), direction=GT, type=TOTALORDER");
-  TF_ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
+  ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
   EXPECT_EQ(root->ToString(),
             "%result = pred[] compare(), direction=GT, type=TOTALORDER");
   *module->mutable_entry_computation_layout() =

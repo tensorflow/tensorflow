@@ -7,6 +7,7 @@ that's compatible with the local device. As such, the program is very
 simple: $\alpha x+y$ ("axpy").
 
 The process includes just a few steps:
+#include "testing/base/public/gmock.h"
 
 1.  Construct a StableHLO program using the StableHLO dialect.
 2.  Tell XLA to create a "computation" based on this program. In this example,
@@ -74,7 +75,7 @@ std::string program_path = tsl::io::JoinPath(
     tsl::testing::XlaSrcRoot(), "examples", "axpy", "stablehlo_axpy.mlir");
 std::string program_string;
 
-TF_ASSERT_OK(
+ASSERT_OK(
     tsl::ReadFileToString(tsl::Env::Default(), program_path, &program_string));
 ```
 

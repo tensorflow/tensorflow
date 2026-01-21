@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -393,7 +394,7 @@ TEST(WhileThunkTest, TransformAllNestedThunks) {
       /*body_thunk_sequence_=*/std::move(body_thunk_sequence),
       /*trip_count=*/3);
 
-  TF_EXPECT_OK(while_thunk->TransformAllNestedThunks([](auto) {
+  EXPECT_OK(while_thunk->TransformAllNestedThunks([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
   }));
 

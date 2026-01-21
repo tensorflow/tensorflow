@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
@@ -157,7 +158,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForF32) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{123}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -182,7 +183,7 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsForBf16) {
       se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::CreateOnDevice(
           *stream_, mem));
 
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckBf16Kernel>(
       BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -229,9 +230,9 @@ TEST_F(FloatCheckKernelTest, ChecksFloatsInParallel) {
   CalculateDimensionality(executor_->GetDeviceDescription(), input.size(),
                           &threads_per_block, &num_blocks);
   const se::BlockDim block_dim(num_blocks);
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, block_dim));
-  TF_EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
+  EXPECT_OK(AppendFloatCheckOnDevice<gpu::BufferDebugFloatCheckF32Kernel>(
       BufferDebugLogEntryId{0}, input, device_log, block_dim));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
@@ -276,9 +277,9 @@ TEST_F(FloatCheckKernelTest, ReduceFloatCheckResults) {
   auto cleanup_results =
       absl::MakeCleanup([&]() { executor_->Deallocate(&device_results); });
 
-  TF_ASSERT_OK(stream_->Memcpy(&device_results, results.data(),
-                               results.size() * sizeof(results[0])));
-  TF_ASSERT_OK(reduce_kernel.Launch(
+  ASSERT_OK(stream_->Memcpy(&device_results, results.data(),
+                            results.size() * sizeof(results[0])));
+  ASSERT_OK(reduce_kernel.Launch(
       se::ThreadDim(1024, 1, 1), se::BlockDim(1, 1, 1), stream_.get(),
       device_results, device_results.ElementCount(), BufferDebugLogEntryId{0},
       device_log.GetDeviceHeader(), device_log.GetDeviceEntries()));

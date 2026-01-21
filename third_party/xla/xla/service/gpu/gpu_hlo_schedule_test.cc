@@ -767,7 +767,7 @@ TEST_P(
   // pass.
   module->mutable_config().mutable_debug_options().add_xla_disable_hlo_passes(
       "pgle-accuracy-checker");
-  TF_EXPECT_OK(ScheduleGpuModule(module.get()).status());
+  EXPECT_OK(ScheduleGpuModule(module.get()).status());
 }
 
 TEST_P(GpuHloScheduleParameterizedTest, ProfileGuidedCostModelWithRematData) {

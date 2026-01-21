@@ -105,8 +105,8 @@ TEST(FfiTest, StaticHandlerRegistration) {
   auto handler0 = FindHandler("no-op-0", "Host");
   auto handler1 = FindHandler("no-op-1", "Host");
 
-  TF_ASSERT_OK(handler0.status());
-  TF_ASSERT_OK(handler1.status());
+  ASSERT_OK(handler0.status());
+  ASSERT_OK(handler1.status());
 
   ASSERT_EQ(handler0->metadata.traits,
             XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
@@ -125,7 +125,7 @@ TEST(FfiTest, RegistrationTraitsBackwardsCompatibility) {
   XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "traits-bwd-compat", "Host", NoOp,
                            XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
   auto handler = FindHandler("traits-bwd-compat", "Host");
-  TF_ASSERT_OK(handler.status());
+  ASSERT_OK(handler.status());
   ASSERT_EQ(handler->metadata.traits,
             XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 }
@@ -143,7 +143,7 @@ TEST(FfiTest, StaticHandlerSymbolRegistration) {
   // Use "Cpu" platform to check that platform name was canonicalized.
   auto handler0 = FindHandler("no-op-sym-0", "Cpu");
 
-  TF_ASSERT_OK(handler0.status());
+  ASSERT_OK(handler0.status());
   ASSERT_EQ(handler0->metadata.traits, 0);
 }
 
@@ -230,7 +230,7 @@ TEST(FfiTest, IgnoreAttrs) {
   auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
 
   auto status = Call(*handler, call_frame);
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, RunId) {
@@ -249,7 +249,7 @@ TEST(FfiTest, RunId) {
   options.run_id = RunId{42};
 
   auto status = Call(*handler, call_frame, options);
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, BuiltinAttributes) {
@@ -293,7 +293,7 @@ TEST(FfiTest, BuiltinAttributes) {
 
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, BuiltinAttributesAutoBinding) {
@@ -320,7 +320,7 @@ TEST(FfiTest, BuiltinAttributesAutoBinding) {
 
   auto handler = Ffi::BindTo(fn);
   auto status = Call(*handler, call_frame);
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, ArrayAttr) {
@@ -357,7 +357,7 @@ TEST(FfiTest, ArrayAttr) {
                      .To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, PointerAttr) {
@@ -383,7 +383,7 @@ TEST(FfiTest, PointerAttr) {
   auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, AttrsAsDictionary) {
@@ -431,7 +431,7 @@ TEST(FfiTest, AttrsAsDictionary) {
   auto handler = Ffi::Bind().Attrs().To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, DictionaryAttr) {
@@ -477,7 +477,7 @@ TEST(FfiTest, DictionaryAttr) {
 
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, StructAttr) {
@@ -507,7 +507,7 @@ TEST(FfiTest, StructAttr) {
 
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, AttrsAsStruct) {
@@ -528,7 +528,7 @@ TEST(FfiTest, AttrsAsStruct) {
   auto handler = Ffi::Bind().Attrs<PairOfI32AndF32>().To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, DecodingErrors) {
@@ -602,13 +602,13 @@ TEST(FfiTest, AnyBufferArgument) {
   {  // Test explicit binding signature declaration.
     auto handler = Ffi::Bind().Arg<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Test inferring binding signature from a handler type.
     auto handler = Ffi::BindTo(fn);
     auto status = Call(*handler, call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 }
 
@@ -630,13 +630,13 @@ TEST(FfiTest, TypedAndRankedBufferArgument) {
   {  // Test explicit binding signature declaration.
     auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::F32>>().To(fn);
     auto status = Call(*handler, call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Test inferring binding signature from a handler type.
     auto handler = Ffi::BindTo(fn);
     auto status = Call(*handler, call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 }
 
@@ -657,7 +657,7 @@ TEST(FfiTest, ComplexBufferArgument) {
 
   auto handler = Ffi::Bind().Arg<BufferR2<PrimitiveType::C64>>().To(fn);
   auto status = Call(*handler, call_frame);
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, TokenArgument) {
@@ -674,7 +674,7 @@ TEST(FfiTest, TokenArgument) {
 
   auto handler = Ffi::Bind().Arg<Token>().To(fn);
   auto status = Call(*handler, call_frame);
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -738,7 +738,7 @@ TEST(FfiTest, RemainingArgs) {
   auto handler = Ffi::Bind().RemainingArgs().To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, RemainingRets) {
@@ -767,7 +767,7 @@ TEST(FfiTest, RemainingRets) {
   auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingRets().To(fn);
   auto status = Call(*handler, call_frame);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, OptionalArgs) {
@@ -787,7 +787,7 @@ TEST(FfiTest, OptionalArgs) {
     auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Two optional arguments.
@@ -802,7 +802,7 @@ TEST(FfiTest, OptionalArgs) {
         Ffi::Bind().OptionalArg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Optional argument after a regular one.
@@ -814,7 +814,7 @@ TEST(FfiTest, OptionalArgs) {
     auto handler = Ffi::Bind().Arg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Remaining arguments after optional one.
@@ -827,7 +827,7 @@ TEST(FfiTest, OptionalArgs) {
     auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().RemainingArgs().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 }
 
@@ -848,7 +848,7 @@ TEST(FfiTest, OptionalRets) {
     auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Two optional results.
@@ -863,7 +863,7 @@ TEST(FfiTest, OptionalRets) {
         Ffi::Bind().OptionalRet<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Optional result after a regular one.
@@ -876,7 +876,7 @@ TEST(FfiTest, OptionalRets) {
     auto handler = Ffi::Bind().Ret<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Remaining results after optional one.
@@ -889,7 +889,7 @@ TEST(FfiTest, OptionalRets) {
     auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().RemainingRets().To(fn);
     auto status = Call(*handler, call_frame);
 
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 }
 
@@ -908,7 +908,7 @@ TEST(FfiTest, RunOptionsCtx) {
   auto handler = Ffi::Bind().Ctx<Stream>().To(fn);
   auto status = Call(*handler, call_frame, options);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 struct StrUserData {
@@ -918,7 +918,7 @@ struct StrUserData {
 
 TEST(FfiTest, UserData) {
   ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace<StrUserData>("foo"));
+  ASSERT_OK(execution_context.Emplace<StrUserData>("foo"));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
@@ -934,7 +934,7 @@ TEST(FfiTest, UserData) {
   auto handler = Ffi::Bind().Ctx<UserData<StrUserData>>().To(fn);
   auto status = Call(*handler, call_frame, options);
 
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 struct StrState {
@@ -964,11 +964,11 @@ TEST(FfiTest, StatefulHandler) {
   });
 
   // Create `State` and store it in the execution state.
-  TF_ASSERT_OK(
+  ASSERT_OK(
       Call(*instantiate, call_frame, options, ExecutionStage::kInstantiate));
 
   // Check that state was created and forwarded to the execute handler.
-  TF_ASSERT_OK(Call(*execute, call_frame, options));
+  ASSERT_OK(Call(*execute, call_frame, options));
 }
 
 TEST(FfiTest, UpdateBufferArgumentsAndResults) {
@@ -1022,7 +1022,7 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
   {  // Call `fn0` with an original call frame.
     auto handler = bind.To(fn0);
     auto status = Call(*handler, *call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 
   {  // Call `fn1` with swapped buffers for argument and result.
@@ -1031,7 +1031,7 @@ TEST(FfiTest, UpdateBufferArgumentsAndResults) {
         CallFrame updated_call_frame,
         std::move(call_frame)->CopyWithBuffers({memory1}, {memory0}));
     auto status = Call(*handler, updated_call_frame);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
   }
 }
 
@@ -1070,7 +1070,7 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
                            NoOp);
   auto status = TakeStatus(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
-  TF_ASSERT_OK(status);
+  ASSERT_OK(status);
 }
 
 TEST(FfiTest, AsyncHandler) {
@@ -1100,7 +1100,7 @@ TEST(FfiTest, AsyncHandler) {
 
   {  // Synchronous call.
     absl::Status status = Call(*handler, call_frame, options);
-    TF_ASSERT_OK(status);
+    ASSERT_OK(status);
     EXPECT_EQ(value, 42);
   }
 

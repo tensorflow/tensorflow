@@ -66,7 +66,7 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
     CompilationEnvironments envs;
     auto env1 = std::make_unique<test::TestCompilationEnvironment1>();
     env1->set_some_flag(10);
-    TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+    ASSERT_OK(envs.AddEnv(std::move(env1)));
     p.mutable_comp_envs()->MergeFrom(envs.ToProto());
   }
   p.mutable_debug_options()->set_xla_gpu_force_compilation_parallelism(3);

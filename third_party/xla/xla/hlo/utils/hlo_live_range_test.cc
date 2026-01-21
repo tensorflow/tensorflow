@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/comparison_util.h"
@@ -249,7 +250,7 @@ TEST_F(HloLiveRangeTest, AliasedParameter) {
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, mul, paramY));
   module_->AddEntryComputation(builder.Build());
   // Set up alias of the first parameter.
-  TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias({}, 0, {}));
+  ASSERT_OK(module_->input_output_alias_config().SetUpAlias({}, 0, {}));
 
   HloSchedule schedule(module_.get());
 

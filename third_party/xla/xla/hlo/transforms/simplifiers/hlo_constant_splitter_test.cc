@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include <gmock/gmock.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -49,7 +50,7 @@ TEST_F(HloConstantSplitterTest, SplitConstants) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
-  TF_ASSERT_OK(HloConstantSplitter().Run(module.get()).status());
+  ASSERT_OK(HloConstantSplitter().Run(module.get()).status());
 
   // Check that every constant has at most one user.
   for (HloComputation* computation : module->computations()) {
@@ -81,12 +82,12 @@ TEST_F(HloConstantSplitterTest, OnlySplitConstantsAllowedBySeedConstraints) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
-  TF_ASSERT_OK(HloConstantSplitter(/* split_expressions */ false,
-                                   [](const HloInstruction* instruction) {
-                                     return instruction->name() != "constant1";
-                                   })
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloConstantSplitter(/* split_expressions */ false,
+                                [](const HloInstruction* instruction) {
+                                  return instruction->name() != "constant1";
+                                })
+                .Run(module.get())
+                .status());
 
   // Check that every constant has at most one user except constant1 which
   // should have 2 as it is not split.
@@ -124,7 +125,7 @@ TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   HloConstantSplitter pass = HloConstantSplitter();
   const auto status_or =
       HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
-  TF_ASSERT_OK(status_or.status());
+  ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_FALSE(status_or.value());
 }
@@ -156,11 +157,11 @@ TEST_F(HloConstantSplitterTest, SplittingExpressionsWithBroadcast) {
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
   const auto status_or =
       HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
-  TF_ASSERT_OK(status_or.status());
+  ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_TRUE(status_or.value());
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
 }
@@ -187,11 +188,11 @@ TEST_F(HloConstantSplitterTest, SplittingExpressionsWithSlice) {
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
   const auto status_or =
       HloHardwareIndependentTestBase::RunHloPass(&pass, module.get());
-  TF_ASSERT_OK(status_or.status());
+  ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_TRUE(status_or.value());
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 11);
 }
@@ -229,7 +230,7 @@ TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
       bool changed,
       HloHardwareIndependentTestBase::RunHloPass(&pass, module.get()));
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   const int64_t count_after_dce =
       module->entry_computation()->instruction_count();
 
@@ -298,7 +299,7 @@ TEST_F(HloConstantSplitterTest, InstructionsWithOneUser) {
   EXPECT_EQ(broadcast_count_before_dce, 4);
 
   HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_OK(dce.Run(module.get()).status());
   for (HloInstruction* instruction :
        module->entry_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kBroadcast) {

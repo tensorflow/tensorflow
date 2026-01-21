@@ -1437,7 +1437,7 @@ TEST_P(HloDataflowAnalysisTest, MultipleEntryParameters_Sequential) {
 
   HloSchedule schedule(module_.get());
   schedule.set_sequence(entry, {param0, negate, param1, exp, add});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   SequentialHloOrdering ordering(schedule);
 
   // Entry parameters interfere as if they are defined simultaneously at
@@ -1523,7 +1523,7 @@ TEST_P(HloDataflowAnalysisTest, WhileParameters_Sequential) {
   // body_param.
   schedule.set_sequence(
       body, {constant, exp, body_param, add, dead_constant, dead_negate});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
 
   SequentialHloOrdering ordering(schedule);
 
@@ -1660,7 +1660,7 @@ TEST_P(HloDataflowAnalysisTest, OverlappedValuesSequentialOrder) {
 
   HloSchedule schedule(module_.get());
   schedule.set_sequence(entry, {param, negate, exp, add});
-  TF_ASSERT_OK(schedule.Verify());
+  ASSERT_OK(schedule.Verify());
   SequentialHloOrdering ordering(schedule);
 
   EXPECT_TRUE(InstructionsMayInterfere(ordering, param, negate));

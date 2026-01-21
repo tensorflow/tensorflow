@@ -83,7 +83,7 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
   auto* outputs_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   if (outputs_dir != nullptr) {
     std::vector<std::string> paths;
-    TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
+    ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
         tsl::io::JoinPath(outputs_dir, "*-hlo-static-bundle-profile.txt"),
         &paths));
     int64_t newest = -1;
@@ -102,7 +102,7 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
     }
     if (newest_path) {
       std::string contents;
-      TF_ASSERT_OK(
+      ASSERT_OK(
           tsl::ReadFileToString(tsl::Env::Default(), *newest_path, &contents));
       EXPECT_TRUE(absl::StartsWith(contents, "HLO: <no-hlo-instruction>"));
     }

@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -234,7 +235,7 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
 TEST_F(CoordinationServiceRecoverableJobTest,
        UnrecoverableWorkerFailurePropagated) {
   Initialize();
-  TF_ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For unrecoverable task, error propagates to all connected tasks.
   EXPECT_TRUE(absl::IsInternal(state_ps_0_.GetStatus()));
@@ -246,7 +247,7 @@ TEST_F(CoordinationServiceRecoverableJobTest,
 TEST_F(CoordinationServiceRecoverableJobTest,
        UnrecoverablePSFailurePropagated) {
   Initialize();
-  TF_ASSERT_OK(state_ps_0_.ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(state_ps_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For unrecoverable task, error propagates to all connected tasks.
   EXPECT_TRUE(absl::IsInternal(state_ps_0_.GetStatus()));
@@ -259,7 +260,7 @@ TEST_F(CoordinationServiceRecoverableJobTest,
        RecoverableWorkerFailureNotPropagated) {
   AddJobToRecoverableJobs(kWorkerJobName);
   Initialize();
-  TF_ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
+  ASSERT_OK(state_worker_0_.ReportError(absl::InternalError("Test Error.")));
 
   // For recoverable task, error does not propagate.
   EXPECT_TRUE(state_ps_0_.GetStatus().ok());

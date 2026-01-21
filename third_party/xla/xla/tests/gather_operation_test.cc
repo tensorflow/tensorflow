@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
@@ -389,7 +390,6 @@ ENTRY main {
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}, {0x80, 0x80}});
   RunTest(hlo_text, &operand, &start_indices);
 }
-
 
 TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
   // Out of bounds indices must not crash, and the indices in range should
@@ -792,7 +792,7 @@ TEST_F(GatherOperationWithoutReferenceTest, Basic) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProto(computation.proto(), module_config));
-  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  ASSERT_OK(verifier().Run(module.get()).status());
 
   Literal operand_arg =
       LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
@@ -150,7 +151,7 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
@@ -219,7 +220,7 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
@@ -293,7 +294,7 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
@@ -367,7 +368,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
@@ -430,7 +431,7 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
   EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
@@ -651,7 +652,7 @@ ENTRY %jit_insert.fusion.21.isolated.root {
       computation->GetInstructionWithName("fusion.505");
   ASSERT_NE(fusion, nullptr);
   EXPECT_EQ(fusion->shape().layout().memory_space(), 1);
-  TF_EXPECT_OK(Verify(module.get()));
+  EXPECT_OK(Verify(module.get()));
 }
 
 }  // namespace

@@ -52,7 +52,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                                                    "tools", "data", "add.hlo");
     std::string hlo;
-    TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
     TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
   }
 
@@ -72,8 +72,8 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", "h100_sxm.txtpb");
   stream_executor::GpuTargetConfigProto target_config;
-  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
-                                  &target_config));
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                               &target_config));
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
                                 std::nullopt, result),
@@ -84,8 +84,8 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
 TEST_F(XlaCompileLibTest, MainForGpu) {
   const std::string module_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
-  TF_ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
-                                      module_->ToString()));
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                   module_->ToString()));
 
   const std::string output_file =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
@@ -98,10 +98,10 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   options.platform = "gpu";
   options.result_output_file = result_file;
   options.gpu_options.use_attached_device = true;
-  TF_EXPECT_OK(XlaCompileMain(options));
+  EXPECT_OK(XlaCompileMain(options));
 
   CompilationResult result;
-  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
 }
@@ -114,7 +114,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
   auto data = std::make_unique<gpu::GpuBackendSpecificData>();
 
   AutotuneResults autotune_results;
-  TF_ASSERT_OK(tsl::ReadTextProto(
+  ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
@@ -139,7 +139,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   auto data = std::make_unique<gpu::GpuBackendSpecificData>();
 
   AutotuneResults autotune_results;
-  TF_ASSERT_OK(tsl::ReadTextProto(
+  ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),

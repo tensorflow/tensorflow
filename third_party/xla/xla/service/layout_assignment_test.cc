@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -720,9 +721,8 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
            ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2, 2}, {1, 2, 0}),
            ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2, 2}, {2, 0, 1}),
        })});
-  TF_ASSERT_OK(
-      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
-          param_shape));
+  ASSERT_OK(computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+      param_shape));
   computation_layout.mutable_result_layout()->ResetLayout(
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(m.get(), &computation_layout);
@@ -885,9 +885,8 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
       m->entry_computation()->ComputeProgramShape());
   Shape param_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})});
-  TF_ASSERT_OK(
-      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
-          param_shape));
+  ASSERT_OK(computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+      param_shape));
   computation_layout.mutable_result_layout()->ResetLayout(
       LayoutUtil::MakeLayout({1, 0}));
 
@@ -955,9 +954,8 @@ TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
       m->entry_computation()->ComputeProgramShape());
   Shape param_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 2}, {0, 1})});
-  TF_ASSERT_OK(
-      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
-          param_shape));
+  ASSERT_OK(computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+      param_shape));
   computation_layout.mutable_result_layout()->ResetLayout(
       LayoutUtil::MakeLayout({1, 0}));
 
@@ -1008,7 +1006,7 @@ e {
   a = f32[2,64]{0,1} parameter(0)
   b = u4[2,64,8]{1,2,0:E(4)} bitcast-convert(a)
 })"));
-  TF_ASSERT_OK(AssignLayoutsToComputation(module.get()));
+  ASSERT_OK(AssignLayoutsToComputation(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::BitcastConvert(
                   m::Copy(m::Parameter()).WithShape(F32, {2, 64}, {1, 0}))));
@@ -1022,7 +1020,7 @@ e {
   a = s8[16,3,2]{2,1,0} parameter(0)
   b = u16[16,3]{0,1} bitcast-convert(a)
 })"));
-  TF_ASSERT_OK(AssignLayoutsToComputation(module.get()));
+  ASSERT_OK(AssignLayoutsToComputation(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::BitcastConvert(
@@ -1539,7 +1537,7 @@ TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {
   const Layout r2_dim0major = LayoutUtil::MakeLayout({1, 0});
   ForceParameterLayout(m.get(), 0, r2_dim0major);
   ForceParameterLayout(m.get(), 1, r2_dim0major);
-  TF_ASSERT_OK(AssignLayoutsToComputation(m.get()));
+  ASSERT_OK(AssignLayoutsToComputation(m.get()));
   EXPECT_THAT(m->entry_computation()->root_instruction()->operand(0)->shape(),
               ashape_major);
   EXPECT_THAT(add->operand(0)->shape().layout().minor_to_major(),

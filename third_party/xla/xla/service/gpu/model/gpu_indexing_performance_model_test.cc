@@ -571,7 +571,7 @@ ENTRY main {
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
       *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{16, 16}});
 
-  TF_EXPECT_OK(result.status());
+  EXPECT_OK(result.status());
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

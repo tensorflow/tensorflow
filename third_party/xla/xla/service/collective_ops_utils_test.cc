@@ -615,7 +615,7 @@ TEST_P(GetCollectOpGroupModeTest, Test) {
   absl::StatusOr<CollectiveOpGroupMode> actual =
       GetCollectiveOpGroupMode(tc.has_channel_id, tc.use_global_device_ids);
   if (tc.expected) {
-    TF_ASSERT_OK(actual.status());
+    ASSERT_OK(actual.status());
     EXPECT_EQ(*actual, *tc.expected);
   } else {
     EXPECT_FALSE(actual.ok());

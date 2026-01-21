@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -117,7 +118,7 @@ TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
       LiteralUtil::CreateR1<float>({1, 1, 1, 1}), &builder_);
   const auto init_value =
       CreateConstantFromLiteral(LiteralUtil::CreateR0<float>(0), &builder_);
-  TF_ASSERT_OK(builder_.first_error());
+  ASSERT_OK(builder_.first_error());
   ReduceWindow(input, init_value,
                CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{1, 2},
@@ -1337,9 +1338,9 @@ class R2ReduceWindowTest
         input, LayoutUtil::MakeLayout(param.layout));
 
     XlaOp parameter;
-    TF_ASSERT_OK(CreateParameterAndTransferLiteral(0, input_literal, "p0", &b,
-                                                   &parameter)
-                     .status());
+    ASSERT_OK(CreateParameterAndTransferLiteral(0, input_literal, "p0", &b,
+                                                &parameter)
+                  .status());
 
     std::vector<std::pair<int64_t, int64_t>> padding(2);
     for (int i = 0; i < 2; ++i) {

@@ -121,7 +121,7 @@ TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
-  TF_ASSERT_OK(config);
+  ASSERT_OK(config);
   MIOpenBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
   EXPECT_EQ(algorithm_config.algo_id(), 0);
@@ -139,7 +139,7 @@ TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCall) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  ASSERT_OK(backend_.ApplyConfig(*instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
@@ -159,7 +159,7 @@ TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCallWithWorkspace) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  ASSERT_OK(backend_.ApplyConfig(*instr, any));
 
   auto* replaced_instr =
       hlo_module->entry_computation()->GetInstructionWithName("cudnn-conv");

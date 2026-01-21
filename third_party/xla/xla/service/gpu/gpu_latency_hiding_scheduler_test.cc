@@ -349,7 +349,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -387,7 +387,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -438,7 +438,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
   auto scheduled = ScheduleModule(module.get(), /*num_parallel_resources=*/1);
-  TF_ASSERT_OK(scheduled.status());
+  ASSERT_OK(scheduled.status());
 
   const auto& sequence = scheduled.value()
                              ->schedule()
@@ -492,7 +492,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -586,7 +586,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, SchedulePipelinedSendRecvsLate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(
+  EXPECT_OK(
       ScheduleModule(module.get(), /*num_parallel_resources=*/2,
                      /*strictness=*/DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   auto schedule = module->schedule();
@@ -667,8 +667,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   auto schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -761,8 +761,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleP2PWithMultipliers) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   auto schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -852,8 +852,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/1,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   auto schedule = module->schedule();
 
   VLOG(3) << module->schedule().ToString();
@@ -941,8 +941,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
-                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
+                           DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
   auto schedule = module->schedule();
 
   HloComputation* main_computation = FindComputation(module.get(), "main");
@@ -1001,7 +1001,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
-  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
   auto schedule = module->schedule();
   std::vector<HloInstruction*> instruction_sequence =
       schedule.sequence(module->entry_computation()).instructions();
@@ -1083,7 +1083,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
   // It should compile without any issues.
-  TF_EXPECT_OK(ScheduleModule(module.get()));
+  EXPECT_OK(ScheduleModule(module.get()));
 }
 
 }  // namespace

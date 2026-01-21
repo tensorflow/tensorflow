@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
@@ -40,7 +41,7 @@ TEST(XlaCompileTest, LoadCpuExecutable) {
   std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
                                        "xla_aot_compile_test_cpu_executable");
   std::string serialized_aot_result;
-  TF_ASSERT_OK(
+  ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Get a LocalClient

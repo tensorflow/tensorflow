@@ -33,7 +33,7 @@ TEST(TargetConfigTest, ExecutorConstructorFillsAllFields) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
-  TF_ASSERT_OK(stream_executor::ValidateGPUMachineManager());
+  ASSERT_OK(stream_executor::ValidateGPUMachineManager());
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::StreamExecutor * executor,
       stream_executor::GPUMachineManager()->ExecutorForDevice(0));

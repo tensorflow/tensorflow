@@ -226,12 +226,12 @@ ENTRY %main() -> f32[] {
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
-  TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
-    TF_EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
-                                        /*executor=*/nullptr,
-                                        Compiler::CompileOptions{}));
+    EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
+                                     /*executor=*/nullptr,
+                                     Compiler::CompileOptions{}));
   }
 }
 
@@ -289,12 +289,12 @@ TEST_F(SplittingTest, SplitDiamondGraphModule) {
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
-  TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
-    TF_EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
-                                        /*executor=*/nullptr,
-                                        Compiler::CompileOptions{}));
+    EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
+                                     /*executor=*/nullptr,
+                                     Compiler::CompileOptions{}));
   }
 }
 
@@ -363,12 +363,12 @@ ENTRY %main() -> f32[] {
                           PlatformUtil::GetPlatform("cpu"));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Compiler> compiler,
                           Compiler::GetForPlatform(platform->id()));
-  TF_ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
-                                      Compiler::CompileOptions{}));
+  ASSERT_OK(compiler->RunHloPasses(module->Clone(), /*executor=*/nullptr,
+                                   Compiler::CompileOptions{}));
   for (auto& split : module_split_group->module_splits) {
-    TF_EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
-                                        /*executor=*/nullptr,
-                                        Compiler::CompileOptions{}));
+    EXPECT_OK(compiler->RunHloPasses(split->submodule->Clone(),
+                                     /*executor=*/nullptr,
+                                     Compiler::CompileOptions{}));
   }
 }
 

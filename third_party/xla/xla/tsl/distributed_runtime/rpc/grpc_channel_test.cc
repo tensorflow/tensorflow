@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
@@ -58,12 +59,12 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
 
 TEST(GrpcChannelTest, HostPorts) {
   GrpcChannelSpec spec;
-  TF_ASSERT_OK(spec.AddHostPortsJob("mnist", {{0, "a:1"},
-                                              {1, "b:2"},
-                                              {2, "c:3"},
-                                              {3, "d:4"},
-                                              {4, "e:5"},
-                                              {5, "f:6"}}));
+  ASSERT_OK(spec.AddHostPortsJob("mnist", {{0, "a:1"},
+                                           {1, "b:2"},
+                                           {2, "c:3"},
+                                           {3, "d:4"},
+                                           {4, "e:5"},
+                                           {5, "f:6"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   std::unique_ptr<GrpcChannelCache> cc(
@@ -125,7 +126,7 @@ TEST(GrpcChannelTest, HostPorts) {
 
 TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       spec.AddHostPortsJob("mnist", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
@@ -205,9 +206,9 @@ TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
 
 TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       spec.AddHostPortsJob("mnist", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
-  TF_EXPECT_OK(
+  EXPECT_OK(
       spec.AddHostPortsJob("mnist2", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
@@ -295,7 +296,7 @@ TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
 
 TEST(GrpcChannelTest, SparseHostPorts) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(
+  EXPECT_OK(
       spec.AddHostPortsJob("mnist", {{0, "a:1"}, {3, "d:4"}, {4, "e:5"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);

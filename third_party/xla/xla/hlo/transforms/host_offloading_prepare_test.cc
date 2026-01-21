@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,7 +37,7 @@ using Rewrite = HostOffloadingPrepare::Rewrite;
 class HostOffloadingPrepareTest : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<bool> RunRewrite(HloModule* module, Rewrite rewrite) {
-    TF_EXPECT_OK(verifier().Run(module).status());
+    EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }

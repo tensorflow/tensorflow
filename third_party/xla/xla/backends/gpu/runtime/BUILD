@@ -262,6 +262,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1858,6 +1859,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/runtime/device_id.h"
@@ -37,9 +38,9 @@ TEST(CollectiveCliqueRequestsTest, OrderedRequests) {
   GpuCliqueKey k2({d0, d1, d2, d3}, 4);
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0));
-  TF_ASSERT_OK(requests.RequestClique(k1));
-  TF_ASSERT_OK(requests.RequestClique(k2));
+  ASSERT_OK(requests.RequestClique(k0));
+  ASSERT_OK(requests.RequestClique(k1));
+  ASSERT_OK(requests.RequestClique(k2));
 
   // Check that we acquire larger cliques first, and then cliques with smaller
   // id first, as acquiring cliques according to natural clique key order might
@@ -61,8 +62,8 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   GpuDeviceCommunicator::Requirements dev_comm1{16};
 
   CollectiveCliqueRequests requests;
-  TF_ASSERT_OK(requests.RequestClique(k0, {dev_comm0}));
-  TF_ASSERT_OK(requests.RequestClique(k0, {dev_comm1}));
+  ASSERT_OK(requests.RequestClique(k0, {dev_comm0}));
+  ASSERT_OK(requests.RequestClique(k0, {dev_comm1}));
 
   auto ordered_requests = requests.OrderedRequestedCliques();
   ASSERT_EQ(ordered_requests.size(), 1);

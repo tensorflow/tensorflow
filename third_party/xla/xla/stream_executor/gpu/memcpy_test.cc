@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
@@ -36,7 +37,7 @@ TEST(MemcpyTest, PinnedHostMemory) {
   DeviceAddressBase d_mem(d_ptr->address().opaque(), sizeof(int));
 
   int h_ptr;
-  TF_ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));
+  ASSERT_OK(stream->Memcpy(&h_ptr, d_mem, d_mem.size()));
   EXPECT_TRUE(stream->BlockHostUntilDone().ok());
 }
 

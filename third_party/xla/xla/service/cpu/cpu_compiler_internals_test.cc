@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
@@ -125,9 +126,9 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
   };
 
   compiler.SetPreOptimizationHook(pre_opt_hook);
-  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
-                                   /*stream_exec=*/nullptr,
-                                   /*options=*/{}));
+  ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                /*stream_exec=*/nullptr,
+                                /*options=*/{}));
   compiler.RemovePreOptimizationHook();
 
   EXPECT_GT(max_seen, 0) << "max dylib_index(" << max_seen << ") too low; "
@@ -157,8 +158,8 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
   };
 
   compiler.SetPreOptimizationHook(pre_opt_hook);
-  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
-                                   /*stream_exec=*/nullptr, /*options=*/{}));
+  ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                /*stream_exec=*/nullptr, /*options=*/{}));
   compiler.RemovePreOptimizationHook();
 
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen

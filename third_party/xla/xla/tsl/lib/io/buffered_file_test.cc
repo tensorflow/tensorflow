@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
@@ -32,17 +33,17 @@ TEST(BufferedInputStream, Tell) {
   std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   std::unique_ptr<WritableFile> write_file;
-  TF_ASSERT_OK(env->NewWritableFile(fname, &write_file));
+  ASSERT_OK(env->NewWritableFile(fname, &write_file));
   BufferedWritableFile file(std::move(write_file), 8);
   int64_t position;
-  TF_ASSERT_OK(file.Append("foo"));
-  TF_ASSERT_OK(file.Tell(&position));
+  ASSERT_OK(file.Append("foo"));
+  ASSERT_OK(file.Tell(&position));
   EXPECT_EQ(position, 3);
-  TF_ASSERT_OK(file.Append("bar"));
-  TF_ASSERT_OK(file.Tell(&position));
+  ASSERT_OK(file.Append("bar"));
+  ASSERT_OK(file.Tell(&position));
   EXPECT_EQ(position, 6);
-  TF_ASSERT_OK(file.Append("baz"));
-  TF_ASSERT_OK(file.Tell(&position));
+  ASSERT_OK(file.Append("baz"));
+  ASSERT_OK(file.Tell(&position));
   EXPECT_EQ(position, 9);
 }
 

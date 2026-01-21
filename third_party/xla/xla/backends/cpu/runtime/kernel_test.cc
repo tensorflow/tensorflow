@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "absl/types/span.h"
@@ -70,7 +71,7 @@ TEST(KernelTest, InternalAddition1D) {
   Kernel::DeviceAddressBase out_mem(out.data(), out.size() * sizeof(int32_t));
   std::vector<Kernel::DeviceAddressBase> args = {lhs_mem, rhs_mem, out_mem};
 
-  TF_ASSERT_OK(kernel.Launch(NumWorkGroups{4, 1, 1}, args));
+  ASSERT_OK(kernel.Launch(NumWorkGroups{4, 1, 1}, args));
 
   std::vector<int32_t> expected = {6, 8, 10, 12};
   EXPECT_EQ(out, expected);
@@ -89,7 +90,7 @@ TEST(KernelTest, InternalAddition3D) {
   Kernel::DeviceAddressBase out_mem(out.data(), out.size() * sizeof(int32_t));
   std::vector<Kernel::DeviceAddressBase> args = {lhs_mem, rhs_mem, out_mem};
 
-  TF_ASSERT_OK(kernel.Launch(NumWorkGroups{2, 2, 3}, args));
+  ASSERT_OK(kernel.Launch(NumWorkGroups{2, 2, 3}, args));
 
   std::vector<int32_t> expected = {11, 13, 15, 17, 19, 21,
                                    23, 25, 27, 29, 31, 33};

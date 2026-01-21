@@ -5384,10 +5384,10 @@ ENTRY entry {
       auto module,
       PartitionComputation(hlo_string, /*num_devices=*/64, options));
   VLOG(1) << module->ToString();
-  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
-                           /*allow_mixed_precision=*/false)
-                   .Run(module.get())
-                   .status());
+  ASSERT_OK(HloVerifier(/*layout_sensitive=*/false,
+                        /*allow_mixed_precision=*/false)
+                .Run(module.get())
+                .status());
   const HloInstruction* while_inst =
       module->entry_computation()->root_instruction()->operand(0);
   for (HloInstruction* inst : while_inst->while_body()->instructions()) {
@@ -16734,7 +16734,7 @@ ENTRY entry {
   while_op->set_while_condition(new_cond);
   SpmdPartitioner partitioner(/*num_partitions=*/2, /*num_replicas=*/1,
                               /*options=*/{});
-  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+  EXPECT_OK(partitioner.Run(module.get()).status());
 }
 
 TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderConditional) {
@@ -16768,10 +16768,10 @@ ENTRY entry {
       module->entry_computation()->root_instruction();
   HloInstruction* new_true_param = module->entry_computation()->AddInstruction(
       conditional_op->mutable_operand(1)->Clone());
-  TF_ASSERT_OK(conditional_op->ReplaceOperandWith(1, new_true_param));
+  ASSERT_OK(conditional_op->ReplaceOperandWith(1, new_true_param));
   SpmdPartitioner partitioner(/*num_partitions=*/2, /*num_replicas=*/1,
                               /*options=*/{});
-  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+  EXPECT_OK(partitioner.Run(module.get()).status());
 }
 
 TEST_P(SpmdPartitioningTest, KeepShardings) {
@@ -16795,7 +16795,7 @@ ENTRY entry {
   options.allow_module_signature_change = true;
   SpmdPartitioner partitioner(/*num_partitions=*/4, /*num_replicas=*/1,
                               options);
-  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+  EXPECT_OK(partitioner.Run(module.get()).status());
   for (const HloInstruction* inst :
        module->entry_computation()->instructions()) {
     EXPECT_TRUE(inst->has_sharding());

@@ -72,7 +72,7 @@ TEST(CudaEventTest, Synchronize) {
                                              /*priority=*/std::nullopt));
 
   // Record the event on the stream.
-  TF_ASSERT_OK(stream->RecordEvent(&event));
+  ASSERT_OK(stream->RecordEvent(&event));
 
   // Synchronize on the event (blocks until the event is recorded).
   EXPECT_THAT(event.Synchronize(), absl_testing::IsOk());

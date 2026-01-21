@@ -69,7 +69,7 @@ class FileBasedAutotunerCacheTest : public ::testing::Test {
     tsl::Env::Default()
         ->DeleteRecursively(test_dir_, &undeleted_files, &undeleted_dirs)
         .IgnoreError();
-    TF_ASSERT_OK(tsl::Env::Default()->CreateDir(test_dir_));
+    ASSERT_OK(tsl::Env::Default()->CreateDir(test_dir_));
   }
 
   void TearDown() override {
@@ -148,7 +148,7 @@ TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
   config.codegen_backend_name = "TestBackend";
   config.backend_config = CreateDummyBackendConfig();
 
-  TF_ASSERT_OK(cache->Insert(instr.get(), config));
+  ASSERT_OK(cache->Insert(instr.get(), config));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config)));
 }
 
@@ -164,7 +164,7 @@ TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
                             FileBasedAutotunerCache::Create(GetConfig(
                                 CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
-    TF_ASSERT_OK(cache->Insert(instr.get(), config));
+    ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create a new cache, which should load from disk.
@@ -189,7 +189,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
                             FileBasedAutotunerCache::Create(GetConfig(
                                 CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
-    TF_ASSERT_OK(cache->Insert(instr.get(), config));
+    ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create a new cache with different device, should not load the entry.
@@ -214,7 +214,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
                             FileBasedAutotunerCache::Create(GetConfig(
                                 CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
-    TF_ASSERT_OK(cache->Insert(instr.get(), config));
+    ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create a new cache with different version, should not load the entry.
@@ -240,7 +240,7 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
                             FileBasedAutotunerCache::Create(GetConfig(
                                 CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
-    TF_ASSERT_OK(cache->Insert(instr.get(), config));
+    ASSERT_OK(cache->Insert(instr.get(), config));
   }
 
   // Create in READ mode.
@@ -256,7 +256,7 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
   Config config2;
   config2.codegen_backend_name = "AnotherBackend";
   config2.backend_config = CreateDummyBackendConfig();
-  TF_ASSERT_OK(cache->Insert(instr2.get(), config2));
+  ASSERT_OK(cache->Insert(instr2.get(), config2));
   EXPECT_THAT(cache->Lookup(instr2.get()), Eq(std::nullopt));
 
   // Create a new cache, key2 should not be present as it wasn't saved.
@@ -280,13 +280,13 @@ TEST_F(FileBasedAutotunerCacheTest, OverwriteEntry) {
   Config config1;
   config1.codegen_backend_name = "BackendV1";
   config1.backend_config = CreateDummyBackendConfig();
-  TF_ASSERT_OK(cache->Insert(instr.get(), config1));
+  ASSERT_OK(cache->Insert(instr.get(), config1));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config1)));
 
   Config config2;
   config2.codegen_backend_name = "BackendV2";
   config2.backend_config = CreateDummyBackendConfig();
-  TF_ASSERT_OK(cache->Insert(instr.get(), config2));
+  ASSERT_OK(cache->Insert(instr.get(), config2));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config2)));
 }
 
