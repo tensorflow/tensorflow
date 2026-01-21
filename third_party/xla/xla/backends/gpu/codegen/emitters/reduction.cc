@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -184,7 +183,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
   auto tile_indexing = owner.ComputeReductionInputIndexing(mlir_context);
   tile_indexing
       .GetMutableDimensionBound(
-          KernelFusionInterface::kIndexingMapBlockIdxDims[1])
+          KernelFusionInterface::kIndexingMapBlockIdxDims[2])
       .upper = owner.reduction_heroes_.size();
   tile_indexing.Simplify();
   bool vectorize = owner.vector_size_ > 1;
@@ -396,6 +395,7 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis,
 
   const auto& groups = GetGroups();
   int num_groups = groups.grouped_roots.size();
+
   side_output_roots_.resize(num_groups);
   reduction_heroes_.resize(num_groups);
   reduction_roots_.resize(num_groups);
@@ -406,6 +406,7 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis,
                  groups.is_reduction_root, groups.group_id_per_root)) {
     const HloInstruction* root = &root_adaptor.instruction();
     const HloInstruction* hero = &hero_adaptor.instruction();
+
     if (is_reduction) {
       if (seen_heroes.insert(hero).second) {
         reduction_heroes_[group_id].push_back(hero);
@@ -424,8 +425,9 @@ IndexingMap ReductionFusion::GetIndexingMap(
   auto num_groups = static_cast<int64_t>(reduction_heroes_.size());
   return IndexingMap{
       AffineMap::get(6, symbol_sizes.size(), results, mlir_context),
-      DimVarsFromGPUGrid(
-          {Product(num_threads_), 1, 1, Product(num_blocks_), num_groups, 1}),
+      DimVarsFromGPUGrid({Product(num_threads_), 1, 1,
+                          static_cast<int64_t>(gpu_blocks_[0]),
+                          static_cast<int64_t>(gpu_blocks_[1]), num_groups}),
       RangeVarsFromTensorSizes(symbol_sizes),
       /*rt_vars=*/{}};
 }
@@ -446,9 +448,10 @@ IndexingMap ReductionFusion::GetThreadIndexingMap(
 }
 
 LaunchDimensions ReductionFusion::launch_dimensions() const {
-  size_t blocks_y = groups_.grouped_roots.size();
-  return {se::BlockDim(/*x=*/Product(num_blocks_),
-                       /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
+  uint64_t blocks_z = groups_.grouped_roots.size();
+  return {se::BlockDim(/*x=*/gpu_blocks_[0],
+                       /*y=*/gpu_blocks_[1],
+                       /*z=*/blocks_z),
           se::ThreadDim(/*x=*/Product(num_threads_),
                         /*y=*/1, /*z=*/1)};
 }
@@ -491,7 +494,7 @@ absl::Status ReductionFusion::EmitEntryFunction(
   absl::c_iota(cases, 1);  // `default` is region 0.
   auto switch_op =
       mlir::scf::IndexSwitchOp::create(b, entry_function.getResultTypes(),
-                                       EmitBlockId(b, 1), cases, cases.size());
+                                       EmitBlockId(b, 2), cases, cases.size());
   mlir::func::ReturnOp::create(b, switch_op.getResults());
   for (auto [id, region] : llvm::enumerate(switch_op->getRegions())) {
     b.setInsertionPointToStart(&region.emplaceBlock());
@@ -640,14 +643,26 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis,
   int64_t num_blocks_per_row =
       CeilOfRatio(minor_kept_dim, kTileSize * vector_size_);
   num_blocks_ = {major_kept_dim, num_blocks_per_row};
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "ColumnReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d] ",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
+  auto bx = mlir::getAffineDimExpr(3, mlir_context),
+       by = mlir::getAffineDimExpr(4, mlir_context);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
   auto vector_index = getAffineSymbolExpr(0, mlir_context);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
@@ -662,8 +677,11 @@ IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id =
       DelinearizeInBoundsIndex(getAffineDimExpr(0, mlir_context), num_threads_);
+  auto bx = mlir::getAffineDimExpr(3, mlir_context),
+       by = mlir::getAffineDimExpr(4, mlir_context);
   auto block_id =
-      DelinearizeInBoundsIndex(getAffineDimExpr(3, mlir_context), num_blocks_);
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
+
   AffineExpr element_index = getAffineSymbolExpr(0, mlir_context);
   AffineExpr vector_index = getAffineSymbolExpr(1, mlir_context);
 
@@ -737,6 +755,16 @@ SmallColumnReductionFusion::SmallColumnReductionFusion(
   num_blocks_ = {input_shape_[kColMajorKept]};
   loop_size_ = CeilOfRatio(input_shape_[1] * input_shape_[2],
                            vector_size_ * num_threads_[0]);
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "SmallColumnReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d] ",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap SmallColumnReductionFusion::ComputeReductionOutputIndexing(
@@ -817,82 +845,79 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis,
     : ReductionFusion(analysis, mlir_context) {
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
-  int64_t kMinorReducedElementsPerThread = 8;
+  int64_t kMinorReducedElementsPerThread = 16;
 
-  do {
-    kMinorReducedElementsPerThread *= 2;
-    int64_t num_threads_kept = 1;
-    // Number of threads doing the reduction.
-    int64_t num_threads_reduced = [&] {
-      int64_t max_block_size = MinThreadsXRowReduction();
-      return std::min(max_block_size,
-                      RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
-                                            kMinorReducedElementsPerThread),
-                                WarpSize()));
-    }();
+  int64_t num_threads_kept = 1;
+  // Number of threads doing the reduction.
+  int64_t num_threads_reduced = [&] {
+    int64_t max_block_size = MinThreadsXRowReduction();
+    return std::min(max_block_size,
+                    RoundUpTo(CeilOfRatio(shape[kRowMinorReduced],
+                                          kMinorReducedElementsPerThread),
+                              WarpSize()));
+  }();
 
-    // If we're limited by the size of the x dimension, add additional
-    // parallelism in the y dimension. The code generator doesn't currently
-    // support parallelizing the z dimension (major reduced dimensions). The
-    // general recommendation is to use between 128 and 512 threads, so we just
-    // go for 256. See https://forums.developer.nvidia.com/t/55529
-    constexpr int64_t kThreadsPerBlockTarget = 256;
-    if (num_threads_reduced * 2 <= kThreadsPerBlockTarget) {
-      int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
-      // Increase the size of the y dimension as long as there's remaining
-      // parallelism.
-      if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
-        num_threads_kept = kept_size;
-      } else {
-        num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
-      }
+  // If we're limited by the size of the x dimension, add additional parallelism
+  // in the y dimension. The code generator doesn't currently support
+  // parallelizing the z dimension (major reduced dimensions). The general
+  // recommendation is to use between 128 and 512 threads, so we just go for
+  // 256. See https://forums.developer.nvidia.com/t/55529
+  constexpr int64_t kThreadsPerBlockTarget = 256;
+  if (num_threads_reduced * 2 <= kThreadsPerBlockTarget) {
+    int64_t kept_size = reduction_dimensions_.dimensions[kRowKept];
+    // Increase the size of the y dimension as long as there's remaining
+    // parallelism.
+    if (kept_size * num_threads_reduced <= kThreadsPerBlockTarget) {
+      num_threads_kept = kept_size;
+    } else {
+      num_threads_kept = kThreadsPerBlockTarget / num_threads_reduced;
     }
+  }
 
-    int vector_size = GetVectorSizeForMlir(analysis, /*minor_dim=*/shape.back(),
-                                           num_threads_reduced);
-    num_threads_ = {num_threads_kept, num_threads_reduced};
-    // TODO(jreiffers): Get rid of `vector_size` in here.
-    input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
-    // TODO(jreiffers): Tighten ranges based on constraints when simplifying
-    // instead of using min here. For example, based on
-    //
-    //   s1 in [0, 127]
-    //   d0 floordiv 32 + s1 * 32 in [0, 63]
-    //
-    // Tighten the bound of s1 to [0, 1].
-    int minor_reduced_tile_size =
-        std::min(kMinorReducedElementsPerThread / vector_size,
-                 CeilOfRatio(input_shape_[2], num_threads_[1]));
+  int vector_size = GetVectorSizeForMlir(analysis, /*minor_dim=*/shape.back(),
+                                         num_threads_reduced);
+  num_threads_ = {num_threads_kept, num_threads_reduced};
+  // TODO(jreiffers): Get rid of `vector_size` in here.
+  input_shape_ = {shape[0], shape[1], shape[2] / vector_size, vector_size};
+  // TODO(jreiffers): Tighten ranges based on constraints when simplifying
+  // instead of using min here. For example, based on
+  //
+  //   s1 in [0, 127]
+  //   d0 floordiv 32 + s1 * 32 in [0, 63]
+  //
+  // Tighten the bound of s1 to [0, 1].
+  int minor_reduced_tile_size =
+      std::min(kMinorReducedElementsPerThread / vector_size,
+               CeilOfRatio(input_shape_[2], num_threads_[1]));
 
-    tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
-    tile_sizes_per_block_ = {num_threads_kept,
-                             minor_reduced_tile_size * num_threads_reduced};
-    num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
-                   CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
-    /* ROCm hipModuleLaunchKernel limitation
-     * https://rocm.docs.amd.com/projects/HIP/en/latest/doxygen/html/group___module.html#ga2e4de5937aa8171e9eda16c881ed0674
-     */
-  } while (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm" &&
-           kMinorReducedElementsPerThread < 65536 &&
-           ((Product(num_blocks_) * Product(num_threads_)) >
-            std::numeric_limits<uint32_t>::max()));
+  tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
+  tile_sizes_per_block_ = {num_threads_kept,
+                           minor_reduced_tile_size * num_threads_reduced};
+  num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
+                 CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
 
   VLOG(3) << absl::StrFormat(
-      "RowReductionFusion::RowReductionFusion selected parameters: num_threads "
+      "RowReductionFusion selected parameters: num_threads "
       "= [%s], tile_sizes_per_thread = [%s], tile_sizes_per_block = [%s], "
-      "num_blocks = [%s]",
+      "num_blocks = [%s] real_blocks_ = [%d, %d]",
       absl::StrJoin(num_threads_, ","),
       absl::StrJoin(tile_sizes_per_thread_, ","),
       absl::StrJoin(tile_sizes_per_block_, ","),
-      absl::StrJoin(num_blocks_, ","));
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id = DelinearizeInBoundsIndex(
       mlir::getAffineDimExpr(0, mlir_context), num_threads_);
-  auto block_id = DelinearizeInBoundsIndex(
-      mlir::getAffineDimExpr(3, mlir_context), num_blocks_);
+
+  auto bx = mlir::getAffineDimExpr(3, mlir_context),
+       by = mlir::getAffineDimExpr(4, mlir_context);
+  auto block_id =
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
+
   auto major_reduced = getAffineSymbolExpr(0, mlir_context);
   auto minor_reduced = getAffineSymbolExpr(1, mlir_context);
   auto vector_index = getAffineSymbolExpr(2, mlir_context);
@@ -904,7 +929,6 @@ IndexingMap RowReductionFusion::ComputeReductionInputIndexing(
           (minor_reduced * num_threads_[1]) + thread_id[1],
       vector_index,
   };
-
   auto map = GetIndexingMap(indices, tile_sizes_per_thread_);
   for (auto [result, input_dim] : llvm::zip(indices, input_shape_)) {
     map.AddConstraint(result, {0, input_dim - 1});
@@ -916,8 +940,10 @@ IndexingMap RowReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id = DelinearizeInBoundsIndex(
       mlir::getAffineDimExpr(0, mlir_context), num_threads_);
-  auto block_id = DelinearizeInBoundsIndex(
-      mlir::getAffineDimExpr(3, mlir_context), num_blocks_);
+  auto bx = mlir::getAffineDimExpr(3, mlir_context),
+       by = mlir::getAffineDimExpr(4, mlir_context);
+  auto block_id =
+      DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_);
   IndexingMap projected_index =
       GetIndexingMap(block_id[0] * tile_sizes_per_block_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1], {0, 0});
@@ -979,6 +1005,16 @@ MultiRowReductionFusion::MultiRowReductionFusion(
   num_threads_ = GetNumThreads(reduction_dimensions_, vector_size);
   num_blocks_ = {GetNumBlocks(reduction_dimensions_, num_threads_)};
   tile_sizes_per_thread_ = {shape[0], vector_size};
+  gpu_blocks_ = MaybeSplitGridDimensionX(
+      Product(num_threads_), Product(num_blocks_), analysis_.device_info());
+
+  VLOG(3) << absl::StrFormat(
+      "MultiRowReductionFusion selected parameters: num_threads "
+      "= [%s], tile_sizes_per_thread = [%s], "
+      "num_blocks = [%s] real_blocks_ = [%d, %d]",
+      absl::StrJoin(num_threads_, ","),
+      absl::StrJoin(tile_sizes_per_thread_, ","),
+      absl::StrJoin(num_blocks_, ","), gpu_blocks_[0], gpu_blocks_[1]);
 }
 
 std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
@@ -1050,7 +1086,6 @@ std::unique_ptr<ReductionFusion> MultiRowReductionFusion::TryCreate(
              min_desired_blocks) {
     vector_size /= 2;
   }
-
   // Check again that the reduced dimension fits after potentially reducing the
   // vector size.
   if (shape[kRowMinorReduced] > warp_size * vector_size) {
@@ -1097,9 +1132,13 @@ IndexingMap MultiRowReductionFusion::ComputeReductionInputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id = DelinearizeInBoundsIndex(
       mlir::getAffineDimExpr(0, mlir_context), num_threads_);
-  auto block_id = num_blocks_.front() == 1
-                      ? mlir::getAffineConstantExpr(0, mlir_context)
-                      : mlir::getAffineDimExpr(3, mlir_context);
+  auto block_id = mlir::getAffineConstantExpr(0, mlir_context);
+  if (num_blocks_.front() != 1) {
+    auto bx = mlir::getAffineDimExpr(3, mlir_context),
+         by = mlir::getAffineDimExpr(4, mlir_context);
+    block_id =
+        DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_)[0];
+  }
   auto major_reduced = getAffineSymbolExpr(0, mlir_context);
   auto vector_index = getAffineSymbolExpr(1, mlir_context);
 
@@ -1118,9 +1157,13 @@ IndexingMap MultiRowReductionFusion::ComputeReductionOutputIndexing(
     MLIRContext* mlir_context) const {
   auto thread_id = DelinearizeInBoundsIndex(
       mlir::getAffineDimExpr(0, mlir_context), num_threads_);
-  auto block_id = num_blocks_.front() == 1
-                      ? mlir::getAffineConstantExpr(0, mlir_context)
-                      : mlir::getAffineDimExpr(3, mlir_context);
+  auto block_id = mlir::getAffineConstantExpr(0, mlir_context);
+  if (num_blocks_.front() != 1) {
+    auto bx = mlir::getAffineDimExpr(3, mlir_context),
+         by = mlir::getAffineDimExpr(4, mlir_context);
+    block_id =
+        DelinearizeInBoundsIndex(bx + gpu_blocks_[0] * by, num_blocks_)[0];
+  }
   IndexingMap projected_index =
       GetIndexingMap(block_id * num_threads_[0] + thread_id[0]);
   projected_index.AddConstraint(thread_id[1] % num_threads_[1], {0, 0});
