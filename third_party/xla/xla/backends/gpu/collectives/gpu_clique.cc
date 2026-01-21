@@ -26,13 +26,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -44,6 +47,29 @@ GpuClique::GpuClique(
       key_(key),
       ids_(ids),
       peer_access_enabled_(peer_access_enabled) {}
+
+std::optional<GpuDeviceCommunicator*> GpuClique::device_comm(
+    RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const {
+  absl::MutexLock lock(mu_);
+  if (auto it = device_communicators_.find(std::make_pair(rank, reqs));
+      it != device_communicators_.end()) {
+    return it->second.get();
+  }
+  return std::nullopt;
+}
+
+absl::Status GpuClique::AddDeviceComm(
+    RankId rank, GpuDeviceCommunicator::Requirements reqs,
+    std::unique_ptr<GpuDeviceCommunicator> communicator) {
+  absl::MutexLock lock(mu_);
+  auto emplaced = device_communicators_.emplace(std::make_pair(rank, reqs),
+                                                std::move(communicator));
+  if (!emplaced.second) {
+    return InvalidArgument(
+        "Rank %v and requrements %v already exists in clique", rank, reqs);
+  }
+  return absl::OkStatus();
+}
 
 std::string GpuClique::DebugString() const {
   std::string out = absl::StrFormat(

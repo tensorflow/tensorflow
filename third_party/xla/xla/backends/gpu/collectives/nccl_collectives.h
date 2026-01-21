@@ -41,6 +41,8 @@ class NcclCollectives : public GpuCollectives {
 
   bool IsGlobalConfig() const final;
 
+  bool SupportsDeviceComm() const final;
+
   absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
       const CliqueIdCallback* clique_id_callback, bool is_local) final;
 
