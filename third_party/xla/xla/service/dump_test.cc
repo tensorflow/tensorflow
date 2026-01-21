@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -35,7 +36,10 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/logical_buffer.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -45,7 +49,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
