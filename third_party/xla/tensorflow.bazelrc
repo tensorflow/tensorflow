@@ -299,7 +299,6 @@ common:sycl --define=tensorflow_mkldnn_contraction_kernel=0
 common:sycl --cxxopt=-std=c++17
 common:sycl --host_cxxopt=-std=c++17
 common:sycl --repo_env=SYCL_BUILD_HERMETIC=0
-common:sycl --copt=-Wno-implicit-float-size-conversion
 
 # Enable Clang for host and icpx for SYCL
 common:icpx_clang --repo_env TF_ICPX_CLANG=1
