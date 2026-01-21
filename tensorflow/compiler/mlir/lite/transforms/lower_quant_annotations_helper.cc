@@ -80,6 +80,9 @@ LogicalResult FillCompositeParams(stablehlo::CompositeOp op,
   } else if (dtype == "i8") {
     num_bits = 8;
     is_signed = true;
+  } else if (dtype == "i16") {
+    num_bits = 16;
+    is_signed = true;
   } else {
     return failure();
   }
