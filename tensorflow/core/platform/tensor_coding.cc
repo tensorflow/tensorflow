@@ -17,8 +17,15 @@ limitations under the License.
 
 #include <climits>
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
