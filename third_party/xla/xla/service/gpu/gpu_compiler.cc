@@ -583,8 +583,6 @@ absl::Status RunSPMDPasses(
   }
 }
 
-namespace {
-
 absl::Status SetHostDeviceType(HloInstruction* instr) {
   ASSIGN_OR_RETURN(auto backend_config,
                    instr->backend_config<GpuBackendConfig>());
@@ -611,12 +609,10 @@ bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {
   return backend_config->device_type() == DEVICE_TYPE_HOST;
 }
 
-}  // namespace
-
 absl::Status RunOptimizationPasses(
     HloModule* hlo_module, const GpuTargetConfig& gpu_target_config,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
-    absl::string_view platform_name, bool enable_sort_rewriter) {
+    bool enable_sort_rewriter) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   se::GpuComputeCapability gpu_version =
       gpu_target_config.device_description.gpu_compute_capability();
@@ -674,8 +670,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<PermutationSortExpander>();
 
   if (enable_sort_rewriter) {
-    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
-                                   std::string{platform_name});
+    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
   }
   // Comparison total order expander
   pipeline.AddPass<ComparisonExpander>(std::array{std::make_pair(BF16, F32)});
@@ -768,8 +763,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   // SortRewriter needs to run before StableSortExpander.
   if (enable_sort_rewriter) {
-    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description,
-                                   gpu_target_config.platform_name);
+    pipeline.AddPass<SortRewriter>(gpu_target_config.device_description);
   }
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
@@ -1571,9 +1565,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
                     "compile with a GPU present.";
     enable_sort_rewriter = false;
   }
-  RETURN_IF_ERROR(RunOptimizationPasses(
-      hlo_module, gpu_target_config, layout_insensitive_algsimp_opts,
-      platform->Name(), enable_sort_rewriter));
+  RETURN_IF_ERROR(RunOptimizationPasses(hlo_module, gpu_target_config,
+                                        layout_insensitive_algsimp_opts,
+                                        enable_sort_rewriter));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
   int device_count = GetNumVisibleDevices(options, stream_exec, platform);
