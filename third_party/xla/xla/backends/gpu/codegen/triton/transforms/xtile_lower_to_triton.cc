@@ -17,19 +17,23 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -40,6 +44,24 @@ namespace ttir = ::mlir::triton;
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace {
+
+absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
+  auto type = getElementTypeOrSelf(value);
+  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E4M3;
+  }
+  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E5M2;
+  }
+  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E2M1;
+  }
+  if (type == mlir::BFloat16Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::BF16;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported type: ", ::xla::llvm_ir::DumpToString(type)));
+}
 
 class LowerDotScaled
     : public mlir::OpRewritePattern<::xla::xtile::DotScaledOp> {
@@ -74,9 +96,9 @@ class LowerDotScaled
                                                    : add_op->getOperand(1);
 
     auto lhs_dot_elem_type_or_status =
-        ::xla::xtile::internal::GetScaleDotElemType(op.getLhs().getType());
+        GetScaleDotElemType(op.getLhs().getType());
     auto rhs_dot_elem_type_or_status =
-        ::xla::xtile::internal::GetScaleDotElemType(op.getRhs().getType());
+        GetScaleDotElemType(op.getRhs().getType());
 
     if (!lhs_dot_elem_type_or_status.ok() ||
         !rhs_dot_elem_type_or_status.ok()) {

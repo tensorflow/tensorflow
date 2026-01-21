@@ -1005,32 +1005,32 @@ TEST_F(AutotunerTest, ShardedAutotuning) {
   auto kv_store = std::make_shared<MockKeyValueStore>();
   auto cache = std::make_unique<MockAutotunerCache>();
 
-  // Shard 0 autotunes kCopy instructions, updates the cache and serializes the
-  // result to a string "kCopy_autotune_result".
-  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kCopy)))
+  // Shard 0 autotunes kAdd instructions, updates the cache and serializes the
+  // result to a string "kAdd_autotune_result".
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kAdd)))
       .WillOnce(Return(std::nullopt))                    // During autotuning.
       .WillOnce(Return(GetCacheConfig("best_config")));  // Config application.
-  EXPECT_CALL(*cache, Insert(InstrPtrMatcher(HloOpcode::kCopy), _))
+  EXPECT_CALL(*cache, Insert(InstrPtrMatcher(HloOpcode::kAdd), _))
       .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*cache, Serialize(_)).WillOnce(Return("kCopy_autotune_result"));
+  EXPECT_CALL(*cache, Serialize(_)).WillOnce(Return("kAdd_autotune_result"));
   // Stores the serialized results to the KV store if it does not exist.
   EXPECT_CALL(*kv_store, TryGet(testing::HasSubstr("_0")))
       .WillOnce(Return(absl::NotFoundError("not found")));
-  EXPECT_CALL(*kv_store, Set(testing::HasSubstr("_0"), "kCopy_autotune_result"))
+  EXPECT_CALL(*kv_store, Set(testing::HasSubstr("_0"), "kAdd_autotune_result"))
       .WillOnce(Return(absl::OkStatus()));
 
   // Shard 0 reads the KV store entry for shard 1 and updates the current cache.
   EXPECT_CALL(*kv_store, Get(testing::HasSubstr("_1"), _))
-      .WillOnce(Return("kAdd_autotune_result"));
-  EXPECT_CALL(*cache, Deserialize("kAdd_autotune_result"))
+      .WillOnce(Return("kCopy_autotune_result"));
+  EXPECT_CALL(*cache, Deserialize("kCopy_autotune_result"))
       .WillOnce(Return(absl::OkStatus()));
-  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kAdd)))
+  EXPECT_CALL(*cache, Lookup(InstrPtrMatcher(HloOpcode::kCopy)))
       .WillOnce(Return(GetCacheConfig("best_config")));
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Autotuner> autotuner,
       SetupAutotunerWithExpectations(
-          /*instrs_to_autotune=*/{HloOpcode::kCopy},
+          /*instrs_to_autotune=*/{HloOpcode::kAdd},
           /*instrs_to_apply_config_and_count=*/
           {{HloOpcode::kCopy, 1}, {HloOpcode::kAdd, 2}}, std::move(cache)));
 

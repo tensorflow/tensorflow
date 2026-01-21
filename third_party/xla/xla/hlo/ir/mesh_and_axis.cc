@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -340,9 +341,12 @@ std::ostream& operator<<(std::ostream& out, const AxisRef& axis) {
 }
 
 bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {
-  for (int64_t i = 0; i < axes.size() - 1; ++i) {
-    for (int64_t j = i + 1; j < axes.size(); ++j) {
-      if (!axes[i].CanCoexistWithoutOverlap(axes[j])) {
+  if (axes.size() < 2) {
+    return true;
+  }
+  for (auto it1 = axes.begin(); it1 != std::prev(axes.end()); ++it1) {
+    for (auto it2 = std::next(it1); it2 != axes.end(); ++it2) {
+      if (!it1->CanCoexistWithoutOverlap(*it2)) {
         return false;
       }
     }

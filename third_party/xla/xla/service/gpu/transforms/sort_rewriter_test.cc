@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/transforms/estimate_cub_scratch_size.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/platform_util.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -86,16 +86,13 @@ class SortRewriterTestBase
   void SetUp() override {
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
-    TF_ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    const std::string& platform_name = GetTestPlatform()->Name();
-    bool changed =
-        SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(), platform_name)
-            .Run(module)
-            .value();
+    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo())
+                       .Run(module)
+                       .value();
     if (changed) {
       // Here we run an end to end test to make sure that SortRewriter does
       // not introduce an incorrect rewrite. To do this, we need to clone the
@@ -110,13 +107,6 @@ class SortRewriterTestBase
     auto config = instruction->backend_config<xla::SortOptions>();
     EXPECT_EQ(config->descending(), descending);
   }
-
-  const stream_executor::Platform* GetTestPlatform() const {
-    return test_platform_;
-  }
-
- private:
-  stream_executor::Platform* test_platform_ = nullptr;
 };
 
 class SortRewriterTest
@@ -139,7 +129,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -167,7 +157,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -195,7 +185,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -227,7 +217,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -254,7 +244,7 @@ ENTRY %main {
       dimensions={0}, is_stable=true, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -281,7 +271,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 1),
@@ -311,7 +301,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -331,7 +321,7 @@ ENTRY %main {
   ROOT %sort = f32[1000,4] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -350,7 +340,7 @@ ENTRY %main {
   ROOT %sort = u8[100,<=100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -369,7 +359,7 @@ ENTRY %main {
   ROOT %sort = u8[<=100,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -389,7 +379,7 @@ ENTRY %main {
   ROOT %sort = pred[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -410,7 +400,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -434,7 +424,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -455,7 +445,7 @@ ENTRY %main {
   ROOT %sort = f32[100] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -475,28 +465,28 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << "Skipping CUDA-specific test";
   }
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA");
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 70
   hlo = absl::Substitute(kHloTmpl, "70");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -516,28 +506,28 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << "Skipping CUDA-specific test";
   }
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA");
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 31
   hlo = absl::Substitute(kHloTmpl, "31");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -557,7 +547,7 @@ ENTRY %main {
   ROOT %sort = f32[10,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -585,7 +575,7 @@ ENTRY %main {
   ROOT %sort = f32[10,10,10] sort(%input), dimensions={2}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -616,10 +606,9 @@ ENTRY %main {
     // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[{{[0-9]+}}]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
 
-  auto platform_name = absl::AsciiStrToUpper(
-      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto device_list = [platform_name]() -> std::vector<se::DeviceDescription> {
-    if (platform_name == "CUDA") {
+  bool is_cuda = test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda);
+  auto device_list = [is_cuda]() -> std::vector<se::DeviceDescription> {
+    if (is_cuda) {
       return {TestGpuDeviceInfo::RTXA6000DeviceInfo(),
               TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
     } else {
@@ -629,7 +618,7 @@ ENTRY %main {
   };
 
   for (const auto& device_desc : device_list()) {
-    RunAndFilecheckHloRewrite(kHlo, SortRewriter(device_desc, platform_name),
+    RunAndFilecheckHloRewrite(kHlo, SortRewriter(device_desc),
                               kExpectedPattern);
   }
 }
@@ -648,7 +637,7 @@ ENTRY main {
 })",
                                     type_name));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -439,7 +440,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   // predecessor has the token write, and control successor does the token read.
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     for (const Thunk* control_predecessor : thunk->control_predecessors()) {
-      cmd_sequence[thunk_to_index[control_predecessor]]->add_resouce_use(
+      cmd_sequence[thunk_to_index[control_predecessor]]->add_resource_use(
           ResourceUse::Read(
               cmd_sequence[thunk_to_index[thunk.get()]]->token()));
     }

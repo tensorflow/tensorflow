@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -320,6 +321,14 @@ class PjRtCompiler {
   DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
     return absl::UnimplementedError(
         "DeserializePjRtTopologyDescription is not implemented.");
+  }
+
+  // Returns the target runtime ABI version that the compiled executables will
+  // be compatible with.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  GetTargetRuntimeAbiVersion() {
+    return absl::UnimplementedError(
+        "GetTargetRuntimeAbiVersion is not implemented.");
   }
 };
 

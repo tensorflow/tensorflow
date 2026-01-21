@@ -87,8 +87,6 @@ extern const char* const kTracingEndSymbolName;
 extern const char* const kAllToAllSymbolName;
 extern const char* const kAllGatherSymbolName;
 extern const char* const kReduceScatterSymbolName;
-extern const char* const kOneDnnMatMulSymbolName;
-extern const char* const kOneDnnMatMulReorderSymbolName;
 extern const char* const kHandleFfiCallSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this

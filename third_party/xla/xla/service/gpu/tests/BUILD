@@ -1123,6 +1123,45 @@ xla_test(
     ],
 )
 
+cc_library(
+    name = "collective_ops_e2e_test_base",
+    testonly = True,
+    srcs = ["collective_ops_e2e_test_base.cc"],
+    hdrs = ["collective_ops_e2e_test_base.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/service:hlo_runner_pjrt",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:status_macros",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_for_library",
+        "@com_google_protobuf//:protobuf",
+    ] + if_google([
+        # In OSS this dependency is added automatically for xla_test targets. See
+        # third_party/tensorflow/compiler/xla/xla.default.bzl.
+        "//xla/tsl/framework:allocator",
+    ]),
+)
+
 xla_test(
     name = "collective_ops_command_buffer_test",
     srcs = ["collective_ops_command_buffer_test.cc"],

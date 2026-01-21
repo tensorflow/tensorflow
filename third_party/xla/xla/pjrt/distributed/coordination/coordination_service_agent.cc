@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
@@ -803,7 +804,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
         if (s.ok()) {
           // This would correspond to the request counter.
           barrier_counter_[barrier_id] = response->counter();
-        } else if (s.GetPayload(BarrierErrorPayloadKey()) != std::nullopt) {
+        } else if (s.GetPayload(BarrierErrorPayloadKey()).has_value()) {
           // Note that response is discarded if an error is returned, so we need
           // to parse from the error message.
           barrier_counter_[barrier_id] = GetBarrierCounterFromError(s);

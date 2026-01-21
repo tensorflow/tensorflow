@@ -2036,14 +2036,6 @@ absl::StatusOr<HloInstruction*> PartitionBaseCaseAfterPartialMatch(
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           rhs_sharding, indices_map.rhs_to_lhs_indices,
           indices_map.lhs_to_rhs_indices);
-  auto lhs_sharding_transposed_to_match_output =
-      hlo_sharding_util::TransposeShardingWithCollapsedDims(
-          lhs_sharding, indices_map.lhs_to_output_indices,
-          indices_map.output_to_lhs_indices);
-  auto rhs_sharding_transposed_to_match_output =
-      hlo_sharding_util::TransposeShardingWithCollapsedDims(
-          rhs_sharding, indices_map.rhs_to_output_indices,
-          indices_map.output_to_rhs_indices);
   auto output_sharding_transposed_to_match_lhs =
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           output_sharding, indices_map.output_to_lhs_indices,
@@ -2052,36 +2044,6 @@ absl::StatusOr<HloInstruction*> PartitionBaseCaseAfterPartialMatch(
       hlo_sharding_util::TransposeShardingWithCollapsedDims(
           output_sharding, indices_map.output_to_rhs_indices,
           indices_map.rhs_to_output_indices);
-
-  // LHS and RHS have the same partitioned contracting dimensions.
-  if (lhs_contracting_partitions == rhs_contracting_partitions &&
-      lhs_contracting_partitions == num_partitions) {
-    // Pad both sides with zero, since NaN at one side cannot be masked by zero
-    // on the other side.
-    if (ShapeSizeInBytes(lhs.base_shape()) <
-        ShapeSizeInBytes(rhs.base_shape())) {
-      lhs = lhs.Reshard(*rhs_sharding_transposed_to_match_lhs);
-    } else {
-      rhs = rhs.Reshard(*lhs_sharding_transposed_to_match_rhs);
-    }
-
-    lhs = lhs.PadWithZero();
-    rhs = rhs.PadWithZero();
-    TF_ASSIGN_OR_RETURN(auto dot, create_sharded_dot(lhs, rhs, b, conv_window));
-    std::vector<int64_t> lhs_contracting_dims;
-    lhs_contracting_dims.reserve(dims_mapping.contracting_dims.size());
-    for (const auto& cd : dims_mapping.contracting_dims) {
-      lhs_contracting_dims.push_back(cd.lhs);
-    }
-    auto ar = lhs.state().partitioner->AllReduceAlongShardingDims(
-        b, dot, lhs.sharding(), lhs.state().next_channel_id,
-        lhs_contracting_dims, lhs.state().collective_ops_creator,
-        MakeBinaryAdd(output_base_shape.element_type(), module));
-    ar->set_sharding(HloSharding::Replicate());
-    return PartitionedHlo(ar, output_base_shape, lhs.state())
-        .Reshard(output_sharding)
-        .hlo();
-  }
 
   // Output is batch partitioned.
   if (output_batch_partitions == num_partitions) {

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 
 namespace xla::gpu {
 
@@ -41,13 +41,11 @@ namespace xla::gpu {
 // opaque_args_types: The types of the opaque arguments to the function, e.x.
 // arguments for collectives in XLA:GPU.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
-    absl::string_view fn_name,
-    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
-    const HloFusionInstruction* fusion,
-    const BlockLevelParameters& block_level_parameters,
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const SymbolicTileAnalysis& symbolic_tile_analysis, const Tiling& tiling,
     mlir::MLIRContext& mlir_context,
     absl::Span<mlir::Type> opaque_args_types = {});
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_

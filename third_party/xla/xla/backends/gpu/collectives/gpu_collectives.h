@@ -128,6 +128,9 @@ class GpuCollectives : public Collectives {
   // Returns true if collectives backend uses global config.
   virtual bool IsGlobalConfig() const = 0;
 
+  // Returns true if GPU collectives support device-initiated communication.
+  virtual bool SupportsDeviceComm() const { return false; }
+
   // Returns a clique id callback passed as an argument if it's not null or a
   // default callback to get create a clique id if we are running in local mode.
   virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
@@ -155,6 +158,10 @@ class GpuCollectives : public Collectives {
 
   // Initializes the topology information for the collectives backend.
   virtual absl::Status InitializeTopology(Topology topology) = 0;
+
+  virtual absl::StatusOr<Topology> GetTopology() {
+    return absl::UnimplementedError("Not implemented for this backend.");
+  }
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>

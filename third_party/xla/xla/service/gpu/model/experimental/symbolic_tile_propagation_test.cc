@@ -199,6 +199,62 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10, 5] parameter(0)
+      p1 = f32[10, 8] parameter(1)
+      p2 = f32[10, 2] parameter(2)
+      ROOT concatenate = f32[10, 15] concatenate(p0, p1, p2), dimensions={1}
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+
+  // Operand 0
+  std::optional<SymbolicTiles> from_operand_0 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(0)->shape().dimensions()),
+      0);
+  EXPECT_THAT(from_operand_0, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 5]
+  )")));
+
+  // Operand 1
+  std::optional<SymbolicTiles> from_operand_1 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(1)->shape().dimensions()),
+      1);
+  EXPECT_THAT(from_operand_1, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 5]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 13]
+  )")));
+
+  // Operand 2
+  std::optional<SymbolicTiles> from_operand_2 = PropagateTileToOutput(
+      *tiling_space, *root,
+      GetTestSymbolicTile(*tiling_space,
+                          root->operand(2)->shape().dimensions()),
+      2);
+  EXPECT_THAT(from_operand_2, Optional(MatchToString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 13]
+         sizes [ts_0, ts_1]
+         strides [1, 2]
+         upper bounds [10, 15]
+  )")));
+}
+
 TEST_F(SymbolicTilePropagationTest,
        CanPropagateToInputsOfConcatenateOpWithNonDefaultUpperBound) {
   HloInstruction* root = ParseAndGetRoot(R"(
@@ -447,6 +503,50 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
             sizes [ts_7, ts_0, ts_4, ts_6, ts_5, ts_1]
             strides [1, 1, 5, 1, 6, 2]
             upper bounds [17, 10, 16, 18, 22, 38]
+  )")));
+}
+
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule module
+
+      ENTRY main {
+        lhs = f32[1024,512] parameter(0)
+        rhs = f32[64,512] parameter(1)
+        lhs_scale = f32[32,2] parameter(2)
+        rhs_scale = f32[64,512] parameter(3)
+        ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={1}
+      }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  auto symbolic_tile =
+      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
+  std::optional<SymbolicTiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_0, ts_2]
+         strides [1, 1]
+         upper bounds [1024, 512]
+    1) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_1, ts_2]
+         strides [2, 1]
+         upper bounds [64, 512]
+    2) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [(tid_0 * ts_0) floordiv 32, (tid_2 * ts_2) floordiv 256]
+         sizes [(tid_0 * ts_0 + ts_0 - 1) floordiv 32 - (tid_0 * ts_0) floordiv 32 + 1, (tid_2 * ts_2 + ts_2 - 1) floordiv 256 - (tid_2 * ts_2) floordiv 256 + 1]
+         strides [1, 1]
+         upper bounds [32, 2]
+    3) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_1, ts_2]
+         strides [2, 1]
+         upper bounds [64, 512]
   )")));
 }
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 
 #include <cstdint>
 #include <vector>

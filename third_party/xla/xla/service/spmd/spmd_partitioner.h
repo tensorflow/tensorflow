@@ -263,10 +263,6 @@ struct SPMDCollectiveOpsCreator {
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas);
 
-// Create a default SPMDCollectiveOpsCreator for use in execution tests.
-SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(
-    bool use_global_device_ids_in_iota = false);
-
 // Logger to report memory usage during SPMD partitioning.
 class SpmdLogger {
  public:

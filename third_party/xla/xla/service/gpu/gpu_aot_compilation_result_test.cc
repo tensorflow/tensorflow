@@ -72,6 +72,8 @@ using ::testing::Return;
 using ::testing::ReturnRef;
 using ::tsl::proto_testing::EqualsProto;
 
+PLATFORM_DEFINE_ID(kDummyPlatformId, dummy_platform);
+
 DeviceDescription GetDeviceDescription() {
   DeviceDescription device_description;
   device_description.set_gpu_compute_capability(
@@ -162,8 +164,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
   MockStreamExecutor executor_;
   MockPlatform platform_;
   const std::string platform_name_ = "gpu";
-  stream_executor::Platform::Id platform_id_ =
-      reinterpret_cast<stream_executor::Platform::Id>(123);
+  stream_executor::Platform::Id platform_id_ = kDummyPlatformId;
 };
 
 TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {

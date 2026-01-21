@@ -86,23 +86,26 @@ class GpuOptProvider : public CompiledOptProvider {
       TF_ASSIGN_OR_RETURN(std::string llvm_ir,
                           LlvmIrBeforeOptimizations(optimized_module.get()));
       return llvm_ir;
-
-    } else if (s == "llvm" || s == "llvm-after-optimizations") {
+    }
+    if (s == "llvm" || s == "llvm-after-optimizations") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->ir_module_string();
-    } else if (s == "ptx") {
+    }
+    if (s == "ptx") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())->text();
-    } else if (s == "buffer-assignment") {
+    }
+    if (s == "buffer-assignment") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
       return gpu_executable->buffer_assignment()->ToVerboseString(
           gpu_executable->alias_info(), 9999);
-    } else {
+    }
+    {
       // Delegate to base class.
       TF_ASSIGN_OR_RETURN(
           std::optional<std::string> out,
@@ -205,6 +208,10 @@ class GpuOptProvider : public CompiledOptProvider {
                         Compiler::GetForPlatform(platform->id()));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
+    xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
+        gpu_compiler->GetLLVMCommandLineOptions(
+            optimized_module->config().debug_options()));
+
     std::unique_ptr<gpu::GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
@@ -226,7 +233,8 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform, device_description,
-            alias_info.get(), std::move(buffer_size_bytes_function)));
+            alias_info.get(), std::move(buffer_size_bytes_function),
+            llvm_options_lock));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
 };

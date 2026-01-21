@@ -1,3 +1,5 @@
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/check.h"
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +20,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -102,6 +106,73 @@ class ABSL_SCOPED_LOCKABLE LLVMCommandLineOptionsLock {
 
   // Signature of the current clients LLVM options.
   uint64_t client_signature_;
+};
+
+// This is a version of LLVMCommandLineOptionsLock that allows temporarily
+// releasing the lock. This is useful for clients that have multiple
+// independent compilation steps, where the LLVM compilation can be parallelized
+// with the non-LLVM compilation.
+class LLVMCommandLineOptionsReleasableLock {
+ public:
+  explicit LLVMCommandLineOptionsReleasableLock(
+      std::vector<std::string> client_options)
+      : client_options_(std::move(client_options)),
+        lock_(std::in_place_type<LLVMCommandLineOptionsLock>, client_options_) {
+  }
+
+  // Create a lock that is already released.
+  static LLVMCommandLineOptionsReleasableLock CreateReleasedLock() {
+    return LLVMCommandLineOptionsReleasableLock(
+        /*client_options=*/{}, ReleaseCount(0));
+  }
+
+  // Release the lock, and return a cleanup object that will re-establish
+  // the lock when it goes out of scope.
+  auto TemporarilyReleaseLock() {
+    ReleaseLock();
+    return absl::Cleanup([this]() { ReestablishLock(); });
+  }
+
+  bool IsLocked() const {
+    return std::holds_alternative<LLVMCommandLineOptionsLock>(lock_);
+  }
+
+  const std::vector<std::string>& GetClientOptions() const {
+    return client_options_;
+  }
+
+ private:
+  using ReleaseCount = unsigned;
+  explicit LLVMCommandLineOptionsReleasableLock(
+      std::vector<std::string> client_options, ReleaseCount release_count)
+      : client_options_(std::move(client_options)),
+        lock_(std::move(release_count)) {}
+
+  ReleaseCount& GetReleaseCount() { return std::get<ReleaseCount>(lock_); }
+
+  void ReleaseLock() {
+    if (IsLocked()) {
+      lock_ = ReleaseCount(0);
+    }
+    ++GetReleaseCount();
+  }
+
+  void ReestablishLock() {
+    CHECK(!IsLocked());
+    --GetReleaseCount();
+
+    if (GetReleaseCount() > 0) {
+      return;
+    }
+
+    lock_.emplace<LLVMCommandLineOptionsLock>(client_options_);
+  }
+
+  std::vector<std::string> client_options_;
+
+  // Either a lock is held, or a count of how many times the lock has been
+  // released.
+  std::variant<LLVMCommandLineOptionsLock, ReleaseCount> lock_;
 };
 
 }  // namespace llvm_ir

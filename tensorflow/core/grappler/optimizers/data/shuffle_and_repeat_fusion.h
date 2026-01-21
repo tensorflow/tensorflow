@@ -26,7 +26,7 @@ class ShuffleAndRepeatFusion : public TFDataOptimizerBase {
   ShuffleAndRepeatFusion() = default;
   ~ShuffleAndRepeatFusion() override = default;
 
-  string name() const override { return "shuffle_and_repeat_fusion"; };
+  std::string name() const override { return "shuffle_and_repeat_fusion"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

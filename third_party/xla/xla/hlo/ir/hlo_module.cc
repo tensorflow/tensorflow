@@ -547,29 +547,27 @@ uint64_t HloModule::ToFingerprint(
   return printer.ToFingerprint();
 }
 
-HloModuleProto HloModule::ToProto() const {
-  HloModuleProto proto;
-  proto.set_id(unique_id_);
-  proto.set_name(name_);
+void HloModule::ToProto(HloModuleProto* proto) const {
+  proto->set_id(unique_id_);
+  proto->set_name(name_);
   if (entry_computation_) {
-    *proto.mutable_entry_computation_name() =
+    *proto->mutable_entry_computation_name() =
         std::string(entry_computation_->name());
-    proto.set_entry_computation_id(entry_computation_->unique_id());
-    *proto.mutable_host_program_shape() =
+    proto->set_entry_computation_id(entry_computation_->unique_id());
+    *proto->mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
   }
   for (const HloComputation* computation : MakeComputationPostOrder()) {
-    HloComputationProto computation_proto = computation->ToProto();
-    proto.add_computations()->Swap(&computation_proto);
+    computation->ToProto(proto->add_computations());
   }
   if (has_schedule()) {
-    *proto.mutable_schedule() = schedule().ToProto().value();
+    *proto->mutable_schedule() = schedule().ToProto().value();
   }
-  *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
-  *proto.mutable_buffer_donor() = buffer_donor_config().ToProto();
+  *proto->mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto->mutable_buffer_donor() = buffer_donor_config().ToProto();
   for (const auto& [parameter, indices, alt_memory_offset] :
        CrossProgramPrefetches()) {
-    auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
+    auto* prefetch = proto->mutable_cross_program_prefetches()->Add();
     prefetch->set_parameter(parameter);
     for (auto index : indices) {
       prefetch->add_index(index);
@@ -578,24 +576,24 @@ HloModuleProto HloModule::ToProto() const {
       prefetch->set_offset(*alt_memory_offset);
     }
   }
-  proto.set_is_dynamic(is_dynamic_);
+  proto->set_is_dynamic(is_dynamic_);
   if (has_spmd_output_sharding()) {
-    *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
+    *proto->mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
   }
 
-  *proto.mutable_frontend_attributes() = frontend_attributes_;
+  *proto->mutable_frontend_attributes() = frontend_attributes_;
 
   if (has_spmd_parameters_shardings()) {
     for (const auto& parameter_sharding : spmd_parameters_shardings()) {
-      *proto.add_spmd_parameters_shardings() = parameter_sharding.ToProto();
+      *proto->add_spmd_parameters_shardings() = parameter_sharding.ToProto();
     }
   }
 
-  proto.set_use_auto_spmd_partitioning(use_auto_spmd_partitioning_);
+  proto->set_use_auto_spmd_partitioning(use_auto_spmd_partitioning_);
 
   for (const HloModuleProto::ProfileInfo& profile_info : profile_info_list_) {
     HloModuleProto::ProfileInfo& profile_info_proto =
-        *proto.mutable_profile_info()->Add();
+        *proto->mutable_profile_info()->Add();
     profile_info_proto.set_profile_type(profile_info.profile_type());
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
@@ -610,26 +608,22 @@ HloModuleProto HloModule::ToProto() const {
   if (config().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
     config().static_device_assignment().Serialize(&device_assignment);
-    (*proto.mutable_device_assignment()) = device_assignment;
+    (*proto->mutable_device_assignment()) = device_assignment;
   }
 
   if (stack_frame_index_.has_value()) {
-    (*proto.mutable_stack_frame_index()) = *stack_frame_index_;
+    (*proto->mutable_stack_frame_index()) = *stack_frame_index_;
   }
 
   if (!original_value_recovery_table_.empty()) {
-    *proto.mutable_original_value_recovery_table() =
+    *proto->mutable_original_value_recovery_table() =
         original_value_recovery_table_.ToProto();
   }
-
-  return proto;
 }
 
-HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
-  HloModuleProtoWithConfig result;
-  *result.mutable_config() = config().ToProto();
-  *result.mutable_hlo_module() = ToProto();
-  return result;
+void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto) const {
+  *proto->mutable_config() = config().ToProto();
+  ToProto(proto->mutable_hlo_module());
 }
 
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()

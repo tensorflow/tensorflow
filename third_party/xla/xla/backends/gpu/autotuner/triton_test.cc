@@ -193,6 +193,21 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
   EXPECT_THAT(config, absl_testing::IsOk());
 }
 
+TEST_F(TritonBackendTest, GetDefaultConfigReturnsSplitKOne) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  debug_options_.set_xla_gpu_enable_split_k_autotuning(true);
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(
+          *(module->entry_computation()->root_instruction()));
+
+  ASSERT_THAT(config, absl_testing::IsOk());
+  TritonBackendConfig triton_config;
+  ASSERT_TRUE(config.value()->UnpackTo(&triton_config));
+  EXPECT_EQ(triton_config.split_k(), 1);
+}
+
 TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));

@@ -49,8 +49,8 @@ toc:
     path: /xla/test_hlo_passes
   - title: Tiled layout
     path: /xla/tiled_layout
-  - title: Using LSP autocompletion
-    path: /xla/lsp
+  - title: Setting Up Developer Environment
+    path: /xla/developer_environment
   - title: Writing custom calls
     path: /xla/custom_call
   - title: XLA Flags guidance
@@ -66,6 +66,8 @@ toc:
     path: /xla/errors_overview
   - title: Error Codes
     path: /xla/error_codes
+  - Debug OOM errors with XProf
+    path: xla/oom_debugging
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:

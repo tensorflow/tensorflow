@@ -306,8 +306,11 @@ IotaReplicaGroupList MeshAxesReplicaGroupList::ToIotaReplicaGroupList() const {
     transpose_perm.push_back(grouped_axis);
   }
 
+  TileAssignment ta =
+      mesh_.device_assignment().Reshape(reshape_dims).Transpose(transpose_perm);
+  CHECK(ta.iota().has_value());
   return IotaReplicaGroupList(num_replica_groups(), num_devices_per_group(),
-                              reshape_dims, transpose_perm);
+                              *ta.iota());
 }
 
 CollectiveDeviceList MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {

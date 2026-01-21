@@ -81,10 +81,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
             {{"window_size",
-              strings::Printf("%lld", static_cast<long long>(window_size))},
+              absl::StrFormat("%lld", static_cast<long long>(window_size))},
              {"window_shift",
-              strings::Printf("%lld", static_cast<long long>(window_shift))},
-             {"window_stride", strings::Printf("%lld", static_cast<long long>(
+              absl::StrFormat("%lld", static_cast<long long>(window_shift))},
+             {"window_stride", absl::StrFormat("%lld", static_cast<long long>(
                                                            window_stride))}}) {
     input_->Ref();
   }
@@ -92,7 +92,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -105,7 +105,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(window_size_, window_shift_, window_stride_,
                     drop_remainder_);
@@ -389,11 +389,11 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    string CodeKey(size_t index) {
+    std::string CodeKey(size_t index) {
       return strings::StrCat(kBuffer, "[", index, "]", kCodeSuffix);
     }
 
-    string ErrorMessageKey(size_t index) {
+    std::string ErrorMessageKey(size_t index) {
       return strings::StrCat(kBuffer, "[", index, "]", kErrorMessage);
     }
 

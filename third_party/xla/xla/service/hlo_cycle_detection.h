@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"

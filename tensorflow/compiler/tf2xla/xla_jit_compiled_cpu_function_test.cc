@@ -44,7 +44,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-PLATFORM_DEFINE_ID(kFakePlatformId);
+PLATFORM_DEFINE_ID(kFakePlatformId, FakePlatform);
 
 AttrValue TypeAttrValue(DataType type) {
   AttrValue attr_value;
@@ -318,7 +318,7 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
 TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
   class FakePlatform : public se::Platform {
    public:
-    FakePlatform() : name_("FakePlatform") {}
+    FakePlatform() : name_(kFakePlatformId->ToName()) {}
     ~FakePlatform() override {}
 
     se::Platform::Id id() const override { return kFakePlatformId; }
@@ -348,7 +348,7 @@ TEST(XlaJitCompiledCpuFunction, CanCompileWithAdditionalPlatform) {
   });
 
   EXPECT_THAT(xla::PlatformUtil::GetDefaultPlatform().status().message(),
-              HasSubstr("FakePlatform"));
+              HasSubstr(kFakePlatformId->ToName()));
 
   GraphDef graph_def = SumGraph();
   tf2xla::Config config = SumConfig();

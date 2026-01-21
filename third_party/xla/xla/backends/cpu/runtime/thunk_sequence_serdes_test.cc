@@ -1226,14 +1226,6 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             tsl::down_cast<const WhileThunk&>(thunk_1),
             tsl::down_cast<const WhileThunk&>(thunk_2));
       case Thunk::Kind::kYnnFusion: {
-        const YnnFusionThunk& ynn_fusion_thunk_1 =
-            tsl::down_cast<const YnnFusionThunk&>(thunk_1);
-        const YnnFusionThunk& ynn_fusion_thunk_2 =
-            tsl::down_cast<const YnnFusionThunk&>(thunk_2);
-        if (ynn_fusion_thunk_1.ynn_fusion_kind() !=
-            ynn_fusion_thunk_2.ynn_fusion_kind()) {
-          return false;
-        }
         return VerifyYnnFusionThunkEquality(
             tsl::down_cast<const YnnFusionThunk&>(thunk_1),
             tsl::down_cast<const YnnFusionThunk&>(thunk_2));

@@ -32,8 +32,8 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Target/TargetMachine.h"
-#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
@@ -350,7 +350,7 @@ TEST(FpTruncExecutionTest, F32ToF8e4m3fn_Vector8) {
   std::array<float, 8> vals = {500,   16.0f,  -0.5f, -240.0f,
                                -1.0f, -16.0f, 0.5f,  242.0f};
   std::array<int8_t, 8> actuals = fptrunc(vals);
-  EXPECT_EQ(actuals[0], static_cast<int8_t>(0b10000000));  // 500 -> NaN
+  EXPECT_EQ(actuals[0], static_cast<int8_t>(0x7F));        // 500 -> NaN
   EXPECT_EQ(actuals[1], static_cast<int8_t>(0b01011000));  // 16.0f
   EXPECT_EQ(actuals[2], static_cast<int8_t>(0b10110000));  // -0.5f
   EXPECT_EQ(actuals[3], static_cast<int8_t>(0b11110111));  // -240.0f
@@ -490,6 +490,74 @@ TEST(FpTruncExecutionTest, F16ToF8e5m2fnuz) {
             0b00111100);  // 0.5
   EXPECT_EQ(fptrunc(static_cast<int16_t>(0b1011100000000000)),
             static_cast<int8_t>(0b10111100));  // -0.5
+
+  // Test overflow behavior (should be NaN for FNUZ)
+  // Max finite F8E5M2FNUZ is 57344.0.
+  // 47616.0 in F16 is 0x79D0. It rounds to 49152.0 (0x7E).
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x79D0)),
+            static_cast<int8_t>(0b01111110));  // 47616.0 -> 0x7E
+
+  // Max finite F16 is 65504.0 (0x7BFF).
+  // 65504.0 > 61440.0 (cutoff for overflow in F8E5M2FNUZ), so it should become
+  // NaN.
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x7BFF)),
+            static_cast<int8_t>(0b10000000));  // 65504.0 -> NaN
+
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x7C00)),
+            static_cast<int8_t>(0b10000000));  // Inf -> NaN
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0xFC00)),
+            static_cast<int8_t>(0b10000000));  // -Inf -> NaN
+
+  // Test NaN
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x7E00)),
+            static_cast<int8_t>(0b10000000));  // NaN -> NaN
+}
+
+TEST(FpTruncExecutionTest, F64ToF8e5m2) {
+  JitRunner jit = CreateJitRunner(Type::S(F64), Type::S(F8E5M2));
+  // JitRunner doesn't have a direct helper for F64 input to int8_t output
+  // wrapped as int64->int8 But GetScalarFn is a template. We need to pass
+  // double. However, CreateWrapperIntArgToFp creates an integer argument
+  // wrapper. For F64, the wrapper will take int64_t and bitcast to double.
+  auto fptrunc = jit.GetScalarFn<int8_t(int64_t)>(
+      FpTrunc::Name(Type::S(F64), Type::S(F8E5M2)) + "_itofp");
+
+  EXPECT_EQ(fptrunc(0), 0);
+  // 1.0 in double: 0x3FF0000000000000
+  // F8E5M2: 1 sign, 5 exp, 2 mantissa. Bias 15.
+  // 1.0 = 1.0 * 2^0 -> Exp = 15 = 01111. Mantissa 00. Result 00111100 = 0x3C
+  EXPECT_EQ(fptrunc(0x3FF0000000000000), 0x3C);
+
+  // 1.5 in double: 0x3FF8000000000000
+  // F8E5M2: 1.5 = 1.1 * 2^0 -> Exp 15. Mantissa 10. Result 00111110 = 0x3E
+  EXPECT_EQ(fptrunc(0x3FF8000000000000), 0x3E);
+
+  // Max finite F8E5M2: 57344.0
+  // In double: 0x40EC000000000000
+  // F8E5M2: 0x7B
+  EXPECT_EQ(fptrunc(0x40EC000000000000), 0x7B);
+
+  // 60000.0 in double: 0x40ED4C0000000000
+  // 60000 < 61440 (overflow threshold), so it rounds to max finite (57344).
+  EXPECT_EQ(fptrunc(0x40ED4C0000000000), 0x7B);
+
+  // Overflow -> Inf
+  // 62000.0 in double: 0x40EE460000000000
+  // 62000 > 61440, so overflow.
+  EXPECT_EQ(fptrunc(0x40EE460000000000), 0x7C);
+}
+
+TEST(FpTruncExecutionTest, F16ToF8e5m2) {
+  JitRunner jit = CreateJitRunner(Type::S(F16), Type::S(F8E5M2));
+  auto fptrunc = jit.GetScalarFn<int8_t(int16_t)>(
+      FpTrunc::Name(Type::S(F16), Type::S(F8E5M2)) + "_itofp");
+
+  // Bias is 15 for both.
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x00)), 0x00);
+  // 1.0 (0 01111 0000000000) -> 1.0 (0 01111 00)
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x3C00)), 0x3C);
+  // 1.5 (0 01111 1000000000) -> 1.5 (0 01111 10)
+  EXPECT_EQ(fptrunc(static_cast<int16_t>(0x3E00)), 0x3E);
 }
 
 }  // namespace xla::codegen::intrinsics

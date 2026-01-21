@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -46,14 +45,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/with_user_context.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -105,15 +102,16 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileModule(
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
   if (module_type == kIfrtModuleTypeXla) {
     return CompileXla(call_op, module_op);
-  } else if (module_type == kIfrtModuleTypeMpmdReshard) {
+  }
+  if (module_type == kIfrtModuleTypeMpmdReshard) {
     return CompileMpmdReshard(module_op);
-  } else if (module_type == nullptr) {
+  }
+  if (module_type == nullptr) {
     return absl::InvalidArgumentError(absl::StrCat(
         "CallOp requires `", kIfrtModuleTypeAttrName.str(), "` to be set"));
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("No compiler for module type: ", module_type.str()));
   }
+  return absl::InvalidArgumentError(
+      absl::StrCat("No compiler for module type: ", module_type.str()));
 }
 
 absl::StatusOr<xla::CompileOptions>
@@ -172,14 +170,20 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
     CallOp call_op, mlir::ModuleOp module_op) {
   TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                       GetXlaCompileOptions(call_op, module_op));
-
-  // We must clone the module in order ensure the module string representation
-  // is maintained. This is because MLIR printing takes different paths
-  // depending on if a ModuleOp has a parent or not.
-
-  auto hlo_program = std::make_unique<HloProgram>(
-      /*context=*/nullptr,  // Shares the same long-living context.
-      mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
+  // In order to be able to compile multiple XLA computations in parallel, we
+  // need to:
+  // 1. Create a new MLIR context with threading disabled to ensure MLIR doesn't
+  // create too many threads when compiling many XLA computations in parallel.
+  // 2. Clone the module into this new context. This cloning is necessary
+  // because MLIR printing takes different paths depending on if a ModuleOp has
+  // a parent or not. Thus, by cloning the module we ensure that the module's
+  // string representation is maintained.
+  auto context = std::make_unique<mlir::MLIRContext>(
+      mlir::MLIRContext::Threading::DISABLED);
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                      CloneModuleIntoContext(module_op, *context));
+  auto hlo_program = std::make_unique<HloProgram>(std::move(context),
+                                                  std::move(cloned_module));
   auto [promise, future] = tsl::MakePromise<AtomProgramCompileResult>();
   tsl::Env::Default()->StartDetachedThread(
       tsl::ThreadOptions(), /*name=*/"MultiThreadedAtomProgramCompiler",

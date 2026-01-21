@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <new>
-
 #include "absl/base/internal/sysinfo.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
 #include "xla/tsl/platform/types.h"
@@ -65,10 +65,19 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
+namespace {
+absl::Time GetStartupTime() {
+  static absl::Time start_up_time = absl::Now();
+  return start_up_time;
+}
+}  // namespace
+
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+void InitMain(const char* usage, int* argc, char*** argv) { GetStartupTime(); }
+
+absl::Duration GetUptime() { return absl::Now() - GetStartupTime(); }
 
 std::string Hostname() {
   char hostname[1024];

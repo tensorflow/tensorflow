@@ -25,9 +25,7 @@ cc_library(
     hdrs = [
         "host_platform_id.h",
     ],
-    deps = [
-        "//xla/stream_executor:platform",
-    ],
+    deps = ["//xla/stream_executor:platform"],
 )
 
 cc_library(

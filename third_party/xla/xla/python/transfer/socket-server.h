@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"

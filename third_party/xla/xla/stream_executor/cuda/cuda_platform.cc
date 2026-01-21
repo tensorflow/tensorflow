@@ -74,7 +74,7 @@ static absl::Status PlatformInitialize() {
 
 }  // namespace
 
-CudaPlatform::CudaPlatform() : name_("CUDA") {}
+CudaPlatform::CudaPlatform() : name_(cuda::kCudaPlatformId->ToName()) {}
 
 CudaPlatform::~CudaPlatform() {
   nvmlReturn_t shutdown_result = nvmlShutdown();

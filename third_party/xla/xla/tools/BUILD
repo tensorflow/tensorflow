@@ -50,6 +50,42 @@ filegroup(
     visibility = ["//xla:internal"],
 )
 
+#===------------------------------------------------------------------------===#
+# XLA command line tools
+#===------------------------------------------------------------------------===#
+
+xla_cc_binary(
+    name = "hlo-extractor",
+    testonly = True,
+    deps = [":hlo_extractor_main"],
+)
+
+xla_cc_binary(
+    name = "hlo-expand",
+    testonly = True,
+    deps = [":hlo_expand_main"],
+)
+
+xla_cc_binary(
+    name = "hlo-opt",
+    testonly = True,
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+    deps = [
+        "//xla/hlo/tools/hlo_opt:opt_main",
+        "//xla/tools/hlo_opt:cpu_opt",
+    ] + if_gpu_is_configured([
+        "//xla/tools/hlo_opt:gpu_opt",
+    ]) + if_cuda_is_configured([
+        "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
+    ]),
+)
+
+#===------------------------------------------------------------------------===#
+# XLA tools and libraries
+#===------------------------------------------------------------------------===#
+
 build_test(
     name = "show_signature_build_test",
     targets = [
@@ -178,28 +214,27 @@ cc_library(
     ],
 )
 
-xla_cc_binary(
-    name = "hlo-expand",
-    testonly = True,
+cc_library(
+    name = "hlo_extractor_main",
+    srcs = ["hlo_extractor_main.cc"],
     deps = [
-        ":hlo_expand_main",
+        ":hlo_extractor",
+        ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:platform_port",
     ],
-)
-
-xla_cc_binary(
-    name = "hlo-opt",
-    testonly = True,
-    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    deps = [
-        "//xla/hlo/tools/hlo_opt:opt_main",
-        "//xla/tools/hlo_opt:cpu_opt",
-    ] + if_gpu_is_configured([
-        "//xla/tools/hlo_opt:gpu_opt",
-    ]) + if_cuda_is_configured([
-        "//xla/stream_executor:cuda_platform",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor:rocm_platform",
-    ]),
 )
 
 cc_library(
@@ -238,27 +273,6 @@ cc_library(
         "//xla/service:triangular_solve_expander",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
         "//xla/tsl/util:command_line_flags",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_expand_test",
-    srcs = ["tests/hlo_expand_test.cc"],
-    data = [
-        "tests/cholesky.hlo",
-        "tests/invalid_concat.hlo",
-        "tests/spmd.hlo",
-        ":hlo-expand",
-    ],
-    tags = [
-        "nomsan",  # No msan for precompiled Nvidia binaries.
-    ],
-    deps = [
-        "//xla/tsl/platform:subprocess",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1002,7 +1016,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
@@ -1065,16 +1078,14 @@ xla_test(
     data = [
         ":data/add.hlo",
     ],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":xla_compile_lib",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:platform_util",
         "//xla/service:symbol_repository",
-        "//xla/service:xla_compile_result_proto_cc_impl",
-        "//xla/tests:hlo_test_base",
+        "//xla/service:xla_compile_result_proto_cc",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -1086,17 +1097,10 @@ xla_test(
         "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@com_google_protobuf//:duration_cc_proto",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:env_time",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ] + if_cuda([
         "//xla/tsl/cuda:nvml",
     ]),

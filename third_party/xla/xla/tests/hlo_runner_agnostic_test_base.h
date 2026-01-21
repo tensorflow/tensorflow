@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -192,6 +194,18 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       absl::string_view hlo_text) {
     return GetOptimizedModule(hlo_text, GetModuleConfigForTest());
+  }
+
+  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
+                         bool print_operand_shape = false) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                            GetOptimizedModule(hlo));
+    HloPrintOptions print_opts;
+    print_opts.set_print_operand_shape(print_operand_shape);
+    absl::StatusOr<bool> filecheck_result =
+        RunFileCheck(optimized_module->ToString(print_opts), pattern);
+    TF_ASSERT_OK(filecheck_result.status());
+    EXPECT_TRUE(filecheck_result.value());
   }
 
   // Executes the given module on multiple devices.

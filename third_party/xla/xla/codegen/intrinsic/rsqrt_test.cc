@@ -17,6 +17,7 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/simple_jit_runner.h"
 #include "xla/codegen/intrinsic/test_matchers.h"
+#include "xla/codegen/intrinsic/type.h"
 #include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -80,19 +82,22 @@ llvm::StringMap<bool> GetHostCPUFeatures() {
 }
 bool isAmd() { return GetHostCPUFeatures().lookup("sse4a"); }
 JitRunner CreateJitRunnerWithRsqrt(
-    Type type, bool disable_platform_dependent_math = false) {
+    Type type, bool disable_platform_dependent_math = false,
+    std::optional<DeviceType> override_device_type = std::nullopt,
+    std::optional<std::string> features_override = std::nullopt) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
-  DeviceType device_type =
-      isAmd() ? DeviceType::kAmdCpu : DeviceType::kIntelCpu;
+  DeviceType device_type = override_device_type.value_or(
+      isAmd() ? DeviceType::kAmdCpu : DeviceType::kIntelCpu);
+  std::string features = features_override.value_or(
+      target_machine->getTargetFeatureString().str());
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(module.get(),
-                              {target_machine->getTargetFeatureString().str(),
-                               device_type, disable_platform_dependent_math},
-                              type)
+      Rsqrt::CreateDefinition(
+          module.get(),
+          {features, device_type, disable_platform_dependent_math}, type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*rsqrt_func));
@@ -325,15 +330,22 @@ TEST(RsqrtTest, EmitRsqrtF64_EdgeCases_Vectors) {
 }
 
 TEST(RsqrtTest, DisablePlatformDependentMath) {
-  Type type = Type::S(F64);
+  // Overriding the device type to AMD should make this test fail on Intel
+  // CPUs if disable_platform_dependent_math is not implemented.
+  // To check that this test works correctly, run it on an intel CPU and set
+  // disable_platform_dependent_math to false to see the test fail.
+  Type type = Type::S(F32);
   JitRunner jit =
-      CreateJitRunnerWithRsqrt(type, /*disable_platform_dependent_math=*/true);
-  auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
-  auto one_over_sqrt = jit.GetScalarFn<double(double)>("one_over_sqrt");
-  double inf = std::numeric_limits<double>::infinity();
+      CreateJitRunnerWithRsqrt(type, /*disable_platform_dependent_math=*/true,
+                               /*override_device_type=*/DeviceType::kAmdCpu,
+                               /*features_override=*/"+sse +avx2");
+  auto rsqrt = jit.GetScalarFn<float(float)>(Rsqrt::Name(type));
+  auto one_over_sqrt = jit.GetScalarFn<float(float)>("one_over_sqrt");
+  float inf = std::numeric_limits<float>::infinity();
   EXPECT_EQ(rsqrt(inf), one_over_sqrt(inf));
   EXPECT_EQ(rsqrt(1.0), one_over_sqrt(1.0));
-  EXPECT_EQ(rsqrt(13.0), one_over_sqrt(13.0));
+  EXPECT_EQ(rsqrt(0.1), one_over_sqrt(0.1));
+  EXPECT_EQ(rsqrt(13.), one_over_sqrt(13.));
 }
 
 TEST(RsqrtTest, AmdRsqrtF64) {

@@ -70,7 +70,6 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -321,25 +320,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
           .status());
 
   return absl::OkStatus();
-}
-
-// Linearize collective schedule under if online autotuning of convolutions is
-// enabled.
-bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
-    const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr ||
-      module->config().debug_options().xla_gpu_autotune_level() == 0) {
-    return false;
-  }
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (IsCustomCallToDnnConvolution(*inst)) {
-        return true;
-      }
-    }
-  }
-  // No convolution auto-tuning candidates found in the module.
-  return false;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>

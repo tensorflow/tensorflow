@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"
@@ -23,7 +23,6 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/xla_data.pb.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace xtile {
@@ -74,13 +73,7 @@ absl::StatusOr<::mlir::Value> EmitSingleTileScaledDot(
     mlir::ImplicitLocOpBuilder& b, const HloScaledDotInstruction& scaled_dot,
     ScaledDotOperands dot_operands);
 
-namespace internal {
-absl::StatusOr<mlir::triton::ScaleDotElemType> GetScaleDotElemType(
-    mlir::Type value);
-
-}  // namespace internal
-
 }  // namespace xtile
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_

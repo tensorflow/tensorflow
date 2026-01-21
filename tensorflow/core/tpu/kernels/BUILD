@@ -560,7 +560,6 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/client:compile_only_client",
-        "@local_xla//xla/hlo/ir:hlo_module_group",
         "@local_xla//xla/service:computation_placer",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/stream_executor/tpu:proto_helper",

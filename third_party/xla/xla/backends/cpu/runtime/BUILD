@@ -23,7 +23,8 @@ filegroup(
     srcs = [
         "convolution_lib_f16_2d.cc",
         "convolution_lib_f16_3d.cc",
-        "convolution_lib_f32.cc",
+        "convolution_lib_f32_2d.cc",
+        "convolution_lib_f32_3d.cc",
         "dot_lib_c128.cc",
         "dot_lib_c64.cc",
         "dot_lib_f16.cc",
@@ -399,7 +400,8 @@ cc_library(
     srcs = [
         "convolution_lib_f16_2d.cc",
         "convolution_lib_f16_3d.cc",
-        "convolution_lib_f32.cc",
+        "convolution_lib_f32_2d.cc",
+        "convolution_lib_f32_3d.cc",
     ],
     hdrs = ["convolution_lib.h"],
     copts = runtime_copts(),

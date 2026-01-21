@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
-#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -26,14 +26,27 @@ limitations under the License.
 namespace xla::gpu {
 
 absl::Status CollectiveCliqueRequests::RequestClique(
-    const GpuCliqueKey& clique_key) {
-  VLOG(5) << "Add collective clique request: " << clique_key.ToString();
+    const GpuCliqueKey& clique_key, const CliqueRequirements& requirements) {
+  VLOG(5) << "Add collective clique request: " << clique_key.ToString()
+          << "; requirements=" << requirements;
+
+  // If the clique already exist, update it with new requirementes.
+  if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
+    CliqueRequest& req = it->second;
+    if (requirements.dev_comm) {
+      req.dev_comms.insert(*requirements.dev_comm);
+    }
+  }
 
   // XLA compiler guarantees that all collective operations have the same
   // order on all replicas. We rely on this property to assign unique id to
   // clique requests simply based on the number of already recorded requests.
-  int64_t id = cliques_.size();
-  cliques_.try_emplace(clique_key, CliqueRequest{clique_key, id});
+  CliqueRequest req{/*id=*/cliques_.size(), clique_key};
+  if (requirements.dev_comm) {
+    req.dev_comms.insert(*requirements.dev_comm);
+  }
+
+  cliques_.try_emplace(clique_key, std::move(req));
   return absl::OkStatus();
 }
 

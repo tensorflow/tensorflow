@@ -129,6 +129,11 @@ class AxisRef {
     int64_t pre_size;
     int64_t size;
     int64_t next_pre_size() const { return pre_size * size; }
+
+    template <typename H>
+    friend H AbslHashValue(H h, const SubAxis& s) {
+      return H::combine(std::move(h), s.pre_size, s.size);
+    }
   };
 
   // Index corresponding to axis in the mesh. It should be a valid index into
@@ -156,6 +161,11 @@ class AxisRef {
   }
 
   bool operator!=(const xla::AxisRef& other) const { return !(*this == other); }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const AxisRef& a) {
+    return H::combine(std::move(h), a.mesh_axis_index_, a.sub_axis_info_);
+  }
 
   std::string ToString(const Mesh* mesh = nullptr) const;
 

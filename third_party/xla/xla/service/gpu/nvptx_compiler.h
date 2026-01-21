@@ -65,9 +65,6 @@ class NVPTXCompiler : public GpuCompiler {
       const GpuAliasInfo* alias_info,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  bool RequiresCollectiveScheduleLinearizer(
-      const HloModule* module, se::StreamExecutor* stream_exec) override;
-
   absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
   GetCodegenBackends(se::StreamExecutor* stream_exec,
                      const Compiler::GpuTargetConfig* target_config,

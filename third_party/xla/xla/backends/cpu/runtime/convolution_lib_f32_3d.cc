@@ -19,5 +19,4 @@ limitations under the License.
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
 #endif
 
-XLA_CPU_DEFINE_CONV2D(float);
 XLA_CPU_DEFINE_CONV3D(float);

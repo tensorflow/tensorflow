@@ -84,6 +84,10 @@ bool NcclCollectives::IsGlobalConfig() const {
   return nccl_comm_id != nullptr;
 }
 
+bool NcclCollectives::SupportsDeviceComm() const {
+  return NCCL_VERSION_CODE >= 22800;
+}
+
 absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
 NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
                                      bool is_local) {
@@ -135,6 +139,19 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   return id;
 }
 
+// Collect stream executors from all Device ranks. Returns an error if the
+// device is not a `GpuCollectives` device.
+static absl::StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
+    absl::Span<const NcclCollectives::DeviceRank> ranks) {
+  std::vector<se::StreamExecutor*> stream_executors(ranks.size());
+  for (size_t i = 0; i < ranks.size(); ++i) {
+    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    TF_RET_CHECK(device) << "Device must be GpuCollectives::Device";
+    stream_executors[i] = device->stream_executor();
+  }
+  return stream_executors;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 NcclCollectives::CreateCommunicatorsWithCancel(
     const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
@@ -164,6 +181,8 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         "asynchronous execution.");
   }
 
+  TF_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
+
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     VLOG(1) << absl::StreamFormat(
@@ -171,12 +190,13 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         "size(id)=%zu",
         ranks[i].rank, clique_key.num_devices(), clique_ids->fingerprint(),
         clique_ids->data().size());
+
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
-                        AsNcclConfig(gpu_config, device->stream_executor()));
+                        AsNcclConfig(gpu_config, stream_executors[i]));
 
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
@@ -196,7 +216,8 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     for (size_t i = 0; i < ranks.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(std::bind(make_comm, i),
+            NcclCommunicator::Create(stream_executors[i],
+                                     std::bind(make_comm, i),
                                      gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
@@ -229,15 +250,14 @@ NcclCollectives::SplitCommunicatorsWithCancel(
         keys.size());
   }
 
+  TF_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
+
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
 
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
-    TF_RET_CHECK(device != nullptr);
-
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
-                        AsNcclConfig(gpu_config, device->stream_executor()));
+                        AsNcclConfig(gpu_config, stream_executors[i]));
 
     VLOG(1) << absl::StreamFormat(
         "Split NCCL communicator %p with color %d and key %v",
@@ -257,7 +277,8 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     for (size_t i = 0; i < comms.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(std::bind(make_comm, i),
+            NcclCommunicator::Create(stream_executors[i],
+                                     std::bind(make_comm, i),
                                      gpu_config.async_execution, cancel);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
@@ -376,6 +397,12 @@ class NcclIdStore {
 
 absl::Status NcclCollectives::InitializeTopology(
     NcclCollectives::Topology topology) {
+  // TODO(b/476253257): Replace this with proper topology argument for
+  // custom calls.
+  topology_.node_id = topology.node_id;
+  topology_.num_nodes = topology.num_nodes;
+  topology_.device_count_per_process = topology.device_count_per_process;
+
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
     TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));

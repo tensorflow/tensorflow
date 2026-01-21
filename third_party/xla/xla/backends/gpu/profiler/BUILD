@@ -76,6 +76,7 @@ xla_test(
         "//xla/backends/gpu/runtime:command",
         "//xla/backends/gpu/runtime:command_buffer_cmd",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:command_executor",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",

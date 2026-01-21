@@ -1040,7 +1040,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_minmax_propagate_nan(
         !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
-    // oneDNN support is currently enabled only when thunk runtime is turned off
     options.set_enable_onednn_support(use_onednn_custom_call);
     options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);

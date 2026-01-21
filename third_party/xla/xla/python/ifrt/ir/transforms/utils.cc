@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -40,7 +41,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/mlir/utils/type_util.h"
@@ -50,8 +53,10 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -236,6 +241,14 @@ std::string OperationToString(mlir::Operation* op,
     op->print(os, flags);
   }
   return out;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
+    mlir::ModuleOp module, mlir::MLIRContext& context) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  TF_RET_CHECK(mlir::succeeded(mlir::writeBytecodeToFile(module, os)));
+  return support::ParseMlirModuleString(bytecode, context);
 }
 
 mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,

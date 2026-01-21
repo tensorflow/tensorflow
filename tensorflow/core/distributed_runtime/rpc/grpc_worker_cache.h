@@ -70,7 +70,7 @@ WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc,
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
     std::shared_ptr<GrpcChannelCache> cc, GrpcWorkerEnv* worker_env,
-    WorkerInterface* local_worker, const string& local_target);
+    WorkerInterface* local_worker, const std::string& local_target);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_CACHE_H_

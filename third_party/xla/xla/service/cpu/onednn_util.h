@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -66,13 +65,6 @@ struct FusedOperandsRef {
   const std::vector<void*>& bufs;
   std::vector<std::pair<int, dnnl::memory>>& postop_args;
 };
-
-std::unique_ptr<tsl::OneDnnThreadPool> CreateOneDnnThreadPool(
-    const Eigen::ThreadPoolDevice* threadpool_device);
-
-dnnl::stream MakeOneDnnStream(
-    const dnnl::engine& cpu_engine,
-    dnnl::threadpool_interop::threadpool_iface* thread_pool);
 
 typedef BackendConfig::BackendConfigOneofCase BackendConfigOneofCase;
 

@@ -519,7 +519,13 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  HloModuleProto ToProto() const;
+  void ToProto(HloModuleProto* proto) const;
+
+  HloModuleProto ToProto() const {
+    HloModuleProto proto;
+    ToProto(&proto);
+    return proto;
+  }
 
   // Converts an HloModuleProto to an HloModule. If preserve_instruction_ids is
   // true, the instruction ids in the proto will be preserved. Otherwise, the
@@ -541,7 +547,13 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  HloModuleProtoWithConfig ToProtoWithConfig() const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+
+  HloModuleProtoWithConfig ToProtoWithConfig() const {
+    HloModuleProtoWithConfig proto;
+    ToProtoWithConfig(&proto);
+    return proto;
+  }
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
@@ -734,8 +746,7 @@ class HloModule {
   HloModuleMetadata* metadata() { return &metadata_; }
 
   // Moves (not copies) metadata from this HloModule to `module`. To be used
-  // in cases like HloModuleGroup::ReplaceModule when metadata should be
-  // transferred out of a module before it's destroyed.
+  // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
     module->metadata_ = std::move(metadata_);
   }

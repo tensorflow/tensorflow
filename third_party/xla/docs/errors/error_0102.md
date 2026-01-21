@@ -1,6 +1,6 @@
 # Error code: 0102
 
-**Category:** Runtime: Program input buffer mismatch
+**Category:** Runtime: Program Input Buffer Mismatch
 
 This error occurs when the XLA runtime detects a mismatch between the size of a
 memory buffer expected by a compiled program and the size of the buffer that is

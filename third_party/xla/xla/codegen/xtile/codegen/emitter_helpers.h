@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
 #include <cstdint>
 #include <string>
@@ -252,4 +252,4 @@ inline mlir::NamedAttribute GetDivisibilityAttr(mlir::ImplicitLocOpBuilder& b) {
 
 }  // namespace xla::xtile
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_

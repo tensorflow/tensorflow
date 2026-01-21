@@ -2,9 +2,9 @@
 
 This page is a list of all error codes emitted by the XLA compiler.
 
--   [E0100](./errors/error_0100.md) - Runtime: Buffer alloaction failure
--   [E0101](./errors/error_0101.md) - Runtime: Program allocation failure
--   [E0102](./errors/error_0102.md) - Runtime: Program input buffer mismatch
+-   [E0100](./errors/error_0100.md) - Runtime: Buffer Allocation Failure
+-   [E0101](./errors/error_0101.md) - Runtime: Program Allocation Failure
+-   [E0102](./errors/error_0102.md) - Runtime: Program Input Buffer Mismatch
 -   [E0200](./errors/error_0200.md) - Runtime: Core Halted Unexpectedly
 -   [E1000](./errors/error_1000.md) - Compile Time: HBM OOM
 -   [E1001](./errors/error_1001.md) - Compile Time: Scoped Vmem OOM
@@ -17,5 +17,5 @@ This page is a list of all error codes emitted by the XLA compiler.
     Access Alignment
 -   [E3000](./errors/error_3000.md) - Compile Time: SparseCore Allocation
     Failure
--   [E3001](./errors/error_3001.md) - SparseCore: No Viable Logical Replica
-    Count
+-   [E3001](./errors/error_3001.md) - Compile Time: SparseCore No Viable Logical
+    Replica Count

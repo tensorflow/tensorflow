@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -147,6 +148,11 @@ class GpuCompiler : public LLVMCompiler {
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
 
+  // Returns the LLVM command line options that we use for compilation.
+  // THey need to be set globally whenever we call into LLVM.
+  virtual std::vector<std::string> GetLLVMCommandLineOptions(
+      const DebugOptions& debug_options) const = 0;
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
@@ -163,17 +169,6 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool);
-
-  // CollectivesScheduleLinearizer enforces a total ordering between collectives
-  // to work around divergence in executables introduced due to auto tuning,
-  // specifically the use of extra scratch space for convolutions. This
-  // function decided whether to apply this pass. If convolutions are present in
-  // the code and we are using "online" autotuning (i.e., not AOT) we need to
-  // use the pass, else we do not need to enable the pass.
-  virtual bool RequiresCollectiveScheduleLinearizer(
-      const HloModule* module, se::StreamExecutor* stream_exec) {
-    return false;
-  }
 
   // Add autotuning passes for convolution and gemm.
   // target_config must outlive the pipeline.
@@ -308,11 +303,6 @@ class GpuCompiler : public LLVMCompiler {
 
   GpuCompiler(const GpuCompiler&) = delete;
   GpuCompiler& operator=(const GpuCompiler&) = delete;
-
-  // Returns the LLVM command line options that we use for compilation.
-  // THey need to be set globally whenever we call into LLVM.
-  virtual std::vector<std::string> GetLLVMCommandLineOptions(
-      const DebugOptions& debug_options) const = 0;
 
   // A MLIR context that can be used by pre-codegen passes. For codegen, we will
   // need to have a context with more dialects registered.

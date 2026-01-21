@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
-#define XLA_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
+#ifndef XLA_SERVICE_GPU_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
+#define XLA_SERVICE_GPU_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -129,4 +129,4 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
 
 }  // namespace xla
 
-#endif  // XLA_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_
+#endif  // XLA_SERVICE_GPU_TESTS_COLLECTIVE_OPS_E2E_TEST_BASE_H_

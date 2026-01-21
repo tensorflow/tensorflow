@@ -129,6 +129,7 @@ cc_library(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_error_util",
+        "//xla/runtime:device_id",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/framework:cancellation",
         "//xla/tsl/lib/monitoring:gauge",

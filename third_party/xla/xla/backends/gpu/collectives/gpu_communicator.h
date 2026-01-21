@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COMMUNICATOR_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -32,9 +33,72 @@ limitations under the License.
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
+
+// Platform-specific handle to the underlying communicator implementation. It
+// allows exporting collective communication primitives created and owned by
+// the XLA runtime to external libraries, for example via FFI calls.
+struct PlatformCommunicatorHandle {
+  void* handle = nullptr;  // will be nullptr if not supported
+};
+
+// A device communicator that corresponds to the host side GPU communicator
+// object (it has same rank in the collective clique and shares underlying
+// resources). A host-side GPU communicator object can instantiate multiple
+// device-side communicators with different properties.
+//
+// Device communicator can be passed to GPU kernels to initiate collective
+// operations (e.g. Send or Recv) directly from the kernel without having to
+// involve host. Memory that can participate in device-initiated collective
+// operations typically has to be registered ahead of time (see
+// `SymmetricMemory` documentation).
+//
+// For CUDA this corresponds to:
+// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html
+class GpuDeviceCommunicator {
+ public:
+  virtual ~GpuDeviceCommunicator() = default;
+
+  // Requirements for constructing a device communicator object.
+  struct Requirements {
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const Requirements& reqs) {
+      absl::Format(&sink, "{lsa_barrier_count: %d}", reqs.lsa_barrier_count);
+    }
+
+    bool operator==(const Requirements& other) const {
+      return other.lsa_barrier_count == lsa_barrier_count;
+    }
+
+    bool operator<(const Requirements& other) const {
+      return other.lsa_barrier_count < lsa_barrier_count;
+    }
+
+    // The number of barriers to allocate for load/store accessible
+    // communication.
+    int32_t lsa_barrier_count = 0;
+  };
+
+  // Returns a platform-spcific handle to the unerdlying communicator object.
+  virtual PlatformCommunicatorHandle platform_comm() const {
+    return PlatformCommunicatorHandle{nullptr};
+  }
+
+  virtual std::string ToString() const = 0;
+
+  // A packed kernel argument type for passing device communicator to device
+  // kernels (byte storage appropriately sized to fit platform-specific handle).
+  using PackedKernelArg = std::array<std::byte, 200>;
+  virtual PackedKernelArg PackKernelArg() const = 0;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const GpuDeviceCommunicator& comm) {
+    absl::Format(&sink, "%s", comm.ToString());
+  }
+};
 
 // GpuCommunicator extends Communicator with synchronous versions of the
 // collective methods.
@@ -46,45 +110,6 @@ class GpuCommunicator : public Communicator {
  public:
   ~GpuCommunicator() override = default;
 
-  // Platform-specific handle to the underlying communicator implementation. It
-  // allows exporting collective communication primitives created and owned by
-  // the XLA runtime to external libraries, for example via FFI calls.
-  struct PlatformCommunicatorHandle {
-    void* handle = nullptr;  // will be nullptr if not supported
-  };
-
-  // Requirements for constructing a device communicator object.
-  struct DeviceCommRequirements {
-    // The number of barriers to allocate for load/store accessible
-    // communication.
-    int32_t lsa_barrier_count = 0;
-  };
-
-  // A device communicator that corresponds to the host side GPU communicator
-  // object (it has same rank in the collective clique and shares underlying
-  // resources). A host-side GPU communicator object can instantiate multiple
-  // device-side communicators with different properties.
-  //
-  // Device communicator can be passed to GPU kernels to initiate collective
-  // operations (e.g. Send or Recv) directly from the kernel without having to
-  // involve host. Memory that can participate in device-initiated collective
-  // operations typically has to be registered ahead of time (see
-  // `SymmetricMemory` documentation).
-  //
-  // For CUDA this corresponds to:
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/deviceapi.html
-  class DeviceComm {
-   public:
-    virtual ~DeviceComm() = default;
-
-    // Returns a platform-spcific handle to the unerdlying communicator object.
-    virtual PlatformCommunicatorHandle platform_comm() const {
-      return PlatformCommunicatorHandle{nullptr};
-    }
-
-    virtual std::string ToString() const = 0;
-  };
-
   // Returns a platform-spcific handle to the unerdlying communicator object.
   virtual PlatformCommunicatorHandle platform_comm() const {
     return PlatformCommunicatorHandle{nullptr};
@@ -94,8 +119,8 @@ class GpuCommunicator : public Communicator {
   virtual bool SupportsDeviceComm() const { return false; }
 
   // Creates a new device communicator linked to *this GPU communicator object.
-  virtual absl::StatusOr<std::unique_ptr<DeviceComm>> CreateDeviceComm(
-      const DeviceCommRequirements& requirements) {
+  virtual absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
+  CreateDeviceComm(const GpuDeviceCommunicator::Requirements& requirements) {
     return Unimplemented("Device communicator is not implementing");
   }
 
@@ -159,5 +184,15 @@ class GpuCommunicator : public Communicator {
 };
 
 }  // namespace xla::gpu
+
+namespace stream_executor {
+template <>
+struct KernelArgPacking<xla::gpu::GpuDeviceCommunicator*> {
+  using Type = xla::gpu::GpuDeviceCommunicator::PackedKernelArg;
+  static Type Pack(xla::gpu::GpuDeviceCommunicator* comm) {
+    return comm->PackKernelArg();
+  }
+};
+}  // namespace stream_executor
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_COMMUNICATOR_H_

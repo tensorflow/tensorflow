@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/collective_ops_e2e_test_base.h"
+#include "xla/service/gpu/tests/collective_ops_e2e_test_base.h"
 
 #include <cstddef>
 #include <cstdint>

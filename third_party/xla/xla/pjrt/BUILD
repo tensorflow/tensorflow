@@ -490,6 +490,7 @@ cc_library(
     hdrs = ["pjrt_compiler.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":pjrt_abi_version",
         ":pjrt_common",
         ":pjrt_device_description",
         ":pjrt_device_dimensions",

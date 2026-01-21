@@ -624,8 +624,7 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
 }
 
 bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
-                         const HloSortInstruction* sort_op,
-                         absl::string_view platform_name) {
+                         const HloSortInstruction* sort_op) {
   VLOG(1) << "Sort instruction: " << sort_op->name();
   if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
     VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
@@ -763,8 +762,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-    if (sort != nullptr &&
-        IsCubCompatibleSort(device_description_, sort, platform_name_)) {
+    if (sort != nullptr && IsCubCompatibleSort(device_description_, sort)) {
       sort_ops.push_back(sort);
     }
   }

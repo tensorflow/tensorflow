@@ -20,7 +20,7 @@ limitations under the License.
 namespace stream_executor {
 namespace rocm {
 
-PLATFORM_DEFINE_ID(kROCmPlatformId);
+PLATFORM_DEFINE_ID(kROCmPlatformId, ROCM);
 
 }  // namespace rocm
 }  // namespace stream_executor

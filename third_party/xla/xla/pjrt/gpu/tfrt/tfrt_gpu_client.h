@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUES_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>

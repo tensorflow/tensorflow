@@ -399,8 +399,8 @@ class HloComputation {
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
-  // Returns a serialized representation of this computation.
-  HloComputationProto ToProto() const;
+  // Serializes this computation to a proto.
+  void ToProto(HloComputationProto* proto) const;
 
   // Creates a computation from the given proto. Arguments:
   //

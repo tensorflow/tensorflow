@@ -2596,7 +2596,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
-  return visitor.changed();
+  return visitor.changed() || workspace_visitor.changed();
 }
 
 }  // anonymous namespace

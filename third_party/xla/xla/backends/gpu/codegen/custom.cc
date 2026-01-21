@@ -134,7 +134,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
                               /*index*/ {});
   }
 
-  auto slice_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](HloInstructionAdaptor node) {
         return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
@@ -324,7 +324,7 @@ absl::Status CollectSliceInfo(
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
 
   bool can_compute_offset_on_host =
-      indvar_idx != std::nullopt && can_compute_indvar_on_host;
+      indvar_idx.has_value() && can_compute_indvar_on_host;
 
   for (auto idx_op : arg_slice_instr->index_operands()) {
     const auto* param = Cast<HloParameterInstruction>(idx_op);
@@ -470,7 +470,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     }
   }
 
-  auto slice_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
@@ -567,7 +567,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   std::unique_ptr<HloModule> init_module, update_module;
   std::optional<int64_t> indvar_idx;
   InlinedModule* inlined_module = nullptr;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
     TF_ASSIGN_OR_RETURN(inlined_module,
@@ -576,7 +576,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -790,7 +790,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   std::unique_ptr<HloModule> init_module, update_module;
   std::optional<int64_t> indvar_idx = std::nullopt;
   InlinedModule* inlined_module = nullptr;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
     TF_ASSIGN_OR_RETURN(inlined_module,
@@ -799,7 +799,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -1109,14 +1109,14 @@ CollectSliceArgumentMetadataForCollectives(
   std::optional<HloInstruction*> while_op =
       GetParentWhileOp(fusion_instr, call_graph);
   std::optional<int64_t> indvar_idx = std::nullopt;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetParentWhileOp is not expected to return nullptr.";
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       slice_data.init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -1422,13 +1422,13 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   // Only reduce-scatter is supported for now.
-  auto maybe_collective =
+  std::optional<HloInstructionAdaptor> maybe_collective =
       HloBfsFindIf(/*roots=*/adaptor.GetRoots(), /*fusion=*/adaptor,
                    /*visit=*/[](HloInstructionAdaptor node) -> bool {
                      return node.opcode() == HloOpcode::kReduceScatter;
                    });
 
-  if (maybe_collective != std::nullopt) {
+  if (maybe_collective.has_value()) {
     const HloReduceScatterInstruction* rs =
         Cast<const HloReduceScatterInstruction>(
             &maybe_collective->instruction());
@@ -1437,10 +1437,10 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
         /*use_global_device_ids=*/rs->use_global_device_ids(),
         /*call_graph=*/call_graph_);
   }
-  auto maybe_custom_call_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  if (maybe_custom_call_adaptor == std::nullopt) {
+  if (!maybe_custom_call_adaptor.has_value()) {
     return absl::InternalError("DynamicSliceFusion requires a CustomCall hero");
   }
 

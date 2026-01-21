@@ -112,6 +112,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/platform.h"
 
 namespace xla {
@@ -221,6 +222,21 @@ TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
       EXPECT_TRUE(inserted) << "Duplicate ids for memory spaces '" << it->second
                             << "' and '" << debug_string << "'";
     }
+  }
+}
+
+TEST(StreamExecutorGpuClientTest, NumaNode) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  ASSERT_GE(client->devices().size(), 1);
+
+  for (auto* device : client->devices()) {
+    const auto it = device->Attributes().find("numa_node");
+    ASSERT_NE(it, device->Attributes().end());
+
+    const int64_t* value = std::get_if<int64_t>(&it->second);
+    ASSERT_NE(value, nullptr);
+    EXPECT_NE(*value, tsl::port::kNUMANoAffinity);
   }
 }
 

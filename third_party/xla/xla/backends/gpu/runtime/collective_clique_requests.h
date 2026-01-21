@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUE_REQUESTS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_CLIQUE_REQUESTS_H_
 
-#include <cstdint>
+#include <cstddef>
+#include <optional>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 
 namespace xla::gpu {
 
 // Collective thunks (including collective FFI calls) can request communicators
-// for various collective clieques. XLA runtime is responsible for collecting
+// for various collective cliques. XLA runtime is responsible for collecting
 // such requests during the prepare stage and acquiring the cliques during the
 // initialize stage.
 class CollectiveCliqueRequests {
@@ -62,12 +65,35 @@ class CollectiveCliqueRequests {
   // to reuse existing communicators when requesting smaller cliques via
   // communicator splitting.
   struct CliqueRequest {
+    size_t id;
     GpuCliqueKey key;
-    int64_t id;
+
+    // Requirements for device communicators. We keep them in a sorted container
+    // to guarantee that all ranks create device communicators in the same
+    // order, otherwise it might lead to deadlocks.
+    absl::btree_set<GpuDeviceCommunicator::Requirements> dev_comms;
+  };
+
+  // An extra set of requirements for the collective clique. When XLA runtime
+  // acquires collective cliques (see `collective_cliques.h`), it will satisfy
+  // all of the requirements, or will return an error.
+  struct CliqueRequirements {
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const CliqueRequirements& reqs) {
+      if (reqs.dev_comm) {
+        absl::Format(&sink, "{dev_comm: %v}", *reqs.dev_comm);
+      } else {
+        absl::Format(&sink, "{dev_comm: n/a}");
+      }
+    }
+
+    // Create a device communicator for the given collective clique.
+    std::optional<GpuDeviceCommunicator::Requirements> dev_comm;
   };
 
   // Adds a clique key to the list of requested cliques.
-  absl::Status RequestClique(const GpuCliqueKey& clique_key);
+  absl::Status RequestClique(const GpuCliqueKey& clique_key,
+                             const CliqueRequirements& requirements = {});
 
   // Returns all requested cliques in undefined order.
   std::vector<GpuCliqueKey> RequestedCliques() const;

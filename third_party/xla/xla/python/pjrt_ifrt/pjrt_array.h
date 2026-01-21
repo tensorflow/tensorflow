@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_ARRAY_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -182,6 +184,12 @@ class PjRtArray final
   absl::StatusOr<ArrayRef> Copy(
       std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
+      ArrayCopySemantics semantics);
+
+  // Copies the `PjRtArray`'s buffer at `index` and returns the copied buffer.
+  // The returned buffer has the given destination device and memory kind.
+  absl::StatusOr<std::shared_ptr<PjRtBuffer>> CopySinglePjRtBuffer(
+      int index, Device* dst_device, std::optional<MemoryKind> dst_memory_kind,
       ArrayCopySemantics semantics);
 
   tsl::Future<> GetReadyFuture() const override;

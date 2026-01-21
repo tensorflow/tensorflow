@@ -57,4 +57,9 @@ std::string NcclSymmetricMemory::ToString() const {
       addr_.opaque(), addr_.size());
 }
 
+NcclSymmetricMemory::PackedKernelArg NcclSymmetricMemory::PackKernelArg()
+    const {
+  return win_;
+}
+
 }  // namespace xla::gpu
