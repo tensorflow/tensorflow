@@ -450,6 +450,50 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
   )")));
 }
 
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule module
+
+      ENTRY main {
+        lhs = f32[1024,512] parameter(0)
+        rhs = f32[64,512] parameter(1)
+        lhs_scale = f32[32,2] parameter(2)
+        rhs_scale = f32[64,512] parameter(3)
+        ROOT dot = f32[1024,64] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={1}
+      }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  auto symbolic_tile =
+      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
+  std::optional<SymbolicTiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
+    0) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_0, ts_2]
+         strides [1, 1]
+         upper bounds [1024, 512]
+    1) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_1, ts_2]
+         strides [2, 1]
+         upper bounds [64, 512]
+    2) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [(tid_0 * ts_0) floordiv 32, (tid_2 * ts_2) floordiv 256]
+         sizes [(tid_0 * ts_0 + ts_0 - 1) floordiv 32 - (tid_0 * ts_0) floordiv 32 + 1, (tid_2 * ts_2 + ts_2 - 1) floordiv 256 - (tid_2 * ts_2) floordiv 256 + 1]
+         strides [1, 1]
+         upper bounds [32, 2]
+    3) (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+      -> offsets [tid_1 * ts_1, tid_2 * ts_2]
+         sizes [ts_1, ts_2]
+         strides [2, 1]
+         upper bounds [64, 512]
+  )")));
+}
+
 TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m

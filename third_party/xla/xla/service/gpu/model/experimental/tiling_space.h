@@ -139,7 +139,7 @@ class TilingSpace {
                    const HloInstruction* rt_var, int64_t upper_bound);
 
  private:
-  void ProcessDot(const HloInstruction& hlo);
+  void ProcessDotLike(const HloInstruction& hlo);
   void ProcessReduce(const HloInstruction& hlo);
   void ProcessDynamicSlice(const HloInstruction& hlo);
   void ProcessInstruction(const HloInstruction& hlo);

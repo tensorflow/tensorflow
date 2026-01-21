@@ -289,10 +289,10 @@ SymbolicTiles PropagateTileToOutputForTransposeOp(
 }
 
 SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
-                                           const HloDotInstruction& dot,
+                                           const HloInstruction& hlo,
                                            const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
   absl::Span<const int64_t> lhs_contracting_dims(
       dim_numbers.lhs_contracting_dimensions());
   absl::Span<const int64_t> rhs_contracting_dims =
@@ -301,11 +301,11 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
   absl::Span<const int64_t> lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
   absl::Span<const int64_t> rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
 
-  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& lhs_shape = hlo.operand(0)->shape();
   const int64_t lhs_rank = lhs_shape.dimensions().size();
   SmallVector<DimTile> lhs_dim_tiles(lhs_rank);
 
-  const Shape& rhs_shape = dot.operand(1)->shape();
+  const Shape& rhs_shape = hlo.operand(1)->shape();
   const int64_t rhs_rank = rhs_shape.dimensions().size();
   SmallVector<DimTile> rhs_dim_tiles(rhs_rank);
 
@@ -347,11 +347,11 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
        llvm::enumerate(llvm::zip(lhs_contracting_dims, rhs_contracting_dims))) {
     auto [lhs_contracting_dim, rhs_contracting_dim] = contracting_dims;
     const TilingSpace::DimensionInfo& contracting_dim_info =
-        tiling_space.GetDimensionInfo(dot, output_dim_id++);
+        tiling_space.GetDimensionInfo(hlo, output_dim_id++);
     CHECK(contracting_dim_info.type ==
           TilingSpace::DimensionSemantics::kSequential)
         << "Expected a sequential dimension info for contracting dimension "
-        << lhs_contracting_dim << " in dot op " << dot.ToString();
+        << lhs_contracting_dim << " in dot (like) op " << hlo.ToString();
     lhs_dim_tiles[lhs_contracting_dim] = rhs_dim_tiles[rhs_contracting_dim] =
         GetDefaultDimTile(contracting_dim_info.id,
                           contracting_dim_info.dimension_size, ctx);
@@ -359,6 +359,54 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
   return SymbolicTiles{
       SymbolicTile{output_tile.tiling_space(), std::move(lhs_dim_tiles)},
       SymbolicTile{output_tile.tiling_space(), std::move(rhs_dim_tiles)}};
+}
+
+// Helper function for PropagateTileToInputForScaledDotOp to compute the
+// scale tile from the operand tile.
+SymbolicTile ComputeTileForScale(const Shape& scale_shape,
+                                 const Shape& operand_shape,
+                                 const SymbolicTile& operand_tile,
+                                 MLIRContext* ctx) {
+  SmallVector<DimTile> scale_dim_tiles;
+  scale_dim_tiles.reserve(scale_shape.dimensions().size());
+  for (auto [dim, operand_dim_tile] :
+       llvm::enumerate(operand_tile.dim_tiles())) {
+    const int64_t scale_dim_size = scale_shape.dimensions(dim);
+    const int64_t operand_dim_size = operand_shape.dimensions(dim);
+    if (scale_dim_size == operand_dim_size) {
+      scale_dim_tiles.push_back(operand_dim_tile);
+      continue;
+    }
+
+    const int64_t block_size = operand_dim_size / scale_dim_size;
+    CHECK_GT(block_size, 1);
+    auto max_index = (operand_dim_tile.offset +
+                      (operand_dim_tile.size - 1) * operand_dim_tile.stride)
+                         .floorDiv(block_size);
+    auto min_index = operand_dim_tile.offset.floorDiv(block_size);
+    scale_dim_tiles.push_back(
+        DimTile{operand_dim_tile.offset.floorDiv(block_size),
+                max_index - min_index + 1, mlir::getAffineConstantExpr(1, ctx),
+                operand_dim_tile.upper_bound.floorDiv(block_size)});
+  }
+  return SymbolicTile{operand_tile.tiling_space(), std::move(scale_dim_tiles)};
+}
+
+SymbolicTiles PropagateTileToInputForScaledDotOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const SymbolicTile& output_tile) {
+  SymbolicTiles operand_tiles =
+      PropagateTileToInputForDotOp(tiling_space, hlo, output_tile);
+
+  auto lhs_scale_tile =
+      ComputeTileForScale(hlo.operand(2)->shape(), hlo.operand(0)->shape(),
+                          operand_tiles[0], output_tile.mlir_context());
+  auto rhs_scale_tile =
+      ComputeTileForScale(hlo.operand(3)->shape(), hlo.operand(1)->shape(),
+                          operand_tiles[1], output_tile.mlir_context());
+
+  return {std::move(operand_tiles[0]), std::move(operand_tiles[1]),
+          std::move(lhs_scale_tile), std::move(rhs_scale_tile)};
 }
 
 SymbolicTiles PropagateTileToInputForReduceOp(
@@ -448,8 +496,10 @@ std::optional<SymbolicTiles> PropagateTileToInput(
         tiling_space, *Cast<HloDynamicSliceInstruction>(&hlo), output_tile);
   }
   if (hlo.opcode() == HloOpcode::kDot) {
-    return PropagateTileToInputForDotOp(
-        tiling_space, *Cast<HloDotInstruction>(&hlo), output_tile);
+    return PropagateTileToInputForDotOp(tiling_space, hlo, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kScaledDot) {
+    return PropagateTileToInputForScaledDotOp(tiling_space, hlo, output_tile);
   }
   if (hlo.opcode() == HloOpcode::kPad) {
     const HloPadInstruction& pad = *Cast<HloPadInstruction>(&hlo);
