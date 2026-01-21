@@ -327,21 +327,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "hlo_module_group",
-    srcs = ["hlo_module_group.cc"],
-    hdrs = ["hlo_module_group.h"],
-    deps = [
-        ":hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "hlo_instruction_utils",
     srcs = ["hlo_instruction_utils.cc"],
     hdrs = ["hlo_instruction_utils.h"],

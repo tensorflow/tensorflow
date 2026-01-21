@@ -1951,20 +1951,6 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "hlo_module_group_test",
-    srcs = ["hlo_module_group_test.cc"],
-    deps = [
-        ":hlo_proto_cc",
-        "//xla/hlo/ir:hlo_module_group",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:test",
-        "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-    ],
-)
-
 cc_library(
     name = "hlo_module_util",
     srcs = ["hlo_module_util.cc"],
