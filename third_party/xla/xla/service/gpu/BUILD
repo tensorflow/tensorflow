@@ -2160,7 +2160,6 @@ cc_library(
     ],
     deps = [
         ":alias_info",
-        ":cublas_cudnn",
         ":cublas_padding_requirements",
         ":gpu_compiler",
         ":ir_emission_utils",
@@ -2421,7 +2420,6 @@ cc_library(
     ],
     deps = [
         ":alias_info",
-        ":cublas_cudnn",
         ":cublas_padding_requirements",
         ":gpu_compiler",
         ":target_constants",

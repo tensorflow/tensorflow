@@ -1422,6 +1422,30 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
 
   return absl::OkStatus();
 }
+
+// CollectivesScheduleLinearizer enforces a total ordering between collectives
+// to work around divergence in executables introduced due to auto tuning,
+// specifically the use of extra scratch space for convolutions. This
+// function decides whether to apply this pass. If convolutions are present in
+// the code and we are using "online" autotuning (i.e., not AOT) we need to
+// use the pass, else we do not need to enable the pass.
+bool RequiresCollectiveScheduleLinearizer(const HloModule* module,
+                                          se::StreamExecutor* stream_exec) {
+  if (stream_exec == nullptr ||
+      module->config().debug_options().xla_gpu_autotune_level() == 0) {
+    return false;
+  }
+  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
+    for (const HloInstruction* inst : comp->instructions()) {
+      if (IsCustomCallToDnnConvolution(*inst)) {
+        return true;
+      }
+    }
+  }
+  // No convolution auto-tuning candidates found in the module.
+  return false;
+}
+
 }  // namespace
 
 AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(

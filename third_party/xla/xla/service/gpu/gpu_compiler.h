@@ -164,17 +164,6 @@ class GpuCompiler : public LLVMCompiler {
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool);
 
-  // CollectivesScheduleLinearizer enforces a total ordering between collectives
-  // to work around divergence in executables introduced due to auto tuning,
-  // specifically the use of extra scratch space for convolutions. This
-  // function decided whether to apply this pass. If convolutions are present in
-  // the code and we are using "online" autotuning (i.e., not AOT) we need to
-  // use the pass, else we do not need to enable the pass.
-  virtual bool RequiresCollectiveScheduleLinearizer(
-      const HloModule* module, se::StreamExecutor* stream_exec) {
-    return false;
-  }
-
   // Add autotuning passes for convolution and gemm.
   // target_config must outlive the pipeline.
   virtual absl::Status AddConvAndGemmAutotuningPass(
