@@ -1159,6 +1159,16 @@ cc_library(
 )
 
 cc_library(
+    name = "executable_run_options_offset",
+    srcs = ["executable_run_options_offset.cc"],
+    hdrs = ["executable_run_options_offset.h"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:executable_run_options",
+    ],
+)
+
+cc_library(
     name = "runtime_conv3d",
     srcs = ["runtime_conv3d.cc"],
     hdrs = ["runtime_conv3d.h"],

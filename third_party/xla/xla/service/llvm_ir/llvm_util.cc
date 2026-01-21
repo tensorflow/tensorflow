@@ -80,10 +80,14 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
+#include "xla/service/cpu/executable_run_options_offset.h"
+
 namespace xla {
 namespace llvm_ir {
 
 namespace {
+
+constexpr llvm::StringLiteral kBdimValueName("bdim_value");
 
 // This works for most llvm / mlir types. This also accepts a const pointer to
 // objects which have a const print() method.
@@ -818,13 +822,47 @@ llvm::Value* GetBatchDimByName(llvm::IRBuilderBase* b, int64_t multiplier) {
   llvm::Value* loadedValue = nullptr;
   llvm::Value* bdim_scaled = nullptr;
   for (auto& inst : function->getEntryBlock()) {
-    if (inst.getName() == "bdim_value") {
+    if (inst.getName() == kBdimValueName) {
       loadedValue = &inst;
     }
   }
   if (!loadedValue) {
-    llvm::errs() << "Could not find the %bdim_value variable. \n";
-  } else if (multiplier < 1) {
+    // if missing, try to materialize it by loading from run_options+offset
+    llvm::Value* run_options = nullptr;
+    for (auto& arg : function->args()) {
+      if (arg.getName() == "run_options") {
+        run_options = &arg;
+        break;
+      }
+    }
+
+    if (!run_options) {
+      return nullptr;
+    }
+    // Materialize %bdim_value by loading ExecutableRunOptions::batch_size_ from
+    // the 'run_options' function argument using a known byte offset:
+    //
+    // 1) Bitcast 'run_options' to i8* to do byte-address arithmetic.
+    // 2) GEP by 'off' bytes to reach the batch_size field inside the object.
+    // 3) Bitcast resulting i8* to i64* and load it.
+    const int64_t off =
+        static_cast<int64_t>(xla::cpu::ExecutableRunOptionsBatchSizeOffset());
+
+    // Insert at the entry block.
+    llvm::IRBuilder<> entry_builder(
+        &function->getEntryBlock(),
+        function->getEntryBlock().getFirstInsertionPt());
+    llvm::Type* i8 = entry_builder.getInt8Ty();
+    llvm::Value* ro_i8 = entry_builder.CreateBitCast(
+        run_options, llvm::PointerType::getUnqual(i8), "run_options_i8");
+    llvm::Value* off_c = llvm::ConstantInt::get(i64Type, off);
+    llvm::Value* bdim_ptr_i8 =
+        entry_builder.CreateInBoundsGEP(i8, ro_i8, off_c, "bdim_ptr_i8");
+    llvm::Value* bdim_ptr = entry_builder.CreateBitCast(
+        bdim_ptr_i8, llvm::PointerType::getUnqual(i64Type), "bdim_ptr");
+    loadedValue = entry_builder.CreateLoad(i64Type, bdim_ptr, kBdimValueName);
+  }
+  if (multiplier < 1) {
     llvm::errs() << "Multiplier is less than 1, this should not happen.\n";
   } else if (multiplier == 1) {
     bdim_scaled = loadedValue;
