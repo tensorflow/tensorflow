@@ -1671,7 +1671,22 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                   return;
                 }
               }
-
+              // Fast path for token shape, no need to copy in this case.
+              // Already checked that the shape is compatible with the literal.
+              if (shape.element_type() == TOKEN) {
+                // A sanity check to ensure token buffers have no data.
+                if (raw_buffer->GetOnDeviceSizeInBytes() != 0) {
+                  notify_all(absl::InternalError(absl::StrFormat(
+                      "Token buffer should have zero bytes, but has size %d.",
+                      raw_buffer->GetOnDeviceSizeInBytes())));
+                  return;
+                }
+                if (device_promise) {
+                  device_promise->SetReady();
+                }
+                promise.Set();
+                return;
+              }
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
                                              literal, std::move(shape));
             };
