@@ -43,6 +43,21 @@ limitations under the License.
 
 namespace xla {
 
+const IotaReplicaGroupList*
+CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
+  if (version() != CollectiveDeviceListVersion::kIota) {
+    return nullptr;
+  }
+  if (typeid(*this) == typeid(IotaReplicaGroupList)) {
+    return static_cast<const IotaReplicaGroupList*>(this);
+  }
+  if (typeid(*this) == typeid(CollectiveDeviceList)) {
+    return &*static_cast<const CollectiveDeviceList&>(*this)
+                 .iota_replica_group_list();
+  }
+  return nullptr;
+}
+
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups) {
   std::vector<std::string> replica_group_str;
