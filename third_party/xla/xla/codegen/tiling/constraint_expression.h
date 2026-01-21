@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -46,11 +46,11 @@ namespace xla {
 class ConstraintExpression {
  public:
   struct Constraint {
-    mlir::AffineExpr expr;
+    SymbolicExpr expr;
     Interval interval;
 
     bool operator==(const Constraint& other) const {
-      CHECK_EQ(expr.getContext(), other.expr.getContext())
+      CHECK_EQ(expr.GetContext(), other.expr.GetContext())
           << "AffineExpr should be from the same MLIRContext.";
       return expr == other.expr && interval == other.interval;
     }
@@ -129,7 +129,7 @@ class ConstraintExpression {
 
   template <typename H>
   friend H AbslHashValue(H h, const Constraint& constraint) {
-    llvm::hash_code expr_hash = mlir::hash_value(constraint.expr);
+    llvm::hash_code expr_hash = hash_value(constraint.expr);
     return H::combine(std::move(h), static_cast<size_t>(expr_hash),
                       constraint.interval);
   }

@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
@@ -44,7 +45,7 @@ class ConstraintExpressionTest : public IndexingTestBase {
  public:
   ConstraintExpression::Constraint GetConstraint(const std::string& string_expr,
                                                  int64_t lower, int64_t upper) {
-    return {ParseAffineExpr(string_expr, &mlir_context_),
+    return {ParseSymbolicExpr(string_expr, &mlir_context_),
             Interval{lower, upper}};
   }
   ConstraintExpression Simplify(ConstraintExpression constraints) {
@@ -60,10 +61,10 @@ TEST_F(ConstraintExpressionTest, CheckAlwaysSatisfied) {
   EXPECT_THAT(always_satisfied,
               MatchConstraintExpressionString("always satisfied"));
   EXPECT_TRUE(always_satisfied.IsSatisfiedBy({}));
-  EXPECT_THAT(always_satisfied || GetConstraint("d0", 0, 0),
+  EXPECT_THAT(always_satisfied || GetConstraint("v0", 0, 0),
               MatchConstraintExpressionString("always satisfied"));
-  EXPECT_THAT(always_satisfied && GetConstraint("d0", 0, 0),
-              MatchConstraintExpressionString("d0 in [0, 0]"));
+  EXPECT_THAT(always_satisfied && GetConstraint("v0", 0, 0),
+              MatchConstraintExpressionString("v0 in [0, 0]"));
   EXPECT_THAT(always_satisfied || ConstraintExpression::GetUnsatisfiable(),
               MatchConstraintExpressionString("always satisfied"));
   EXPECT_THAT(ConstraintExpression::GetUnsatisfiable() || always_satisfied,
@@ -78,9 +79,9 @@ TEST_F(ConstraintExpressionTest, CheckUnsatisfiable) {
   EXPECT_FALSE(unsatisfiable.IsAlwaysSatisfied());
   EXPECT_THAT(unsatisfiable, MatchConstraintExpressionString("unsatisfiable"));
   EXPECT_FALSE(unsatisfiable.IsSatisfiedBy({}));
-  EXPECT_THAT(unsatisfiable || GetConstraint("d0", 0, 0),
-              MatchConstraintExpressionString("d0 in [0, 0]"));
-  EXPECT_THAT(unsatisfiable && GetConstraint("d0", 0, 0),
+  EXPECT_THAT(unsatisfiable || GetConstraint("v0", 0, 0),
+              MatchConstraintExpressionString("v0 in [0, 0]"));
+  EXPECT_THAT(unsatisfiable && GetConstraint("v0", 0, 0),
               MatchConstraintExpressionString("unsatisfiable"));
   EXPECT_THAT(unsatisfiable && ConstraintExpression::GetAlwaysSatisfied(),
               MatchConstraintExpressionString("unsatisfiable"));
@@ -92,16 +93,16 @@ TEST_F(ConstraintExpressionTest, CheckUnsatisfiable) {
 
 TEST_F(ConstraintExpressionTest, PrettyPrintingTest) {
   ConstraintExpression constraints =
-      GetConstraint("d2", 5, 6) ||
-      (GetConstraint("d1", 3, 4) && GetConstraint("d0", 1, 2));
+      GetConstraint("v2", 5, 6) ||
+      (GetConstraint("v1", 3, 4) && GetConstraint("v0", 1, 2));
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [1, 2] && d1 in [3, 4] || d2 in [5, 6]"));
+                               "v0 in [1, 2] && v1 in [3, 4] || v2 in [5, 6]"));
 }
 
 TEST_F(ConstraintExpressionTest, PrintUnsatisfiedConstraints) {
-  Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
-  Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
-  Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
+  Constraint c0 = GetConstraint("v0 mod 6", 0, 0);
+  Constraint c1 = GetConstraint("v1 mod 8", 0, 0);
+  Constraint c2 = GetConstraint("v0 mod 13", 0, 0);
   ConstraintExpression constraints = (c0 && c1) || (c1 && c2);
 
   // (c0 && c1) is satisfied.
@@ -111,9 +112,9 @@ TEST_F(ConstraintExpressionTest, PrintUnsatisfiedConstraints) {
   constraints.PrintUnsatisfiedConstraints(lhs_satisfied, ss);
 
   EXPECT_THAT(ss.str(), HasSubstr("Unsatisfied conjunction: #1"));
-  EXPECT_THAT(ss.str(), HasSubstr("d0 mod 13 in [0, 0]. Value: 6"));
-  EXPECT_THAT(ss.str(), Not(HasSubstr("d1 mod 8 in [0, 0]")));
-  EXPECT_THAT(ss.str(), Not(HasSubstr("d0 mod 6 in [0, 0]")));
+  EXPECT_THAT(ss.str(), HasSubstr("(v0 mod 13) in [0, 0]. Value: 6"));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("(v1 mod 8) in [0, 0]")));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("(v0 mod 6) in [0, 0]")));
 
   // (c1 && c2) is satisfied.
   std::vector<int64_t> rhs_satisfied({13, 8});
@@ -121,58 +122,58 @@ TEST_F(ConstraintExpressionTest, PrintUnsatisfiedConstraints) {
   ss.str("");
   constraints.PrintUnsatisfiedConstraints(rhs_satisfied, ss);
   EXPECT_THAT(ss.str(), HasSubstr("Unsatisfied conjunction: #0"));
-  EXPECT_THAT(ss.str(), HasSubstr("d0 mod 6 in [0, 0]. Value: 1"));
-  EXPECT_THAT(ss.str(), Not(HasSubstr("d0 mod 13 in [0, 0]")));
-  EXPECT_THAT(ss.str(), Not(HasSubstr("d1 mod 8 in [0, 0]")));
+  EXPECT_THAT(ss.str(), HasSubstr("(v0 mod 6) in [0, 0]. Value: 1"));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("(v0 mod 13) in [0, 0]")));
+  EXPECT_THAT(ss.str(), Not(HasSubstr("(v1 mod 8) in [0, 0]")));
 }
 
 TEST_F(ConstraintExpressionTest,
        ConjunctionOfConstraintsOnTheSameExpressionAreIntersected) {
-  ConstraintExpression constraints{GetConstraint("d0", 0, 5)};
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [0, 5]"));
+  ConstraintExpression constraints{GetConstraint("v0", 0, 5)};
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("v0 in [0, 5]"));
 
   // Constraints are intersected.
-  constraints = constraints && GetConstraint("d0", 3, 6);
-  EXPECT_THAT(constraints, MatchConstraintExpressionString("d0 in [3, 5]"));
+  constraints = constraints && GetConstraint("v0", 3, 6);
+  EXPECT_THAT(constraints, MatchConstraintExpressionString("v0 in [3, 5]"));
 
   // Empty intersection results in unsatisfiability.
-  constraints = constraints && GetConstraint("d0", 7, 8);
+  constraints = constraints && GetConstraint("v0", 7, 8);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(
     ConstraintExpressionTest,
     CanSuccessfullyPerformConjunctionOfConstraintExpressionWithConjointConstraints) {  // NOLINT(whitespace/line_length)
-  ConstraintExpression constraints = GetConstraint("d0", 0, 5) &&
-                                     GetConstraint("d1", 0, 5) &&
-                                     GetConstraint("d2", 0, 5);
+  ConstraintExpression constraints = GetConstraint("v0", 0, 5) &&
+                                     GetConstraint("v1", 0, 5) &&
+                                     GetConstraint("v2", 0, 5);
   // Constraints can be merged without trouble, and hence the constraint
   // expression is satisfiable.
   EXPECT_TRUE(constraints.is_satisfiable());
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 5] && d1 in [0, 5] && d2 in [0, 5]"));
+                               "v0 in [0, 5] && v1 in [0, 5] && v2 in [0, 5]"));
 }
 
 TEST_F(
     ConstraintExpressionTest,
     CorrectlyEliminatesConjunctionFromDisjunctionWhenItBecomesUnsatisfiable) {
   ConstraintExpression constraints =
-      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
+      GetConstraint("v0", 0, 5) || GetConstraint("v1", 0, 5);
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [0, 5] || d1 in [0, 5]"));
+              MatchConstraintExpressionString("v0 in [0, 5] || v1 in [0, 5]"));
 
   // `conjunction_1` && `conjunction_3` is an unsatisfiable constraint. Taking
   // the conjunction of the existing constraint expression with
   // `conjunction_3` should therefore evict the unsatisfiable intersection of
   // `conjunction_1` and `conjunction_3` from the disjoint expression.
-  constraints = constraints && GetConstraint("d0", 6, 6);
+  constraints = constraints && GetConstraint("v0", 6, 6);
 
   EXPECT_THAT(constraints,
-              MatchConstraintExpressionString("d0 in [6, 6] && d1 in [0, 5]"));
+              MatchConstraintExpressionString("v0 in [6, 6] && v1 in [0, 5]"));
 
   // But becomes unsatisfiable if we eliminate the last remaining constraint
   // by constructing another unsatisfiable conjunction.
-  constraints = constraints && GetConstraint("d0", 7, 7);
+  constraints = constraints && GetConstraint("v0", 7, 7);
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
@@ -180,11 +181,11 @@ TEST_F(
     ConstraintExpressionTest,
     CanSuccessfullyPerformDisjunctionOfConstraintExpressionWithConjointConstraints) {  // NOLINT(whitespace/line_length)
   ConstraintExpression constraints =
-      GetConstraint("d0", 0, 5) && GetConstraint("d1", 0, 5);
-  constraints = constraints || GetConstraint("d2", 0, 5);
+      GetConstraint("v0", 0, 5) && GetConstraint("v1", 0, 5);
+  constraints = constraints || GetConstraint("v2", 0, 5);
   EXPECT_TRUE(constraints.is_satisfiable());
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "d0 in [0, 5] && d1 in [0, 5] || d2 in [0, 5]"));
+                               "v0 in [0, 5] && v1 in [0, 5] || v2 in [0, 5]"));
 }
 
 TEST_F(
@@ -193,13 +194,13 @@ TEST_F(
   // Construct the first `ConstraintExpression` to be of the form
   //   a || b.
   ConstraintExpression constraints_1 =
-      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
+      GetConstraint("v0", 0, 5) || GetConstraint("v1", 0, 5);
 
   // Construct the second `ConstraintExpression` to be of the form
   //   c || d || e.
-  ConstraintExpression constraints_2 = GetConstraint("d2", 0, 5) ||
-                                       GetConstraint("d3", 0, 5) ||
-                                       GetConstraint("d4", 0, 5);
+  ConstraintExpression constraints_2 = GetConstraint("v2", 0, 5) ||
+                                       GetConstraint("v3", 0, 5) ||
+                                       GetConstraint("v4", 0, 5);
 
   // Taking the conjunction of the two `ConstraintExpression`s should result
   // in a `ConstraintExpression` of the form
@@ -213,9 +214,9 @@ TEST_F(
   EXPECT_THAT(
       result_constraint_expression,
       MatchConstraintExpressionString(
-          "d0 in [0, 5] && d2 in [0, 5] || d0 in [0, 5] && d3 in [0, 5] || "
-          "d0 in [0, 5] && d4 in [0, 5] || d1 in [0, 5] && d2 in [0, 5] || "
-          "d1 in [0, 5] && d3 in [0, 5] || d1 in [0, 5] && d4 in [0, 5]"));
+          "v0 in [0, 5] && v2 in [0, 5] || v0 in [0, 5] && v3 in [0, 5] || "
+          "v0 in [0, 5] && v4 in [0, 5] || v1 in [0, 5] && v2 in [0, 5] || "
+          "v1 in [0, 5] && v3 in [0, 5] || v1 in [0, 5] && v4 in [0, 5]"));
 
   // Lastly, make sure that the conjunction of an empty `ConstraintExpression`
   // with a non-empty one results in passing the non-empty one through, on
@@ -224,10 +225,10 @@ TEST_F(
       ConstraintExpression::GetAlwaysSatisfied();
   EXPECT_THAT(always_satisfied && constraints_2,
               MatchConstraintExpressionString(
-                  "d2 in [0, 5] || d3 in [0, 5] || d4 in [0, 5]"));
+                  "v2 in [0, 5] || v3 in [0, 5] || v4 in [0, 5]"));
   EXPECT_THAT(constraints_2 && always_satisfied,
               MatchConstraintExpressionString(
-                  "d2 in [0, 5] || d3 in [0, 5] || d4 in [0, 5]"));
+                  "v2 in [0, 5] || v3 in [0, 5] || v4 in [0, 5]"));
 }
 
 TEST_F(
@@ -236,13 +237,13 @@ TEST_F(
   // Construct the first `ConstraintExpression` to be of the form
   //   a || b.
   ConstraintExpression constraints_1 =
-      GetConstraint("d0", 0, 5) || GetConstraint("d1", 0, 5);
+      GetConstraint("v0", 0, 5) || GetConstraint("v1", 0, 5);
 
   // Construct the second `ConstraintExpression` to be of the form
   //   c || d || e.
-  ConstraintExpression constraints_2 = GetConstraint("d2", 0, 5) ||
-                                       GetConstraint("d3", 0, 5) ||
-                                       GetConstraint("d4", 0, 5);
+  ConstraintExpression constraints_2 = GetConstraint("v2", 0, 5) ||
+                                       GetConstraint("v3", 0, 5) ||
+                                       GetConstraint("v4", 0, 5);
 
   // Taking the disjunction of the two `ConstraintExpression`s should result
   // in a `ConstraintExpression` of the form
@@ -255,13 +256,13 @@ TEST_F(
   // above.
   EXPECT_THAT(result_constraint_expression,
               MatchConstraintExpressionString(
-                  "d0 in [0, 5] || d1 in [0, 5] || d2 in [0, 5] || "
-                  "d3 in [0, 5] || d4 in [0, 5]"));
+                  "v0 in [0, 5] || v1 in [0, 5] || v2 in [0, 5] || "
+                  "v3 in [0, 5] || v4 in [0, 5]"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAlwaysSatisfiedContraintExpression) {
-  ConstraintExpression constraints = GetConstraint("d0", 0, 1) ||
+  ConstraintExpression constraints = GetConstraint("v0", 0, 1) ||
                                      GetConstraint("25", 0, 100) ||
                                      GetConstraint("1", 1, 1);
   constraints.Simplify();
@@ -270,42 +271,42 @@ TEST_F(ConstraintExpressionTest,
 
 TEST_F(ConstraintExpressionTest, CanSimplifyUnsatisfiableContraintExpression) {
   ConstraintExpression constraints =
-      GetConstraint("d0", 0, -1) || GetConstraint("1", 2, 3);
+      GetConstraint("v0", 0, -1) || GetConstraint("1", 2, 3);
   constraints.Simplify();
   EXPECT_THAT(constraints, MatchConstraintExpressionString("unsatisfiable"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAwayAlwaysSatisfiedPartOfConjunction) {
-  EXPECT_THAT(Simplify(GetConstraint("d0", 0, 1) && GetConstraint("1", 1, 1) &&
-                       GetConstraint("d1", 0, 1) && GetConstraint("2", 2, 3)),
-              MatchConstraintExpressionString("d0 in [0, 1] && d1 in [0, 1]"));
+  EXPECT_THAT(Simplify(GetConstraint("v0", 0, 1) && GetConstraint("1", 1, 1) &&
+                       GetConstraint("v1", 0, 1) && GetConstraint("2", 2, 3)),
+              MatchConstraintExpressionString("v0 in [0, 1] && v1 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest,
        CanSimplifyAwayUnsatisfiablePartOfDisjunction) {
-  EXPECT_THAT(Simplify(GetConstraint("d0", 0, 1) ||
-                       (GetConstraint("d1", 0, 1) && GetConstraint("1", 0, 0) &&
-                        GetConstraint("d2", 0, 1))),
-              MatchConstraintExpressionString("d0 in [0, 1]"));
+  EXPECT_THAT(Simplify(GetConstraint("v0", 0, 1) ||
+                       (GetConstraint("v1", 0, 1) && GetConstraint("1", 0, 0) &&
+                        GetConstraint("v2", 0, 1))),
+              MatchConstraintExpressionString("v0 in [0, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
-  Constraint c0 = GetConstraint("d0", 0, 0);
-  Constraint c1 = GetConstraint("d1", 1, 1);
-  // We could simplify those contraints even further to `d0 in [0, 0]` by
+  Constraint c0 = GetConstraint("v0", 0, 0);
+  Constraint c1 = GetConstraint("v1", 1, 1);
+  // We could simplify those contraints even further to `v0 in [0, 0]` by
   // checking that one conjunction is a subset of the other, but we don't do
   // that yet.
   EXPECT_THAT(
       Simplify((c0 && c1) || (c1 && c0) || c0 || (c1 && c0) || (c0 && c1)),
       MatchConstraintExpressionString(
-          "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
+          "v0 in [0, 0] || v0 in [0, 0] && v1 in [1, 1]"));
 }
 
 TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
-  Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
-  Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
-  Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
+  Constraint c0 = GetConstraint("v0 mod 6", 0, 0);
+  Constraint c1 = GetConstraint("v1 mod 8", 0, 0);
+  Constraint c2 = GetConstraint("v0 mod 13", 0, 0);
   ConstraintExpression constraints = (c0 && c1) || (c1 && c2);
 
   // Parameters {6, 8} satisfy these constraints.

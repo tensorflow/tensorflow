@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -139,29 +138,6 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     indexing.indexing_maps[output_id] = operand_indexing_maps;
   }
   return indexing;
-}
-
-AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         mlir::MLIRContext* mlir_context) {
-  std::string full_affine_map_string =
-      absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, mlir_context))
-      .getValue();
-}
-
-// Since MLIR does not have AffineExprAttr, we construct an AffineMap and then
-// retrieve its first result.
-AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                           mlir::MLIRContext* mlir_context) {
-  std::string full_affine_map_string = absl::StrCat(
-      "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
-      "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
-      serialized_affine_expr, ")>");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, mlir_context))
-      .getValue()
-      .getResult(0);
 }
 
 bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs) {
