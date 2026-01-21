@@ -1611,6 +1611,35 @@ TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
 )");
 }
 
+TEST_F(GemmRewriteTest, RewriterReportsChangeWhenAddingWorkspace) {
+  const char* hlo_text = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
+  ROOT gemm = f32[2,2] custom-call(p0, p1),
+      custom_call_target="__cublas$gemm",
+      backend_config="{\"gemm_backend_config\":{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}}"
+}
+)";
+
+  auto module_status = ParseAndReturnVerifiedModule(hlo_text);
+  ASSERT_TRUE(module_status.ok());
+  auto module = std::move(module_status.value());
+  GemmRewriter pass(se::CudaComputeCapability{},
+                    stream_executor::SemanticVersion{0, 0, 0});
+  auto changed_status = pass.Run(module.get());
+  ASSERT_TRUE(changed_status.ok());
+  EXPECT_TRUE(changed_status.value());
+
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+    // CHECK: %[[CC:.*]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call
+    // CHECK: ROOT %{{.*}} = f32[2,2]{1,0} get-tuple-element(%[[CC]]), index=0
+  )")
+                  .value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
