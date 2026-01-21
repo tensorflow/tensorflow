@@ -1296,6 +1296,12 @@ TEST(HloShardingUtilTest, TileShape) {
             ShapeUtil::MakeTupleShape({expected_shape_0, expected_shape_1}));
 }
 
+TEST(HloShardingUtilTest, TileShapeWithUnreducedSharding) {
+  HloSharding sharding = HloSharding::Unreduced();
+  Shape shape = ShapeUtil::MakeShape(F32, {6, 6});
+  EXPECT_EQ(hlo_sharding_util::TileShape(sharding, shape), shape);
+}
+
 TEST(HloShardingUtilTest, UntileShape) {
   HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
   Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});

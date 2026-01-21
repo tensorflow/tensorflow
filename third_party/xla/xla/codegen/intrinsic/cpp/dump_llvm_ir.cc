@@ -16,34 +16,21 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
-#include "xla/codegen/intrinsic/cpp/tanh_ll.h"
+#include "xla/codegen/intrinsic/cpp/eigen_unary_ll.h"
 
-namespace xla {
-namespace codegen {
-using ::testing::ContainsRegex;
+int main(int argc, char** argv) {
+  const std::string& bitcode_view = llvm_ir::kEigenUnaryLlIr;
 
-namespace {
-
-TEST(TanhTest, FloatTanhVectorized) {
   llvm::LLVMContext context;
-  std::unique_ptr<llvm::Module> module =
-      ParseEmbeddedBitcode(context, llvm_ir::kTanhLlIr);
+  std::unique_ptr<llvm::Module> module = xla::codegen::ParseEmbeddedBitcode(
+      context, bitcode_view, "embedded_bitcode");
 
-  std::string ir;
-  llvm::raw_string_ostream stream(ir);
-  module->print(stream, nullptr);
+  module->print(llvm::outs(), nullptr);
 
-  EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(
-      ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
+  return 0;
 }
-}  // namespace
-}  // namespace codegen
-}  // namespace xla

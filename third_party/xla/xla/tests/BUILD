@@ -2322,16 +2322,19 @@ xla_test(
 xla_test(
     name = "token_hlo_test",
     srcs = ["token_hlo_test.cc"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":literal_test_util",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_util",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
     ],
