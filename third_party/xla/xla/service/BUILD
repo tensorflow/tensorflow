@@ -2237,6 +2237,38 @@ cc_library(
 )
 
 cc_library(
+    name = "scan_expander",
+    srcs = ["scan_expander.cc"],
+    hdrs = ["scan_expander.h"],
+    deps = [
+        ":call_inliner",
+        "//xla:comparison_util",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/transforms/expanders:op_expander_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "scan_expander_test",
+    srcs = ["scan_expander_test.cc"],
+    deps = [
+        ":hlo_module_config",
+        ":scan_expander",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "scatter_determinism_expander",
     srcs = ["scatter_determinism_expander.cc"],
     hdrs = ["scatter_determinism_expander.h"],
