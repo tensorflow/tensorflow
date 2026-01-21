@@ -187,6 +187,13 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
         num_replica_groups_(num_replica_groups),
         num_devices_per_group_(num_devices_per_group) {}
 
+  explicit IotaReplicaGroupList(int64_t num_replica_groups,
+                                int64_t num_devices_per_group,
+                                const IotaTileAssignment& iota_tile_assignment)
+      : iota_tile_assignment_(iota_tile_assignment),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
+
   bool operator==(const IotaReplicaGroupList& other) const {
     return num_replica_groups() == other.num_replica_groups() &&
            num_devices_per_group() == other.num_devices_per_group() &&
