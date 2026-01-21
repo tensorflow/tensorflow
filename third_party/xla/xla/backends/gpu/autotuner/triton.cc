@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -167,6 +168,15 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                       GetSupportedConfigs(instr));
+  // Filter split_k>1 configs. Split_k>1 is not guaranteed to be supported.
+  configs.erase(
+      std::remove_if(configs.begin(), configs.end(),
+                     [](const std::unique_ptr<BackendConfig>& config) {
+                       AutotuneResult::TritonGemmKey triton_config_proto;
+                       config->UnpackTo(&triton_config_proto);
+                       return triton_config_proto.split_k() > 1;
+                     }),
+      configs.end());
   if (configs.empty()) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");

@@ -219,6 +219,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -229,6 +230,7 @@ cc_library(
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_verifier",
         "//xla/service:interpreter_plugin",  # reference backend
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -3461,7 +3463,6 @@ xla_test(
         ":hlo_test_base",
         "//xla:literal_util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service:backend",
         "//xla/service:llvm_compiler",

@@ -1,6 +1,6 @@
 # Error code: 0101
 
-**Category:** Runtime: Program allocation failure
+**Category:** Runtime: Program Allocation Failure
 
 This error indicates that the XLA runtime on a TPU device failed to load a
 compiled XLA program executable into the TPU's HBM.

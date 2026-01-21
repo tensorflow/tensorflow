@@ -92,7 +92,9 @@ class YnnFusionThunk : public Thunk {
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams& params) final;
 
-  bool ExecuteMayBlock() const final { return true; }
+  bool ExecuteMayBlock() const final {
+    return concurrency_.load(std::memory_order_acquire) > 1;
+  }
 
   BufferUses buffer_uses() const final;
 
@@ -148,6 +150,7 @@ class YnnFusionThunk : public Thunk {
       absl::Span<const se::DeviceAddressBase> arguments_buffers);
 
   Options options_;
+  std::atomic<int> concurrency_ = 0;
 
   // A pointer to the HLO instruction that this thunk is associated with. Owned
   // by the `HloModule` associated with the XLA executable.

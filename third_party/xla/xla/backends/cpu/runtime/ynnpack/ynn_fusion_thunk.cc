@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <utility>
 #include <vector>
 
@@ -349,6 +349,23 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   TF_ASSIGN_OR_RETURN(auto executable,
                       ynn_executable_pool_.GetOrCreate(GetYnnThreadpool(params),
                                                        arguments_buffers));
+
+  int concurrency = concurrency_.load(std::memory_order_acquire);
+  if (concurrency == 0) {
+    // This should be done as part of initialization, but we don't have a
+    // runtime to query until after we call `Execute`. Therefore,
+    // `ExecuteMayBlock` will not return the correct value until after at least
+    // the first `Execute` call.
+    size_t concurrency_size = sizeof(concurrency);
+    YNN_RETURN_IF_ERROR(ynn_query_runtime(executable->runtime.get(),
+                                          ynn_runtime_property_concurrency,
+                                          &concurrency, &concurrency_size));
+    concurrency_.store(concurrency, std::memory_order_release);
+    VLOG(3) << absl::StreamFormat("  concurrency=%d", concurrency);
+  }
+
+  // TODO(b/476281894): If there is no concurrency, we should execute this
+  // asynchronously and return the future value immediately.
 
   // If YNN graph doesn't capture any of the arguments by value, we can execute
   // XnnExecutable immediately.

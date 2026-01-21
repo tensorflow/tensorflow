@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/platform_util.h"

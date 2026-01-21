@@ -457,6 +457,20 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_ProcessBounds_Args,
 typedef PJRT_Error* PJRT_TpuTopology_ProcessBounds(
     PJRT_TpuTopology_ProcessBounds_Args* args);
 
+struct PJRT_TpuTopology_GetRoutingStrategy_Args {
+  size_t struct_size;
+
+  const PJRT_TopologyDescription* topology;
+  char* routing_strategy;
+  size_t routing_strategy_len;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetRoutingStrategy_Args,
+                          routing_strategy_len);
+
+// Returns the routing strategy as a string.
+typedef PJRT_Error* PJRT_TpuTopology_GetRoutingStrategy(
+    PJRT_TpuTopology_GetRoutingStrategy_Args* args);
+
 typedef struct PJRT_TpuTopology_Extension {
   PJRT_Extension_Base base;
   PJRT_TpuTopology_Subslice* subslice;
@@ -491,8 +505,9 @@ typedef struct PJRT_TpuTopology_Extension {
   PJRT_TpuTopology_ChipsPerProcessBounds* chips_per_process_bounds;
   PJRT_TpuTopology_ChipBounds* chip_bounds;
   PJRT_TpuTopology_ProcessBounds* process_bounds;
+  PJRT_TpuTopology_GetRoutingStrategy* get_routing_strategy;
 } PJRT_TpuTopology_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension, process_bounds);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension, get_routing_strategy);
 
 #ifdef __cplusplus
 }
