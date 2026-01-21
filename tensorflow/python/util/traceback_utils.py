@@ -118,6 +118,23 @@ def include_frame(fname):
 
 
 def _process_traceback_frames(tb):
+  """Processes a traceback to filter out TensorFlow-internal frames.
+
+  This function walks through the traceback frames in reverse order and
+  builds a new traceback containing only frames that should be included
+  (i.e., frames that are not from excluded TensorFlow-internal paths).
+  If all frames are filtered out, it ensures at least the last frame is
+  included to provide some context.
+
+  Args:
+    tb: A traceback object to process.
+
+  Returns:
+    A new traceback object with filtered frames, or None if the input
+    traceback is empty. The returned traceback contains only frames from
+    non-excluded paths, with at least one frame guaranteed (the last one
+    if all others are filtered).
+  """
   new_tb = None
   tb_list = list(traceback.walk_tb(tb))
   for f, line_no in reversed(tb_list):
