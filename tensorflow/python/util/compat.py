@@ -48,7 +48,6 @@ API docstring: tensorflow.compat
 import codecs
 import collections.abc as collections_abc  # pylint: disable=unused-import
 import numbers as _numbers
-
 import numpy as _np
 
 from tensorflow.python.util.tf_export import tf_export
@@ -145,6 +144,7 @@ def as_str_any(value, encoding='utf-8'):
   Returns:
     A `str` object.
   """
+  codecs.lookup(encoding)
   if isinstance(value, bytes):
     return as_str(value, encoding=encoding)
   else:

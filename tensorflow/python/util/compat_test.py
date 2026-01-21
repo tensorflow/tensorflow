@@ -31,6 +31,11 @@ class CompatTest(test.TestCase):
     with self.assertRaises(LookupError):
       compat.as_text(b"hello", "invalid")
 
+def testAsStrAnyInvalidEncoding(self):
+  with self.assertRaises(LookupError):
+    compat.as_str_any("test", encoding="invalid_encoding_name")
+  self.assertEqual(compat.as_str_any(b"test", encoding="utf-8"), "test")
+
 
 if __name__ == "__main__":
   test.main()
