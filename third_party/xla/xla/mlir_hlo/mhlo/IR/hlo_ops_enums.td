@@ -282,21 +282,4 @@ def MHLO_ResultAccuracyModeAttr : EnumAttr<MHLO_Dialect, MHLO_ResultAccuracyMode
   let assemblyFormat = "`<` $value `>`";
 }
 
-//===----------------------------------------------------------------------===//
-// Associativity enum definitions.
-//===----------------------------------------------------------------------===//
-
-def MHLO_ASSOCIATIVITY_MAYBE : I32EnumAttrCase<"MAYBE", 0>;
-def MHLO_ASSOCIATIVITY_TRUE  : I32EnumAttrCase<"TRUE",  1>;
-def MHLO_ASSOCIATIVITY_FALSE : I32EnumAttrCase<"FALSE", 2>;
-
-def MHLO_Associativity : I32EnumAttr<"Associativity",
-    "Associativity of the scan operation.",
-    [MHLO_ASSOCIATIVITY_MAYBE, MHLO_ASSOCIATIVITY_TRUE, MHLO_ASSOCIATIVITY_FALSE]> {
-  let genSpecializedAttr = 0;
-  let cppNamespace = "::mlir::mhlo";
-}
-
-def MHLO_AssociativityAttr : EnumAttr<MHLO_Dialect, MHLO_Associativity, "associativity">;
-
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS
