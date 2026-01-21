@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 
 #include <cstdint>
 #include <memory>
@@ -66,8 +66,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -76,6 +74,8 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/dot_algorithms.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"

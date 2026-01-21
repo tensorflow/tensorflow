@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
+#include "xla/codegen/xtile/codegen/dot_algorithms.h"
 
 #include <cstdint>
 #include <optional>
@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"

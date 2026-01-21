@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
+#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 
 #include <cstdint>
 #include <memory>
@@ -31,12 +31,12 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"

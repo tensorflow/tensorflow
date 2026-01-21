@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/Builders.h"
@@ -76,4 +76,4 @@ absl::StatusOr<::mlir::Value> EmitSingleTileScaledDot(
 }  // namespace xtile
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_DOT_ALGORITHMS_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_DOT_ALGORITHMS_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -48,4 +48,4 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_EMITTER_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_

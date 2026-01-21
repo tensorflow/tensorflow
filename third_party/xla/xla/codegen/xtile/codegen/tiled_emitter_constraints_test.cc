@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/tiled_emitter_constraints.h"
+#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 
 #include <memory>
 #include <optional>

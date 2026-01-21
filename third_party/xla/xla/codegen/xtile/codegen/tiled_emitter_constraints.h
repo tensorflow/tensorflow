@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_
-#define XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_
+#ifndef XLA_CODEGEN_XTILE_CODEGEN_TILED_EMITTER_CONSTRAINTS_H_
+#define XLA_CODEGEN_XTILE_CODEGEN_TILED_EMITTER_CONSTRAINTS_H_
 
 #include <cstdint>
 #include <memory>
@@ -85,4 +85,4 @@ class TiledEmitterConstraints : public EmitterSpecificConstraints {
 
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_TILED_EMITTER_CONSTRAINTS_H_
+#endif  // XLA_CODEGEN_XTILE_CODEGEN_TILED_EMITTER_CONSTRAINTS_H_
