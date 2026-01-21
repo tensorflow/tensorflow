@@ -220,15 +220,6 @@ struct SPMDCollectiveOpsCreator {
       std::optional<int64_t> split_dimension)>
       create_all_to_all;
 
-  // Function used to create a cross-partition all-to-all HLO using device list
-  // in iota format. This function is optional: if it is a nullptr, use
-  // create_all_to_all.
-  std::function<HloInstruction*(
-      SpmdBuilder*, absl::Span<HloInstruction* const> operands,
-      const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
-      std::optional<int64_t> split_dimension)>
-      create_all_to_all_with_iota_device_list;
-
   // Function used to create a cross-partition all-gather HLO. This is optional:
   // if it is nullptr, the partitioner will use all-reduce instead.
   std::function<HloInstruction*(

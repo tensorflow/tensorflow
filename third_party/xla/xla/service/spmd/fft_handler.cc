@@ -163,7 +163,7 @@ HloInstruction* ShuffleDataWithAllToAll(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdBuilder* b) {
   IotaReplicaGroupList groups(1, num_partitions);
-  return collective_ops_creator.create_all_to_all_with_iota_device_list(
+  return collective_ops_creator.create_all_to_all(
       b, {hlo}, groups, (*next_channel_id)++,
       hlo->shape().dimensions().size() - 1);
 }
