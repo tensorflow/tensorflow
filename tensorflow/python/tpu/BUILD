@@ -18,6 +18,7 @@ visibility = [
     "//learning/serving:__subpackages__",
     "//research/graph:__subpackages__",
     "//smartass/brain/configure:__subpackages__",
+    "//third_party/cloud_tpu:__subpackages__",
     "//third_party/py/jax_tpu_embedding:__subpackages__",
     "//third_party/py/lingvo:__subpackages__",
     "//third_party/py/orbit:__subpackages__",
