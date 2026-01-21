@@ -332,6 +332,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  private:
   absl::Status HandleSliceToDynamic(HloInstruction* hlo);
+  absl::Status HandleOuterBatchValue(HloInstruction* hlo);
   absl::Status HandlePadToStatic(HloInstruction* hlo);
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);

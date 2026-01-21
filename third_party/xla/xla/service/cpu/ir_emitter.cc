@@ -2358,6 +2358,29 @@ absl::Status IrEmitter::HandleSliceToDynamic(HloInstruction* hlo) {
   return EmitSliceToDynamic(hlo, source_arrays, target_array);
 }
 
+absl::Status IrEmitter::HandleOuterBatchValue(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+
+  llvm_ir::IrArray out_array = GetIrArrayFor(hlo);
+  int64_t multiplier = hlo->operand(0)->shape().outer_multiplier();
+
+  if (multiplier <= 0) {
+    LOG(ERROR) << "Invalid outer multiplier for GetOuterBatchValue: "
+               << multiplier;
+    return absl::InvalidArgumentError(
+        "Invalid outer multiplier for GetOuterBatchValue");
+  }
+  llvm::Value* bdim_value = llvm_ir::GetBatchDimByName(b(), multiplier);
+
+  llvm_ir::IrArray::Index out_index(/*multidimensional_index=*/{}, hlo->shape(),
+                                    b()->getInt32Ty());
+
+  llvm::Value* out_ptr = out_array.EmitArrayElementAddress(out_index, b());
+  b()->CreateStore(bdim_value, out_ptr);
+
+  return absl::OkStatus();
+}
+
 absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
 
@@ -2806,6 +2829,10 @@ absl::Status IrEmitter::HandleOneDnnSoftmax(HloInstruction* custom_call) {
 #endif  // INTEL_MKL
 
 absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
+  if (custom_call->custom_call_target() == "GetOuterBatchValue") {
+    return HandleOuterBatchValue(custom_call);
+  }
+
   if (custom_call->custom_call_target() == "PadToStatic") {
     return HandlePadToStatic(custom_call);
   }
