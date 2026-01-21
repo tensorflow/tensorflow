@@ -749,20 +749,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     local_topology.set_partition_index(*partition_index);
   }
 
-  auto make_compute_capability_string =
-      [](const stream_executor::DeviceDescription* desc) -> std::string {
-    stream_executor::GpuComputeCapability cc = desc->gpu_compute_capability();
-    if (cc.IsCuda()) {
-      auto* nvcc = cc.cuda_compute_capability();
-      return absl::StrCat(nvcc->major, ".", nvcc->minor);
-    }
-    if (cc.IsRocm()) {
-      auto* rocmcc = cc.rocm_compute_capability();
-      return rocmcc->gfx_version();
-    }
-    return "unknown";
-  };
-
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
     const se::Platform* platform = executor->GetPlatform();
@@ -775,7 +761,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
     device_proto->set_compute_capability(
-        make_compute_capability_string(desc.get()));
+        stream_executor::MakeComputeCapabilityAttributeString(*desc));
     device_proto->set_core_count(desc->core_count());
 
     // TODO: hhb
