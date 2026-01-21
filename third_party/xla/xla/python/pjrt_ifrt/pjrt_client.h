@@ -129,6 +129,8 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
+  static constexpr absl::string_view kRuntimeType = "pjrt_ifrt";
+
   struct CreateOptions {
     std::shared_ptr<xla::PjRtClient> pjrt_client;
 
@@ -260,7 +262,7 @@ class PjRtClient final
       xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
       absl::Status error) override {}
 
-  absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
+  absl::string_view runtime_type() const override { return kRuntimeType; }
 
   absl::string_view platform_name() const override {
     DCHECK(this);

@@ -245,6 +245,7 @@ cc_library(
     deps = [
         ":executable_metadata_proto_cc",
         ":pjrt_layout",
+        ":pjrt_layout_serdes",
         ":xla_executable_version",
         ":xla_ifrt",
         "//xla/client:executable_build_options",
@@ -396,9 +397,13 @@ cc_library(
         ":basic_string_array",
         ":pjrt_attribute_map_util",
         ":pjrt_dtype",
+        ":pjrt_layout",
+        ":pjrt_layout_serdes",
         ":transfer_server_interface",
+        ":xla_executable_version",
         ":xla_executable_version_serdes",
         ":xla_ifrt",
+        ":xla_sharding_serdes",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -409,6 +414,7 @@ cc_library(
         "//xla/ffi:type_registry",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "//xla/hlo/utils:hlo_sharding_util",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:layout_mode",
@@ -428,6 +434,9 @@ cc_library(
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:client_impl_util",
+        "//xla/python/ifrt:serdes_version",
+        "//xla/python/ifrt:serdes_week_4_old_version_accessor",
+        "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/runtime:device_id",
@@ -447,6 +456,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -461,6 +472,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -708,13 +720,13 @@ xla_cc_test(
 xla_cc_test(
     name = "pjrt_executable_impl_test_cpu",
     size = "small",
-    srcs = ["pjrt_executable_impl_test_cpu.cc"],
+    srcs = [],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_executable_impl_test_lib",
         "//xla/python/ifrt:test_util",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

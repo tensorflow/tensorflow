@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -149,10 +150,17 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
         TranslateDeviceIds(client_, *xla_deserialize_options->compile_options));
   }
   TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client_->pjrt_client()->LoadSerializedExecutable(
-          serialized, std::move(xla_deserialize_options->compile_options),
-          xla::LoadOptions()));
+      auto common_metadata_and_serialized_pjrt_executable,
+      PjRtExecutable::CommonMetadata::Deserialize(
+          serialized,
+          absl::bind_front(&PjRtCompiler::IsExecutableVersionCompatible, this),
+          *xla_deserialize_options));
+
+  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
+                      client_->pjrt_client()->LoadSerializedExecutable(
+                          common_metadata_and_serialized_pjrt_executable.second,
+                          std::move(xla_deserialize_options->compile_options),
+                          xla::LoadOptions()));
   // TODO(emilyaf): Remove the else branch once devices are plumbed through from
   // Australis and are always present in the DeserializeExecutableOptions.
   DeviceListRef device_list;
@@ -168,7 +176,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
       std::shared_ptr<xla::PjRtLoadedExecutable>(
           std::move(pjrt_loaded_executable)),
       std::move(xla_deserialize_options->loaded_host_callbacks),
-      std::move(device_list));
+      std::move(device_list),
+      std::move(common_metadata_and_serialized_pjrt_executable.first));
 }
 
 }  // namespace ifrt
