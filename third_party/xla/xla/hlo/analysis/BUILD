@@ -223,6 +223,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:call_graph",
         "//xla/service:hlo_phi_graph",
         "//xla/service:hlo_value",

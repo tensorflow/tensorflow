@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -346,6 +347,29 @@ HloInstruction* FindInstruction(const HloComputation* computation,
     if (instruction->opcode() == opcode) return instruction;
   }
   return nullptr;
+}
+
+bool IsChangeTilingCopyFusion(const HloInstruction* instr) {
+  if (!instr->parent()->IsFusionComputation() ||
+      instr->opcode() != HloOpcode::kFusion ||
+      instr->called_computations().size() != 1 || instr->operand_count() != 1) {
+    return false;
+  }
+  // These copy fusions should only change tiling (and sometimes memory space).
+  const HloInstruction* fusion_root = instr->fused_expression_root();
+  if (!fusion_root->operand(0)->shape().has_layout() ||
+      !fusion_root->shape().has_layout()) {
+    return false;
+  }
+
+  const Layout& operand_layout = fusion_root->operand(0)->shape().layout();
+  const Layout& output_layout = fusion_root->shape().layout();
+  absl::Span<const Tile> operand_tiles = operand_layout.tiles();
+  absl::Span<const Tile> output_tiles = output_layout.tiles();
+  return fusion_root->opcode() == HloOpcode::kCopy &&
+         Layout::Equal().IgnoreTiles().IgnoreMemorySpace()(operand_layout,
+                                                           output_layout) &&
+         operand_tiles != output_tiles;
 }
 
 }  // namespace hlo_query
