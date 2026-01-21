@@ -22,6 +22,7 @@ import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/execute_options.proto";
+import "xla/python/ifrt/layout.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
@@ -311,6 +312,7 @@ message MakeArrayFromHostBufferRequest {
   DTypeProto dtype = 1;
   ShapeProto shape = 2;
   ShardingProto sharding = 3;
+  LayoutProto layout = 7;
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
   // If array_handle is provided, the server will either respond with the same

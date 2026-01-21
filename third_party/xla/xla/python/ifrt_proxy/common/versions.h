@@ -53,6 +53,9 @@ enum {
   // kDevicePlatformName adds a PlatformName() method to Device.
   kDevicePlatformName = 22,
 
+  // MakeArrayFromHostBuffer supports a layout argument.
+  kMakeArrayFromHostBufferWithLayout = 23,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,

@@ -396,6 +396,7 @@ cc_library(
         ":basic_string_array",
         ":pjrt_attribute_map_util",
         ":pjrt_dtype",
+        ":pjrt_layout",
         ":transfer_server_interface",
         ":xla_executable_version_serdes",
         ":xla_ifrt",

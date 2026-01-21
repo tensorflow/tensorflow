@@ -66,19 +66,20 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
@@ -1010,10 +1011,14 @@ PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers,
 absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
-    Client::HostBufferSemantics semantics,
+    LayoutRef layout, Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   DCHECK(this);
   if (dtype.kind() == DType::kString) {
+    if (layout != nullptr) {
+      return InvalidArgument(
+          "String arrays do not support custom layouts: layout=%v", *layout);
+    }
     return MakeStringArrayFromHostBuffer(this, data, dtype, shape, byte_strides,
                                          sharding, semantics,
                                          on_done_with_host_buffer);
@@ -1034,6 +1039,15 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   if (ifrt_addressable_devices.empty()) {
     return InvalidArgument("Cannot copy array to non-addressable device: %s",
                            sharding->devices()->DebugString());
+  }
+  std::shared_ptr<const xla::PjRtLayout> pjrt_layout;
+  const xla::Layout* xla_layout;
+  if (layout == nullptr) {
+    xla_layout = nullptr;
+  } else {
+    TF_ASSIGN_OR_RETURN(Shape shard_shape, sharding->GetShardShape(shape));
+    TF_ASSIGN_OR_RETURN(pjrt_layout, ToPjRtLayout(dtype, shard_shape, layout));
+    xla_layout = &pjrt_layout->xla_layout();
   }
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
@@ -1080,24 +1094,22 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                       data, primitive_type, shape.dims(), byte_strides,
                       semantics, on_done_with_host_buffer_per_device,
                       tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
-                      /*device_layout=*/nullptr));
+                      xla_layout));
     } else {
       TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                           tensorflow::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
                               ->default_memory_space());
-      TF_ASSIGN_OR_RETURN(buffer,
-                          pjrt_client_->BufferFromHostBuffer(
-                              data, primitive_type, shape.dims(), byte_strides,
-                              semantics, on_done_with_host_buffer_per_device,
-                              memory_space, /*device_layout=*/nullptr));
+      TF_ASSIGN_OR_RETURN(
+          buffer,
+          pjrt_client_->BufferFromHostBuffer(
+              data, primitive_type, shape.dims(), byte_strides, semantics,
+              on_done_with_host_buffer_per_device, memory_space, xla_layout));
     }
     buffers.push_back(std::move(buffer));
   }
-  // `MakeArrayFromHostBuffer` only creates buffers with a default layout.
-  std::shared_ptr<const xla::PjRtLayout> layout = nullptr;
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
-                           std::move(buffers), std::move(layout));
+                           std::move(buffers), std::move(pjrt_layout));
 }
 
 absl::StatusOr<std::vector<ArrayRef>>
@@ -1749,7 +1761,7 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
     }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     if (element_type == PrimitiveType::TOKEN) {
-      return std::make_shared<PjRtLayout>(
+      return std::make_shared<xla::PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
     TF_ASSIGN_OR_RETURN(xla::Layout layout,

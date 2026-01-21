@@ -123,9 +123,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<ArrayRef>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
-               ShardingRef sharding, HostBufferSemantics semantics,
+               ShardingRef sharding, LayoutRef layout,
+               HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer),
               (final));
+  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
+  using xla::ifrt::Client::MakeArrayFromHostBuffer;
+
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,

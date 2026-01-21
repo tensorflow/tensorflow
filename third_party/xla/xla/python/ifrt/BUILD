@@ -98,6 +98,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
@@ -202,6 +203,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":user_context",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -301,6 +303,11 @@ cc_library(
     name = "layout_serdes",
     srcs = ["layout_serdes.cc"],
     compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
     deps = [
         ":ifrt",
         ":layout_serdes_proto_cc",
