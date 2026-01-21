@@ -43,6 +43,7 @@ cc_library(
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
+        "//xla/service/gpu/autotuning:autotuner_status_key",
         "//xla/stream_executor:kernel_stats",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:env",

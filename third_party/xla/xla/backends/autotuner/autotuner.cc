@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -309,8 +310,11 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetConfig(HloInstruction* instr) {
   }
 
   if (autotune_config_.expect_all_instructions_in_cache) {
-    return absl::NotFoundError("No cached config found for HLO instr: " +
-                               instr->ToString());
+    absl::Status s = absl::NotFoundError(
+        "No cached config found for HLO instr: " + instr->ToString());
+    tsl::errors::InsertPayloads(
+        s, {{std::string(gpu::kAutotuneCacheRequiredErrorPayloadKey), ""}});
+    return s;
   }
 
   if (autotune_config_.use_default_config) {
