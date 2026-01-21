@@ -1578,7 +1578,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_local_device_ordinal(ordinal_and_device.first);
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
-    auto compute_capability = MakeComputeCapabilityString(desc.get());
+    auto compute_capability = MakeComputeCapabilityAttributeString(*desc);
     device_proto->set_compute_capability(compute_capability);
     device_proto->set_core_count(desc->core_count());
     device_proto->set_shared_memory_per_block_optin(
@@ -1710,19 +1710,6 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
                       BuildGpuTopology(global_topology));
   return std::make_pair(std::move(devices), gpu_topology);
-}
-
-std::string MakeComputeCapabilityString(const se::DeviceDescription* desc) {
-  se::GpuComputeCapability cc = desc->gpu_compute_capability();
-  if (cc.IsCuda()) {
-    auto* nvcc = cc.cuda_compute_capability();
-    return absl::StrCat(nvcc->major, ".", nvcc->minor);
-  }
-  if (cc.IsRocm()) {
-    auto* rocmcc = cc.rocm_compute_capability();
-    return rocmcc->gfx_version();
-  }
-  return "unknown";
 }
 
 StreamExecutorGpuDevice::StreamExecutorGpuDevice(
@@ -1882,8 +1869,9 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         ordinal_and_device.second->executor()->GetDeviceDescription();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         ordinal_and_device.first, std::move(ordinal_and_device.second),
-        desc.name(), desc.device_vendor(), MakeComputeCapabilityString(&desc),
-        desc.core_count(), desc.shared_memory_per_block_optin(),
+        desc.name(), desc.device_vendor(),
+        MakeComputeCapabilityAttributeString(desc), desc.core_count(),
+        desc.shared_memory_per_block_optin(),
         ordinal_and_device.second->local_device_id().value(), node_id,
         desc.numa_node());
     devices.push_back(std::move(device));

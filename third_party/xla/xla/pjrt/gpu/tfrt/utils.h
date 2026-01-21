@@ -106,9 +106,6 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
     TfrtGpuDevice* device, TfrtGpuClient* client, PjRtMemorySpace* memory_space,
     int64_t pack_size = 0);
 
-std::string MakeComputeCapabilityString(
-    const stream_executor::DeviceDescription* desc);
-
 bool IsAllZeros(const DeviceAssignment& assignment);
 
 std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(

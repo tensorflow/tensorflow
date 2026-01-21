@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -283,4 +284,19 @@ absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
   return absl::InvalidArgumentError(
       "The serialized GpuComputeCapability has no compute capability set.");
 }
+
+std::string MakeComputeCapabilityAttributeString(
+    const DeviceDescription& desc) {
+  GpuComputeCapability cc = desc.gpu_compute_capability();
+  if (cc.IsCuda()) {
+    auto* nvcc = cc.cuda_compute_capability();
+    return absl::StrCat(nvcc->major, ".", nvcc->minor);
+  }
+  if (cc.IsRocm()) {
+    auto* rocmcc = cc.rocm_compute_capability();
+    return rocmcc->gfx_version();
+  }
+  return "unknown";
+}
+
 }  // namespace stream_executor

@@ -586,6 +586,8 @@ class DeviceDescription {
   DeviceInterconnectInfo interconnect_info_;
 };
 
+std::string MakeComputeCapabilityAttributeString(const DeviceDescription& desc);
+
 // Returns whether the given thread_dim is acceptable given the limits described
 // in device_description. For detailed reasons for failing the predicate, enable
 // VLOG(2) for this module.

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/collectives/nccl_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 
 #include <memory>
 #include <utility>
@@ -22,16 +22,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/runtime/device_id.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/memory_space.h"
@@ -43,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -50,13 +54,13 @@ namespace {
 // Creates a pair of communicators for the given executors.
 static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(se::StreamExecutor* executor0,
-                    se::StreamExecutor* executor1) {
+                    se::StreamExecutor* executor1, bool blocking = true) {
   GpuCollectives::Device device0(executor0);
   GpuCollectives::Device device1(executor1);
 
-  NcclCollectives collectives;
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
 
-  TF_ASSIGN_OR_RETURN(CliqueId clique_id, collectives.CreateUniqueCliqueId());
+  TF_ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
   CliqueIds clique_ids(clique_id);
 
   GpuCliqueKey clique_key({GlobalDeviceId(0), GlobalDeviceId(1)},
@@ -65,9 +69,13 @@ CreateCommunicators(se::StreamExecutor* executor0,
   Collectives::DeviceRank rank0(&device0, RankId(0));
   Collectives::DeviceRank rank1(&device1, RankId(1));
 
-  TF_ASSIGN_OR_RETURN(auto comms, collectives.CreateCommunicators(
-                                      clique_key, clique_ids, {rank0, rank1},
-                                      GpuCollectives::Config{}));
+  GpuCollectives::Config config;
+  config.blocking_communicators = blocking;
+  config.async_execution = !blocking;
+
+  TF_ASSIGN_OR_RETURN(auto comms,
+                      collectives->CreateCommunicators(clique_key, clique_ids,
+                                                       {rank0, rank1}, config));
   CHECK_EQ(comms.size(), 2);
 
   std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;
@@ -76,7 +84,7 @@ CreateCommunicators(se::StreamExecutor* executor0,
   return gpu_comms;
 }
 
-TEST(NcclCollectives, CreateSymmetricMemory) {
+TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName("CUDA"));
 
@@ -94,8 +102,6 @@ TEST(NcclCollectives, CreateSymmetricMemory) {
   EXPECT_TRUE(comms[0]->platform_comm().handle);
   EXPECT_TRUE(comms[1]->platform_comm().handle);
 
-  // TODO(ezhulenev): We disable symmetric memory test on old NCCL versions as
-  // it has a memory leak in collective window registration.
   if (!comms[0]->SupportsDeviceComm() || !comms[1]->SupportsDeviceComm()) {
     GTEST_SKIP() << "GPU communicators do not suppoort symmetric memory";
   }
@@ -118,7 +124,7 @@ TEST(NcclCollectives, CreateSymmetricMemory) {
 
   // Because creating symmetric memory is a collective operation, we must call
   // it from a thead pool to avoid deadlocks.
-  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl", 2);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
   tsl::Executor& exec = *pool.AsExecutor();
 
   // Register allocated buffers as symmetric memory.
@@ -133,7 +139,7 @@ TEST(NcclCollectives, CreateSymmetricMemory) {
                        std::move(fsymm1).Await());
 }
 
-TEST(NcclCollectivesTest, CreateDeviceComm) {
+TEST(GpuCollectivesTest, CreateDeviceComm) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName("CUDA"));
 
@@ -157,7 +163,7 @@ TEST(NcclCollectivesTest, CreateDeviceComm) {
 
   // Because creating device comms is a collective operation, we must call
   // it from a thead pool to avoid deadlocks.
-  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl", 2);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
   tsl::Executor& exec = *pool.AsExecutor();
 
   auto fdev_comm0 =
@@ -171,6 +177,71 @@ TEST(NcclCollectivesTest, CreateDeviceComm) {
   EXPECT_TRUE(dev_comm0->platform_comm().handle);
   EXPECT_TRUE(dev_comm1->platform_comm().handle);
 }
+
+// Test that GPU communicators can be safely aborted and after they are aborted
+// they stay in valid state and reject all API calls.
+class GpuAbortCollectivesTest : public ::testing::TestWithParam<bool> {};
+
+static void AssertAborted(absl::Status s) {
+  ASSERT_THAT(s, absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                        testing::HasSubstr("aborted")));
+};
+
+static void AssertEventAborted(Future<> future) {
+  return AssertAborted(future.Await());
+};
+
+TEST_P(GpuAbortCollectivesTest, Abort) {
+  bool blocking = GetParam();
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
+                       platform->ExecutorForDevice(1));
+
+  ASSERT_OK_AND_ASSIGN(auto comms,
+                       CreateCommunicators(executor0, executor1, blocking));
+
+  // First time we call Abort it must succeed.
+  ASSERT_OK(comms[0]->Abort());
+  ASSERT_OK(comms[1]->Abort());
+
+  // We can't abort already aborted communicator.
+  AssertAborted(comms[0]->Abort());
+  AssertAborted(comms[1]->Abort());
+
+  // Operations with communicator should return abort error.
+  AssertAborted(comms[0]->HealthCheck());
+  AssertAborted(comms[0]->NumRanks().status());
+
+  // A fake executor and device address to test collective operations.
+  GpuCollectives::Executor executor(nullptr);
+  se::DeviceAddressBase addr;
+
+  AssertAborted(comms[0]->RegisterBufferOnce(addr, 0, false));
+  AssertEventAborted(
+      comms[0]->AllReduce(addr, addr, U64, 0, ReductionKind::SUM, executor));
+  AssertEventAborted(
+      comms[0]->Broadcast(addr, addr, U64, 0, RankId(0), executor));
+  AssertEventAborted(comms[0]->ReduceScatter(addr, addr, U64, 0,
+                                             ReductionKind::SUM, executor));
+  AssertEventAborted(comms[0]->AllGather(addr, addr, U64, 0, executor));
+  AssertEventAborted(comms[0]->AllToAll({}, {}, U64, 0, executor));
+  AssertEventAborted(
+      comms[0]->CollectivePermute(addr, addr, U64, 0, {}, {}, executor));
+  AssertEventAborted(comms[0]->Send(addr, U64, 0, RankId(0), executor));
+  AssertEventAborted(comms[0]->Recv(addr, U64, 0, RankId(0), executor));
+}
+
+INSTANTIATE_TEST_SUITE_P(GpuAbortCollectives, GpuAbortCollectivesTest,
+                         testing::Values(true, false));
 
 }  // namespace
 }  // namespace xla::gpu
