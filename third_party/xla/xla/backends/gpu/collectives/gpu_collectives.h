@@ -144,16 +144,8 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns true if collectives backend uses global config.
-  virtual bool IsGlobalConfig() const = 0;
-
   // Returns true if GPU collectives support device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
-
-  // Returns a clique id callback passed as an argument if it's not null or a
-  // default callback to get create a clique id if we are running in local mode.
-  virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) = 0;
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.

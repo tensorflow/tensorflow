@@ -33,6 +33,9 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
@@ -132,9 +136,23 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
                       params.global_device_id, r.key.ToString());
     }
 
-    TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
-                        params.collectives->GetCliqueIdCallback(
-                            params.nccl_clique_id_callback, r.key.is_local()));
+    // Default clique id callback that generates a unique clique id for the
+    // clique key. This callback supports only local cliques (all ranks belong
+    // to the same process), as otherwise clique id should be exchanged across
+    // multiple processes via an external storage (i.e. builtin KV store).
+    //
+    // IMPORTANT: This callback is called once for the clique key by the
+    // rendezvous leader elected inside the `AcquireGpuClique` implementation.
+    CliqueIdCallback default_clique_id_callback =
+        [&](const CliqueKey& key) -> absl::StatusOr<CliqueId> {
+      auto& gpu_key = tsl::down_cast<const GpuCliqueKey&>(key);
+      if (!gpu_key.is_local()) {
+        return Internal(
+            "For non-local GPU cliques (cliques that span multiple processes) "
+            "clique id callback must be passed via execution params");
+      }
+      return params.collectives->CreateUniqueCliqueId();
+    };
 
     int64_t max_channels = r.key.is_p2p() ? params.p2p_max_nchannels
                                           : params.collective_max_nchannels;
@@ -142,8 +160,10 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
-                         r.key, *clique_id_callback, *rank, cliques_map,
-                         max_channels));
+                         r.key,
+                         params.clique_id_callback ? *params.clique_id_callback
+                                                   : default_clique_id_callback,
+                         *rank, cliques_map, max_channels));
 
     cliques_map[r.key] = std::move(clique);
   }

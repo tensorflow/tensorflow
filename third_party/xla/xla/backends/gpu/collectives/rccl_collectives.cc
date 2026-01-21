@@ -150,27 +150,6 @@ absl::StatusOr<CliqueId> RcclCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-bool RcclCollectives::IsGlobalConfig() const {
-  static const char* const nccl_comm_id = std::getenv("NCCL_COMM_ID");
-  return nccl_comm_id != nullptr;
-}
-
-absl::StatusOr<const RcclCollectives::CliqueIdCallback*>
-RcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
-                                     bool is_local) {
-  if (clique_id_callback != nullptr) {
-    return clique_id_callback;
-  }
-
-  TF_RET_CHECK(is_local || IsGlobalConfig())
-      << "If non-local devices are taking part of a collective API on "
-         "GPU, the clique_id_callback must be provided by the client.";
-
-  static auto* const local_callback = new CliqueIdCallback(
-      [this](const CliqueKey&) { return CreateUniqueCliqueId(); });
-  return local_callback;
-}
-
 static absl::StatusOr<ncclConfig_t> AsRcclConfig(
     const GpuCollectives::Config& config,
     const se::StreamExecutor* stream_executor) {

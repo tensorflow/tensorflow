@@ -38,14 +38,8 @@ namespace xla::gpu {
 class GpuCollectivesStub : public GpuCollectives {
  public:
   bool IsImplemented() const final { return false; }
-  bool IsGlobalConfig() const final { return false; }
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
-    return UnimplementedError();
-  }
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback*, bool) final {
     return UnimplementedError();
   }
 

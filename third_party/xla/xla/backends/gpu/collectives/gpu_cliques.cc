@@ -318,7 +318,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     tsl::profiler::TraceMe trace("InitializeGpuClique");
 
     CliqueIds clique_ids;
-    const auto& subkeys = clique_key.GetSubKeys(nroots);
+    std::vector<GpuCliqueKey> subkeys = clique_key.GetSubKeys(nroots);
     for (const auto& subkey : subkeys) {
       VLOG(3) << absl::StreamFormat(
           "Get CliqueId for sub clique key %s; nroots=%lld", subkey.ToString(),

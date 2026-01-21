@@ -90,13 +90,6 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
                           GetParticipatingDevicesGroups(
                               *params.device_assn, replica_groups, group_mode));
     }
-
-    if (params.collectives->IsGlobalConfig() &&
-        (participants.size() != params.device_assn->replica_count())) {
-      return InvalidArgument(
-          "Partial replica groups are not allowed when using NCCL_COMM_ID "
-          "environment configuration.");
-    }
   }
 
   // Remove trivial group that contains all participants, as we do not want to
