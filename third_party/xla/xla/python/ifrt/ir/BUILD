@@ -587,3 +587,12 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+tf_proto_library(
+    name = "serialized_executable_metadata_proto",
+    srcs = ["serialized_executable_metadata.proto"],
+    visibility = ["//learning/brain/research/ifrt:__subpackages__"],
+    deps = [
+        ":ifrt_ir_compile_options_proto",
+    ],
+)
