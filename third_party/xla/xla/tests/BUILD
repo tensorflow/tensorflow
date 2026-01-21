@@ -3712,12 +3712,14 @@ xla_test(
 xla_test(
     name = "deep_graph_test",
     srcs = ["deep_graph_test.cc"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":client_library_test_base",
+        ":client_library_test_runner_mixin",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        ":hlo_pjrt_test_base",
         ":xla_internal_test_main",
         "//xla/hlo/builder:xla_builder",
+        "@com_google_googletest//:gtest",
     ],
 )
 
