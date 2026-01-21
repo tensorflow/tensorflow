@@ -698,10 +698,8 @@ cc_library(
         ":elemental_ir_emitter",
         ":ir_emission_utils",
         ":ir_function",
-        ":onednn_config_proto_cc",
         ":parallel_loop_emitter",
         "//xla:literal",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -727,7 +725,6 @@ cc_library(
         "//xla/service/llvm_ir:tuple_ops",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
@@ -746,7 +743,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//mlir:IR",
-    ] + if_onednn([":onednn_memory_util"]),
+    ],
 )
 
 cc_library(
@@ -1367,7 +1364,6 @@ onednn_cc_library(
     srcs = ["onednn_util.cc"],
     hdrs = [
         "onednn_util.h",
-        "//xla/tsl/util:onednn_util_hdrs",
     ],
     copts = runtime_copts() + tsl_copts(),
     visibility = ["//visibility:public"],

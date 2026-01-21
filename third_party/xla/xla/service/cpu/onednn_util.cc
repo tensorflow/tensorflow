@@ -25,31 +25,11 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 
 #define EIGEN_USE_THREADS
 
 namespace xla {
 namespace cpu {
-
-std::unique_ptr<tsl::OneDnnThreadPool> CreateOneDnnThreadPool(
-    const Eigen::ThreadPoolDevice* threadpool_device) {
-#ifndef ENABLE_ONEDNN_OPENMP
-  if (threadpool_device != nullptr) {
-    return std::make_unique<tsl::OneDnnThreadPool>(threadpool_device->getPool(),
-                                                   false);
-  }
-#endif  // !ENABLE_ONEDNN_OPENMP
-  return nullptr;
-}
-
-dnnl::stream MakeOneDnnStream(
-    const dnnl::engine& cpu_engine,
-    dnnl::threadpool_interop::threadpool_iface* thread_pool) {
-  return (thread_pool != nullptr)
-             ? dnnl::threadpool_interop::make_stream(cpu_engine, thread_pool)
-             : dnnl::stream(cpu_engine);
-}
 
 dnnl::post_ops PopulateOneDnnPostOps(
     const dnnl::engine& cpu_engine,
