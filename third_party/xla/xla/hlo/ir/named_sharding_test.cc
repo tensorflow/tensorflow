@@ -56,6 +56,7 @@ TEST(NamedShardingTest, AxisNameCtor) {
                                 /*manual_axes=*/{"e"});
   DimensionSharding ds_c({axis_c}, /*is_closed=*/true);
   DimensionSharding ds_b({axis_b}, /*is_closed=*/true);
+
   EXPECT_EQ(sharding, NamedSharding(mesh_abcde, {ds_c, ds_b}, {axis_a},
                                     {axis_d}, {axis_e}));
 
@@ -64,6 +65,7 @@ TEST(NamedShardingTest, AxisNameCtor) {
       /*dim_shardings=*/{{"c", "a"}, {}, {"b"}},
       /*replicated_axes=*/{"d"}, /*unreduced_axes=*/{"e"});
   DimensionSharding ds_ca({axis_c, axis_a}, /*is_closed=*/true);
+
   EXPECT_EQ(sharding2,
             NamedSharding(mesh_abcde, {ds_ca, DimensionSharding(), ds_b},
                           {axis_d}, {axis_e}));
@@ -72,71 +74,74 @@ TEST(NamedShardingTest, AxisNameCtor) {
 class NamedShardingEqualityTest : public ::testing::Test {
  protected:
   const Mesh mesh_abcde_ = Mesh({2, 4, 3, 8, 2}, {"a", "b", "c", "d", "e"});
-  const AxisRef axis_a_{0};
-  const AxisRef axis_b_{1, {2, 2}};
-  const AxisRef axis_c_{2};
-  const AxisRef axis_d_{3, {4, 2}};
-  const AxisRef axis_e_{4};
-  const DimensionSharding ds_ab_{{axis_a_, axis_b_}, /*is_closed=*/true};
-  const DimensionSharding ds_ab_open_{{axis_a_, axis_b_}, /*is_closed=*/false};
-  const DimensionSharding ds_dc_{{axis_d_, axis_c_}, /*is_closed=*/true};
-  const NamedSharding base_{mesh_abcde_, /*dim_shardings=*/{ds_ab_, ds_dc_},
-                            /*replicated_axes=*/{axis_b_},
-                            /*unreduced_axes=*/{axis_c_}};
+  const NamedSharding base_ = test_utils::FromAxisNames(
+      mesh_abcde_, /*dim_shardings=*/{{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+      /*replicated_axes=*/{"b:(2)2"},
+      /*unreduced_axes=*/{"c"});
 };
 
 TEST_F(NamedShardingEqualityTest, BaseEquality) {
-  EXPECT_EQ(base_,
-            NamedSharding(mesh_abcde_, {ds_ab_, ds_dc_}, {axis_b_}, {axis_c_}));
+  EXPECT_EQ(base_, test_utils::FromAxisNames(mesh_abcde_,
+                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                                             {"b:(2)2"}, {"c"}));
 }
 
 TEST_F(NamedShardingEqualityTest, EqualEvenWithDifferentMeshAxisNames) {
   // Equal even with different mesh axis names
   Mesh mesh_cadbe({2, 4, 3, 8, 2}, {"c", "a", "d", "b", "e"});
-  EXPECT_EQ(base_, NamedSharding(mesh_cadbe, {ds_ab_, ds_dc_}, {axis_b_},
-                                 {axis_c_}, {}));
+  EXPECT_EQ(base_, test_utils::FromAxisNames(mesh_cadbe,
+                                             {{"c", "a:(2)2"}, {"b:(4)2", "d"}},
+                                             {"a:(2)2"}, {"d"}));
 }
 
 TEST_F(NamedShardingEqualityTest, EqualEvenWithDifferentMetadata) {
   // Equal even with different metadata.
   OpMetadata metadata;
   metadata.set_op_name("foo");
-  EXPECT_EQ(base_, NamedSharding(mesh_abcde_, {ds_ab_, ds_dc_}, {axis_b_},
-                                 {axis_c_}, {}, {metadata}));
+  EXPECT_EQ(base_, test_utils::FromAxisNames(
+                       mesh_abcde_, {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                       {"b:(2)2"}, {"c"}, {}, {metadata}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentDimShardings) {
   // Different dim_shardings
-  EXPECT_NE(base_, NamedSharding(mesh_abcde_, {ds_ab_open_, ds_dc_}, {axis_b_},
-                                 {axis_c_}));
-  EXPECT_NE(base_,
-            NamedSharding(mesh_abcde_, {ds_dc_, ds_ab_}, {axis_b_}, {axis_c_}));
-  EXPECT_NE(base_, NamedSharding(mesh_abcde_, {ds_ab_}, {axis_b_}, {axis_c_}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(
+                       mesh_abcde_, {{"a", "b:(2)2", "?"}, {"d:(4)2", "c"}},
+                       {"b:(2)2"}, {"c"}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
+                                             {{"d:(4)2", "c"}, {"a", "b:(2)2"}},
+                                             {"b:(2)2"}, {"c"}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_, {{"a", "b:(2)2"}},
+                                             {"b:(2)2"}, {"c"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentReplicatedAxes) {
   // Different replicated_axes
-  EXPECT_NE(base_,
-            NamedSharding(mesh_abcde_, {ds_ab_, ds_dc_}, {axis_d_}, {axis_c_}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
+                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                                             {"d:(4)2"}, {"c"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentUnreducedAxes) {
   // Different unreduced_axes
-  EXPECT_NE(base_,
-            NamedSharding(mesh_abcde_, {ds_ab_, ds_dc_}, {axis_b_}, {axis_a_}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
+                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                                             {"b:(2)2"}, {"a"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentManualAxes) {
   // Different manual_axes
-  EXPECT_NE(base_, NamedSharding(mesh_abcde_, {ds_ab_, ds_dc_}, {axis_b_},
-                                 {axis_c_}, {axis_e_}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
+                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                                             {"b:(2)2"}, {"c"}, {"e"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentMeshShape) {
   // Different mesh shape
   Mesh mesh_diff_shape({2, 4, 3, 9, 2}, {"a", "b", "c", "d", "e"});
-  EXPECT_NE(base_, NamedSharding(mesh_diff_shape, {ds_ab_, ds_dc_}, {axis_b_},
-                                 {axis_c_}));
+  EXPECT_NE(base_, test_utils::FromAxisNames(mesh_diff_shape,
+                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                                             {"b:(2)2"}, {"c"}));
 }
 
 TEST(NamedShardingTest, ToString) {
@@ -170,11 +175,13 @@ TEST(NamedShardingTest, ToString) {
   NamedSharding sharding_fully_replicated(mesh);
   EXPECT_EQ(sharding_fully_replicated.ToString(), "{replicated}");
 
-  NamedSharding sharding_replicated(mesh, {}, {axis_c});
+  NamedSharding sharding_replicated =
+      test_utils::FromAxisNames(mesh, {}, {"c"});
   EXPECT_EQ(sharding_replicated.ToString(),
             "{@mesh<a=2,b=4,c=3,d=8>, [], replicated={c}}");
 
-  NamedSharding sharding_unreduced(mesh, {}, {}, {axis_d});
+  NamedSharding sharding_unreduced =
+      test_utils::FromAxisNames(mesh, {}, {}, {"d:(4)2"});
   EXPECT_EQ(sharding_unreduced.ToString(),
             "{@mesh<a=2,b=4,c=3,d=8>, [], unreduced={d:(4)2}}");
 
@@ -186,7 +193,8 @@ TEST(NamedShardingTest, ToString) {
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
                      /*transpose_perm=*/{2, 3, 0, 1}),
       {"a", "b", "c", "d"});
-  NamedSharding sharding_non_iota(non_iota_mesh, {ds_a});
+  NamedSharding sharding_non_iota =
+      test_utils::FromAxisNames(non_iota_mesh, {{"a"}});
   EXPECT_EQ(sharding_non_iota.ToString(),
             "{@mesh<a=2,b=4,c=4,d=2>, device_ids=([4,16]T(1,0)), [{a}]}");
 
@@ -194,8 +202,8 @@ TEST(NamedShardingTest, ToString) {
   metadata1.set_op_name("foo");
   OpMetadata metadata2;
   metadata2.set_op_name("bar");
-  NamedSharding sharding_all(mesh, {ds_a}, {axis_c}, {axis_d}, {axis_b},
-                             {metadata1, metadata2});
+  NamedSharding sharding_all = test_utils::FromAxisNames(
+      mesh, {{"a"}}, {"c"}, {"d:(4)2"}, {"b:(2)2"}, {metadata1, metadata2});
   EXPECT_EQ(sharding_all.ToString(),
             "{@mesh<a=2,b=4,c=3,d=8>, [{a}], replicated={c}, "
             "unreduced={d:(4)2}, manual={b:(2)2}}");

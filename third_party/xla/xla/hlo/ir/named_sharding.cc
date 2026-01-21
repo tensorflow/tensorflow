@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/named_sharding.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -25,8 +26,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
@@ -219,64 +222,99 @@ std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding) {
 }
 
 namespace test_utils {
+
+namespace {
+
+AxisRef ParseAxisRef(
+    const Mesh& mesh, absl::string_view axis_str,
+    const absl::flat_hash_map<std::string, int64_t>& mesh_axis_to_index) {
+  size_t colon_pos = axis_str.rfind(":(");
+  if (colon_pos == absl::string_view::npos) {
+    auto it = mesh_axis_to_index.find(axis_str);
+    CHECK_NE(it, mesh_axis_to_index.end())
+        << "Axis " << axis_str << " not found in mesh " << mesh.ToString();
+    return AxisRef(it->second);
+  }
+
+  absl::string_view name = axis_str.substr(0, colon_pos);
+  absl::string_view suffix = axis_str.substr(colon_pos + 2);  // skip ":("
+
+  size_t paren_pos = suffix.find(')');
+  CHECK_NE(paren_pos, absl::string_view::npos)
+      << "Invalid sub-axis format: " << axis_str;
+
+  absl::string_view pre_size_str = suffix.substr(0, paren_pos);
+  absl::string_view size_str = suffix.substr(paren_pos + 1);
+
+  int64_t pre_size;
+  int64_t size;
+
+  CHECK(absl::SimpleAtoi(pre_size_str, &pre_size))
+      << "Invalid pre-size: " << pre_size_str;
+  CHECK(absl::SimpleAtoi(size_str, &size)) << "Invalid size: " << size_str;
+
+  auto it = mesh_axis_to_index.find(name);
+  CHECK_NE(it, mesh_axis_to_index.end())
+      << "Axis " << name << " not found in mesh " << mesh.ToString();
+  return AxisRef(it->second, {pre_size, size});
+}
+
+}  // namespace
+
 // Construct sharding with given mesh. 'dim_shardings', 'replicated_axes',
 // 'unreduced_axes' refer to axis names in the mesh.
 // This is a test only helper function.
 NamedSharding FromAxisNames(
-    Mesh mesh, absl::Span<const std::vector<std::string>> dim_sharding_names,
-    absl::Span<const std::string> replicated_axis_names,
-    absl::Span<const std::string> unreduced_axis_names,
-    absl::Span<const std::string> manual_axis_names,
+    Mesh mesh, absl::Span<const std::vector<std::string>> dim_shardings,
+    absl::Span<const std::string> replicated_axes,
+    absl::Span<const std::string> unreduced_axes,
+    absl::Span<const std::string> manual_axes,
     absl::Span<const OpMetadata> metadata) {
   absl::flat_hash_map<std::string, int64_t> mesh_axis_to_index;
   for (int64_t i = 0; i < mesh.axis_names().size(); ++i) {
     mesh_axis_to_index[mesh.axis_names()[i]] = i;
   }
 
-  std::vector<NamedSharding::DimensionSharding> dim_shardings;
-  dim_shardings.reserve(dim_sharding_names.size());
-  for (const std::vector<std::string>& axes_for_dim : dim_sharding_names) {
+  std::vector<NamedSharding::DimensionSharding> dim_shardings_vec;
+  dim_shardings_vec.reserve(dim_shardings.size());
+  for (const std::vector<std::string>& axes_for_dim : dim_shardings) {
     std::vector<AxisRef> axis_refs;
     axis_refs.reserve(axes_for_dim.size());
+    bool is_closed = true;
     for (const std::string& axis_name : axes_for_dim) {
-      auto it = mesh_axis_to_index.find(axis_name);
-      CHECK_NE(it, mesh_axis_to_index.end())
-          << "Axis " << axis_name << " not found in mesh " << mesh.ToString();
-      axis_refs.push_back(AxisRef(it->second));
+      if (axis_name == "?") {
+        is_closed = false;
+        continue;
+      }
+      axis_refs.push_back(ParseAxisRef(mesh, axis_name, mesh_axis_to_index));
     }
-    dim_shardings.push_back(NamedSharding::DimensionSharding(
-        std::move(axis_refs), /*is_closed=*/true));
+    dim_shardings_vec.push_back(
+        NamedSharding::DimensionSharding(std::move(axis_refs), is_closed));
   }
 
-  std::vector<AxisRef> replicated_axes;
-  replicated_axes.reserve(replicated_axis_names.size());
-  for (const std::string& axis_name : replicated_axis_names) {
-    auto it = mesh_axis_to_index.find(axis_name);
-    CHECK_NE(it, mesh_axis_to_index.end())
-        << "Axis " << axis_name << " not found in mesh " << mesh.ToString();
-    replicated_axes.push_back(AxisRef(it->second));
+  std::vector<AxisRef> replicated_axes_vec;
+  replicated_axes_vec.reserve(replicated_axes.size());
+  for (const std::string& axis_name : replicated_axes) {
+    replicated_axes_vec.push_back(
+        ParseAxisRef(mesh, axis_name, mesh_axis_to_index));
   }
 
-  std::vector<AxisRef> unreduced_axes;
-  unreduced_axes.reserve(unreduced_axis_names.size());
-  for (const std::string& axis_name : unreduced_axis_names) {
-    auto it = mesh_axis_to_index.find(axis_name);
-    CHECK_NE(it, mesh_axis_to_index.end())
-        << "Axis " << axis_name << " not found in mesh " << mesh.ToString();
-    unreduced_axes.push_back(AxisRef(it->second));
+  std::vector<AxisRef> unreduced_axes_vec;
+  unreduced_axes_vec.reserve(unreduced_axes.size());
+  for (const std::string& axis_name : unreduced_axes) {
+    unreduced_axes_vec.push_back(
+        ParseAxisRef(mesh, axis_name, mesh_axis_to_index));
   }
 
-  std::vector<AxisRef> manual_axes;
-  manual_axes.reserve(manual_axis_names.size());
-  for (const std::string& axis_name : manual_axis_names) {
-    auto it = mesh_axis_to_index.find(axis_name);
-    CHECK_NE(it, mesh_axis_to_index.end())
-        << "Axis " << axis_name << " not found in mesh " << mesh.ToString();
-    manual_axes.push_back(AxisRef(it->second));
+  std::vector<AxisRef> manual_axes_vec;
+  manual_axes_vec.reserve(manual_axes.size());
+  for (const std::string& axis_name : manual_axes) {
+    manual_axes_vec.push_back(
+        ParseAxisRef(mesh, axis_name, mesh_axis_to_index));
   }
 
-  return NamedSharding(mesh, dim_shardings, replicated_axes, unreduced_axes,
-                       manual_axes, metadata);
+  return NamedSharding(mesh, dim_shardings_vec, replicated_axes_vec,
+                       unreduced_axes_vec, manual_axes_vec, metadata);
 }
 }  // namespace test_utils
 }  // namespace xla

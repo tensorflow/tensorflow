@@ -193,80 +193,55 @@ TEST(HloShardingUtilTest, MergeShardingDimensionWithEmpty) {
 TEST(HloShardingUtilTest, MergeShardingDimensionWithSubAxesKeepSubAxis) {
   // 'x':(1)2 + 'x':(2)2 = 'x'(1)4.
   Mesh mesh({8}, {"x"});
-  std::vector<NamedSharding::DimensionSharding> dim_shardings = {
-      NamedSharding::DimensionSharding({AxisRef(0, {1, 2})},
-                                       /*is_closed=*/true),
-      NamedSharding::DimensionSharding({AxisRef(0, {2, 2})},
-                                       /*is_closed=*/true)};
-  NamedSharding input(mesh, dim_shardings);
+  NamedSharding input =
+      test_utils::FromAxisNames(mesh, {{"x:(1)2"}, {"x:(2)2"}});
 
   HloSharding sharding(input);
   HloSharding merged = MergeShardingDimension(sharding, 0);
 
-  NamedSharding expected_ns(
-      mesh, {NamedSharding::DimensionSharding({AxisRef(0, {1, 4})},
-                                              /*is_closed=*/true)});
+  NamedSharding expected_ns = test_utils::FromAxisNames(mesh, {{"x:(1)4"}});
   EXPECT_EQ(merged.named_sharding(), expected_ns);
 }
 
 TEST(HloShardingUtilTest, MergeShardingDimensionWithSubAxesBecomeFullAxis) {
   // 'x':(1)2 + 'x':(2)2 = 'x'.
   Mesh mesh({4}, {"x"});
-  std::vector<NamedSharding::DimensionSharding> dim_shardings = {
-      NamedSharding::DimensionSharding({AxisRef(0, {1, 2})},
-                                       /*is_closed=*/true),
-      NamedSharding::DimensionSharding({AxisRef(0, {2, 2})},
-                                       /*is_closed=*/true)};
-  NamedSharding input(mesh, dim_shardings);
+  NamedSharding input =
+      test_utils::FromAxisNames(mesh, {{"x:(1)2"}, {"x:(2)2"}});
 
   HloSharding sharding(input);
   HloSharding merged = MergeShardingDimension(sharding, 0);
 
-  NamedSharding expected_ns(mesh, {NamedSharding::DimensionSharding(
-                                      {AxisRef(0)}, /*is_closed=*/true)});
+  NamedSharding expected_ns = test_utils::FromAxisNames(mesh, {{"x"}});
   EXPECT_EQ(merged.named_sharding(), expected_ns);
 }
 
 TEST(HloShardingUtilTest, MergeShardingDimensionWithSubAxesSuccess) {
   // {'x':(1)2} + {y, 'x':(2)2} = {'x':(1)2, y, 'x':(2)2}
   Mesh mesh({4, 2}, {"x", "y"});
-  std::vector<NamedSharding::DimensionSharding> dim_shardings = {
-      NamedSharding::DimensionSharding({AxisRef(0, {1, 2})},
-                                       /*is_closed=*/true),
-      NamedSharding::DimensionSharding({AxisRef(1), AxisRef(0, {2, 2})},
-                                       /*is_closed=*/true)};
-  NamedSharding input(mesh, dim_shardings);
+  NamedSharding input =
+      test_utils::FromAxisNames(mesh, {{"x:(1)2"}, {"y", "x:(2)2"}});
 
   HloSharding sharding(input);
   HloSharding merged = MergeShardingDimension(sharding, 0);
 
   EXPECT_EQ(merged.named_sharding(),
-            NamedSharding(
-                mesh, {NamedSharding::DimensionSharding(
-                          {AxisRef(0, {1, 2}), AxisRef(1), AxisRef(0, {2, 2})},
-                          /*is_closed=*/true)}));
+            test_utils::FromAxisNames(mesh, {{"x:(1)2", "y", "x:(2)2"}}));
 }
 
 TEST(HloShardingUtilTest, MergeShardingDimensionMergesSubAxesAtBoundary) {
   // ["x":(4)2, "y":(1)4, "x":(1)2] + ["x":(2)2, "y":(4)4] =
   // ["x":(4)2, "y":(1)4, "x":(1)4, "y":(4)4]
   Mesh mesh({16, 16}, {"x", "y"});
-  std::vector<NamedSharding::DimensionSharding> dim_shardings = {
-      NamedSharding::DimensionSharding(
-          {AxisRef(0, {4, 2}), AxisRef(1, {1, 4}), AxisRef(0, {1, 2})},
-          /*is_closed=*/true),
-      NamedSharding::DimensionSharding({AxisRef(0, {2, 2}), AxisRef(1, {4, 4})},
-                                       /*is_closed=*/true)};
-  NamedSharding input(mesh, dim_shardings);
+  NamedSharding input = test_utils::FromAxisNames(
+      mesh, {{"x:(4)2", "y:(1)4", "x:(1)2"}, {"x:(2)2", "y:(4)4"}});
 
   HloSharding sharding(input);
   HloSharding merged = MergeShardingDimension(sharding, 0);
 
   EXPECT_EQ(merged.named_sharding(),
-            NamedSharding(mesh, {NamedSharding::DimensionSharding(
-                                    {AxisRef(0, {4, 2}), AxisRef(1, {1, 4}),
-                                     AxisRef(0, {1, 4}), AxisRef(1, {4, 4})},
-                                    /*is_closed=*/true)}));
+            test_utils::FromAxisNames(
+                mesh, {{"x:(4)2", "y:(1)4", "x:(1)4", "y:(4)4"}}));
 }
 
 TEST(HloShardingUtilTest, SplitShardingDimension) {
@@ -304,13 +279,8 @@ TEST(HloShardingUtilTest, SplitShardingDimensionIntoSubAxes) {
     HloSharding result = SplitShardingDimension(
         HloSharding(test_utils::FromAxisNames(mesh, {{"x"}})), 0, 4);
 
-    EXPECT_EQ(
-        result.named_sharding(),
-        NamedSharding(mesh,
-                      {NamedSharding::DimensionSharding({AxisRef(0, {1, 4})},
-                                                        /*is_closed=*/true),
-                       NamedSharding::DimensionSharding({AxisRef(0, {4, 2})},
-                                                        /*is_closed=*/true)}));
+    EXPECT_EQ(result.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x:(1)4"}, {"x:(4)2"}}));
   }
 }
 

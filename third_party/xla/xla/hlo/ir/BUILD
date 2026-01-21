@@ -205,10 +205,10 @@ cc_library(
     srcs = ["named_sharding.cc"],
     hdrs = ["named_sharding.h"],
     deps = [
+        ":hlo_op_metadata",
         ":mesh_and_axis",
         ":tile_assignment",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo_op_metadata",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",

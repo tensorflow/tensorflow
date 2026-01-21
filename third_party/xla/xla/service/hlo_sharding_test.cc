@@ -627,15 +627,11 @@ TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
 
 TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
   Mesh mesh({2, 4}, {"a", "b"});
-  NamedSharding::DimensionSharding ds_a({AxisRef(0)},
-                                        /*is_closed=*/true);
-  NamedSharding::DimensionSharding ds_b({AxisRef(1)},
-                                        /*is_closed=*/true);
-  HloSharding sharding(NamedSharding(mesh, {{ds_a}, {ds_b}}));
+  HloSharding sharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
   EXPECT_EQ(sharding.ToString(), "{@mesh<a=2,b=4>, [{a}, {b}]}");
 
-  HloSharding sharding_with_metadata(
-      NamedSharding(mesh, {{ds_a}, {ds_b}}, {}, {}, {}, ListMetadata()));
+  HloSharding sharding_with_metadata(test_utils::FromAxisNames(
+      mesh, {{"a"}, {"b"}}, {}, {}, {}, ListMetadata()));
   EXPECT_EQ(sharding_with_metadata.ToString(/*include_metadata=*/true),
             "{@mesh<a=2,b=4>, [{a}, {b}], metadata={{op_name=\"b\"}, "
             "{op_name=\"c\"}}}");
