@@ -40,6 +40,7 @@ enum class DeviceType {
   kAmdCpu,
   kIntelCpu,
   kArmCpu,
+  kSystemZCpu,
   kNvidiaGpu,
   kAmdGpu,
 };

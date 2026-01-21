@@ -355,6 +355,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   } else if (target_triple.isAArch64() || target_triple.isARM()) {
     device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
+  } else if (target_triple.isSystemZ()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kSystemZCpu;
   } else {
     LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
   }
