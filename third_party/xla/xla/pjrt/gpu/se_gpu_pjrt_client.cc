@@ -2038,14 +2038,8 @@ StreamExecutorGpuClient::RunAsync(
 
   std::set<se::DeviceAddressBase> buffers_in_result;
 
-  xla::ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> results(
-      gpu_exec->result_shape());
-
-  for (auto& p : results) {
-    const ShapeIndex& index = p.first;
-    if (!gpu_exec->output_info().contains(index)) {
-      continue;
-    }
+  auto make_result = [&](const ShapeIndex& index)
+      -> absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> {
     const gpu::GpuExecutable::OutputInfo& output_info =
         gpu_exec->output_info().at(index);
     const BufferAllocation* allocation =
@@ -2073,9 +2067,8 @@ StreamExecutorGpuClient::RunAsync(
         // donate a buffer; the aliasing information describes which buffers
         // may alias, not buffers that must alias.
         buffers_in_result.insert(input.buf->mem());
-        p.second = input.buf;
         input.is_donated = false;
-        continue;
+        return input.buf;
       } else if (!output_info.passthrough &&
                  !ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
                       .IsTuple()) {
@@ -2113,11 +2106,24 @@ StreamExecutorGpuClient::RunAsync(
     }
     buffers_in_result.insert(result_buffer);
 
-    p.second = RawSEDeviceMemory::Create(
+    return RawSEDeviceMemory::Create(
         result_buffer,
         tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
             ->local_device_state(),
         memory_allocator);
+  };
+
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> results;
+  if (gpu_exec->result_shape().IsTuple()) {
+    int tuple_count = gpu_exec->result_shape().tuple_shapes().size();
+    results.reserve(tuple_count);
+    for (int i = 0; i < tuple_count; ++i) {
+      TF_ASSIGN_OR_RETURN(auto arr, make_result({i}));
+      results.push_back(std::move(arr));
+    }
+  } else {
+    TF_ASSIGN_OR_RETURN(auto arr, make_result({}));
+    results.push_back(std::move(arr));
   }
 
   TF_RETURN_IF_ERROR(gpu_exec->ExecuteThunks(buffer_allocations, run_options));

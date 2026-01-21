@@ -88,7 +88,7 @@ struct PjRtStreamExecutorExecutionInput {
 };
 
 struct PjRtStreamExecutorExecutionOutput {
-  ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result;
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> result;
   // Donated inputs which must be freed.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
   // For PjRtStreamExecutorClient implementations that
@@ -679,7 +679,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<PjRtBuffer* const> argument_handles,
       absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers) const;
 
-  absl::StatusOr<ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>>>
+  absl::StatusOr<std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>>>
   EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
@@ -691,7 +691,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeOutputBuffers(
       int device_ordinal, const ExecuteOptions& options,
-      ShapeTree<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
+      const xla::Shape& output_device_shape,
+      std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
       BufferSequencingEventRef definition_event, PjRtDevice* device,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
