@@ -140,7 +140,7 @@ class ScopedTFBuffer(object):
 
 
 class ApiDefMap(object):
-  """Wrapper around Tf_ApiDefMap that handles querying and deletion.
+  """Wrapper around TF_ApiDefMap that handles querying and deletion.
 
   The OpDef protos are also stored in this class so that they could
   be queried by op name.

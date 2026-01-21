@@ -52,7 +52,7 @@ _TrackableData = collections.namedtuple("_TrackableData", [
     # Optimizer objects).
     "slot_variable_proto",
     # The object to save to checkpoint. Usually this is the same as `trackable`,
-    # but can differ when the the caller wants to specify a different object to
+    # but can differ when the caller wants to specify a different object to
     # save. For example, when saving checkpoints asynchronously, variables are
     # copied to the CPU. `object_to_save` is set as the copied variable.
     "object_to_save",
