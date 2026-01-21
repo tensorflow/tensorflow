@@ -583,11 +583,14 @@ message DebugOptions {
   // Whether reduction epilogue fusion is enabled in fusion passes.
   optional bool xla_gpu_enable_reduction_epilogue_fusion = 243;
 
-  // Enable the scatter determinism expander, an optimized pass that
-  // rewrites scatter operations to ensure deterministic behavior with high
-  // performance.
+  // Makes scatter ops deterministic and enables the use of the scatter
+  // determinism expander. This is an optimized pass that rewrites scatter
+  // operations to ensure deterministic behavior with high performance. If the
+  // optimization pass does not support a particular scater op, it will be made
+  // deterministic using a slower implementation.
   // Note that even when this flag is disabled, scatter operations may still
-  // be deterministic, although with additional overhead.
+  // be deterministic, with the slower implemntation. This is the case when
+  // 'xla_gpu_exclude_nondeterministic_ops' is enabled.
   optional bool xla_gpu_enable_scatter_determinism_expander = 345;
 
   // Enables shared constants for XLA/GPU. This allows large constants to be

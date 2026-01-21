@@ -2518,11 +2518,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(
           &DebugOptions::set_xla_gpu_enable_scatter_determinism_expander),
       debug_options->xla_gpu_enable_scatter_determinism_expander(),
-      "Enable the scatter determinism expander, an optimized pass that "
-      "rewrites scatter operations to ensure deterministic behavior with high "
-      "performance."
+      "Makes scatter ops deterministic and enables the use of the scatter "
+      "determinism expander. This is an optimized pass that rewrites scatter "
+      "operations to ensure deterministic behavior with high performance. If "
+      "the optimization pass does not support a particular scater op, it will "
+      "be made deterministic using a slower implementation. "
       "Note that even when this flag is disabled, scatter operations may still "
-      "be deterministic, although with additional overhead."));
+      "be deterministic, with the slower implemntation. This is the case when "
+      "'xla_gpu_exclude_nondeterministic_ops' is enabled."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_all_reduce_decomposer",
       bool_setter_for(
