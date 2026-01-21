@@ -49,8 +49,8 @@ toc:
     path: /xla/test_hlo_passes
   - title: Tiled layout
     path: /xla/tiled_layout
-  - title: Using LSP autocompletion
-    path: /xla/lsp
+  - title: Setting Up Developer Environment
+    path: /xla/developer_environment
   - title: Writing custom calls
     path: /xla/custom_call
   - title: XLA Flags guidance
