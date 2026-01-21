@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/bytes/cfile_reader.h"
+#include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -66,6 +68,7 @@ limitations under the License.
 #include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "tsl/platform/path.h"
 
 namespace xla::gpu {
@@ -557,20 +560,23 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
 
   std::vector<std::string> dump_files;
   TF_ASSERT_OK(env->GetMatchingPaths(
-      tsl::io::JoinPath(debug_options.xla_dump_to(), "*gpu_executable.txt"),
+      tsl::io::JoinPath(debug_options.xla_dump_to(), "*gpu_executable.riegeli"),
       &dump_files));
   ASSERT_EQ(dump_files.size(), 1);
 
   ExecutableAndOptionsProto dump_content;
-  TF_ASSERT_OK(tsl::ReadTextProto(env, dump_files[0], &dump_content));
+  auto reader = std::make_unique<riegeli::CFileReader<>>(dump_files[0]);
+  TF_ASSERT_OK(ReadSplitProto(std::move(reader), dump_content));
   EXPECT_THAT(dump_content.compile_options().executable_build_options(),
               Partially(EqualsProto(R"pb(
                 num_replicas: 2 num_partitions: 1
               )pb")));
 
   GpuExecutableProto gpu_executable_proto;
-  ASSERT_TRUE(gpu_executable_proto.ParseFromString(
-      dump_content.serialized_executable()));
+  auto executable_reader = std::make_unique<riegeli::StringReader<>>(
+      dump_content.serialized_executable());
+  TF_ASSERT_OK(
+      ReadSplitProto(std::move(executable_reader), gpu_executable_proto));
   ASSERT_THAT(gpu_executable_proto, Partially(EqualsProto(R"pb(
                 module_name: "test_module"
                 thunk {
