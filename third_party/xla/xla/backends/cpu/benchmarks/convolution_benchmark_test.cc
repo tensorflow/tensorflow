@@ -43,6 +43,9 @@ struct TypeConfig {
   PrimitiveType output;
 };
 
+static const int64_t kValidPadding = 0;
+static const int64_t kSamePadding = 1;
+
 static const std::vector<TypeConfig>& GetTypeConfigs() {
   static const absl::NoDestructor<std::vector<TypeConfig>> v(
       {{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
@@ -72,14 +75,27 @@ static void BM_Conv2D(benchmark::State& state,
   int kernel_h = state.range(4);
   int kernel_w = state.range(5);
   int output_channels = state.range(6);
-  int type_config_idx = state.range(7);
+  int padding_mode = state.range(7);
+  int type_config_idx = state.range(8);
 
   const auto& types = GetTypeConfigs()[type_config_idx];
+  int padding_h, padding_w;
+  int output_h, output_w;
 
-  // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
-  CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
-  int padding_h = (kernel_h - 1) / 2;
-  int padding_w = (kernel_w - 1) / 2;
+  if (padding_mode == kSamePadding) {
+    // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
+    CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
+    padding_h = (kernel_h - 1) / 2;
+    padding_w = (kernel_w - 1) / 2;
+    output_h = height;
+    output_w = width;
+  } else {
+    // Padding values for 'VALID' padding.
+    padding_h = 0;
+    padding_w = 0;
+    output_h = height - kernel_h + 1;
+    output_w = width - kernel_w + 1;
+  }
 
   std::string hlo_module = R"(
     HloModule TestModule
@@ -101,7 +117,7 @@ static void BM_Conv2D(benchmark::State& state,
   auto kernel_shape = ShapeUtil::MakeShape(
       types.kernel, {kernel_h, kernel_w, input_channels, output_channels});
   auto output_shape = ShapeUtil::MakeShape(
-      types.output, {batch, height, width, output_channels});
+      types.output, {batch, output_h, output_w, output_channels});
 
   auto input = GetRandomLiteral(types.input, input_shape, engine);
   auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
@@ -472,35 +488,41 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
 
   // This test case hits b/473570788.
   if (type_config != 2) {
-    add_args({8, 5, 5, 1, 1, 1, 32});
+    add_args({8, 5, 5, 1, 1, 1, 32, kSamePadding});
   }
-  add_args({8, 5, 5, 4, 1, 1, 32});
-  add_args({8, 128, 128, 4, 1, 1, 8});
+  add_args({8, 5, 5, 4, 1, 1, 32, kSamePadding});
+  add_args({8, 128, 128, 4, 1, 1, 8, kSamePadding});
   // Shapes from TF convolution benchmarks.
-  add_args({8, 32, 32, 128, 1, 1, 1024});
-  add_args({16, 32, 32, 128, 1, 1, 1024});
-  add_args({32, 32, 32, 128, 1, 1, 1024});
+  add_args({8, 32, 32, 128, 1, 1, 1024, kSamePadding});
+  add_args({16, 32, 32, 128, 1, 1, 1024, kSamePadding});
+  add_args({32, 32, 32, 128, 1, 1, 1024, kSamePadding});
   // Shapes similar to Eigen spatial convolution benchmarks.
-  add_args({32, 64, 64, 32, 1, 1, 64});
-  add_args({32, 256, 256, 4, 1, 1, 16});
-  add_args({32, 64, 64, 4, 1, 1, 16});
-  add_args({32, 32, 32, 96, 1, 1, 96});
+  add_args({32, 64, 64, 32, 1, 1, 64, kSamePadding});
+  add_args({32, 256, 256, 4, 1, 1, 16, kSamePadding});
+  add_args({32, 64, 64, 4, 1, 1, 16, kSamePadding});
+  add_args({32, 32, 32, 96, 1, 1, 96, kSamePadding});
   // --------------------------------------------------------------------------
   // // 3x3 Convolution: SpatialConvolution
   // --------------------------------------------------------------------------
   // // Shapes from XLA convolution tests
-  add_args({8, 5, 5, 1, 3, 3, 32});
-  add_args({8, 5, 5, 4, 3, 3, 32});
-  add_args({8, 128, 128, 4, 3, 3, 8});
+  add_args({8, 5, 5, 1, 3, 3, 32, kSamePadding});
+  add_args({8, 5, 5, 4, 3, 3, 32, kSamePadding});
+  add_args({8, 128, 128, 4, 3, 3, 8, kSamePadding});
   // Shapes from TF convolution benchmarks
-  add_args({8, 32, 32, 128, 3, 3, 1024});
-  add_args({16, 32, 32, 128, 3, 3, 1024});
-  add_args({32, 32, 32, 128, 3, 3, 1024});
+  add_args({8, 32, 32, 128, 3, 3, 1024, kSamePadding});
+  add_args({16, 32, 32, 128, 3, 3, 1024, kSamePadding});
+  add_args({32, 32, 32, 128, 3, 3, 1024, kSamePadding});
   // Shapes similar to Eigen spatial convolution benchmarks.
-  add_args({32, 64, 64, 32, 3, 3, 64});
-  add_args({32, 256, 256, 4, 3, 3, 16});
-  add_args({32, 64, 64, 4, 3, 3, 16});
-  add_args({32, 32, 32, 96, 3, 3, 96});
+  // Same padding.
+  add_args({32, 64, 64, 32, 3, 3, 64, kSamePadding});
+  add_args({32, 256, 256, 4, 3, 3, 16, kSamePadding});
+  add_args({32, 64, 64, 4, 3, 3, 16, kSamePadding});
+  add_args({32, 32, 32, 96, 3, 3, 96, kSamePadding});
+  // Valid padding.
+  add_args({32, 64, 64, 32, 3, 3, 64, kValidPadding});
+  add_args({32, 256, 256, 4, 3, 3, 16, kValidPadding});
+  add_args({32, 64, 64, 4, 3, 3, 16, kValidPadding});
+  add_args({32, 32, 32, 96, 3, 3, 96, kValidPadding});
 }
 
 void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b,
