@@ -84,6 +84,10 @@ bool NcclCollectives::IsGlobalConfig() const {
   return nccl_comm_id != nullptr;
 }
 
+bool NcclCollectives::SupportsDeviceComm() const {
+  return NCCL_VERSION_CODE >= 22800;
+}
+
 absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
 NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
                                      bool is_local) {

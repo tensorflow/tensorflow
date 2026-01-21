@@ -49,17 +49,21 @@ cc_library(
     hdrs = ["gpu_clique.h"],
     deps = [
         ":gpu_clique_key",
+        ":gpu_communicator",
+        "//xla:util",
         "//xla/core/collectives:clique",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/service:lockable",
         "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

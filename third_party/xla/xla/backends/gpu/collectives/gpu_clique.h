@@ -19,10 +19,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
@@ -44,6 +48,16 @@ class GpuClique : public Clique {
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
   bool peer_access_enabled() const { return peer_access_enabled_; }
+
+  // Returns a device communicator for a given rank and requirements if it's in
+  // a clique.
+  std::optional<GpuDeviceCommunicator*> device_comm(
+      RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  // Adds a device communicator to the clique.
+  absl::Status AddDeviceComm(
+      RankId rank, GpuDeviceCommunicator::Requirements reqs,
+      std::unique_ptr<GpuDeviceCommunicator> communicator);
 
   std::string DebugString() const final;
 
@@ -67,6 +81,13 @@ class GpuClique : public Clique {
   // True if peer device memory access is possible between all local devices in
   // the clique.
   bool peer_access_enabled_;
+
+  // We keep device communicators in a sorted container to guarantee that they
+  // are destroyed in determenistic order.
+  mutable absl::Mutex mu_;
+  absl::btree_map<std::pair<RankId, GpuDeviceCommunicator::Requirements>,
+                  std::unique_ptr<GpuDeviceCommunicator>>
+      device_communicators_ ABSL_GUARDED_BY(mu_);
 };
 
 // A lockable version of GpuClique that guarantees exclusive access to the
