@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 #define XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 
-#if defined(__has_attribute) && __has_attribute(vector_size)
-
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -171,7 +169,5 @@ Vec Clamp(Vec x, Scalar min, Scalar max) {
 }
 }  // namespace codegen
 }  // namespace xla
-
-#endif  // defined(__has_attribute) && __has_attribute(vector_size)
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
