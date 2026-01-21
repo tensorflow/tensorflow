@@ -1069,7 +1069,7 @@ absl::Status UpadteBufferImpl(se::Stream* stream, ffi::AnyBuffer src,
   if (offset < 0 || offset > 2) {
     return absl::InternalError("Offset must be in [0, 2].");
   }
-  int32_t data[2];
+  int32_t data[4];
   se::DeviceAddressBase buffer_mem = ret->device_memory();
   TF_RETURN_IF_ERROR(stream->Memcpy(data, buffer_mem, sizeof(data)));
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
@@ -1105,8 +1105,7 @@ XLA_FFI_DEFINE_HANDLER(kUpdateBuffer2, UpdateBuffer2,
                            .Arg<ffi::AnyBuffer>()
                            .Ret<ffi::AnyBuffer>());
 
-// TODO: Enable this test once the emitter failure is fixed.
-TEST_F(CustomCallHloTest, DISABLED_CallConcurrentUpdateTwoBuffers) {
+TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
   xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
                                        "xla.gpu.update_buffer1", PlatformName(),
                                        kUpdateBuffer1);
