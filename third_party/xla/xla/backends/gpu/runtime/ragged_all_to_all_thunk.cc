@@ -142,79 +142,82 @@ absl::Status RunAllToAllOnIndexBuffer(
   return stream.BlockHostUntilDone();
 }
 
-absl::Status RunRaggedAllToAll(
-    int64_t ragged_row_element_size, int64_t num_total_updates,
-    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
-    Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
-    const se::DeviceAddressBase& output_offsets_device_buffer,
-    bool use_symmetric_buffer) {
-  int device_ordinal = stream.parent()->device_ordinal();
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
-  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+// Executes the rendezvous before the kernel start.
+// Inserts CUDA events into the stream to ensure that all devices have reached
+// the start event before the kernel starts.
+absl::StatusOr<std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>>
+RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key, se::Stream& stream,
+                            RankId rank, se::Event* start_event,
+                            se::Event* end_event,
+                            const se::DeviceAddressBase& output_buffer) {
+  int64_t num_ranks = clique_key.num_local_participants();
 
-  std::vector<DeviceBufferPair> buffers = original_buffers;
+  RaggedAllToAllRendezvousValue rendezvous_value;
+  rendezvous_value.rank = rank;
+  rendezvous_value.output_buffer = output_buffer;
+  rendezvous_value.start_event = start_event;
+  rendezvous_value.end_event = end_event;
 
-  int64_t num_updates_per_replica = num_total_updates / num_ranks;
+  // Record that this device has started the memcpy ragged-all-to-all. We do
+  // this before the rendezvous to make sure that RecordEvent is called before
+  // WaitFor on another stream.
+  RETURN_IF_ERROR(stream.RecordEvent(start_event));
 
-  // `output_offsets` of the RaggedAllToAll instruction are sharded in a way,
-  // that `output_offset[i]` is an offset in the i-th peer output buffer. To
-  // make it work for NCCL model with send/recv, we need to know offsets in the
-  // local output buffer. To get the correct offsets we perform an AllToAll on
-  // the output_offsets buffer.
-  DeviceBufferPair& output_offsets_buffer_pair = buffers[4];
-  RETURN_IF_ERROR(RunAllToAllOnIndexBuffer(
-      output_offsets_buffer_pair.source_buffer, num_updates_per_replica,
-      output_offsets_device_buffer, output_offsets_buffer_pair.element_type,
-      stream, comm));
-  output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
-
-  RETURN_IF_ERROR(
-      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
-
-  const int64_t* input_offsets = ragged_metadata_allocs[0];
-  const int64_t* send_sizes = ragged_metadata_allocs[1];
-  const int64_t* output_offsets = ragged_metadata_allocs[2];
-  const int64_t* recv_sizes = ragged_metadata_allocs[3];
-
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
-  Future<> future = gpu_comm->GroupExecute(
-      [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
-       output_offsets, recv_sizes, ragged_row_element_size, &buffers,
-       &stream](GpuCommunicator* comm) -> absl::Status {
-        PrimitiveType element_type = buffers[0].element_type;
-
-        se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-        se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
-
-        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
-          for (int peer = 0; peer < num_ranks; ++peer) {
-            int64_t idx = peer * num_updates_per_replica + i;
-            se::DeviceAddressBase send_slice = GpuCollectives::Slice(
-                input_buffer, element_type,
-                input_offsets[idx] * ragged_row_element_size,
-                send_sizes[idx] * ragged_row_element_size);
-
-            se::DeviceAddressBase recv_slice = GpuCollectives::Slice(
-                output_buffer, element_type,
-                output_offsets[idx] * ragged_row_element_size,
-                recv_sizes[idx] * ragged_row_element_size);
-
-            RETURN_IF_ERROR(
-                comm->LaunchSend(send_slice, element_type,
-                                 send_sizes[idx] * ragged_row_element_size,
-                                 RankId(peer), GpuCollectives::On(stream)));
-
-            RETURN_IF_ERROR(
-                comm->LaunchRecv(recv_slice, element_type,
-                                 recv_sizes[idx] * ragged_row_element_size,
-                                 RankId(peer), GpuCollectives::On(stream)));
-          }
+  auto rendezvous_fn =
+      [](absl::Span<const RaggedAllToAllRendezvousValue* const> values) {
+        std::vector<RaggedAllToAllRendezvousValue> values_copy;
+        for (const auto& value : values) {
+          values_copy.push_back(*value);
         }
+        // Sort to make sure that values are in the same order as the devices
+        // are ordered in the communicator.
+        absl::c_sort(values_copy);
+        return values_copy;
+      };
 
-        return absl::OkStatus();
-      });
-  return future.Await();
+  std::string name =
+      absl::StrFormat("start one-shot ragged-all-to-all for rank %d, clique %s",
+                      rank.value(), clique_key.ToString());
+  ASSIGN_OR_RETURN(
+      std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
+          rendezvous_values,
+      Rendezvous<std::vector<RaggedAllToAllRendezvousValue>>(
+          name, clique_key, rendezvous_value, num_ranks, rendezvous_fn));
+
+  // Wait for all devices to reach the start event. This indicates that all
+  // output buffers are ready for transfer.
+  for (auto& value : *rendezvous_values) {
+    RETURN_IF_ERROR(stream.WaitFor(value.start_event));
+  }
+
+  return rendezvous_values;
+}
+
+// Executes the rendezvous after the kernel finish. Waits for all devices to
+// reach the end event.
+absl::Status RendezvousAfterKernelFinish(
+    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
+    se::Event* end_event,
+    const std::vector<RaggedAllToAllRendezvousValue>& rendezvous_values) {
+  int64_t num_ranks = clique_key.num_local_participants();
+
+  // Record that this device has finished the memcpy ragged-all-to-all.
+  RETURN_IF_ERROR(stream.RecordEvent(end_event));
+
+  // Do another rendezvous to make sure that we call RecordEvent for end_event
+  // before WaitFor on another stream.
+  std::string name = absl::StrFormat(
+      "finish one-shot ragged-all-to-all for rank %d, clique %s", rank.value(),
+      clique_key.ToString());
+  RETURN_IF_ERROR(Rendezvous(name, clique_key, num_ranks));
+
+  // Wait for all devices to reach the end event. This indicates that all
+  // updates from other devices have arrived.
+  for (auto& value : rendezvous_values) {
+    RETURN_IF_ERROR(stream.WaitFor(value.end_event));
+  }
+
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -243,121 +246,6 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
       buffers_(std::move(buffers)),
       one_shot_kernel_enabled_(one_shot_kernel_enabled) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
-}
-
-// Executes the rendezvous before the kernel start.
-// Inserts CUDA events into the stream to ensure that all devices have reached
-// the start event before the kernel starts.
-absl::StatusOr<
-    std::shared_ptr<std::vector<RaggedAllToAllStartThunk::RendezvousValue>>>
-RaggedAllToAllStartThunk::RendezvousBeforeKernelStart(
-    const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state, const se::DeviceAddressBase& output_buffer) {
-  int64_t num_ranks = clique_key.num_local_participants();
-  const RankId& rank = state.rank;
-
-  RendezvousValue rendezvous_value;
-  rendezvous_value.rank = rank;
-  rendezvous_value.output_buffer = output_buffer;
-  rendezvous_value.start_event = state.start_event.get();
-  rendezvous_value.end_event = state.end_event.get();
-
-  // Record that this device has started the memcpy ragged-all-to-all. We do
-  // this before the rendezvous to make sure that RecordEvent is called before
-  // WaitFor on another stream.
-  RETURN_IF_ERROR(stream.RecordEvent(state.start_event.get()));
-
-  auto rendezvous_fn = [](absl::Span<const RendezvousValue* const> values) {
-    std::vector<RendezvousValue> values_copy;
-    for (const auto& value : values) {
-      values_copy.push_back(*value);
-    }
-    // Sort to make sure that values are in the same order as the devices are
-    // ordered in the communicator.
-    absl::c_sort(values_copy);
-    return values_copy;
-  };
-
-  std::string name =
-      absl::StrFormat("start one-shot ragged-all-to-all for rank %d, clique %s",
-                      rank.value(), clique_key.ToString());
-  ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      Rendezvous<std::vector<RendezvousValue>>(
-          name, clique_key, rendezvous_value, num_ranks, rendezvous_fn));
-
-  // Wait for all devices to reach the start event. This indicates that all
-  // output buffers are ready for transfer.
-  for (auto& value : *rendezvous_values) {
-    RETURN_IF_ERROR(stream.WaitFor(value.start_event));
-  }
-
-  return rendezvous_values;
-}
-
-// Executes the rendezvous after the kernel finish. Waits for all devices to
-// reach the end event.
-absl::Status RaggedAllToAllStartThunk::RendezvousAfterKernelFinish(
-    const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state,
-    const std::vector<RendezvousValue>& rendezvous_values) {
-  int64_t num_ranks = clique_key.num_local_participants();
-  const RankId& rank = state.rank;
-
-  // Record that this device has finished the memcpy ragged-all-to-all.
-  RETURN_IF_ERROR(stream.RecordEvent(state.end_event.get()));
-
-  // Do another rendezvous to make sure that we call RecordEvent for end_event
-  // before WaitFor on another stream.
-  std::string name = absl::StrFormat(
-      "finish one-shot ragged-all-to-all for rank %d, clique %s", rank.value(),
-      clique_key.ToString());
-  RETURN_IF_ERROR(Rendezvous(name, clique_key, num_ranks));
-
-  // Wait for all devices to reach the end event. This indicates that all
-  // updates from other devices have arrived.
-  for (auto& value : rendezvous_values) {
-    RETURN_IF_ERROR(stream.WaitFor(value.end_event));
-  }
-
-  return absl::OkStatus();
-}
-
-absl::Status RaggedAllToAllStartThunk::RunOneShotRaggedAllToAll(
-    const GpuCliqueKey& clique_key, se::Stream& stream,
-    const StreamState& state, absl::Span<DeviceBufferPair const> buffers) {
-  int device_ordinal = stream.parent()->device_ordinal();
-  const RankId& rank = state.rank;
-
-  const int64_t num_ranks = clique_key.num_local_participants();
-
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "Performing one-shot ragged-all-to-all rank: " << rank.value();
-
-  PrimitiveType element_type = buffers[0].element_type;
-
-  se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
-  se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
-
-  ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      RendezvousBeforeKernelStart(clique_key, stream, state, output_buffer));
-
-  const int64_t num_updates_per_replica = config_.num_total_updates / num_ranks;
-
-  absl::InlinedVector<se::DeviceAddressBase, 4> output_ptrs;
-  for (auto& value : *rendezvous_values) {
-    output_ptrs.push_back(value.output_buffer);
-  }
-
-  RETURN_IF_ERROR(RunRaggedAllToAllKernel(
-      &stream, element_type, input_buffer, output_ptrs,
-      buffers[2].source_buffer, buffers[3].source_buffer,
-      buffers[4].source_buffer, num_ranks, num_updates_per_replica,
-      config_.num_input_rows, config_.num_row_elements));
-
-  return RendezvousAfterKernelFinish(clique_key, stream, state,
-                                     *rendezvous_values);
 }
 
 /*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(
@@ -416,8 +304,8 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);
 
-  auto state =
-      std::make_unique<StreamState>(executor->device_ordinal(), rank.value());
+  auto state = std::make_unique<RaggedAllToAllStreamState>(
+      executor->device_ordinal(), rank.value());
 
   // Allocate temp buffers in the host memory to load the sizes and offsets of
   // ragged tensors from device memory.
@@ -432,7 +320,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
       executor,
       executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
 
-  if (state->output_offsets_device_buffer.memory().is_null()) {
+  if (state->output_offsets_device_buffer.address().is_null()) {
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
@@ -537,7 +425,7 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   ASSIGN_OR_RETURN(bool peer_access_enabled,
                    params.collective_cliques->peer_access_enabled(clique_key));
 
-  StreamState* state = nullptr;
+  RaggedAllToAllStreamState* state = nullptr;
   {
     absl::MutexLock lock(mutex_);
     state = per_stream_states_[stream.parent()].get();
@@ -549,8 +437,10 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
                                       device_buffers[0].element_type);
 
   if (should_use_one_shot_kernel) {
-    RETURN_IF_ERROR(
-        RunOneShotRaggedAllToAll(clique_key, stream, *state, device_buffers));
+    TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
+        clique_key, stream, state->rank, state->start_event.get(),
+        state->end_event.get(), config_.num_total_updates,
+        config_.num_input_rows, config_.num_row_elements, device_buffers));
     return false;
   }
 
@@ -566,9 +456,125 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   RETURN_IF_ERROR(
       RunRaggedAllToAll(config_.num_row_elements, config_.num_total_updates,
                         device_buffers, stream, comm, ragged_metadata_allocs,
-                        state->output_offsets_device_buffer.memory(),
+                        state->output_offsets_device_buffer.address(),
                         config_.config.use_symmetric_buffer));
   return true;
+}
+
+absl::Status RunRaggedAllToAll(
+    int64_t ragged_row_element_size, int64_t num_total_updates,
+    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
+    Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
+    const se::DeviceAddressBase& output_offsets_device_buffer,
+    bool use_symmetric_buffer) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing ragged-all-to-all from device ordinal: " << device_ordinal;
+  ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
+
+  std::vector<DeviceBufferPair> buffers = original_buffers;
+
+  int64_t num_updates_per_replica = num_total_updates / num_ranks;
+
+  // `output_offsets` of the RaggedAllToAll instruction are sharded in a way,
+  // that `output_offset[i]` is an offset in the i-th peer output buffer. To
+  // make it work for NCCL model with send/recv, we need to know offsets in the
+  // local output buffer. To get the correct offsets we perform an AllToAll on
+  // the output_offsets buffer.
+  DeviceBufferPair& output_offsets_buffer_pair = buffers[4];
+  RETURN_IF_ERROR(RunAllToAllOnIndexBuffer(
+      output_offsets_buffer_pair.source_buffer, num_updates_per_replica,
+      output_offsets_device_buffer, output_offsets_buffer_pair.element_type,
+      stream, comm));
+  output_offsets_buffer_pair.source_buffer = output_offsets_device_buffer;
+
+  RETURN_IF_ERROR(
+      LoadRaggedTensorMetadata(stream, buffers, ragged_metadata_allocs));
+
+  const int64_t* input_offsets = ragged_metadata_allocs[0];
+  const int64_t* send_sizes = ragged_metadata_allocs[1];
+  const int64_t* output_offsets = ragged_metadata_allocs[2];
+  const int64_t* recv_sizes = ragged_metadata_allocs[3];
+
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  Future<> future = gpu_comm->GroupExecute(
+      [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
+       output_offsets, recv_sizes, ragged_row_element_size, &buffers,
+       &stream](GpuCommunicator* comm) -> absl::Status {
+        PrimitiveType element_type = buffers[0].element_type;
+
+        se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+        se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
+
+        for (int64_t i = 0; i < num_updates_per_replica; ++i) {
+          for (int peer = 0; peer < num_ranks; ++peer) {
+            int64_t idx = peer * num_updates_per_replica + i;
+            se::DeviceAddressBase send_slice = GpuCollectives::Slice(
+                input_buffer, element_type,
+                input_offsets[idx] * ragged_row_element_size,
+                send_sizes[idx] * ragged_row_element_size);
+
+            se::DeviceAddressBase recv_slice = GpuCollectives::Slice(
+                output_buffer, element_type,
+                output_offsets[idx] * ragged_row_element_size,
+                recv_sizes[idx] * ragged_row_element_size);
+
+            RETURN_IF_ERROR(
+                comm->LaunchSend(send_slice, element_type,
+                                 send_sizes[idx] * ragged_row_element_size,
+                                 RankId(peer), GpuCollectives::On(stream)));
+
+            RETURN_IF_ERROR(
+                comm->LaunchRecv(recv_slice, element_type,
+                                 recv_sizes[idx] * ragged_row_element_size,
+                                 RankId(peer), GpuCollectives::On(stream)));
+          }
+        }
+
+        return absl::OkStatus();
+      });
+  return future.Await();
+}
+
+absl::Status RunOneShotRaggedAllToAll(
+    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
+    se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
+    int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers) {
+  int device_ordinal = stream.parent()->device_ordinal();
+  const int64_t num_ranks = clique_key.num_local_participants();
+
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "Performing one-shot ragged-all-to-all rank: " << rank.value();
+
+  PrimitiveType element_type = buffers[0].element_type;
+
+  se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
+  se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
+
+  // Note: RecordEvent and WaitFor(event) wouldn't work with CUDA graph.
+  // b/409511004: Use atomics for multi-GPU barrier in ragged-all-to-all thunk
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
+          rendezvous_values,
+      RendezvousBeforeKernelStart(clique_key, stream, rank, start_event,
+                                  end_event, output_buffer));
+
+  const int64_t num_updates_per_replica = num_total_updates / num_ranks;
+
+  absl::InlinedVector<se::DeviceAddressBase, 4> output_ptrs;
+  for (auto& value : *rendezvous_values) {
+    output_ptrs.push_back(value.output_buffer);
+  }
+
+  TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(
+      &stream, element_type, input_buffer, output_ptrs,
+      buffers[2].source_buffer, buffers[3].source_buffer,
+      buffers[4].source_buffer, num_ranks, num_updates_per_replica,
+      num_input_rows, num_row_elements));
+
+  return RendezvousAfterKernelFinish(clique_key, stream, rank, end_event,
+                                     *rendezvous_values);
 }
 
 }  // namespace gpu
