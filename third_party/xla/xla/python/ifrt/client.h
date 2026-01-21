@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -109,6 +111,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // in major-to-minor order. The runtime may return `UNIMPLEMENTED` if
   // `byte_strides` does not equate to a reordering of the dimensions.
   //
+  // `layout` specifies the layout of the array. If `layout` is nullptr, the a
+  // device-default layout used.
+  //
   // `on_done_with_host_buffer` is optional and may be null.
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
@@ -117,8 +122,18 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
+      ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      ShardingRef sharding, HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer) {
+    return MakeArrayFromHostBuffer(
+        data, dtype, std::move(shape), byte_strides, std::move(sharding),
+        /*layout=*/nullptr, semantics, std::move(on_done_with_host_buffer));
+  }
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -218,6 +233,11 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
       absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) = 0;
+  virtual absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
+      std::optional<MemoryKind> memory_kind,
+      std::optional<absl::Span<ArrayRef>> donated_arrays,
+      ArrayCopySemantics semantics) = 0;
 
   // Remaps shards across input `Array`s to create new `Array`s based on `plan`.
   // This array remapping is a metadata-only operation that can shuffle or
@@ -243,6 +263,10 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // NOTE: `ArrayCopySemantics::kReuseInput` is not allowed.
   virtual absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) = 0;
+  virtual absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      std::optional<absl::Span<ArrayRef>> donated_arrays,
       ArrayCopySemantics semantics) = 0;
 
   // Returns a future that becomes ready once all of the values become ready.

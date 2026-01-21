@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
-#include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -192,11 +192,14 @@ class CompileOnlyIfRtClient final
   absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromHostBuffer(
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
+      xla::ifrt::ShardingRef sharding, xla::ifrt::LayoutRef layout,
+      HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override {
     return Unimplemented(
         "MakeArrayFromHostBuffer not available with compile-only client.");
   }
+  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
+  using xla::ifrt::Client::MakeArrayFromHostBuffer;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
