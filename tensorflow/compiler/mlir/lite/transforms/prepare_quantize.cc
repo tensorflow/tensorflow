@@ -412,7 +412,8 @@ void PrepareQuantizePass::runOnOperation() {
   // During the legalization, unsigned quantized type is used, so we have to
   // convert all of them to signed.
   RewritePatternSet patterns_2(&getContext());
-  if (is_signed) {
+  if (is_signed &&
+      quant_specs_.qdq_conversion_mode != QDQConversionMode::kQDQStrict) {
     patterns_2.add<ConvertUnsignedToSigned<quantfork::QuantizeCastOp>>(ctx);
   }
   // Convert quant stats to int8, unit8, int16 quantization parameters.
