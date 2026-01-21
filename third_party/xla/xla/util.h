@@ -290,7 +290,9 @@ absl::Status AppendStatus(absl::Status prior, absl::string_view context);
   }
 #endif
 
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Aborted);
 XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Cancelled);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(DeadlineExceeded);
 XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(FailedPrecondition);
 XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Internal);
 XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(InvalidArgument);
