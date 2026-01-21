@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -48,13 +47,6 @@ namespace {
 
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
-
-Array<int64_t> MakeArray(absl::Span<const int64_t> dimensions,
-                         absl::Span<const int64_t> contents) {
-  Array<int64_t> a(dimensions);
-  absl::c_copy(contents, a.begin());
-  return a;
-}
 
 OpMetadata GetMetadata(const std::string& op_name) {
   OpMetadata metadata;
@@ -170,21 +162,24 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
 TEST_F(HloShardingTest, Tile) {
   {
     // Test should fail because of a duplicate tile assignment.
-    HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 0, 2, 3}));
+    HloSharding sharding =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 0, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
                                        /*num_devices=*/4));
   }
 
   {
     // Test should fail because of more devices used than `num_device`.
-    HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
+    HloSharding sharding =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
                                        /*num_devices=*/2));
   }
 
   {
     // Test should fail because not all devices present in tile assignment.
-    HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
+    HloSharding sharding =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
                                        /*num_devices=*/5));
   }
@@ -192,7 +187,8 @@ TEST_F(HloShardingTest, Tile) {
   {
     // Test should pass.
     Shape shape = ShapeUtil::MakeShape(U32, {4, 5});
-    HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
+    HloSharding sharding =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1}));
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
                                    /*num_devices=*/4));
 
@@ -284,20 +280,20 @@ TEST_F(HloShardingTest, EachTile) {
 
 TEST_F(HloShardingTest, V1V2TileEquivalence) {
   {
-    HloSharding v1 = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
+    HloSharding v1 = HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     HloSharding v2 = HloSharding::IotaTile({2, 2});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
   {
-    HloSharding v1 = HloSharding::Tile(MakeArray({2, 2}, {0, 2, 1, 3}));
+    HloSharding v1 = HloSharding::Tile(Array<int64_t>({2, 2}, {0, 2, 1, 3}));
     HloSharding v2 = HloSharding::IotaTile({2, 2}, {2, 2}, {1, 0});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
   {
     HloSharding v1 =
-        HloSharding::Tile(MakeArray({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}));
+        HloSharding::Tile(Array<int64_t>({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}));
     HloSharding v2 = HloSharding::IotaTile({2, 2, 2}, {2, 2, 2}, {2, 0, 1});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
@@ -306,13 +302,15 @@ TEST_F(HloShardingTest, V1V2TileEquivalence) {
 
 TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
   {
-    HloSharding v1 = HloSharding::PartialTile(MakeArray({2, 2}, {0, 1, 2, 3}));
+    HloSharding v1 =
+        HloSharding::PartialTile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     HloSharding v2 = HloSharding::PartialTile(TileAssignment({2, 2}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
   {
-    HloSharding v1 = HloSharding::PartialTile(MakeArray({2, 2}, {0, 2, 1, 3}));
+    HloSharding v1 =
+        HloSharding::PartialTile(Array<int64_t>({2, 2}, {0, 2, 1, 3}));
     HloSharding v2 =
         HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
     EXPECT_EQ(v1, v2);
@@ -320,7 +318,7 @@ TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
   }
   {
     HloSharding v1 = HloSharding::PartialTile(
-        MakeArray({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}));
+        Array<int64_t>({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}));
     HloSharding v2 = HloSharding::PartialTile(
         TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1}));
     EXPECT_EQ(v1, v2);
@@ -331,7 +329,7 @@ TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
 TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
   {
     HloSharding v1 =
-        HloSharding::Subgroup(MakeArray({2, 2}, {0, 1, 2, 3}),
+        HloSharding::Subgroup(Array<int64_t>({2, 2}, {0, 1, 2, 3}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
     HloSharding v2 = HloSharding::Subgroup(
         TileAssignment({2, 2}), {OpSharding::MANUAL, OpSharding::REPLICATED});
@@ -340,7 +338,7 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
   }
   {
     HloSharding v1 =
-        HloSharding::Subgroup(MakeArray({2, 2}, {0, 2, 1, 3}),
+        HloSharding::Subgroup(Array<int64_t>({2, 2}, {0, 2, 1, 3}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
     HloSharding v2 =
         HloSharding::Subgroup(TileAssignment({2, 2}, {2, 2}, {1, 0}),
@@ -349,9 +347,9 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
   {
-    HloSharding v1 =
-        HloSharding::Subgroup(MakeArray({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}),
-                              {OpSharding::MANUAL, OpSharding::REPLICATED});
+    HloSharding v1 = HloSharding::Subgroup(
+        Array<int64_t>({2, 2, 2}, {0, 2, 4, 6, 1, 3, 5, 7}),
+        {OpSharding::MANUAL, OpSharding::REPLICATED});
     HloSharding v2 =
         HloSharding::Subgroup(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
@@ -419,7 +417,7 @@ TEST_F(HloShardingTest, NestedTuple) {
 
 TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {
   HloSharding sharding =
-      HloSharding::Subgroup(MakeArray({1, 2, 1}, {0, 1}),
+      HloSharding::Subgroup(Array<int64_t>({1, 2, 1}, {0, 1}),
                             {OpSharding::MANUAL, OpSharding::REPLICATED});
   EXPECT_TRUE(sharding.IsManual());
 }
@@ -451,15 +449,17 @@ TEST_F(HloShardingTest, Hash) {
   }
 
   {
-    HloSharding sharding1 = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
-    HloSharding sharding2 = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
+    HloSharding sharding1 =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1}));
+    HloSharding sharding2 =
+        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1}));
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
 
   {
     HloSharding sharding1 = HloSharding::IotaTile({3, 4});
     HloSharding sharding2 = HloSharding::Tile(
-        MakeArray({3, 4}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+        Array<int64_t>({3, 4}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
 
