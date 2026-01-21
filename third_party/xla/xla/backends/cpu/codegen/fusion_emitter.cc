@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -289,11 +290,18 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitFusionKernel(
   TF_ASSIGN_OR_RETURN(std::string name, GetName(fusion, use_unique_c_name));
 
   if (enable_tiled_emitter) {
-    if (auto tiling_or = GetTilingIfSupported(mlir_context, fusion);
-        tiling_or.ok()) {
-      return EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment,
-                                   name, GetWorkGroupCount(fusion),
-                                   std::move(*tiling_or));
+    if (absl::StatusOr<SymbolicTileAnalysis> symbolic_tile_analysis_or =
+            GetSymbolicTileAnalysis(mlir_context, fusion);
+        symbolic_tile_analysis_or.ok()) {
+      SymbolicTileAnalysis& symbolic_tile_analysis = *symbolic_tile_analysis_or;
+      if (auto tiling_or = GetTilingIfSupported(mlir_context, fusion,
+                                                symbolic_tile_analysis);
+          tiling_or.ok()) {
+        return EmitTiledFusionKernel(mlir_context, fusion, buffer_assignment,
+                                     name, GetWorkGroupCount(fusion),
+                                     symbolic_tile_analysis,
+                                     std::move(*tiling_or));
+      }
     }
   }
 

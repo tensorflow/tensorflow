@@ -570,18 +570,6 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
     return PartitionedHlo(partitioned, base_shape_, state_);
   }
 
-  if (state_.module->config().debug_options().xla_enable_enzyme_comms_opt()) {
-    if (hlo_->opcode() == HloOpcode::kBroadcast &&
-        hlo_->operand(0)->shape().dimensions().empty() &&
-        hlo_->operand(0)->IsConstant()) {
-      HloInstruction* new_broadcast =
-          state_.b->AddInstruction(HloInstruction::CreateBroadcast(
-              hlo_->shape(), hlo_->mutable_operand(0), {}));
-      new_broadcast->set_sharding(target);
-      return PartitionedHlo(new_broadcast, base_shape_, state_);
-    }
-  }
-
   if (CanReshardWithCollectivePermute(sharding(), target)) {
     return ReshardWithCollectivePermute(target);
   }
