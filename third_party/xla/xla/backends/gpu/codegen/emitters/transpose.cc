@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -98,9 +99,14 @@ namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
 constexpr int kTileSize = 32;
+// Default values (CUDA and other backends).
 constexpr int kNumRows = 4;
-constexpr int kNumThreadsPerBlock = 128;
+constexpr int64_t kNumThreadsPerBlock = kNumRows * kTileSize;  // 128
 constexpr int kMaxVectorizedBytes = 4;
+// ROCm-specific configuration.
+constexpr int kNumRowsRocm = 8;
+constexpr int64_t kNumThreadsPerBlockRocm = kNumRowsRocm * kTileSize;  // 256
+constexpr int kMaxVectorizedBytesRocm = 16;
 
 // Reads the 2D vector tile <vector_size x vector_size> from the shared memory
 // at the given indices.
@@ -141,6 +147,15 @@ AffineExpr Swizzle(AffineExpr shmem_row, AffineExpr shmem_col,
 }
 
 }  // namespace
+
+TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis,
+                                         mlir::MLIRContext* mlir_context)
+    : analysis_(analysis),
+      mlir_context_(mlir_context),
+      num_threads_per_block_(
+          analysis.device_info().gpu_compute_capability().IsRocm()
+              ? kNumThreadsPerBlockRocm
+              : kNumThreadsPerBlock) {}
 
 absl::Status TransposeFusionBase::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
@@ -184,7 +199,10 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
       permutation_(transpose_.permutation),
       input_shape_(
           Permute(transpose_.dimensions, InversePermutation(permutation_))),
-      base_block_size_(kTileSize) {
+      base_block_size_(kTileSize),
+      num_rows_(analysis.device_info().gpu_compute_capability().IsRocm()
+                    ? kNumRowsRocm
+                    : kNumRows) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -242,10 +260,13 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
     // the input dimensions are divisible by the vector size. Vectorizing loads
     // for large data types does not help (there's already enough parallelism).
     const auto& device = analysis_.device_info();
-    for (int vec_size = kMaxVectorizedBytes / max_element_bytes; vec_size > 1;
+    int max_vectorized_bytes = device.gpu_compute_capability().IsRocm()
+                                   ? kMaxVectorizedBytesRocm
+                                   : kMaxVectorizedBytes;
+    for (int vec_size = max_vectorized_bytes / max_element_bytes; vec_size > 1;
          vec_size /= 2) {
       int elems_per_thread = vec_size * vec_size;
-      bool enough_work = Product(block_counts_) * kNumThreadsPerBlock >=
+      bool enough_work = Product(block_counts_) * num_threads_per_block_ >=
                          elems_per_thread * device.core_count() *
                              device.threads_per_core_limit();
       bool enough_shmem =
@@ -303,7 +324,7 @@ TransposeFusion::ComputeThreadIdToInputIndexing(
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
-  return LaunchDimensions(Product(block_counts_), kNumThreadsPerBlock);
+  return LaunchDimensions(Product(block_counts_), num_threads_per_block_);
 }
 
 IndexingMap TransposeFusion::GetSharedMemoryIndexing(
@@ -321,12 +342,12 @@ IndexingMap TransposeFusion::GetSharedMemoryIndexing(
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
   dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
-      kNumThreadsPerBlock;
+      num_threads_per_block_;
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   return {mlir::AffineMap::get(6, 2, thread_offsets, mlir_context),
           DimVarsFromGPUGrid(dim_var_sizes),
-          RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
+          RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
           {}};
 }
 
@@ -482,7 +503,7 @@ llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto loop = getAffineSymbolExpr(0, mlir_context);
   auto vector = getAffineSymbolExpr(1, mlir_context);
-  int loop_stride = block_size_ * kNumRows;
+  int loop_stride = block_size_ * num_rows_;
   if (MostMinorDimensionUnchanged()) {
     loop_stride *= vector_size_;
   }
@@ -508,13 +529,13 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
   dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
-      kNumThreadsPerBlock;
+      num_threads_per_block_;
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   IndexingMap result{
       mlir::AffineMap::get(6, 2, offsets, mlir_context),
       DimVarsFromTensorSizes(dim_var_sizes),
-      RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
+      RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
       {}};
   auto normalized_shape =
       input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
@@ -545,14 +566,13 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const PackedTransposeDescription& spec,
                                  absl::Span<const int64_t> output_block_tile,
-                                 int64_t num_shmem_groups,
                                  MLIRContext* mlir_context)
     : TransposeFusionBase(analysis, mlir_context),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
       block_counts_(GetBlockCounts(spec_.canonical_output_shape, output_tile_)),
-      num_shmem_groups_per_block_(num_shmem_groups),
+      num_shmem_groups_per_block_(num_threads_per_block_ / kNumShmemBanks),
       tile_size_t1_(input_tile_[spec_.dim_T1_input_id()]),
       tile_size_a_(input_tile_[spec_.dim_A_id()]),
       tile_size_t2_(input_tile_[spec_.dim_T2_input_id()]),
@@ -560,7 +580,8 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
       populated_shmem_rows_(tile_size_t2_) {
   VLOG(5) << "Transpose spec: " << spec.ToString()
           << "Output block tile: " << absl::StrJoin(output_block_tile, ", ")
-          << "\nNumber of shmem groups: " << num_shmem_groups << "\n";
+          << "\nNumber of shmem groups: " << num_shmem_groups_per_block_
+          << "\n";
   auto bits_per_element = GetBitwidth(spec_.elem_type());
   vector_size_ = kBankBitwidth / bits_per_element;
   CHECK_GE(vector_size_, 1);
@@ -637,7 +658,7 @@ PackedTranspose::ComputeThreadIdToInputIndexing(
 }
 
 LaunchDimensions PackedTranspose::launch_dimensions() const {
-  return LaunchDimensions(Product(block_counts_), kNumThreadsPerBlock);
+  return LaunchDimensions(Product(block_counts_), num_threads_per_block_);
 }
 
 PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
@@ -1055,8 +1076,7 @@ std::unique_ptr<EmitterBase> CreateTransposeFusion(
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
     return std::make_unique<PackedTranspose>(
-        analysis, spec, *packed_transpose_tile,
-        kNumThreadsPerBlock / kNumShmemBanks, mlir_context);
+        analysis, spec, *packed_transpose_tile, mlir_context);
   }
   return std::make_unique<TransposeFusion>(analysis, mlir_context);
 }
