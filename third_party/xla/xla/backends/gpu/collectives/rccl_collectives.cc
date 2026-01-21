@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -72,10 +73,74 @@ limitations under the License.
 
 namespace xla::gpu {
 
+//===----------------------------------------------------------------------===//
+// RcclIdStore
+//===----------------------------------------------------------------------===//
+
+namespace {
+class RcclIdStore {
+ public:
+  RcclIdStore(ProcessId process_id,
+              absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process,
+              std::shared_ptr<KeyValueStoreInterface> kv_store)
+      : process_id_(process_id),
+        device_to_process_(std::move(device_to_process)),
+        kv_store_(std::move(kv_store)) {}
+
+  absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
+                                       RcclCollectives& rccl_collectives) {
+    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    if (gpu_key == nullptr) {
+      return InvalidArgument("Expected GPU clique key");
+    }
+
+    // The caller must ensure that threads calling this method concurrently have
+    // unique keys, otherwise the global key-value store may hold the wrong
+    // value.
+    {
+      absl::MutexLock lock(mu_);
+      auto it = cache_.find(*gpu_key);
+      if (it != cache_.end()) {
+        return it->second;
+      }
+    }
+
+    CliqueId clique_id;
+    if (process_id_ == device_to_process_.at(gpu_key->root_device())) {
+      TF_ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
+      TF_RETURN_IF_ERROR(
+          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          std::string id_str,
+          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
+      clique_id = CliqueId(id_str);
+    }
+
+    absl::MutexLock lock(mu_);
+    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
+    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
+    return result.first->second;
+  }
+
+ private:
+  ProcessId process_id_;
+  const absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
+  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// RcclCollectives
+//===----------------------------------------------------------------------===//
+
 static ncclComm_t Cast(const Communicator* comm) {
-  auto* nccl_communicator = tsl::down_cast<const RcclCommunicator*>(comm);
-  CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
-  return nccl_communicator->comm();
+  auto* rccl_communicator = tsl::down_cast<const RcclCommunicator*>(comm);
+  CHECK(rccl_communicator != nullptr) << "Unsupported XLA communicator";
+  return rccl_communicator->comm();
 }
 
 absl::StatusOr<CliqueId> RcclCollectives::CreateUniqueCliqueId() const {
@@ -330,76 +395,24 @@ absl::Status RcclCollectives::Deallocate(void* location) {
   return absl::OkStatus();
 }
 
-class RcclIdStore {
- public:
-  RcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<CliqueId> GetRcclUniqueId(const CliqueKey& key,
-                                           RcclCollectives& rccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
-    if (gpu_key == nullptr) {
-      return InvalidArgument("Expected GPU clique key");
-    }
-
-    // The caller must ensure that threads calling this method concurrently have
-    // unique keys, otherwise the global key-value store may hold the wrong
-    // value.
-    {
-      absl::MutexLock lock(mu_);
-      auto it = cache_.find(*gpu_key);
-      if (it != cache_.end()) {
-        return it->second;
-      }
-    }
-    CliqueId clique_id;
-    int primary_node_id = device_to_node_.at(gpu_key->root_device());
-    if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
-    }
-    absl::MutexLock lock(mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return result.first->second;
-  }
-
- private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
-};
-
-absl::Status RcclCollectives::InitializeTopology(
-    RcclCollectives::Topology topology) {
+absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
+    const Topology& topology) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
     TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
+    TF_RETURN_IF_ERROR(
+        nvshmem_collectives->InitializeTopology(topology).status());
   }
 
-  if (topology.num_nodes > 1) {
-    auto nccl_id_store = std::make_shared<RcclIdStore>(
-        topology.node_id, topology.device_id_to_node_id,
+  if (topology.num_processes > 1) {
+    auto rccl_id_store = std::make_shared<RcclIdStore>(
+        topology.process_id, topology.device_to_process,
         std::move(topology.kv_store));
-    topology.gpu_executable_run_options->set_clique_id_callback(
-        [nccl_id_store, this](const CliqueKey& key) {
-          return nccl_id_store->GetRcclUniqueId(key, *this);
-        });
+    return [rccl_id_store, this](const CliqueKey& key) {
+      return rccl_id_store->GetCliqueId(key, *this);
+    };
   }
-  return absl::OkStatus();
+
+  return nullptr;
 }
 }  // namespace xla::gpu
 

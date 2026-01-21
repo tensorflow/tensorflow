@@ -76,7 +76,8 @@ class NvshmemCollectives : public GpuCollectives {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::Status InitializeTopology(Topology topology) final;
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final;
 };
 
 }  // namespace xla::gpu

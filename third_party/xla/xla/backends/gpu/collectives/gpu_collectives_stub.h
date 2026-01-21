@@ -68,7 +68,8 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::Status Deallocate(void* buffer) final { return UnimplementedError(); }
 
-  absl::Status InitializeTopology(Topology topology) final {
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final {
     return UnimplementedError();
   }
 

@@ -94,6 +94,7 @@ cc_library(
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
+        "//xla/runtime:process_id",
         "//xla/service:buffer_assignment",
         "//xla/service:compiled_module",
         "//xla/service:compiler",

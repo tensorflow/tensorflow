@@ -85,7 +85,8 @@ class RcclCollectives : public GpuCollectives {
 
   absl::Status Deallocate(void* location) final;
 
-  absl::Status InitializeTopology(Topology topology) final;
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final;
 };
 
 }  // namespace xla::gpu

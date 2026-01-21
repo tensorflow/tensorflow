@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
@@ -1637,7 +1638,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   }
 
   absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
-  absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
+  absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
   int curr_partition_index = -1;
   int curr_process_index = -1;
   int curr_process_index_in_partition = 0;
@@ -1657,7 +1658,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       }
 
       GlobalDeviceId global_device_id(device_proto.global_device_id());
-      device_to_node[global_device_id] = node.node_id();
+      device_to_process[global_device_id] = node.node_id();
       std::unique_ptr<LocalDeviceState> local_device;
       if (node.node_id() == node_id) {
         auto it = local_device_states.find(device_proto.local_device_ordinal());
@@ -1697,9 +1698,14 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     return absl::InternalError("Failed to get GPU collectives");
   }
 
-  TF_RETURN_IF_ERROR(gpu_collectives->InitializeTopology(
-      {node_id, global_topology.nodes().size(), local_device_states.size(),
-       kv_store, device_to_node, gpu_executable_run_options}));
+  size_t num_processes = global_topology.nodes().size();
+  TF_ASSIGN_OR_RETURN(
+      auto clique_id_callback,
+      gpu_collectives->InitializeTopology({ProcessId(node_id), num_processes,
+                                           local_device_states.size(), kv_store,
+                                           device_to_process}));
+  gpu_executable_run_options->set_clique_id_callback(
+      std::move(clique_id_callback));
 
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
                       BuildGpuTopology(global_topology));

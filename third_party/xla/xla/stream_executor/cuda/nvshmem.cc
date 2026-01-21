@@ -30,6 +30,7 @@ limitations under the License.
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/runtime/process_id.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -38,7 +39,7 @@ namespace stream_executor::gpu::nvshmem {
 // NVSHMEM environment information is stored per process in a static variable.
 namespace {
 struct EnvInfo {
-  int process_id = -1;
+  xla::ProcessId process_id = xla::ProcessId{-1};
   size_t num_processes = 0;
   size_t device_count_per_process = 0;
   std::weak_ptr<xla::KeyValueStoreInterface> kv_store;
@@ -48,7 +49,7 @@ struct EnvInfo {
 static absl::NoDestructor<EnvInfo> env;
 }  // namespace
 
-void SetEnvInfo(int process_id, size_t num_processes,
+void SetEnvInfo(xla::ProcessId process_id, size_t num_processes,
                 size_t device_count_per_process,
                 std::weak_ptr<xla::KeyValueStoreInterface> kv_store) {
   env->process_id = process_id;
@@ -100,8 +101,9 @@ absl::Status InitializeOnce() {
           "KV store is not available for nvshmem initialization.");
     }
 
-    if (nvshmemx_set_attr_uniqueid_args(env->process_id, env->num_processes,
-                                        &nvshmem_id, &nvshmem_init_attr) != 0) {
+    if (nvshmemx_set_attr_uniqueid_args(env->process_id.value(),
+                                        env->num_processes, &nvshmem_id,
+                                        &nvshmem_init_attr) != 0) {
       return absl::InternalError("nvshmemx_set_attr_uniqueid_args failed.");
     }
     if (nvshmemx_hostlib_init_attr(NVSHMEMX_INIT_WITH_UNIQUEID,
@@ -110,7 +112,7 @@ absl::Status InitializeOnce() {
     }
 
     VLOG(3) << absl::StreamFormat(
-        "Initialized NVSHMEM on process %d; num_processes=%llu",
+        "Initialized NVSHMEM on process %v; num_processes=%llu",
         env->process_id, env->num_processes);
     return absl::OkStatus();
   };
@@ -126,7 +128,7 @@ absl::Status InitializeOnce() {
 
 void Finalize() {
   VLOG(3) << absl::StreamFormat(
-      "Finilizing NVSHMEM on process %d; num_processes=%llu", env->process_id,
+      "Finilizing NVSHMEM on process %v; num_processes=%llu", env->process_id,
       env->num_processes);
   nvshmemx_hostlib_finalize();
 }

@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/runtime/process_id.h"
 
 namespace stream_executor::gpu::nvshmem {
 
 // Set environment information for NVSHMEM library.
-void SetEnvInfo(int process_id, size_t num_processes,
+void SetEnvInfo(xla::ProcessId process_id, size_t num_processes,
                 size_t device_count_per_process,
                 std::weak_ptr<xla::KeyValueStoreInterface> kv_store);
 

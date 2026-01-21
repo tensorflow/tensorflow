@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -65,6 +66,73 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace xla::gpu {
+
+//===----------------------------------------------------------------------===//
+// NcclIdStore
+//===----------------------------------------------------------------------===//
+
+namespace {
+// NcclIdStore generates clique unique ids for GPU cliques using NCCL APIs. NCCL
+// unique id is a mechanism that used by NCCL to find all processes
+// participating in the collective clique.
+class NcclIdStore {
+ public:
+  NcclIdStore(ProcessId process_id,
+              absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process,
+              std::shared_ptr<KeyValueStoreInterface> kv_store)
+      : process_id_(process_id),
+        device_to_process_(std::move(device_to_process)),
+        kv_store_(std::move(kv_store)) {}
+
+  absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
+                                       NcclCollectives& nccl_collectives) {
+    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    if (gpu_key == nullptr) {
+      return InvalidArgument("Expected GPU clique key");
+    }
+
+    // The caller must ensure that threads calling this method concurrently have
+    // unique keys, otherwise the global key-value store may hold the wrong
+    // value.
+    {
+      absl::MutexLock lock(mu_);
+      auto it = cache_.find(*gpu_key);
+      if (it != cache_.end()) {
+        return it->second;
+      }
+    }
+
+    CliqueId clique_id;
+    if (process_id_ == device_to_process_.at(gpu_key->root_device())) {
+      TF_ASSIGN_OR_RETURN(clique_id, nccl_collectives.CreateUniqueCliqueId());
+      TF_RETURN_IF_ERROR(
+          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          std::string id_str,
+          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
+      clique_id = CliqueId(id_str);
+    }
+
+    absl::MutexLock lock(mu_);
+    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
+    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
+    return result.first->second;
+  }
+
+ private:
+  ProcessId process_id_;
+  const absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
+  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// NcclCollectives
+//===----------------------------------------------------------------------===//
 
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
@@ -342,83 +410,32 @@ absl::Status NcclCollectives::Deallocate(void* location) {
   return absl::OkStatus();
 }
 
-class NcclIdStore {
- public:
-  NcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key,
-                                           NcclCollectives& nccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
-    if (gpu_key == nullptr) {
-      return InvalidArgument("Expected GPU clique key");
-    }
-
-    // The caller must ensure that threads calling this method concurrently have
-    // unique keys, otherwise the global key-value store may hold the wrong
-    // value.
-    {
-      absl::MutexLock lock(mu_);
-      auto it = cache_.find(*gpu_key);
-      if (it != cache_.end()) {
-        return it->second;
-      }
-    }
-    CliqueId clique_id;
-    int primary_node_id = device_to_node_.at(gpu_key->root_device());
-    if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(clique_id, nccl_collectives.CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
-    }
-    absl::MutexLock lock(mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return result.first->second;
-  }
-
- private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
-};
-
-absl::Status NcclCollectives::InitializeTopology(
-    NcclCollectives::Topology topology) {
+absl::StatusOr<GpuCollectives::CliqueIdCallback>
+NcclCollectives::InitializeTopology(const Topology& topology) {
   // TODO(b/476253257): Replace this with proper topology argument for
   // custom calls.
-  topology_.node_id = topology.node_id;
-  topology_.num_nodes = topology.num_nodes;
+  topology_.process_id = topology.process_id;
+  topology_.num_processes = topology.num_processes;
   topology_.device_count_per_process = topology.device_count_per_process;
 
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
     TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
+    TF_RETURN_IF_ERROR(
+        nvshmem_collectives->InitializeTopology(topology).status());
   }
 
-  if (topology.num_nodes > 1) {
+  if (topology.num_processes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(
-        topology.node_id, topology.device_id_to_node_id,
+        topology.process_id, topology.device_to_process,
         std::move(topology.kv_store));
-    topology.gpu_executable_run_options->set_clique_id_callback(
-        [nccl_id_store, this](const CliqueKey& key) {
-          return nccl_id_store->GetNcclUniqueId(key, *this);
-        });
+    return [nccl_id_store, this](const CliqueKey& key) {
+      return nccl_id_store->GetCliqueId(key, *this);
+    };
   }
-  return absl::OkStatus();
+
+  return nullptr;
 }
+
 }  // namespace xla::gpu
 
 XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,

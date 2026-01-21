@@ -165,6 +165,12 @@ cc_library(
 )
 
 cc_library(
+    name = "process_id",
+    hdrs = ["process_id.h"],
+    deps = ["//xla/tsl/lib/gtl:int_type"],
+)
+
+cc_library(
     name = "work_dimensions",
     hdrs = ["work_dimensions.h"],
     deps = [

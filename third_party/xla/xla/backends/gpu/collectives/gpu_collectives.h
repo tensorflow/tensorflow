@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/executable_run_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -53,6 +53,25 @@ class GpuCollectives : public Collectives {
   // A callback to get a unique clique id.
   using CliqueIdCallback =  // NOLINT
       std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
+
+  // Topology describes how exactly the current process fits into the collection
+  // of distributed processes, and based on this information the underlying
+  // collective communication library can set up communication channels between
+  // all devices.
+  struct Topology {
+    ProcessId process_id;
+    size_t num_processes;
+    size_t device_count_per_process;
+    std::shared_ptr<KeyValueStoreInterface> kv_store;
+    absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
+  };
+
+  // Initializes the collectives backend with the provided topology information
+  // and returns a callback that will generate unique ids for the cliques if
+  // topology spans multiple processes and clique id generation requires
+  // multi-process coordination. For local toplogies returns a nullptr callback.
+  virtual absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) = 0;
 
   // GPU collectives device is just a wrapper around the StreamExecutor.
   class Device : public Collectives::Device {
@@ -146,18 +165,6 @@ class GpuCollectives : public Collectives {
   virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
 
   virtual absl::Status Deallocate(void* buffer) = 0;
-
-  struct Topology {
-    int32_t node_id;
-    int32_t num_nodes;
-    size_t device_count_per_process;
-    std::shared_ptr<KeyValueStoreInterface> kv_store;
-    absl::flat_hash_map<GlobalDeviceId, int32_t> device_id_to_node_id;
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options;
-  };
-
-  // Initializes the topology information for the collectives backend.
-  virtual absl::Status InitializeTopology(Topology topology) = 0;
 
   virtual absl::StatusOr<Topology> GetTopology() {
     return absl::UnimplementedError("Not implemented for this backend.");

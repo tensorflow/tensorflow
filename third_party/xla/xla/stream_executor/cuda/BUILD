@@ -1016,6 +1016,7 @@ cc_library(
     ],
     deps = [
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/runtime:process_id",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
