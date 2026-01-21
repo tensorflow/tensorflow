@@ -159,7 +159,6 @@ cc_library(
         "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
-        "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",

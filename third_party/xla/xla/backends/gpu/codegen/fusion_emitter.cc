@@ -111,15 +111,13 @@ absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,
     const LaunchDimensions& launch_dims, llvm::Function* kernel,
     llvm::Module* llvm_module) {
-  TF_RET_CHECK(
-      (device_info.block_dim_limit().x == 0 ||
-       launch_dims.block_counts().x < device_info.block_dim_limit().x) &&
-      (device_info.block_dim_limit().y == 0 ||
-       launch_dims.block_counts().y < device_info.block_dim_limit().y))
+  const se::BlockDim &limit = device_info.block_dim_limit(),
+                     &block_count = launch_dims.block_counts();
+  TF_RET_CHECK((limit.x == 0 || block_count.x <= limit.x) &&
+               (limit.y == 0 || block_count.y <= limit.y))
       << "Kernel '" << kernel->getName().str() << "' launch needs more blocks ("
-      << launch_dims.block_counts().x << ", " << launch_dims.block_counts().y
-      << ") than allowed by hardware (" << device_info.block_dim_limit().x
-      << ", " << device_info.block_dim_limit().y << ").";
+      << block_count.x << ", " << block_count.y
+      << ") than allowed by hardware (" << limit.x << ", " << limit.y << ").";
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
 
@@ -140,11 +138,9 @@ absl::Status AnnotateKernelLaunchDimensions(
                       absl::StrJoin({launch_dims.num_threads_per_block(),
                                      launch_dims.num_threads_per_block()},
                                     ","));
-    kernel->addFnAttr("amdgpu-max-num-workgroups",
-                      absl::StrJoin({launch_dims.block_counts().x,
-                                     launch_dims.block_counts().y,
-                                     launch_dims.block_counts().z},
-                                    ","));
+    kernel->addFnAttr(
+        "amdgpu-max-num-workgroups",
+        absl::StrJoin({block_count.x, block_count.y, block_count.z}, ","));
   }
   return absl::OkStatus();
 }

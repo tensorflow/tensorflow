@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <limits>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -25,7 +24,6 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
-#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
