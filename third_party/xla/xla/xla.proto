@@ -627,6 +627,9 @@ message DebugOptions {
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
+  // If true, autotune all fusions with block level emitter.
+  optional bool xla_gpu_experimental_all_fusions_with_triton = 444;
+
   // If true, allows unroll factor 8 on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so enabling
   // this flag can cause both performance improvements and performance
@@ -1352,7 +1355,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 444
+  // Next id: 445
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
