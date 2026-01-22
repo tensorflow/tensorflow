@@ -40,8 +40,8 @@ pkg_tar(
     package_dir = "include/",
     # TODO(ddunleavy): Remove `local_tsl` after TSL move is completed.
     remap_paths = {
-        "external/local_xla/xla": "xla",
-        "external/local_tsl/tsl": "tsl",
+        "external/xla/xla": "xla",
+        "external/tsl/tsl": "tsl",
     },
     strip_prefix = ".",
     # Mark as "manual" till
