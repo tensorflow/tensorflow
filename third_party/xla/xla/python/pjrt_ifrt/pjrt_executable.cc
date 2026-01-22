@@ -629,15 +629,21 @@ PjRtExecutable::CommonMetadata::Deserialize(
       std::unique_ptr<xla::ifrt::XlaExecutableVersion> executable_version,
       xla::ifrt::XlaExecutableVersion::FromProto(
           metadata.executable_version()));
-  // Handle an `UnimplementedError` gracefully. PjRt-IFRT currently does not
-  // track XLA executable versions.
-  auto executable_version_compatible = is_executable_version_compatible(
-      *executable_version, xla_deserialize_executable_options.devices.value());
-  if (absl::IsUnimplemented(executable_version_compatible)) {
-    LOG(WARNING) << "Assume version compatibility. PjRt-IFRT does not track "
-                    "XLA executable versions.";
+  if (xla_deserialize_executable_options.devices.has_value()) {
+    auto executable_version_compatible = is_executable_version_compatible(
+        *executable_version, *xla_deserialize_executable_options.devices);
+    // Handle an `UnimplementedError` gracefully. PjRt-IFRT currently does not
+    // track XLA executable versions.
+    if (absl::IsUnimplemented(executable_version_compatible)) {
+      LOG(WARNING) << "Assume version compatibility. PjRt-IFRT does not track "
+                      "XLA executable versions.";
+    } else {
+      TF_RETURN_IF_ERROR(executable_version_compatible);
+    }
   } else {
-    TF_RETURN_IF_ERROR(executable_version_compatible);
+    // Accept unspecified `devices` for now.
+    // TODO(hyeontaek): Require all callers to specify `devices` and remove this
+    // branch.
   }
 
   std::vector<int> donated_input_indices;
