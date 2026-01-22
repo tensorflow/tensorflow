@@ -293,28 +293,6 @@ DotDimensionIndexMapping ComputeDimensionIndexMapping(
                                   output_to_lhs_indices, output_to_rhs_indices};
 }
 
-CollectiveDeviceList GetPartitionGroupsForReplication(
-    const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
-  int64_t group_size = 1;
-  for (int64_t i : replication_dims) {
-    group_size *= ShardCountAtDim(sharding, i);
-  }
-  std::vector<std::vector<int64_t>> partition_groups(sharding.num_devices() /
-                                                     group_size);
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t partition) {
-        int64_t group_id = 0;
-        for (int64_t i = 0; i < indices.size(); ++i) {
-          if (!absl::c_linear_search(replication_dims, i)) {
-            group_id *= ShardCountAtDim(sharding, i);
-            group_id += indices[i];
-          }
-        }
-        partition_groups[group_id].push_back(partition);
-      });
-  return CollectiveDeviceList(partition_groups);
-}
-
 // Returns true iff all of the following conditions are simultaneously true:
 // 1) 'lhs/rhs_sharding' have different partition counts on a dimension in
 //    'dims'.
@@ -3391,10 +3369,10 @@ bool PrioritizeContractingDimensionsPartitioning(
   auto reduce_scatter_subgroups = GetPartitionGroupsForReplication(
       outer_output_tmp_sharding, output_slice_dims);
   const double all_gather_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
-      all_gather_bytes, all_gather_subgroups);
+      all_gather_bytes, *all_gather_subgroups);
   const double reduce_scatter_time_in_ms =
       visitor->GetCommunicationTimeInMilliSec(reduce_scatter_bytes,
-                                              reduce_scatter_subgroups);
+                                              *reduce_scatter_subgroups);
 
   Shape other_original_shape = other_hlo->shape();
   *other_hlo->mutable_shape() =

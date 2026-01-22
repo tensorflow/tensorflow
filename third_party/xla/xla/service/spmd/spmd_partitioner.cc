@@ -5193,6 +5193,19 @@ HloInstruction* CreateAllGatherListsOfLists(
                                       /*use_global_device_ids=*/true));
 }
 
+std::optional<CollectiveDeviceList> TryExpandingPartitionGroupList(
+    const CollectiveDeviceListBase& device_list, int64_t num_replicas,
+    int64_t num_partitions) {
+  std::optional<IotaReplicaGroupList> iota_list =
+      device_list.MaybeConvertToIotaReplicaGroupList();
+  if (iota_list.has_value() &&
+      iota_list->num_total_devices() == num_partitions) {
+    return ExpandPartitionGroupListAcrossReplicas(*iota_list, num_replicas,
+                                                  num_partitions);
+  }
+  return std::nullopt;
+}
+
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas) {
   SPMDCollectiveOpsCreator result = {
@@ -5205,23 +5218,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand,
               HloComputation* reduction,
               const CollectiveDeviceListBase& device_list, int64_t channel_id) {
-            if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-              const IotaReplicaGroupList* iota_list =
-                  device_list.MaybeConvertToIotaReplicaGroupList();
-              // Fallback to list of lists collective creation if the partition
-              // group list does not utilize all the partitions.
-              if (iota_list != nullptr &&
-                  iota_list->num_total_devices() == num_partitions) {
-                HloComputation* reduction_clone =
-                    reduction->parent()->AddComputationAndUnifyNamesAndIds(
-                        reduction->Clone(), false);
-                return b->AddInstruction(HloInstruction::CreateAllReduce(
-                    operand->shape(), {operand}, reduction_clone,
-                    ExpandPartitionGroupListAcrossReplicas(
-                        *iota_list, num_replicas, num_partitions),
-                    /*constrain_layout=*/false, channel_id,
-                    /*use_global_device_ids=*/true));
-              }
+            if (std::optional<CollectiveDeviceList> expanded =
+                    TryExpandingPartitionGroupList(device_list, num_replicas,
+                                                   num_partitions)) {
+              HloComputation* reduction_clone =
+                  reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                      reduction->Clone(), false);
+              return b->AddInstruction(HloInstruction::CreateAllReduce(
+                  operand->shape(), {operand}, reduction_clone, *expanded,
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/true));
             }
             return CreateAllReduceListsOfLists(num_replicas, num_partitions, b,
                                                operand, reduction, device_list,
@@ -5257,24 +5263,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               std::optional<int64_t> split_dimension) {
-            if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-              const IotaReplicaGroupList* iota_list =
-                  device_list.MaybeConvertToIotaReplicaGroupList();
-              // Fallback to list of lists collective creation if the partition
-              // group list does not utilize all the partitions.
-              if (iota_list != nullptr &&
-                  iota_list->num_total_devices() == num_partitions) {
-                std::vector<Shape> shapes(operands.size(),
-                                          operands[0]->shape());
-                const Shape output_shape =
-                    (shapes.size() == 1) ? shapes[0]
-                                         : ShapeUtil::MakeTupleShape(shapes);
-                return b->AddInstruction(HloInstruction::CreateAllToAll(
-                    output_shape, operands,
-                    ExpandPartitionGroupListAcrossReplicas(
-                        *iota_list, num_replicas, num_partitions),
-                    /*constrain_layout=*/false, channel_id, split_dimension));
-              }
+            if (std::optional<CollectiveDeviceList> expanded =
+                    TryExpandingPartitionGroupList(device_list, num_replicas,
+                                                   num_partitions)) {
+              std::vector<Shape> shapes(operands.size(), operands[0]->shape());
+              Shape output_shape = (operands.size() == 1)
+                                       ? operands[0]->shape()
+                                       : ShapeUtil::MakeTupleShape(shapes);
+              return b->AddInstruction(HloInstruction::CreateAllToAll(
+                  output_shape, operands, *expanded,
+                  /*constrain_layout=*/false, channel_id, split_dimension));
             }
             return CreateAllToAllListsOfLists(num_replicas, num_partitions, b,
                                               operands, device_list, channel_id,
@@ -5285,20 +5283,13 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               int64_t all_gather_dimension) {
-            if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-              const IotaReplicaGroupList* iota_list =
-                  device_list.MaybeConvertToIotaReplicaGroupList();
-              // Fallback to list of lists collective creation if the partition
-              // group list does not utilize all the partitions.
-              if (iota_list != nullptr &&
-                  iota_list->num_total_devices() == num_partitions) {
-                return b->AddInstruction(HloInstruction::CreateAllGather(
-                    ag_shape, {operand}, all_gather_dimension,
-                    ExpandPartitionGroupListAcrossReplicas(
-                        *iota_list, num_replicas, num_partitions),
-                    /*constrain_layout=*/false, channel_id,
-                    /*use_global_device_ids=*/true));
-              }
+            if (std::optional<CollectiveDeviceList> expanded =
+                    TryExpandingPartitionGroupList(device_list, num_replicas,
+                                                   num_partitions)) {
+              return b->AddInstruction(HloInstruction::CreateAllGather(
+                  ag_shape, {operand}, all_gather_dimension, *expanded,
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/true));
             }
             return CreateAllGatherListsOfLists(
                 num_replicas, num_partitions, b, operand, ag_shape, device_list,
@@ -5340,28 +5331,14 @@ SpmdPartitioner::AllGatherShardsInternal(
       if (sharding.dimension(*it) == 1) {
         continue;
       }
-      // Attempt to generate partition groups in iota format. If infeasible,
-      // fallback to list of lists representation.
-      auto partition_group_list =
-          GetIotaPartitionGroupsForReplication(sharding, {*it});
-      if (partition_group_list.has_value()) {
-        result_shape.set_dimensions(
-            *it, result_shape.dimensions(*it) *
-                     partition_group_list->num_devices_per_group());
-        result = collectives_creator.create_all_gather(
-            b, result, result_shape, *partition_group_list,
-            (*next_channel_id)++,
-            /*all_gather_dimension=*/*it);
-      } else {
-        auto partition_subgroups =
-            GetPartitionGroupsForReplication(sharding, {*it});
-        result_shape.set_dimensions(
-            *it, result_shape.dimensions(*it) *
-                     partition_subgroups.num_devices_per_group());
-        result = collectives_creator.create_all_gather(
-            b, result, result_shape, partition_subgroups, (*next_channel_id)++,
-            /*all_gather_dimension=*/*it);
-      }
+      std::unique_ptr<CollectiveDeviceListBase> partition_group_list =
+          GetPartitionGroupsForReplication(sharding, {*it});
+      result_shape.set_dimensions(
+          *it, result_shape.dimensions(*it) *
+                   partition_group_list->num_devices_per_group());
+      result = collectives_creator.create_all_gather(
+          b, result, result_shape, *partition_group_list, (*next_channel_id)++,
+          /*all_gather_dimension=*/*it);
     }
     return {result, result};
   }
@@ -5377,25 +5354,14 @@ SpmdPartitioner::AllGatherShardsInternal(
   HloInstruction* ag = nullptr;
   HloInstruction* result = reshape;
 
-  // Attempt to generate partition groups in iota format. If infeasible,
-  // fallback to list of lists representation.
-  auto partition_group_list =
-      GetIotaPartitionGroupsForReplication(sharding, selected_dims);
-  if (partition_group_list.has_value()) {
-    shape[0] *= partition_group_list.value().num_devices_per_group();
-    result = collectives_creator.create_all_gather(
-        b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-        *partition_group_list, (*next_channel_id)++,
-        /*all_gather_dimension=*/0);
-  } else {
-    auto partition_subgroups =
-        GetPartitionGroupsForReplication(sharding, selected_dims);
-    shape[0] *= partition_subgroups.num_devices_per_group();
-    result = collectives_creator.create_all_gather(
-        b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-        partition_subgroups, (*next_channel_id)++,
-        /*all_gather_dimension=*/0);
-  }
+  std::unique_ptr<CollectiveDeviceListBase> partition_group_list =
+      GetPartitionGroupsForReplication(sharding, selected_dims);
+  shape[0] *= partition_group_list->num_devices_per_group();
+  result = collectives_creator.create_all_gather(
+      b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
+      *partition_group_list, (*next_channel_id)++,
+      /*all_gather_dimension=*/0);
+
   ag = result;
   // If n > 1 dimensions are partitioned, split the leading dimension to n.
   std::vector<int64_t> tiled_dims;
@@ -5467,20 +5433,9 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     return operand;
   }
 
-  std::unique_ptr<CollectiveDeviceListBase> partition_group_list;
+  std::unique_ptr<CollectiveDeviceListBase> partition_group_list =
+      GetPartitionGroupsForReplication(sharding, selected_dims);
   if (!per_dim_ar) {
-    // Attempt to generate partition groups in iota format. If infeasible,
-    // fallback to list of lists representation.
-    auto iota_groups =
-        GetIotaPartitionGroupsForReplication(sharding, selected_dims);
-
-    if (iota_groups.has_value()) {
-      partition_group_list = std::make_unique<IotaReplicaGroupList>(
-          std::move(iota_groups.value()));
-    } else {
-      partition_group_list = std::make_unique<CollectiveDeviceList>(
-          GetPartitionGroupsForReplication(sharding, selected_dims));
-    }
     return collectives_creator.create_all_reduce(
         b, operand, reduction, *partition_group_list, (*next_channel_id)++);
   }
@@ -5490,17 +5445,8 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     if (sharding.dimension(*it) == 1) {
       continue;
     }
-    // Attempt to generate partition groups in iota format. If infeasible,
-    // fallback to list of lists representation.
-    auto iota_groups = GetIotaPartitionGroupsForReplication(sharding, {*it});
-
-    if (iota_groups.has_value()) {
-      partition_group_list = std::make_unique<IotaReplicaGroupList>(
-          std::move(iota_groups.value()));
-    } else {
-      partition_group_list = std::make_unique<CollectiveDeviceList>(
-          GetPartitionGroupsForReplication(sharding, {*it}));
-    }
+    std::unique_ptr<CollectiveDeviceListBase> partition_group_list =
+        GetPartitionGroupsForReplication(sharding, {*it});
     result = collectives_creator.create_all_reduce(
         b, result, reduction, *partition_group_list, (*next_channel_id)++);
   }

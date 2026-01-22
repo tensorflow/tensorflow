@@ -55,7 +55,8 @@ class CollectiveDeviceListBase {
   CollectiveDeviceListBase(CollectiveDeviceListBase&&) = default;
   CollectiveDeviceListBase& operator=(CollectiveDeviceListBase&&) = default;
 
-  const IotaReplicaGroupList* MaybeConvertToIotaReplicaGroupList() const;
+  std::optional<IotaReplicaGroupList> MaybeConvertToIotaReplicaGroupList()
+      const;
   // This is strict equality, which means that two different types
   // can't be compared for functional equality (i.e. even though an
   // IotaReplicaGroup and a CollectiveDeviceList may correspond to the same
