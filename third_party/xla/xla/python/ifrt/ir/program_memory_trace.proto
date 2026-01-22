@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package xla.ifrt;
+
+message Event {
+  enum Kind {
+    ALLOCATE_ARRAY = 0;
+    ALLOCATE_EXECUTABLE_TEMPS = 1;
+    ALLOCATE_EXECUTABLE_CODE = 2;
+    FREE_ARRAY = 3;
+    FREE_EXECUTABLE_TEMPS = 4;
+    FREE_EXECUTABLE_CODE = 5;
+  }
+
+  // Unique identifier of the allocation pertaining to this allocation or
+  // deletion. This field is used to associate allocation and free events.
+  int64 allocation_id = 1;
+  Kind kind = 2;
+
+  // Present in the case of an allocation event. Contains info about who
+  // allocated the buffer (e.g., an executable, an ifrt.CopyArrays).
+  string created_by = 3;
+  int64 padded_size_in_bytes = 4;
+
+  // List of devices where this event happened.
+  repeated int64 device_ids = 5;
+}
+
+message ProgramMemoryTrace {
+  string program_name = 1;
+  repeated Event events = 2;
+}
