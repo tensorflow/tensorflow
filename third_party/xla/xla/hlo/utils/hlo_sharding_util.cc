@@ -2814,7 +2814,8 @@ Shape TileShape(const HloSharding& sharding, const Shape& shape) {
 }
 
 Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
-  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown()) {
+  if (sharding.IsTileMaximal() || sharding.IsManual() || sharding.IsUnknown() ||
+      sharding.IsUnreduced()) {
     return shape;
   }
   if (!shape.IsArray()) {
