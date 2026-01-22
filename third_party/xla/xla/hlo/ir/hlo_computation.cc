@@ -677,8 +677,18 @@ absl::Status HloComputation::RemoveInstructionAndUnusedOperands(
         computation_callers,
     bool remove_dead_parameters_from_entry_computation) {
   TF_RET_CHECK(root_instruction() != instruction);
-
   TF_RET_CHECK(instruction->IsDead());
+  if (instruction->opcode() == HloOpcode::kAfterAll) {
+    for (const HloInstruction* operand : instruction->operands()) {
+      const HloInstruction* source = operand;
+      if (operand->opcode() == HloOpcode::kGetTupleElement) {
+        source = operand->operand(0);
+      }
+      if (source->HasSideEffect()) {
+        return absl::OkStatus();
+      }
+    }
+  }
   TF_RET_CHECK(IsSafelyRemovable(instruction, ignore_control_dependencies,
                                  computation_callers,
                                  remove_dead_parameters_from_entry_computation))
