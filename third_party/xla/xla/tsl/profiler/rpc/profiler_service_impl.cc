@@ -52,6 +52,8 @@ using tensorflow::MonitorRequest;
 using tensorflow::MonitorResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
@@ -156,6 +158,18 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     tensorflow::ProfileRequest request = *req;
     request.set_emit_xspace(true);
     continuous_profiling_session_ = {request, std::move(profiler)};
+    return ::grpc::Status::OK;
+  }
+
+  ::grpc::Status StopContinuousProfiling(
+      ::grpc::ServerContext* ctx, const StopContinuousProfilingRequest* req,
+      StopContinuousProfilingResponse* response) override {
+    absl::MutexLock lock(&mutex_);
+    if (!continuous_profiling_session_.has_value()) {
+      return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                            "No continuous profiling session found.");
+    }
+    continuous_profiling_session_.reset();
     return ::grpc::Status::OK;
   }
 

@@ -50,6 +50,8 @@ absl::Status StartContinuousProfiling(
     const char* service_addr,
     const tensorflow::RemoteProfilerSessionManagerOptions& opts);
 
+absl::Status StopContinuousProfiling(const char* service_addr);
+
 absl::Status GetSnapshot(const char* service_addr, const char* logdir);
 
 // Starts tracing on a single or multiple hosts. Each host will save the result
