@@ -2,7 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
@@ -595,5 +595,41 @@ tf_proto_library(
     visibility = ["//learning/brain/research/ifrt:__subpackages__"],
     deps = [
         ":ifrt_ir_compile_options_proto",
+    ],
+)
+
+cc_library(
+    name = "serialization_utils",
+    srcs = ["serialization_utils.cc"],
+    hdrs = ["serialization_utils.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    visibility = [
+        "//learning/brain/research/ifrt:__subpackages__",
+    ],
+    deps = [
+        ":compiled_ifrt_ir_program",
+        ":ifrt_ir_program",
+        ":serialized_executable_metadata_proto_cc",
+        ":version",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:delimited_message_util",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
+        "//xla/python/pjrt_ifrt:xla_executable_version_serdes",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf_lite",
+        "@stablehlo//:version",
+        "@tsl//tsl/platform:coding",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
     ],
 )
