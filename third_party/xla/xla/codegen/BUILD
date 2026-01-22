@@ -180,6 +180,7 @@ cc_library(
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
