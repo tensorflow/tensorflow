@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -74,14 +75,14 @@ struct IfrtIrExecutableVersion
   std::vector<AtomExecutableVersion> runtime_abi_versions;
 
   // Returns true if the IFRT IR version is compatible with the other version.
-  bool IsCompatibleWith(const ExecutableVersion& other) const override;
+  absl::Status IsCompatibleWith(const ExecutableVersion& other) const override;
 
   // Returns true if the IFRT IR version is compatible with the other version
   // and the runtime ABI version is compatible with the given client on the
   // given devices.
-  bool IsCompatibleWith(xla::ifrt::Client& client,
-                        const xla::ifrt::DeviceListRef& devices,
-                        const ExecutableVersion& other) const;
+  absl::Status IsCompatibleWith(xla::ifrt::Client& client,
+                                const xla::ifrt::DeviceListRef& devices,
+                                const ExecutableVersion& other) const;
 
   absl::StatusOr<IfrtIrExecutableVersionProto> ToProto(
       SerDesVersion version = SerDesVersion::current()) const;

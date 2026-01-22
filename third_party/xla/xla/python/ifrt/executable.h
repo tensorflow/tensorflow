@@ -52,10 +52,11 @@ struct CompileOptions;
 struct DeserializeExecutableOptions;
 
 struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
-  // Returns true iff this version is compatible with `other`. The logic for
+  // Returns OK iff this version is compatible with `other`. The logic for
   // checking the version compatibility is an implementation detail of
   // `ExecutableVersion` subclasses.
-  virtual bool IsCompatibleWith(const ExecutableVersion& other) const = 0;
+  virtual absl::Status IsCompatibleWith(
+      const ExecutableVersion& other) const = 0;
 
   static char ID;  // NOLINT
 };
