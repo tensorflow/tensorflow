@@ -159,6 +159,54 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
+TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
+  auto proto = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: TUPLE
+    tuple_shardings {
+      named_sharding {
+        mesh {
+          axes { name: "a" size: 2 }
+          axes { name: "b" size: 4 }
+        }
+        dim_shardings {
+          axes {
+            mesh_axis_index: 0
+            sub_axis_info { pre_size: 1 size: 2 }
+          }
+          is_closed: true
+        }
+        dim_shardings {
+          axes { mesh_axis_index: 1 }
+          is_closed: false
+        }
+      }
+    }
+    tuple_shardings {
+      named_sharding {
+        mesh {
+          axes { name: "a" size: 2 }
+          axes { name: "b" size: 4 }
+        }
+        dim_shardings {
+          axes {
+            mesh_axis_index: 0
+            sub_axis_info { pre_size: 2 size: 2 }
+          }
+          is_closed: true
+        }
+        dim_shardings {
+          axes { mesh_axis_index: 1 }
+          is_closed: false
+        }
+      }
+    }
+  )pb");
+
+  HloSharding sharding = HloSharding::FromProto(proto).value();
+
+  EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
+}
+
 using TileTest = HloShardingTest;
 TEST_F(TileTest, FailsWithDuplicateDeviceInTileAssignment) {
   HloSharding sharding =

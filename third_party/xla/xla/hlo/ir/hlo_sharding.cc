@@ -937,6 +937,10 @@ const TileAssignment& HloSharding::TileAgnosticDeviceAssignment() const {
 
 /*static*/ absl::StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
+  if (proto.has_named_sharding()) {
+    return HloSharding(NamedSharding::FromProto(proto.named_sharding()));
+  }
+
   std::vector<OpMetadata> metadata(proto.metadata().begin(),
                                    proto.metadata().end());
   std::vector<int> subgroup_types_int(proto.last_tile_dims().begin(),
@@ -1062,6 +1066,11 @@ OpSharding HloSharding::ToProto() const {
       *result.add_tuple_shardings() = element.ToProto();
     }
     result.set_type(OpSharding::TUPLE);
+    return result;
+  }
+
+  if (UseNamedShardingLeaf()) {
+    *result.mutable_named_sharding() = named_sharding_->ToProto();
     return result;
   }
 

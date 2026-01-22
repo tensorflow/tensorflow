@@ -36,8 +36,10 @@ limitations under the License.
 
 namespace xla {
 
-void NamedSharding::DimensionSharding::Append(
-    const NamedSharding::DimensionSharding& other, const Mesh& mesh) {
+using DimensionSharding = NamedSharding::DimensionSharding;
+
+void DimensionSharding::Append(const DimensionSharding& other,
+                               const Mesh& mesh) {
   if (other.axes_.empty()) {
     return;
   }
@@ -54,8 +56,8 @@ void NamedSharding::DimensionSharding::Append(
   axes_.insert(axes_.end(), other.axes_.begin() + 1, other.axes_.end());
 }
 
-std::optional<NamedSharding::DimensionSharding>
-NamedSharding::DimensionSharding::Slice(const Mesh& mesh, int64_t slice_size) {
+std::optional<DimensionSharding> DimensionSharding::Slice(const Mesh& mesh,
+                                                          int64_t slice_size) {
   if (slice_size == 1) {
     return DimensionSharding({}, is_closed_);
   }
@@ -102,18 +104,17 @@ NamedSharding::DimensionSharding::Slice(const Mesh& mesh, int64_t slice_size) {
   remaining_axes.insert(remaining_axes.end(), axes().begin() + axis_index + 1,
                         axes().end());
   axes_ = std::move(remaining_axes);
-  return NamedSharding::DimensionSharding(sliced_axes, is_closed_);
+  return DimensionSharding(sliced_axes, is_closed_);
 }
 
-int64_t NamedSharding::DimensionSharding::getShardedSize(
-    const Mesh& mesh) const {
+int64_t DimensionSharding::getShardedSize(const Mesh& mesh) const {
   return std::accumulate(axes_.begin(), axes_.end(), 1,
                          [&mesh](int64_t cur, const AxisRef& axis) {
                            return cur * axis.size(mesh);
                          });
 }
 
-std::string NamedSharding::DimensionSharding::ToString(const Mesh* mesh) const {
+std::string DimensionSharding::ToString(const Mesh* mesh) const {
   std::string result = "{";
   absl::StrAppend(
       &result,
@@ -131,6 +132,26 @@ std::string NamedSharding::DimensionSharding::ToString(const Mesh* mesh) const {
 
   absl::StrAppend(&result, "}");
   return result;
+}
+
+NamedShardingProto::DimensionSharding DimensionSharding::ToProto() const {
+  NamedShardingProto::DimensionSharding proto;
+  for (const AxisRef& axis : axes_) {
+    *proto.add_axes() = axis.ToProto();
+  }
+  proto.set_is_closed(is_closed_);
+  return proto;
+}
+
+DimensionSharding DimensionSharding::FromProto(
+    const NamedShardingProto::DimensionSharding& proto) {
+  DimensionSharding dim_sharding;
+  dim_sharding.is_closed_ = proto.is_closed();
+  dim_sharding.axes_.reserve(proto.axes_size());
+  for (const AxisRefProto& axis_proto : proto.axes()) {
+    dim_sharding.axes_.push_back(AxisRef::FromProto(axis_proto));
+  }
+  return dim_sharding;
 }
 
 std::string NamedSharding::ToString(bool include_metadata) const {
@@ -212,8 +233,60 @@ std::string NamedSharding::ToString(bool include_metadata) const {
   return result;
 }
 
-std::ostream& operator<<(std::ostream& out,
-                         const NamedSharding::DimensionSharding& sharding) {
+NamedShardingProto NamedSharding::ToProto() const {
+  NamedShardingProto proto;
+  *proto.mutable_mesh() = mesh_.ToProto();
+  for (const DimensionSharding& dim_sharding : dim_shardings_) {
+    *proto.add_dim_shardings() = dim_sharding.ToProto();
+  }
+  for (const AxisRef& axis : replicated_axes_) {
+    *proto.add_replicated_axes() = axis.ToProto();
+  }
+  for (const AxisRef& axis : unreduced_axes_) {
+    *proto.add_unreduced_axes() = axis.ToProto();
+  }
+  for (const AxisRef& axis : manual_axes_) {
+    *proto.add_manual_axes() = axis.ToProto();
+  }
+  for (const OpMetadata& metadata : metadata_) {
+    *proto.add_metadata() = metadata;
+  }
+  return proto;
+}
+
+NamedSharding NamedSharding::FromProto(const NamedShardingProto& proto) {
+  std::vector<DimensionSharding> dim_shardings;
+  dim_shardings.reserve(proto.dim_shardings_size());
+  for (const auto& dim_sharding_proto : proto.dim_shardings()) {
+    dim_shardings.push_back(DimensionSharding::FromProto(dim_sharding_proto));
+  }
+
+  std::vector<AxisRef> replicated_axes;
+  replicated_axes.reserve(proto.replicated_axes_size());
+  for (const auto& axis_proto : proto.replicated_axes()) {
+    replicated_axes.push_back(AxisRef::FromProto(axis_proto));
+  }
+
+  std::vector<AxisRef> unreduced_axes;
+  unreduced_axes.reserve(proto.unreduced_axes_size());
+  for (const auto& axis_proto : proto.unreduced_axes()) {
+    unreduced_axes.push_back(AxisRef::FromProto(axis_proto));
+  }
+
+  std::vector<AxisRef> manual_axes;
+  manual_axes.reserve(proto.manual_axes_size());
+  for (const auto& axis_proto : proto.manual_axes()) {
+    manual_axes.push_back(AxisRef::FromProto(axis_proto));
+  }
+
+  std::vector<OpMetadata> metadata(proto.metadata().begin(),
+                                   proto.metadata().end());
+
+  return NamedSharding(Mesh::FromProto(proto.mesh()), dim_shardings,
+                       replicated_axes, unreduced_axes, manual_axes, metadata);
+}
+
+std::ostream& operator<<(std::ostream& out, const DimensionSharding& sharding) {
   return out << sharding.ToString();
 }
 

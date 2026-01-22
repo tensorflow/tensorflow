@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -46,6 +47,10 @@ class NamedSharding {
     }
 
     std::string ToString(const Mesh* mesh = nullptr) const;
+
+    NamedShardingProto::DimensionSharding ToProto() const;
+    static DimensionSharding FromProto(
+        const NamedShardingProto::DimensionSharding& proto);
 
     // Note that by default we assume closed sharding.
     explicit DimensionSharding() : is_closed_(true) {};
@@ -94,6 +99,9 @@ class NamedSharding {
 
   std::string ToString(bool include_metadata = false) const;
 
+  NamedShardingProto ToProto() const;
+  static NamedSharding FromProto(const NamedShardingProto& proto);
+
   // TODO(b/456212087): Add validation checks
   explicit NamedSharding(Mesh mesh,
                          absl::Span<const DimensionSharding> dim_shardings = {},
@@ -107,10 +115,7 @@ class NamedSharding {
         unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
         manual_axes_(manual_axes.begin(), manual_axes.end()),
         metadata_(metadata.begin(), metadata.end()) {
-    sharded_sizes_.reserve(dim_shardings_.size());
-    for (const DimensionSharding& dim_sharding : dim_shardings_) {
-      sharded_sizes_.push_back(dim_sharding.getShardedSize(mesh_));
-    }
+    InitShardedSizes();
   }
 
   const Mesh& mesh() const { return mesh_; }
@@ -143,6 +148,13 @@ class NamedSharding {
 
  private:
   friend class HloSharding;
+
+  void InitShardedSizes() {
+    sharded_sizes_.reserve(dim_shardings_.size());
+    for (const DimensionSharding& dim_sharding : dim_shardings_) {
+      sharded_sizes_.push_back(dim_sharding.getShardedSize(mesh_));
+    }
+  }
 
   std::vector<DimensionSharding> CanonicalizedDimShardings(
       absl::Span<const DimensionSharding> dim_shardings) const {
