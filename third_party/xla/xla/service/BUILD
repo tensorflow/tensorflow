@@ -2419,12 +2419,15 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "triangular_solve_expander_test",
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
+    backends = ["cpu"],
     shard_count = 12,
-    tags = ["pjrt_migration_candidate"],
+    tags = [
+        "test_migrated_to_hlo_runner_pjrt",
+    ],
     deps = [
         ":triangular_solve_expander",
         "//xla:array2d",
@@ -2432,7 +2435,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:reference_util",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
