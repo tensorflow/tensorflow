@@ -293,6 +293,7 @@ cc_library(
         "@xla//xla/tsl/lib/io:legacy_lib_io_headers",
         "@tsl//tsl/platform:lib_hdrs",
     ],
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
