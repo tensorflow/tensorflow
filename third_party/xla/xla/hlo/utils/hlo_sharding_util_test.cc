@@ -1302,6 +1302,28 @@ TEST(HloShardingUtilTest, TileShapeWithUnreducedSharding) {
   EXPECT_EQ(hlo_sharding_util::TileShape(sharding, shape), shape);
 }
 
+TEST(HloShardingUtilTest, TileShapeWithMixedUnreducedSubgroupSharding) {
+  Shape shape = ShapeUtil::MakeShape(F32, {6, 6});
+  Mesh mesh({2, 2}, {"a", "b"});
+
+  NamedSharding ns_1 = test_utils::FromAxisNames(mesh, {{}, {}}, {},
+                                                 /*unreduced_axes=*/{"b"});
+  HloSharding sharding_1 = HloSharding::V3ToV2Sharding(ns_1);
+  EXPECT_EQ(sharding_1, HloSharding::Subgroup(
+                            TileAssignment({2, 2}, {2, 2}, {1, 0}),
+                            {OpSharding::UNREDUCED, OpSharding::REPLICATED}));
+  EXPECT_EQ(hlo_sharding_util::TileShape(sharding_1, shape),
+            ShapeUtil::MakeShape(F32, {6, 6}));
+
+  NamedSharding ns_2 = test_utils::FromAxisNames(mesh, {{"a"}, {}}, {},
+                                                 /*unreduced_axes=*/{"b"});
+  HloSharding sharding_2 = HloSharding::V3ToV2Sharding(ns_2);
+  EXPECT_EQ(sharding_2, HloSharding::Subgroup(TileAssignment({2, 1, 2}),
+                                              {OpSharding::UNREDUCED}));
+  EXPECT_EQ(hlo_sharding_util::TileShape(sharding_2, shape),
+            ShapeUtil::MakeShape(F32, {3, 6}));
+}
+
 TEST(HloShardingUtilTest, UntileShape) {
   HloSharding sharding = HloSharding::Tile(TileAssignment({4, 1}));
   Shape shape_0 = ShapeUtil::MakeShape(F32, {80, 128});
