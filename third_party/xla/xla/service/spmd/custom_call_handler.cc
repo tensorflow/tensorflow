@@ -132,7 +132,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
         partitioned_input.state().b);
     std::vector<int64_t> reshape_dimensions(sharding.dimensions().begin(),
                                             sharding.dimensions().end());
-    reshape_dimensions.push_back(reshape_dimensions.back());
+    reshape_dimensions.push_back(reshape_dimensions[sort_dim]);
     reshape_dimensions[sort_dim] = 1;
     auto reshape_tile_assignment =
         sharding.tile_assignment().Reshape(reshape_dimensions);
