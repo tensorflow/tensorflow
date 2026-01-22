@@ -514,6 +514,12 @@ common:windows --host_linkopt=/OPT:REF
 common:windows --linkopt=/OPT:ICF
 common:windows --host_linkopt=/OPT:ICF
 
+# We have different versions of KleidiAI as dependencies in XNNPack and Compute Library.
+# This introduces duplicate symbol errors that we can ignore with the below.
+# This is a temporary measure until the KleidiAI versions can be brought in line.
+build:windows --linkopt=/FORCE:MULTIPLE
+build:windows --host_linkopt=/FORCE:MULTIPLE
+
 # Verbose failure logs when something goes wrong
 common:windows --verbose_failures
 
@@ -731,6 +737,11 @@ common:release_linux_base --linkopt="-lm"
 # We have some invalid linker scripts in the build,
 # so we need to disable this check
 common:release_linux_base --linkopt=-Wl,--undefined-version
+
+# We have different versions of KleidiAI as dependencies in XNNPack and Compute Library.
+# This introduces duplicate symbol errors that we can ignore with the below.
+# This is a temporary measure until the KleidiAI versions can be brought in line.
+build:release_linux_base --linkopt="-z muldefs"
 
 # Container environment settings below this point.
 # Test-related settings below this point.

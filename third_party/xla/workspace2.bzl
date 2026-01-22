@@ -196,15 +196,21 @@ def _tf_repositories():
     tf_http_archive(
         name = "compute_library",
         patch_file = [
-            "//third_party/compute_library:acl_gemm_scheduling_heuristic.patch",
-            "//third_party/compute_library:acl_stateless_gemm_workspace.patch",
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:exclude_omp_scheduler.patch",
             "//third_party/compute_library:include_string.patch",
         ],
-        sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
-        strip_prefix = "ComputeLibrary-24.12",
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v24.12.tar.gz"),
+        sha256 = "a3a0f42bee0ca6771ff2b5a41c02deabccb630b05d01c68cdeac626d50fdbce9",
+        strip_prefix = "ComputeLibrary-52.4.0",
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v52.4.0.tar.gz"),
+    )
+
+    # Compute Library dependency on KleidiAi 0.5.0
+    tf_http_archive(
+        name = "kleidiai",
+        sha256 = "c750600409fef0aacad0840ba6135e1fea03f842ec8dfe12a4e692a8b6dcf332",
+        strip_prefix = "kleidiai-7e8c4baf953227fa447a2f345e5d6491a504aa56",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/7e8c4baf953227fa447a2f345e5d6491a504aa56.zip"),
     )
 
     tf_http_archive(
