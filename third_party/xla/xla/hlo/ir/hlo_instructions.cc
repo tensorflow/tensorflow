@@ -509,22 +509,26 @@ bool HloAsyncStartInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction>
 HloAsyncStartInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
-    HloCloneContext* context) const {
+    HloComputation* new_computation, HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   HloComputation* new_wrapped_computation = nullptr;
-  if (context != nullptr) {
-    new_wrapped_computation =
-        context->FindComputation(async_wrapped_computation());
-  }
-  if (new_wrapped_computation == nullptr) {
-    new_wrapped_computation = module->AddEmbeddedComputation(
-        async_wrapped_computation()->Clone("clone", context));
-    // Give the trampoline a trivial schedule if it already had one.
-    if (module->has_schedule() && module->schedule().is_computation_scheduled(
-                                      async_wrapped_computation())) {
-      module->schedule().set_sequence(
-          new_wrapped_computation,
-          new_wrapped_computation->MakeInstructionPostOrder());
+  if (new_computation) {
+    new_wrapped_computation = new_computation;
+  } else {
+    if (context != nullptr) {
+      new_wrapped_computation =
+          context->FindComputation(async_wrapped_computation());
+    }
+    if (new_wrapped_computation == nullptr) {
+      new_wrapped_computation = module->AddEmbeddedComputation(
+          async_wrapped_computation()->Clone("clone", context));
+      // Give the trampoline a trivial schedule if it already had one.
+      if (module->has_schedule() && module->schedule().is_computation_scheduled(
+                                        async_wrapped_computation())) {
+        module->schedule().set_sequence(
+            new_wrapped_computation,
+            new_wrapped_computation->MakeInstructionPostOrder());
+      }
     }
   }
 
@@ -534,6 +538,22 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
   cloned->HloAliasible::set_output_to_operand_aliasing(
       output_to_operand_aliasing());
   return cloned;
+}
+
+std::unique_ptr<HloInstruction>
+HloAsyncStartInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  return CloneWithNewOperandsImpl(shape, new_operands,
+                                  /*new_computation=*/nullptr, context);
+}
+
+std::unique_ptr<HloInstruction>
+HloAsyncStartInstruction::CloneWithNewOperandsAndComputation(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloComputation* new_computation, HloCloneContext* context) const {
+  return CloneWithNewOperandsImpl(shape, new_operands, new_computation,
+                                  context);
 }
 
 HloCopyStartInstruction::HloCopyStartInstruction(

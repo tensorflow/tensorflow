@@ -337,6 +337,12 @@ class HloAsyncStartInstruction : public HloAsyncInstruction,
   // Adds a new operand to the async-start instruction.
   HloInstruction* AddCallOperand(HloInstruction* new_operand);
 
+  // Clones the async-start instruction with new operands and a new computation.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsAndComputation(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloComputation* new_computation,
+      HloCloneContext* context = nullptr) const;
+
   absl::string_view async_execution_thread() const override {
     return async_execution_thread_;
   };
@@ -360,6 +366,9 @@ class HloAsyncStartInstruction : public HloAsyncInstruction,
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloComputation* new_computation, HloCloneContext* context) const;
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
