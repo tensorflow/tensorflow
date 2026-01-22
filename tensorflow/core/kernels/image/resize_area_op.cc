@@ -14,10 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/image_ops.cc
+#include <cmath>
+#include <vector>
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
-#include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
