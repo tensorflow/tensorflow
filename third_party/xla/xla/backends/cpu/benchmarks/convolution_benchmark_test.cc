@@ -66,18 +66,12 @@ Literal GetRandomLiteral(PrimitiveType type, const Shape& shape,
   LOG(FATAL) << "Unsupported type";
 }
 
-static void BM_Conv2D(benchmark::State& state,
-                      const HloBenchmarkOptions& options) {
-  int batch = state.range(0);
-  int height = state.range(1);
-  int width = state.range(2);
-  int input_channels = state.range(3);
-  int kernel_h = state.range(4);
-  int kernel_w = state.range(5);
-  int output_channels = state.range(6);
-  int padding_mode = state.range(7);
-  int type_config_idx = state.range(8);
-
+static void Conv2DBenchmark(benchmark::State& state,
+                            const HloBenchmarkOptions& options, int batch,
+                            int height, int width, int input_channels,
+                            int kernel_h, int kernel_w, int stride,
+                            int output_channels, int64_t feature_group_count,
+                            int padding_mode, int type_config_idx) {
   const auto& types = GetTypeConfigs()[type_config_idx];
   int padding_h, padding_w;
   int output_h, output_w;
@@ -87,74 +81,17 @@ static void BM_Conv2D(benchmark::State& state,
     CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
     padding_h = (kernel_h - 1) / 2;
     padding_w = (kernel_w - 1) / 2;
-    output_h = height;
-    output_w = width;
+    output_h = (height + stride - 1) / stride;
+    output_w = (width + stride - 1) / stride;
   } else {
     // Padding values for 'VALID' padding.
     padding_h = 0;
     padding_w = 0;
-    output_h = height - kernel_h + 1;
-    output_w = width - kernel_w + 1;
+    output_h = (height - kernel_h) / stride + 1;
+    output_w = (width - kernel_w) / stride + 1;
   }
 
-  std::string hlo_module = R"(
-    HloModule TestModule
-
-    ENTRY TestComputation {
-      %p0 = $input_shape parameter(0)
-      %p1 = $kernel_shape parameter(1)
-      ROOT conv = $output_shape convolution(p0, p1), window={size=$window_size pad=$padding},
-        dim_labels=b01f_01io->b01f
-    }
-  )";
-
-  std::minstd_rand0 engine;
-
-  // Input format is NHWC.
-  auto input_shape =
-      ShapeUtil::MakeShape(types.input, {batch, height, width, input_channels});
-  // Filter format is HWIO.
-  auto kernel_shape = ShapeUtil::MakeShape(
-      types.kernel, {kernel_h, kernel_w, input_channels, output_channels});
-  auto output_shape = ShapeUtil::MakeShape(
-      types.output, {batch, output_h, output_w, output_channels});
-
-  auto input = GetRandomLiteral(types.input, input_shape, engine);
-  auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
-  std::vector<const Literal*> args = {&input, &kernel};
-
-  CHECK_OK(
-      RunHloBenchmark(state, hlo_module, args,
-                      {{"$input_shape", input_shape.ToString()},
-                       {"$kernel_shape", kernel_shape.ToString()},
-                       {"$output_shape", output_shape.ToString()},
-                       {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
-                       {"$padding", absl::StrCat(padding_h, "_", padding_h, "x",
-                                                 padding_w, "_", padding_w)}},
-                      options));
-}
-
-static void BM_GroupedConv2D(benchmark::State& state,
-                             const HloBenchmarkOptions& options) {
-  int batch = state.range(0);
-  int height = state.range(1);
-  int width = state.range(2);
-  int input_channels = state.range(3);
-  int kernel_h = state.range(4);
-  int kernel_w = state.range(5);
-  int output_channels = state.range(6);
-  int feature_group_count = state.range(7);
-  int type_config_idx = state.range(8);
-
-  const auto& types = GetTypeConfigs()[type_config_idx];
-
-  // Derive filter channels from input channels and feature group count.
-  int filter_channels = input_channels / feature_group_count;
-
-  // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
-  CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
-  int padding_h = (kernel_h - 1) / 2;
-  int padding_w = (kernel_w - 1) / 2;
+  const int64_t filter_channels = input_channels / feature_group_count;
 
   std::string hlo_module = R"(
     HloModule TestModule
@@ -162,8 +99,9 @@ static void BM_GroupedConv2D(benchmark::State& state,
     ENTRY TestComputation {
       %p0 = $input_shape parameter(0)
       %p1 = $kernel_shape parameter(1)
-      ROOT conv = $output_shape convolution(p0, p1), window={size=$window_size pad=$padding},
-        dim_labels=b01f_01io->b01f, feature_group_count=$feature_group_count
+      ROOT conv = $output_shape convolution(p0, p1),
+        window={size=$window_size stride=$window_stride pad=$padding},
+          dim_labels=b01f_01io->b01f, feature_group_count=$feature_group_count
     }
   )";
 
@@ -176,11 +114,10 @@ static void BM_GroupedConv2D(benchmark::State& state,
   auto kernel_shape = ShapeUtil::MakeShape(
       types.kernel, {kernel_h, kernel_w, filter_channels, output_channels});
   auto output_shape = ShapeUtil::MakeShape(
-      types.output, {batch, height, width, output_channels});
+      types.output, {batch, output_h, output_w, output_channels});
 
   auto input = GetRandomLiteral(types.input, input_shape, engine);
   auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
-
   std::vector<const Literal*> args = {&input, &kernel};
 
   CHECK_OK(RunHloBenchmark(
@@ -189,10 +126,37 @@ static void BM_GroupedConv2D(benchmark::State& state,
        {"$kernel_shape", kernel_shape.ToString()},
        {"$output_shape", output_shape.ToString()},
        {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
+       {"$window_stride", absl::StrCat(stride, "x", stride)},
        {"$padding", absl::StrCat(padding_h, "_", padding_h, "x", padding_w, "_",
                                  padding_w)},
-       {"$feature_group_count", absl::StrCat(feature_group_count)}},
+       {"$feature_group_count", std::to_string(feature_group_count)}},
       options));
+}
+
+static void BM_Conv2D(benchmark::State& state,
+                      const HloBenchmarkOptions& options) {
+  Conv2DBenchmark(state, options, /*batch=*/state.range(0),
+                  /*height=*/state.range(1), /*width=*/state.range(2),
+                  /*input_channels=*/state.range(3),
+                  /*kernel_h=*/state.range(4), /*kernel_w=*/state.range(5),
+                  /*stride=*/state.range(6),
+                  /*output_channels=*/state.range(7),
+                  /*feature_group_count=*/1,
+                  /*padding_mode=*/state.range(8),
+                  /*type_config_idx=*/state.range(9));
+}
+
+static void BM_GroupedConv2D(benchmark::State& state,
+                             const HloBenchmarkOptions& options) {
+  Conv2DBenchmark(state, options, /*batch=*/state.range(0),
+                  /*height=*/state.range(1), /*width=*/state.range(2),
+                  /*input_channels=*/state.range(3),
+                  /*kernel_h=*/state.range(4),
+                  /*kernel_w=*/state.range(5), /*stride=*/state.range(6),
+                  /*output_channels=*/state.range(7),
+                  /*feature_group_count=*/state.range(8),
+                  /*padding_mode=*/kSamePadding,
+                  /*type_config_idx=*/state.range(9));
 }
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
@@ -488,41 +452,46 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
 
   // This test case hits b/473570788.
   if (type_config != 2) {
-    add_args({8, 5, 5, 1, 1, 1, 32, kSamePadding});
+    add_args({8, 5, 5, 1, 1, 1, 1, 32, kSamePadding});
   }
-  add_args({8, 5, 5, 4, 1, 1, 32, kSamePadding});
-  add_args({8, 128, 128, 4, 1, 1, 8, kSamePadding});
+  add_args({8, 5, 5, 4, 1, 1, 1, 32, kSamePadding});
+  add_args({8, 128, 128, 4, 1, 1, 1, 8, kSamePadding});
   // Shapes from TF convolution benchmarks.
-  add_args({8, 32, 32, 128, 1, 1, 1024, kSamePadding});
-  add_args({16, 32, 32, 128, 1, 1, 1024, kSamePadding});
-  add_args({32, 32, 32, 128, 1, 1, 1024, kSamePadding});
+  add_args({8, 32, 32, 128, 1, 1, 1, 1024, kSamePadding});
+  add_args({16, 32, 32, 128, 1, 1, 1, 1024, kSamePadding});
+  add_args({32, 32, 32, 128, 1, 1, 1, 1024, kSamePadding});
   // Shapes similar to Eigen spatial convolution benchmarks.
-  add_args({32, 64, 64, 32, 1, 1, 64, kSamePadding});
-  add_args({32, 256, 256, 4, 1, 1, 16, kSamePadding});
-  add_args({32, 64, 64, 4, 1, 1, 16, kSamePadding});
-  add_args({32, 32, 32, 96, 1, 1, 96, kSamePadding});
+  add_args({32, 64, 64, 32, 1, 1, 1, 64, kSamePadding});
+  add_args({32, 256, 256, 4, 1, 1, 1, 16, kSamePadding});
+  add_args({32, 64, 64, 4, 1, 1, 1, 16, kSamePadding});
+  add_args({32, 32, 32, 96, 1, 1, 1, 96, kSamePadding});
   // --------------------------------------------------------------------------
   // // 3x3 Convolution: SpatialConvolution
   // --------------------------------------------------------------------------
   // // Shapes from XLA convolution tests
-  add_args({8, 5, 5, 1, 3, 3, 32, kSamePadding});
-  add_args({8, 5, 5, 4, 3, 3, 32, kSamePadding});
-  add_args({8, 128, 128, 4, 3, 3, 8, kSamePadding});
+  add_args({8, 5, 5, 1, 3, 3, 1, 32, kSamePadding});
+  add_args({8, 5, 5, 4, 3, 3, 1, 32, kSamePadding});
+  add_args({8, 128, 128, 4, 3, 3, 1, 8, kSamePadding});
   // Shapes from TF convolution benchmarks
-  add_args({8, 32, 32, 128, 3, 3, 1024, kSamePadding});
-  add_args({16, 32, 32, 128, 3, 3, 1024, kSamePadding});
-  add_args({32, 32, 32, 128, 3, 3, 1024, kSamePadding});
+  add_args({8, 32, 32, 128, 3, 3, 1, 1024, kSamePadding});
+  add_args({16, 32, 32, 128, 3, 3, 1, 1024, kSamePadding});
+  add_args({32, 32, 32, 128, 3, 3, 1, 1024, kSamePadding});
   // Shapes similar to Eigen spatial convolution benchmarks.
   // Same padding.
-  add_args({32, 64, 64, 32, 3, 3, 64, kSamePadding});
-  add_args({32, 256, 256, 4, 3, 3, 16, kSamePadding});
-  add_args({32, 64, 64, 4, 3, 3, 16, kSamePadding});
-  add_args({32, 32, 32, 96, 3, 3, 96, kSamePadding});
+  add_args({32, 64, 64, 32, 3, 3, 1, 64, kSamePadding});
+  add_args({32, 256, 256, 4, 3, 3, 1, 16, kSamePadding});
+  add_args({32, 64, 64, 4, 3, 3, 1, 16, kSamePadding});
+  add_args({32, 32, 32, 96, 3, 3, 1, 96, kSamePadding});
   // Valid padding.
-  add_args({32, 64, 64, 32, 3, 3, 64, kValidPadding});
-  add_args({32, 256, 256, 4, 3, 3, 16, kValidPadding});
-  add_args({32, 64, 64, 4, 3, 3, 16, kValidPadding});
-  add_args({32, 32, 32, 96, 3, 3, 96, kValidPadding});
+  add_args({32, 64, 64, 32, 3, 3, 1, 64, kValidPadding});
+  add_args({32, 256, 256, 4, 3, 3, 1, 16, kValidPadding});
+  add_args({32, 64, 64, 4, 3, 3, 1, 16, kValidPadding});
+  add_args({32, 32, 32, 96, 3, 3, 1, 96, kValidPadding});
+  // --------------------------------------------------------------------------
+  // // ResNet-50 shapes with stride=2
+  // --------------------------------------------------------------------------
+  add_args({32, 56, 56, 256, 1, 1, 2, 128, kValidPadding});
+  add_args({32, 56, 56, 64, 3, 3, 2, 64, kSamePadding});
 }
 
 void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b,
@@ -532,7 +501,7 @@ void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b,
     args.push_back(type_config);
     b->Args(args);
   };
-  add_args({1, 45, 45, 1024, 5, 5, 1024, 1024});
+  add_args({1, 45, 45, 1024, 5, 5, 1, 1024, 1024});
 }
 
 void RegisterBenchmarks() {
