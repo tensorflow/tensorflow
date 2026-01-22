@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 
@@ -165,6 +166,7 @@ std::string HumanReadableNumBytes(int64_t num_bytes);
 //   39420000.0  -> "1.25 years"
 //   -10         -> "-10 s"
 std::string HumanReadableElapsedTime(double seconds);
+std::string HumanReadableElapsedTime(absl::Duration duration);
 
 }  // namespace strings
 }  // namespace tsl
