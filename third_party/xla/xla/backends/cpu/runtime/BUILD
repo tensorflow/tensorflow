@@ -162,6 +162,7 @@ tf_proto_library(
         "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service:hlo_proto",
+        "//xla/service:shaped_slice_proto",
     ],
 )
 

@@ -936,7 +936,7 @@ struct ConvertTensorListLength
 
     BoolAttr true_attr = rewriter.getBoolAttr(true);
     auto shape = TF::ShapeOp::create(rewriter, loc, input_handle,
-                                     /*use_32bit=*/true_attr);
+                                     /*use32Bit=*/true_attr);
     rewriter.replaceOpWithNewOp<TF::GatherOp>(
         op, op.getType(), shape, CreateI32SplatConst(loc, &rewriter, {}, 0),
         /*validate_indices=*/true_attr);
