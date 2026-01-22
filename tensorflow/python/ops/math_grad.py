@@ -44,7 +44,12 @@ def _ArgMinGrad(op: ops.Operation, grad):
 
 @ops.RegisterGradient("EuclideanNorm")
 def _EuclideanNormGrad(op: ops.Operation, grad):
-  """Gradient for EuclideanNorm."""
+  """Gradient for EuclideanNorm.
+
+  When the norm is zero, the gradient is mathematically undefined (0/0).
+  We use a subgradient of 0 in this case, which is a common convention
+  and matches the behavior of other frameworks.
+  """
 
   output = op.outputs[0]
 
@@ -54,7 +59,19 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  # Handle the case where norm is zero to avoid nan/inf gradients.
+  # When norm is 0, we use a subgradient of 0.
+  safe_output = array_ops.where_v2(
+      math_ops.equal(output, 0),
+      array_ops.ones_like(output),
+      output)
+  grad_input = op.inputs[0] * math_ops.truediv(grad, safe_output)
+  grad_input = array_ops.where_v2(
+      math_ops.equal(output, 0),
+      array_ops.zeros_like(grad_input),
+      grad_input)
+  return grad_input, None
+
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):
