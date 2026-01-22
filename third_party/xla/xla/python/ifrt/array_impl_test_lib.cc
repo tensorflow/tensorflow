@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -106,6 +107,36 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferWithCustomLayout) {
+  GTEST_SKIP() << "Client::GetDefaultLayout() and Array::layout() are not "
+                  "available for use yet.";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  absl::c_iota(*data, 0);
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout,
+                          client->GetDefaultLayout(dtype, shape, sharding));
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data->data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding, layout,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/nullptr));
+
+  EXPECT_EQ(array->dtype(), dtype);
+  EXPECT_EQ(array->shape(), shape);
+  EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+  EXPECT_EQ(array->layout().get(), layout.get());
   EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 

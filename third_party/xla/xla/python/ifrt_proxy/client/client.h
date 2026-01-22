@@ -72,7 +72,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromHostBuffer(
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
+      xla::ifrt::ShardingRef sharding, xla::ifrt::LayoutRef layout,
+      HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   MakeArraysFromHostBufferShards(

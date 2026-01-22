@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
@@ -111,9 +112,9 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-      TF_ASSIGN_OR_RETURN(auto attributes,
-                          AttributeMap::FromProto(d.attributes()));
-      pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
+    TF_ASSIGN_OR_RETURN(auto attributes,
+                        AttributeMap::FromProto(d.attributes()));
+    pjrt_device_attributes = ToPjRtAttributeMap(std::move(attributes));
 
     DeviceDescription desc(d.id(), init_response.process_index(),
                            d.device_kind(), d.debug_string(), d.to_string(),
@@ -233,11 +234,12 @@ absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
 absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
-    xla::ifrt::Client::HostBufferSemantics semantics,
+    LayoutRef layout, xla::ifrt::Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
-      std::move(sharding), semantics, std::move(on_done_with_host_buffer));
+      std::move(sharding), std::move(layout), semantics,
+      std::move(on_done_with_host_buffer));
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>

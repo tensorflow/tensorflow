@@ -57,6 +57,7 @@
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mpmd_executable.h"
 #include "xla/python/ifrt/program.h"
@@ -873,6 +874,11 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
   TF_ASSIGN_OR_RETURN(
       auto sharding,
       Sharding::FromProto(client_.get(), make_array_request->sharding()));
+  LayoutRef layout;
+  if (make_array_request->has_layout()) {
+    TF_ASSIGN_OR_RETURN(layout,
+                        Layout::FromProto(make_array_request->layout()));
+  }
 
   const auto byte_strides = [&]() -> std::optional<std::vector<int64_t>> {
     if (!make_array_request->has_byte_strides()) {
@@ -904,7 +910,7 @@ IfrtBackend::HandleMakeArrayFromHostBufferRequest(
         array,
         client_->MakeArrayFromHostBuffer(
             mem_region.zeroth_element(), dtype, std::move(shape),
-            std::move(byte_strides), std::move(sharding),
+            std::move(byte_strides), std::move(sharding), std::move(layout),
             xla::ifrt::Client::HostBufferSemantics::
                 kImmutableUntilTransferCompletes,
             [hold = std::move(host_buffer)]() mutable { hold.reset(); }));

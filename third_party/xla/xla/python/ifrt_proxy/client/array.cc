@@ -33,7 +33,6 @@
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
@@ -44,18 +43,18 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/client_impl_util.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -159,15 +158,29 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
     xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
-    HostBufferSemantics semantics,
+    LayoutRef layout, HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   auto req = std::make_unique<MakeArrayFromHostBufferRequest>();
   dtype.ToProto(*req->mutable_dtype(), rpc_helper->ifrt_serdes_version());
   shape.ToProto(*req->mutable_shape(), rpc_helper->ifrt_serdes_version());
-  TF_RETURN_IF_ERROR(sharding->ToProto(*req->mutable_sharding(),
-                                       rpc_helper->ifrt_serdes_version()));
   if (byte_strides.has_value()) {
     *req->mutable_byte_strides() = ToByteStridesProto(*byte_strides);
+  }
+  TF_RETURN_IF_ERROR(sharding->ToProto(*req->mutable_sharding(),
+                                       rpc_helper->ifrt_serdes_version()));
+  std::shared_ptr<const xla::PjRtLayout> pjrt_layout;
+  if (layout != nullptr) {
+    if (rpc_helper->protocol_version() <
+        protocol_version::kMakeArrayFromHostBufferWithLayout) {
+      return absl::InvalidArgumentError(
+          "Custom layout is not supported in the current protocol version.");
+    }
+    TF_RETURN_IF_ERROR(layout->ToProto(*req->mutable_layout(),
+                                       rpc_helper->ifrt_serdes_version()));
+    TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+                        sharding->GetShardShape(shape));
+    TF_ASSIGN_OR_RETURN(pjrt_layout,
+                        xla::ifrt::ToPjRtLayout(dtype, shard_shape, layout));
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -185,10 +198,10 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::MakeArrayFromHostBuffer(
   // ownership of the host buffer to the server side (ie, it is the server's
   // responsibility to clean it up as needed).
 
-  return xla::ifrt::ArrayRef(
-      tsl::MakeRef<Array>(client, std::move(rpc_helper), dtype,
-                          std::move(shape), std::move(sharding),
-                          ArrayHandle{host_buffer_handle}, /*layout=*/nullptr));
+  return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
+      client, std::move(rpc_helper), dtype, std::move(shape),
+      std::move(sharding), ArrayHandle{host_buffer_handle},
+      std::move(pjrt_layout)));
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
@@ -756,7 +769,8 @@ tsl::Future<> Array::CopyToHostBuffer(
   return std::move(future);
 }
 
-absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Array::pjrt_layout()
+    const {
   return layout_;
 }
 

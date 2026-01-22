@@ -45,6 +45,7 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
@@ -143,12 +144,13 @@ class ProxyWithMockBackend {
   absl::StatusOr<xla::ifrt::ArrayRef> MockBackendMakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, Client::HostBufferSemantics semantics,
+      ShardingRef sharding, LayoutRef layout,
+      Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) {
     ArrayId array_id = *reinterpret_cast<const uint64_t*>(data);
     TF_ASSIGN_OR_RETURN(auto delegated,
                         mock_backend_->delegated()->MakeArrayFromHostBuffer(
-                            data, dtype, shape, byte_strides, sharding,
+                            data, dtype, shape, byte_strides, sharding, layout,
                             semantics, on_done_with_host_buffer));
     auto result = tsl::MakeRef<NiceMock<MockArray>>(delegated);
     testing::Mock::AllowLeak(result.get());
