@@ -917,6 +917,7 @@ xla_test(
         "//xla/backends/gpu/runtime:buffer_debug_log_proto_cc",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
         "//xla/backends/gpu/runtime:thunk_id",
+        "//xla/service:platform_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
@@ -926,6 +927,7 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

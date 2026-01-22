@@ -861,6 +861,7 @@ xla_test(
     name = "dynamic_shared_memory_test",
     srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
     backends = ["gpu"],
+    tags = ["cuda-only"],
     deps = [
         "//xla:shape_util",
         "//xla:types",

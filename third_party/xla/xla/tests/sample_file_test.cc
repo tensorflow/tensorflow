@@ -63,6 +63,8 @@ TEST_F(SampleFileTest, Convolution) {
       .mutable_debug_options()
       .set_xla_cpu_parallel_codegen_split_count(1);
 
+  module->mutable_config().mutable_debug_options().set_xla_gpu_autotune_level(
+      4);
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}));
 }
 
