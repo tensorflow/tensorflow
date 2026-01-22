@@ -770,7 +770,10 @@ xla_cc_test(
     deps = [
         ":indexing_test_utils",
         ":symbolic_expr",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
