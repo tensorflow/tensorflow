@@ -57,8 +57,8 @@ software.
      To collect the wheel sources that are suitable for all types of Bazel
      builds, including cross-compile builds, the following build rules should be
      used: `collect_data_files`, `transitive_py_deps` from
-     `@local_xla//third_party/py:python_wheel.bzl`, and `transitive_hdrs` from
-     `@local_xla//xla/tsl:tsl.bzl`.
+     `@xla//third_party/py:python_wheel.bzl`, and `transitive_hdrs` from
+     `@xla//xla/tsl:tsl.bzl`.
 
      [jaxlib wheel sources](https://github.com/jax-ml/jax/blob/006b2904720bf029cb4298ab963f8f50438e79df/jaxlib/tools/BUILD.bazel#L243-L265)
 

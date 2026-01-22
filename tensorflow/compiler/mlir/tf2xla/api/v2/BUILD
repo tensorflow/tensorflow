@@ -43,13 +43,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/client:compile_only_client",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/pjrt/proto:compile_options_proto_cc",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/client:compile_only_client",
+        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/pjrt/proto:compile_options_proto_cc",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -75,12 +75,12 @@ tf_cc_test(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/tsl/lib/monitoring:test_utils",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:client_library",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -105,7 +105,7 @@ tf_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -150,8 +150,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -178,8 +178,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -209,10 +209,10 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla/tsl/lib/monitoring:counter",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla/tsl/lib/monitoring:counter",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -236,7 +236,7 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -278,7 +278,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -306,10 +306,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:read_all",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -365,7 +365,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -392,10 +392,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:read_all",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

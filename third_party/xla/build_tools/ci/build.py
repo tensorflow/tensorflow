@@ -50,7 +50,7 @@ _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 _XLA_DEFAULT_TARGET_PATTERNS = (
     "//xla/...",
     "//build_tools/...",
-    "@local_tsl//tsl/...",
+    "@tsl//tsl/...",
 )
 _XLA_ONEAPI_TARGET_PATTERNS = (
     "//xla/stream_executor/sycl/...",
@@ -353,7 +353,7 @@ Build(
     target_patterns=(
         "//xla/...",
         "//build_tools/...",
-        "@local_tsl//tsl/...",
+        "@tsl//tsl/...",
         "-//xla/stream_executor/tpu/...",
         # mpitrampoline and gloo are not windows compatible
         "-//xla/backends/cpu/collectives:gloo_collectives_test",
@@ -841,13 +841,13 @@ Build(
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+            "-exec", "sed", "-i", "s/@xla/@local_xla/g", "{}", "+",
         ],
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            "-exec", "sed", "-i", "s/@tsl/@local_tsl/g", "{}", "+",
         ],
     ),
 )
@@ -886,13 +886,13 @@ Build(
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             "-type", "f",
-            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+            "-exec", "sed", "-i", "s/@xla/@local_xla/g", "{}", "+",
         ],
         [
             "find",
             f"{_GITHUB_WORKSPACE}/openxla/xla",
             "-type", "f",
-            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+            "-exec", "sed", "-i", "s/@tsl/@local_tsl/g", "{}", "+",
         ],
         ["nvidia-smi"],
     ),

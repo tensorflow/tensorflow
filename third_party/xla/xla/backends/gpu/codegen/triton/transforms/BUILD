@@ -101,8 +101,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
     ],
 )

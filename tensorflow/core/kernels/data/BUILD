@@ -28,7 +28,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 
@@ -125,7 +125,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 
@@ -303,8 +303,8 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/platform:logging",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -604,8 +604,8 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
@@ -864,7 +864,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -985,7 +985,7 @@ tf_kernel_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 
@@ -1037,8 +1037,8 @@ tf_kernel_library(
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_xla//xla/tsl/platform:types",
+        "@tsl//tsl/platform:mutex",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1110,8 +1110,8 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -1188,7 +1188,7 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1261,8 +1261,8 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1379,8 +1379,8 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1410,8 +1410,8 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -1476,7 +1476,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:utils",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1502,7 +1502,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

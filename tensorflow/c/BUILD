@@ -3,8 +3,8 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
-load("@local_xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@xla//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -69,7 +69,7 @@ filegroup(
         "tf_tensor_helper.h",
         "tf_tstring.h",
         "//tensorflow/core/platform:ctstring",
-        "@local_xla//xla/tsl/c:headers",
+        "@xla//xla/tsl/c:headers",
     ] + if_tensorrt([
         "//tensorflow/compiler/tf2tensorrt:headers",
     ]),
@@ -93,8 +93,8 @@ filegroup(
     ) + [
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
-        "@local_tsl//tsl/platform:ctstring",
-        "@local_xla//xla/tsl/c:srcs",
+        "@tsl//tsl/platform:ctstring",
+        "@xla//xla/tsl/c:srcs",
     ],
     visibility = ["//visibility:public"],
 )
@@ -112,7 +112,7 @@ cc_library(
         "tf_status_internal.h",
         "tf_tensor_helper.h",
         "tf_tensor_internal.h",
-        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
+        "@xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -250,7 +250,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/c:tsl_status",
+        "@xla//xla/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:with_xla_support": [
             "//tensorflow/compiler/jit",
@@ -329,7 +329,7 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
-        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
+        "@xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/c:__subpackages__",
@@ -342,9 +342,9 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_xla//xla/tsl/c:tsl_status",
-        "@local_xla//xla/tsl/c:tsl_status_internal",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/c:tsl_status",
+        "@xla//xla/tsl/c:tsl_status_internal",
+        "@xla//xla/tsl/platform:status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -359,7 +359,7 @@ filegroup(
     name = "tf_status_internal_headers",
     srcs = [
         "tf_status_internal.h",
-        "@local_xla//xla/tsl/c:tsl_status_internal_headers",
+        "@xla//xla/tsl/c:tsl_status_internal_headers",
     ],
     visibility = [
         "//tensorflow/python:__subpackages__",
@@ -399,7 +399,7 @@ cc_library(
     deps = [
         ":c_api_macros_hdrs",
         ":tf_status_internal",
-        "@local_xla//xla/tsl/c:tsl_status",
+        "@xla//xla/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -416,7 +416,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros_hdrs",
-        "@local_xla//xla/tsl/c:tsl_status_headers",
+        "@xla//xla/tsl/c:tsl_status_headers",
     ],
 )
 
@@ -437,7 +437,7 @@ cc_library(
         ":tf_tensor_hdrs",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:tstring",
-        "@local_xla//xla/tsl/c:tsl_status",
+        "@xla//xla/tsl/c:tsl_status",
     ],
 )
 
@@ -647,7 +647,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
 )
@@ -676,8 +676,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_status_headers",
-        "@local_xla//xla/tsl/c:tsl_status_helper",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/c:tsl_status_helper",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -688,10 +688,10 @@ tf_cc_test(
         ":tf_status",
         ":tf_status_helper",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:test",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -759,7 +759,7 @@ cc_library(
         ":tf_tensor_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -787,7 +787,7 @@ tf_cuda_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@xla//xla/tsl/c:tsl_status_internal",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
@@ -800,9 +800,9 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
             "//tensorflow/core:protos_all_cc",
-            "@local_xla//xla/stream_executor:stream",
-            "@local_xla//xla/tsl/framework:device_id_utils",
-            "@local_xla//xla/tsl/platform:statusor",
+            "@xla//xla/stream_executor:stream",
+            "@xla//xla/tsl/framework:device_id_utils",
+            "@xla//xla/tsl/platform:statusor",
         ],
     }),
 )

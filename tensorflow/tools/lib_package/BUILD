@@ -2,8 +2,8 @@
 # This includes the C API, Java API, and protocol buffer files.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 
@@ -119,8 +119,8 @@ genrule(
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
-        "@local_tsl//:LICENSE",
-        "@local_xla//:LICENSE",
+        "@tsl//:LICENSE",
+        "@xla//:LICENSE",
         "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
@@ -134,8 +134,8 @@ genrule(
     }) + if_cuda([
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "@local_xla//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
+        "@xla//third_party/mkl_dnn:LICENSE",
+    ]) + if_enable_mkl(["@xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],

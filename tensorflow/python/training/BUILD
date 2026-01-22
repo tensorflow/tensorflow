@@ -1353,7 +1353,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:variable_v1",
-        "@local_xla//xla:xla_data_proto_py",
+        "@xla//xla:xla_data_proto_py",
     ] + TRAINING_TEST_DEPS,
 )
 

@@ -11,7 +11,7 @@ cc_library(
     visibility = ["//xla/backends/profiler/plugin:__pkg__"],
     deps = [
         "//xla/backends/profiler/plugin:plugin_metadata_hdr",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
 )

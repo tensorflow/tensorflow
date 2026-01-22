@@ -63,9 +63,9 @@ cc_library(
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
-        "@local_xla//xla/tsl/platform:errors",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
+        "@xla//xla/tsl/platform:errors",
     ] + if_google([
         "//learning/brain/tfrt/tpu:tfrttpu_alwayslink",
         "//learning/brain/tfrt/tpu/fused_kernel:tpu_fused_kernel_alwayslink",
@@ -112,7 +112,7 @@ tf_cc_shared_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

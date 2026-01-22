@@ -35,6 +35,6 @@ cc_library(
         "//tensorflow/lite/tools/benchmark:benchmark_model_lib",
         "//tensorflow/lite/tools/benchmark:benchmark_params",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
-        "@local_xla//xla/tsl/util:stats_calculator_portable",
+        "@xla//xla/tsl/util:stats_calculator_portable",
     ],
 )

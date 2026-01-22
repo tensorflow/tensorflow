@@ -51,7 +51,7 @@ cc_library(
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
     alwayslink = True,
 )
@@ -69,7 +69,7 @@ cc_library(
         ":grpc_credentials",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -238,9 +238,9 @@ cc_library(
         ":ifrt_service_proto_cc",
         "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@tsl//tsl/platform:random",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

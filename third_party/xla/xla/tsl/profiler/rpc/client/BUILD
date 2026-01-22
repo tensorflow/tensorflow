@@ -46,11 +46,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -78,8 +78,8 @@ cc_library(
         "//xla/tsl/profiler/utils:file_system_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -107,8 +107,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ],
 )
 
@@ -136,8 +136,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
     ],
     alwayslink = True,
 )
@@ -154,8 +154,8 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:profiler_session",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + tf_protos_profiler_service(),
 )
 
@@ -180,10 +180,10 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
-        "@local_tsl//tsl/profiler/lib:profiler_session",
-        "@local_tsl//tsl/profiler/lib:profiler_session_impl",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/lib:profiler_session_impl",
     ] + tf_protos_profiler_service(),
 )
 
@@ -206,7 +206,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -233,9 +233,9 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
-        "@local_tsl//tsl/profiler/lib:profiler_session",
-        "@local_tsl//tsl/profiler/lib:profiler_session_impl",
-        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@tsl//tsl/profiler/lib:profiler_factory_impl",
+        "@tsl//tsl/profiler/lib:profiler_session",
+        "@tsl//tsl/profiler/lib:profiler_session_impl",
+        "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + tf_protos_profiler_service(),
 )

@@ -64,7 +64,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/base:core_headers",
-        "@local_xla//xla/tsl/profiler/utils:math_utils",
+        "@xla//xla/tsl/profiler/utils:math_utils",
     ],
 )
 
@@ -110,7 +110,7 @@ cc_library(
         "//perftools/gputools/profiler/collector:__pkg__",
     ],
     deps = [
-        "@local_xla//xla/tsl/profiler/utils:trace_utils",
+        "@xla//xla/tsl/profiler/utils:trace_utils",
     ],
 )
 
@@ -120,7 +120,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_xla//xla/tsl/profiler/utils:xplane_builder",
+        "@xla//xla/tsl/profiler/utils:xplane_builder",
     ],
 )
 
@@ -129,7 +129,7 @@ cc_library(
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
     visibility = [":friends"],
-    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_schema"],
+    deps = ["@xla//xla/tsl/profiler/utils:xplane_schema"],
 )
 
 cc_library(
@@ -138,7 +138,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -151,7 +151,7 @@ cc_library(
         "//perftools/accelerators/xprof/db:__pkg__",
         "//perftools/gputools/profiler/collector:__pkg__",
     ],
-    deps = ["@local_xla//xla/tsl/profiler/utils:xplane_test_utils"],
+    deps = ["@xla//xla/tsl/profiler/utils:xplane_test_utils"],
 )
 
 cc_library(
@@ -160,7 +160,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
-        "@local_xla//xla/tsl/profiler/utils:xplane_visitor",
+        "@xla//xla/tsl/profiler/utils:xplane_visitor",
     ],
 )
 

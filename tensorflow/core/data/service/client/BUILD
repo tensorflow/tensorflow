@@ -61,8 +61,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:retrying_utils",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@tsl//tsl/platform:retrying_utils",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -88,7 +88,7 @@ tf_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -110,8 +110,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_xla//xla/tsl/protobuf:protos_all_cc",
+        "@tsl//tsl/platform:errors",
+        "@xla//xla/tsl/protobuf:protos_all_cc",
     ],
 )
 
@@ -129,10 +129,10 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_cluster",
         "//tensorflow/core/data/service:test_util",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/protobuf:protos_all_cc",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:status_matchers",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -170,6 +170,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

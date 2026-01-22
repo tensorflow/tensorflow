@@ -64,8 +64,8 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     "//xla/tsl/platform:env_impl",
     "//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     "//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
-    "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
-    "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
+    "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
+    "@tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "//xla/tsl/profiler/utils:time_utils_impl",
     "//xla/tsl/protobuf:protos_all_cc_impl",
 ] + if_rocm_is_configured([

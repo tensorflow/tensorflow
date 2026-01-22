@@ -18,7 +18,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -88,7 +88,7 @@ xla_cc_test(
         "//xla/pjrt/extensions/example:example_extension",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 

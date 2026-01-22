@@ -93,8 +93,8 @@ pybind_extension(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

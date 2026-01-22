@@ -59,7 +59,7 @@ cc_library(
         ":flatrep",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:hash",
     ],
 )
 
@@ -79,7 +79,7 @@ cc_library(
         ":flatrep",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:hash",
     ],
 )
 
@@ -188,7 +188,7 @@ filegroup(
     visibility = internal_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
-        "@local_tsl//tsl:__subpackages__",
+        "@tsl//tsl:__subpackages__",
     ]),
 )
 
@@ -252,6 +252,6 @@ tsl_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:hash",
     ],
 )

@@ -88,7 +88,7 @@ cc_library(
     strip_include_prefix = "src/include",
     visibility = ["//visibility:public"],
     deps = [
-        "@local_xla//xla/tsl/cuda:nvshmem_stub",
+        "@xla//xla/tsl/cuda:nvshmem_stub",
     ],
 )
 

@@ -45,8 +45,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:tstring",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:tstring",
     ],
     alwayslink = True,
 )
@@ -61,8 +61,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -78,8 +78,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:tstring",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:tstring",
     ],
     alwayslink = True,
 )
@@ -112,7 +112,7 @@ tsl_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:tstring",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:tstring",
     ],
 )

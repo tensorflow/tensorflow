@@ -553,13 +553,13 @@ def tf_windows_aware_platform_deps(name):
         ],
     })
 
-def tf_platform_deps(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_platform_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
-def tf_stream_executor_deps(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_stream_executor_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
 
-def tf_platform_alias(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_platform_alias(name, platform_dir = "@xla//xla/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
 def tf_error_logging_deps():

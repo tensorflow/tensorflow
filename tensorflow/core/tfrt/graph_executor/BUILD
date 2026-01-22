@@ -134,11 +134,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/concurrency:async_value",
-        "@local_xla//xla/tsl/concurrency:ref_count",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
@@ -146,6 +141,11 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
+        "@tsl//tsl/platform:refcount",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/concurrency:async_value",
+        "@xla//xla/tsl/concurrency:ref_count",
     ] + if_google(
         [
             "//learning/brain/experimental/tfrt/native_lowering/stubs:tfrt_native_lowering_impl",
@@ -189,11 +189,11 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:tensor",
         "@tf_runtime//cpp_tests:common",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:statusor",
     ] + if_google(
         [
             "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
@@ -250,9 +250,9 @@ tf_cc_test(
         ":test_config_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

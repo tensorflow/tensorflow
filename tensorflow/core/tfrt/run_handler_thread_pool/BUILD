@@ -128,8 +128,8 @@ tf_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

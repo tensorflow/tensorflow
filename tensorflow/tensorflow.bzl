@@ -18,7 +18,7 @@ load(
     "if_cuda_exec",
 )
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_enable_mkl",
     "if_mkl",
     "if_mkl_ml",
@@ -55,11 +55,11 @@ load(
     "cc_test",
 )
 load(
-    "@local_xla//third_party/compute_library:build_defs.bzl",
+    "@xla//third_party/compute_library:build_defs.bzl",
     "if_enable_acl",
 )
 load(
-    "@local_xla//third_party/llvm_openmp:openmp.bzl",
+    "@xla//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
 load(
@@ -68,7 +68,7 @@ load(
     "rocm_copts",
 )
 load(
-    "@local_xla//xla/tsl:tsl.bzl",
+    "@xla//xla/tsl:tsl.bzl",
     "tsl_gpu_library",
     _cc_header_only_library = "cc_header_only_library",
     _custom_op_cc_header_only_library = "custom_op_cc_header_only_library",
@@ -77,7 +77,7 @@ load(
     _transitive_hdrs = "transitive_hdrs",
 )
 load(
-    "@local_xla//xla/tsl:tsl.default.bzl",
+    "@xla//xla/tsl:tsl.default.bzl",
     _if_cuda_tools = "if_cuda_tools",
 )
 load(
@@ -86,7 +86,7 @@ load(
     "if_tensorrt_exec",
 )
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
     _pybind_extension = "pybind_extension",
 )
@@ -506,11 +506,11 @@ def tf_copts_exec(
 def tf_openmp_copts():
     # We assume when compiling on Linux gcc/clang will be used and MSVC on Windows
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
+        "@xla//xla/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp"],
         # copybara:uncomment_begin
-        # "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
+        # "@xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp"],
         # copybara:uncomment_end_and_comment_begin
-        "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
+        "@xla//xla/tsl/mkl:build_with_mkl_windows_openmp": ["/openmp:llvm"],
         # copybara:comment_end
         "//conditions:default": [],
     })
@@ -519,7 +519,7 @@ def tf_openmp_lopts():
     # When compiling on Windows, force MSVC to use libiomp that was compiled
     # as part of this build.
     return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": [windows_llvm_openmp_linkopts()],
+        "@xla//xla/tsl/mkl:build_with_mkl_windows_openmp": [windows_llvm_openmp_linkopts()],
         "//conditions:default": [],
     })
 
@@ -1094,8 +1094,8 @@ def tf_cc_binary(
         names = [name]
 
     # Optional MKL dependency, we also tell buildcleaner to ignore this dep using a tag.
-    mkl_dep = if_mkl_ml([clean_dep("@local_xla//xla/tsl/mkl:intel_binary_blob")])
-    tags = kwargs.pop("tags", []) + ["req_dep=" + clean_dep("@local_xla//xla/tsl/mkl:intel_binary_blob")]
+    mkl_dep = if_mkl_ml([clean_dep("@xla//xla/tsl/mkl:intel_binary_blob")])
+    tags = kwargs.pop("tags", []) + ["req_dep=" + clean_dep("@xla//xla/tsl/mkl:intel_binary_blob")]
 
     for name_os in names:
         cc_binary(
@@ -1592,14 +1592,14 @@ def tf_cc_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
+            clean_dep("@xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
                 "-lm",
             ],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-                clean_dep("@local_xla//xla/tsl/mkl:intel_binary_blob"),
+                clean_dep("@xla//xla/tsl/mkl:intel_binary_blob"),
             ],
         ),
         data = data +
@@ -1635,14 +1635,14 @@ def tf_cc_shared_test(
                 "-lpthread",
                 "-lm",
             ],
-            clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
+            clean_dep("@xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
                 "-lm",
             ],
         }) + linkopts + _rpath_linkopts(name),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
             [
-                clean_dep("@local_xla//xla/tsl/mkl:intel_binary_blob"),
+                clean_dep("@xla//xla/tsl/mkl:intel_binary_blob"),
             ],
         ),
         dynamic_deps = if_static(
@@ -1868,7 +1868,7 @@ def tf_cc_test_mkl(
                     "-lm",
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)) + tf_openmp_lopts(),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["@xla//xla/tsl/mkl:intel_binary_blob"]),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
@@ -1968,7 +1968,7 @@ def tf_gpu_kernel_library(
         hdrs = hdrs,
         copts = copts,
         deps = deps + if_cuda([
-            clean_dep("@local_xla//xla/tsl/cuda:cudart"),
+            clean_dep("@xla//xla/tsl/cuda:cudart"),
         ]) + if_cuda_or_rocm([
             clean_dep("//tensorflow/core:gpu_lib"),
         ]),
@@ -3421,7 +3421,7 @@ def tf_python_pybind_static_deps(testonly = False):
         "@tf_runtime//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
+        "@tsl//tsl:__subpackages__",
     ]
     static_deps += tsl_async_value_deps()
     static_deps += [] if not testonly else [
@@ -3461,7 +3461,7 @@ def tf_python_pybind_extension_opensource(
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
-    extended_deps = deps + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"])
+    extended_deps = deps + if_mkl_ml(["@xla//xla/tsl/mkl:intel_binary_blob"])
     extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
     pybind_extension_opensource(
         name,
@@ -3700,7 +3700,7 @@ def if_cuda_tools(if_true, if_false = []):
 # The config is used to determine if we need dependency on pre-built wheels.
 def if_wheel_dependency(if_true, if_false = []):
     return select({
-        "@local_xla//third_party/py:enable_wheel_dependency": if_true,
+        "@xla//third_party/py:enable_wheel_dependency": if_true,
         "//conditions:default": if_false,
     })
 

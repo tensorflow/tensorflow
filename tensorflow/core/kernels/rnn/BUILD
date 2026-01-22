@@ -6,7 +6,7 @@ load(
     "if_rocm_is_configured",
 )
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load(
@@ -37,7 +37,7 @@ tf_gpu_library(
         "//tensorflow/core/kernels:numeric_options_utils",
         "//tensorflow/core/platform:stream_executor",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "@xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     ],
 )
 

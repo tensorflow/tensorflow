@@ -50,13 +50,13 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:status_macros",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -156,8 +156,8 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/concurrency:async_value",
         "@tf_runtime//:support",
+        "@xla//xla/tsl/concurrency:async_value",
     ],
 )
 
@@ -227,7 +227,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -263,7 +263,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/graph_executor:config",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -275,7 +275,7 @@ cc_library(
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 

@@ -55,7 +55,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@libjpeg_turbo//:jpeg",
-        "@local_xla//xla/tsl/util:stats_calculator_portable",
+        "@xla//xla/tsl/util:stats_calculator_portable",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",
@@ -131,7 +131,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
-        "@local_xla//xla/tsl/util:stats_calculator_portable",
+        "@xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -188,7 +188,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@FP16",
         "@com_google_absl//absl/log",
-        "@local_xla//xla/tsl/util:stats_calculator_portable",
+        "@xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 

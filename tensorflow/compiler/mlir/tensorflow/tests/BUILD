@@ -56,6 +56,6 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )

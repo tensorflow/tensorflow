@@ -204,7 +204,7 @@ cc_library(
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,  # Initializer needs to run.
 )

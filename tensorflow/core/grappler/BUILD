@@ -81,7 +81,7 @@ tf_cuda_library(
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
     cuda_deps = [
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@xla//xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core/platform:stream_executor",
     ],
     visibility = ["//visibility:public"],
@@ -173,7 +173,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

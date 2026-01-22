@@ -33,7 +33,7 @@ xla_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:path",
         "@stablehlo//:register",
+        "@tsl//tsl/platform:path",
     ],
 )

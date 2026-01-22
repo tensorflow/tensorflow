@@ -25,8 +25,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/profiler/lib:traceme",
         "@slinky//slinky/base:thread_pool",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 

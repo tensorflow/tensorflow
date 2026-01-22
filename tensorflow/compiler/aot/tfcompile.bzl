@@ -325,24 +325,24 @@ def _tf_library(
             "//third_party/absl/synchronization",
             "//tensorflow/core:framework_lite",
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-            "@local_xla//xla:types",
-            "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
-            "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
+            "@xla//xla:types",
+            "@xla//xla/backends/cpu/runtime:kernel_c_api",
+            "@xla//xla/backends/cpu/runtime:rng_state_lib",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "@local_xla//xla:xla_data_proto_cc",
+            "@xla//xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "@local_xla//xla/service:hlo_profile_printer_data_cc",
+            "@xla//xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "@local_xla//xla/backends/cpu/runtime:dot_lib",
-            "@local_xla//xla/backends/cpu/runtime:sort_lib",
-            "@local_xla//xla/backends/cpu/runtime:topk_lib",
-            "@local_xla//xla/backends/cpu/runtime:convolution_lib",
-            "@local_xla//xla/service/cpu:runtime_matmul",
-            "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
+            "@xla//xla/backends/cpu/runtime:dot_lib",
+            "@xla//xla/backends/cpu/runtime:sort_lib",
+            "@xla//xla/backends/cpu/runtime:topk_lib",
+            "@xla//xla/backends/cpu/runtime:convolution_lib",
+            "@xla//xla/service/cpu:runtime_matmul",
+            "@xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
         ] or []) + (use_xla_nanort_runtime and [
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function_thunks",
@@ -398,7 +398,7 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:tf_library_test_main",
-                "@local_xla//xla:executable_run_options",
+                "@xla//xla:executable_run_options",
                 "@eigen_archive//:eigen3",
             ] + if_oss([
                 "//tensorflow/core:lib",
@@ -451,7 +451,7 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:benchmark",
-                "@local_xla//xla:executable_run_options",
+                "@xla//xla:executable_run_options",
                 "@eigen_archive//:eigen3",
             ] + if_android([
                 "//tensorflow/compiler/aot:benchmark_extra_android",

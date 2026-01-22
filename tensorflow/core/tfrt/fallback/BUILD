@@ -55,8 +55,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:refcount",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -80,7 +80,7 @@ tf_cc_test(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -152,7 +152,7 @@ cc_library(
     hdrs = ["device_with_custom_allocator.h"],
     deps = [
         "//tensorflow/core:framework",
-        "@local_xla//xla/tsl/framework:allocator",
+        "@xla//xla/tsl/framework:allocator",
     ],
 )
 

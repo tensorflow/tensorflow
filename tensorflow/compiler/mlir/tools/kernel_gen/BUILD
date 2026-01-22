@@ -2,15 +2,15 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
+    "@xla//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -93,20 +93,20 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:all_passes",  # fixdeps: keep
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:transforms_gpu_passes",
-        "@local_xla//xla/mlir_hlo:transforms_passes",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:linalg_passes",
         "@stablehlo//:stablehlo_passes",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:all_passes",  # fixdeps: keep
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:transforms_gpu_passes",
+        "@xla//xla/mlir_hlo:transforms_passes",
     ],
 )
 
 check_deps(
     name = "hlo_to_kernel_check_deps",
-    disallowed_deps = ["@local_xla//xla:literal"],
+    disallowed_deps = ["@xla//xla:literal"],
     deps = [":hlo_to_kernel"],
 )
 
@@ -140,7 +140,7 @@ tf_cc_binary(
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@local_xla//xla/service/llvm_ir:llvm_command_line_options",
+        "@xla//xla/service/llvm_ir:llvm_command_line_options",
     ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
     ]) + if_llvm_aarch64_available([
@@ -169,9 +169,9 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:RegisterAllDialects",
         "@llvm-project//mlir:RegisterAllPasses",
-        "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",
+        "@xla//xla/mlir_hlo:all_passes",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
     ],
 )
 
@@ -206,7 +206,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_xla//xla/stream_executor:stream",
+        "@xla//xla/stream_executor:stream",
     ],
 )
 
@@ -223,7 +223,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -250,15 +250,15 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:mlir_runner_utils",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/stream_executor:stream",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/stream_executor:stream",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",
+        "@xla//xla/stream_executor/cuda:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_xla//xla/stream_executor/rocm:stream_executor_rocm",
+        "@xla//xla/stream_executor/rocm:stream_executor_rocm",
     ]),
 )
 

@@ -40,7 +40,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -56,9 +56,9 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/service:hlo_proto_cc",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -109,11 +109,11 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:register",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla:shape_util",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -136,10 +136,10 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/tsl/platform:errors",
         "@stablehlo//:register",
+        "@xla//xla:shape_util",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -167,12 +167,12 @@ cc_library(
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:compile_only_client",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:register",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:compile_only_client",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -198,13 +198,13 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/tsl/platform:errors",
         "@stablehlo//:register",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:client_library",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -269,8 +269,8 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -293,7 +293,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
     alwayslink = 1,
 )
@@ -324,7 +324,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:enable_tf2_utils",
         # "//tensorflow/core/platform:resource_loader",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -423,6 +423,6 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )

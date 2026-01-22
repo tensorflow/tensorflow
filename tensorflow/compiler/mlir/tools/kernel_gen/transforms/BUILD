@@ -3,11 +3,11 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -157,21 +157,21 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-        "@local_xla//xla:debug_options_flags",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:type_conversion",
-        "@local_xla//xla/service/gpu:gpu_asm_opts_util",
-        "@local_xla//xla/service/gpu:target_constants",
-        "@local_xla//xla/stream_executor:device_description",
+        "@xla//xla:debug_options_flags",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:type_conversion",
+        "@xla//xla/service/gpu:gpu_asm_opts_util",
+        "@xla//xla/service/gpu:target_constants",
+        "@xla//xla/stream_executor:device_description",
     ] + if_cuda_is_configured([
-        "@local_tsl//tsl/platform:cuda_root_path",
-        "@local_xla//xla/stream_executor/cuda:cuda_asm_compiler",
-        "@local_xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
+        "@tsl//tsl/platform:cuda_root_path",
+        "@xla//xla/stream_executor/cuda:cuda_asm_compiler",
+        "@xla//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
     ]) + if_rocm_is_configured([
-        "@local_xla//xla/stream_executor/gpu:asm_compiler",
-        "@local_xla//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "@xla//xla/stream_executor/gpu:asm_compiler",
+        "@xla//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "//tensorflow/core/platform:rocm_rocdl_path",
     ]),
 )
@@ -227,9 +227,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:transforms_passes",
         "@stablehlo//:base",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:transforms_passes",
     ],
 )

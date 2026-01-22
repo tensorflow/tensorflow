@@ -120,8 +120,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@local_tsl//tsl/platform:path",
         "@stablehlo//:stablehlo_ops",
+        "@tsl//tsl/platform:path",
     ],
 )
 

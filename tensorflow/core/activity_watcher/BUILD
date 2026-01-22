@@ -23,7 +23,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ] + if_not_mobile([
         ":activity_watcher_impl",
     ]),
@@ -39,7 +39,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -52,6 +52,6 @@ cc_library(
         ":activity_watcher",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )

@@ -62,8 +62,8 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_xla//xla:autotuning_proto"],
-    exports = ["@local_xla//xla:autotuning_proto"],
+    protodeps = ["@xla//xla:autotuning_proto"],
+    exports = ["@xla//xla:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -71,7 +71,7 @@ tf_proto_library(
     srcs = ["conv_autotuning.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_xla//xla/tsl/protobuf:dnn_proto",
+        "@xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -129,9 +129,9 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@xla//xla/tsl/protobuf:error_codes_proto_impl"],
     visibility = ["//visibility:public"],
-    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -200,17 +200,17 @@ tf_proto_library(
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
-        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
-        "@local_xla//xla/tsl/protobuf:coordination_config_proto",
-        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
-        "@local_xla//xla/tsl/protobuf:status_proto",
+        "@xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@xla//xla/tsl/protobuf:coordination_config_proto",
+        "@xla//xla/tsl/protobuf:rpc_options_proto",
+        "@xla//xla/tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
     exports = [
-        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
-        "@local_xla//xla/tsl/protobuf:rpc_options_proto",
-        "@local_xla//xla/tsl/protobuf:status_proto",
+        "@xla//xla/tsl/protobuf:bfc_memory_map_proto",
+        "@xla//xla/tsl/protobuf:rpc_options_proto",
+        "@xla//xla/tsl/protobuf:status_proto",
     ],
 )
 

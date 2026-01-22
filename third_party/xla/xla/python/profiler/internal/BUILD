@@ -34,9 +34,9 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@pybind11",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
 )
@@ -66,7 +66,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/lib:traceme_for_pybind",
         "@pybind11",
+        "@tsl//tsl/profiler/lib:traceme_for_pybind",
     ],
 )

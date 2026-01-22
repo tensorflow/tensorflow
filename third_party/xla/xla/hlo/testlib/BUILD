@@ -101,8 +101,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -126,7 +126,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_for_library",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
