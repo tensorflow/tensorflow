@@ -1034,6 +1034,7 @@ cc_library(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/platform:env",
@@ -1139,6 +1140,39 @@ xla_test(
         "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+# Unlike the tests above, this one doesn't link in any platforms (e.g. cuda_platform).
+xla_cc_test(
+    name = "xla_deviceless_compile_lib_test",
+    srcs = ["xla_deviceless_compile_lib_test.cc"],
+    data = [
+        "//xla/backends/gpu/target_config:all_gpu_specs",
+    ],
+    # Although this doesn't require a GPU, we need the tag to prevent this from being
+    # run in the OSS CPU presubmits, which are missing the Cuda compile time dependencies.
+    tags = ["gpu"],
+    deps = [
+        ":xla_compile_lib",
+        "//xla:xla_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:compiler",
+        "//xla/service:gpu_plugin",
+        "//xla/service:symbol_repository",
+        "//xla/service:xla_compile_result_proto_cc_impl",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
     ],
 )

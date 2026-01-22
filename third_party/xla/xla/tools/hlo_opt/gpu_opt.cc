@@ -232,7 +232,7 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
-            gpu_compiler->GetDataLayout(), platform, device_description,
+            gpu_compiler->GetDataLayout(), platform->id(), device_description,
             alias_info.get(), std::move(buffer_size_bytes_function),
             llvm_options_lock));
     return llvm_ir::DumpToString(results.llvm_module.get());

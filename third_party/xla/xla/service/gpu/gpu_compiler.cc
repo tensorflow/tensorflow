@@ -397,14 +397,24 @@ bool IsDevicelessCompilation(const Compiler::CompileOptions& options,
   return options.early_exit_with_layouts || stream_exec == nullptr;
 }
 
-int GetNumVisibleDevices(const Compiler::CompileOptions& options,
-                         const se::StreamExecutor* stream_exec,
-                         const se::Platform* platform) {
+absl::StatusOr<int> GetNumVisibleDevices(
+    const Compiler::CompileOptions& options,
+    const se::StreamExecutor* stream_exec, se::Platform::Id platform_id) {
   if (IsDevicelessCompilation(options, stream_exec) &&
       options.gpu_topology.has_value()) {
     return options.gpu_topology->num_devices_per_host();
   }
-  return platform->VisibleDeviceCount();
+
+  absl::StatusOr<se::Platform*> platform =
+      se::PlatformManager::PlatformWithId(platform_id);
+  if (!platform.ok()) {
+    return absl::Status(
+        platform.status().code(),
+        absl::StrCat(
+            platform.status().message(),
+            ". Are you missing gpu_plugin or stream_executor dependency?"));
+  }
+  return platform.value()->VisibleDeviceCount();
 }
 
 }  // namespace
@@ -1576,9 +1586,6 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // Dump the HLO module after SPMD partitioning. There should be no more Python
   // callbacks at this point.
   DumpHloModuleIfEnabled(*hlo_module, "after_spmd_partitioner");
-  ASSIGN_OR_RETURN(
-      const stream_executor::Platform* platform,
-      stream_executor::PlatformManager::PlatformWithId(PlatformId()));
 
   // SortRewriter needs to ask the device how much scratch space is needed,
   // which isn't feasible if we don't have a device.
@@ -1595,7 +1602,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                         enable_sort_rewriter));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
-  int device_count = GetNumVisibleDevices(options, stream_exec, platform);
+  ASSIGN_OR_RETURN(int device_count,
+                   GetNumVisibleDevices(options, stream_exec, platform_id_));
   RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
       hlo_module, options, layout_insensitive_algsimp_opts, gpu_version,
       device_count, pointer_size_));
@@ -2585,16 +2593,6 @@ GpuCompiler::CompileToBackendResult(
       RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
                                  gpu_device_info, alias_info.get()));
 
-  absl::StatusOr<se::Platform*> platform =
-      se::PlatformManager::PlatformWithId(PlatformId());
-  if (!platform.ok()) {
-    return absl::Status(
-        platform.status().code(),
-        absl::StrCat(
-            platform.status().message(),
-            ". Are you missing gpu_plugin or stream_executor dependency?"));
-  }
-
   ASSIGN_OR_RETURN(bool can_use_link_modules,
                    CanUseLinkModules(module->config(), gpu_device_info));
   const bool split_modules =
@@ -2617,7 +2615,7 @@ GpuCompiler::CompileToBackendResult(
     ASSIGN_OR_RETURN(
         compile_module_results,
         CompileModuleToLlvmIr(
-            module, llvm_context, target_triple_, data_layout_, *platform,
+            module, llvm_context, target_triple_, data_layout_, PlatformId(),
             gpu_device_info, alias_info.get(),
             std::move(buffer_size_bytes_function), llvm_options_lock,
             /*split_constants_module=*/use_cache));

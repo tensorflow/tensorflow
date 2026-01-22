@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -159,6 +161,24 @@ absl::StatusOr<std::vector<int>> GetDeviceOrdinals(
 absl::StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
     absl::string_view platform_name) {
   return xla::CanonicalPlatformName(platform_name);
+}
+
+absl::StatusOr<se::Platform::Id> PlatformUtil::GetPlatformIdFromCanonicalName(
+    absl::string_view platform_name) {
+  static const se::Platform::Id kKnownPlatforms[] = {
+      se::host::kHostPlatformId,
+      se::cuda::kCudaPlatformId,
+      se::rocm::kROCmPlatformId,
+      se::sycl::kSyclPlatformId,
+  };
+
+  for (se::Platform::Id id : kKnownPlatforms) {
+    if (absl::EqualsIgnoreCase(id->ToName(), platform_name)) {
+      return id;
+    }
+  }
+
+  return InvalidArgument("Unknown platform name: %s", platform_name);
 }
 
 absl::StatusOr<std::vector<se::Platform*>>

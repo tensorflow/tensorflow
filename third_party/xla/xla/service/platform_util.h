@@ -40,6 +40,11 @@ class PlatformUtil {
   static absl::StatusOr<std::string> CanonicalPlatformName(
       absl::string_view platform_name);
 
+  // Returns the `se::Platform::Id` for the given canonical `platform_name`, or
+  // an error if the `platform_name` is not recognized.
+  static absl::StatusOr<se::Platform::Id> GetPlatformIdFromCanonicalName(
+      absl::string_view platform_name);
+
   // Returns the platforms present on the system and supported by XLA.
   //
   // Note that, even if a platform is present with zero devices, if we *do* have

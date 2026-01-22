@@ -52,9 +52,10 @@ limitations under the License.
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
@@ -86,16 +87,15 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
   platform_name = absl::AsciiStrToUpper(platform_name);
-  TF_ASSIGN_OR_RETURN(
-      auto platform,
-      stream_executor::PlatformManager::PlatformWithName(platform_name));
   const bool aot = target_config.has_value();
 
-  TF_ASSIGN_OR_RETURN(auto gpu_compiler,
-                      Compiler::GetForPlatform(platform->id()));
+  TF_ASSIGN_OR_RETURN(
+      se::Platform::Id platform_id,
+      xla::PlatformUtil::GetPlatformIdFromCanonicalName(platform_name));
+  TF_ASSIGN_OR_RETURN(auto gpu_compiler, Compiler::GetForPlatform(platform_id));
 
   if (aot) {
-    AotCompilationOptions aot_options(platform->id());
+    AotCompilationOptions aot_options(platform_id);
     GpuTopology topology =
         GetSingleDeviceGpuTopology(/*platform_version=*/"", *target_config);
     aot_options.set_gpu_topology(topology);
@@ -111,7 +111,9 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
         aot_results[0]->optimized_module()->ToProto();
     return compile_result;
   }
-
+  TF_ASSIGN_OR_RETURN(
+      auto platform,
+      stream_executor::PlatformManager::PlatformWithName(platform_name));
   Compiler::CompileOptions compile_options;
   TF_ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
                       platform->ExecutorForDevice(0));

@@ -71,7 +71,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const se::Platform* platform, const se::DeviceDescription& device_desc,
+    se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
