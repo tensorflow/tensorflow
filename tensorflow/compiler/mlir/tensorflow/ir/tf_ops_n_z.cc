@@ -3612,6 +3612,22 @@ SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 // WhileRegionOp RegionBranchOpInterface
 //===----------------------------------------------------------------------===//
 
+::mlir::ValueRange WhileRegionOp::getSuccessorInputs(
+    ::mlir::RegionSuccessor successor) {
+  if (successor.isParent()) {
+    // For compatibility with older code, we allow the "yield" in a condition
+    // to only yield a single boolean. In that case, the condition doesn't
+    // forward any values to the parent, so return empty.
+    Operation* yield = getCond().front().getTerminator();
+    if (yield->getOperands().size() !=
+        1 + this->getOperation()->getOperands().size()) {
+      return ValueRange();
+    }
+    return getResults();
+  }
+  return successor.getSuccessor()->getArguments();
+}
+
 OperandRange WhileRegionOp::getEntrySuccessorOperands(
     RegionSuccessor successor) {
   if (successor.isParent()) {
@@ -3638,29 +3654,26 @@ void WhileRegionOp::getSuccessorRegions(
     Operation *yield = getCond().front().getTerminator();
     if (yield->getOperands().size() ==
         1 + this->getOperation()->getOperands().size()) {
-      regions.push_back(
-          RegionSuccessor(&getBody(), getBody().front().getArguments()));
-      regions.push_back(RegionSuccessor::parent(getResults()));
+      regions.push_back(RegionSuccessor(&getBody()));
+      regions.push_back(RegionSuccessor::parent());
     } else {
       // For compatibility with older code, we allow the "yield" in a condition
-      // to only yield a single boolean. In that case we can't forward any args.
-      regions.push_back(RegionSuccessor(&getBody()));
-      regions.push_back(RegionSuccessor::parent(getResults().take_front(0)));
+      // to only yield a single boolean. In that case the condition doesn't
+      // forward any args to body, so we only list parent as successor.
+      // The body is reachable from parent, not from condition.
+      regions.push_back(RegionSuccessor::parent());
     }
   } else if (!point.isParent() &&
              (point.getTerminatorPredecessorOrNull() &&
               point.getTerminatorPredecessorOrNull()->getParentRegion() ==
                   &(*this)->getRegion(1))) {
     // 'body' branches back to 'cond'.
-    regions.push_back(
-        RegionSuccessor(&getCond(), getCond().front().getArguments()));
+    regions.push_back(RegionSuccessor(&getCond()));
   } else if (point.isParent()) {
     // The parent branches to 'cond'. It is also considered to branch to `body`
     // in case the terminator of `cond` doesn't forward the arguments of `cond`.
-    regions.push_back(
-        RegionSuccessor(&getCond(), getCond().front().getArguments()));
-    regions.push_back(
-        RegionSuccessor(&getBody(), getBody().front().getArguments()));
+    regions.push_back(RegionSuccessor(&getCond()));
+    regions.push_back(RegionSuccessor(&getBody()));
   }
 }
 
