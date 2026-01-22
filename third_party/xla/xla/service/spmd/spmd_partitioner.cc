@@ -5285,29 +5285,26 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               int64_t all_gather_dimension) {
+            if (device_list.version() == CollectiveDeviceListVersion::kIota) {
+              const IotaReplicaGroupList* iota_list =
+                  device_list.MaybeConvertToIotaReplicaGroupList();
+              // Fallback to list of lists collective creation if the partition
+              // group list does not utilize all the partitions.
+              if (iota_list != nullptr &&
+                  iota_list->num_total_devices() == num_partitions) {
+                return b->AddInstruction(HloInstruction::CreateAllGather(
+                    ag_shape, {operand}, all_gather_dimension,
+                    ExpandPartitionGroupListAcrossReplicas(
+                        *iota_list, num_replicas, num_partitions),
+                    /*constrain_layout=*/false, channel_id,
+                    /*use_global_device_ids=*/true));
+              }
+            }
             return CreateAllGatherListsOfLists(
                 num_replicas, num_partitions, b, operand, ag_shape, device_list,
                 channel_id, all_gather_dimension);
           },
-      .create_all_gather_with_iota_device_list =
-          [num_replicas, num_partitions](
-              SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
-              const IotaReplicaGroupList& partition_group_list,
-              int64_t channel_id, int64_t all_gather_dimension) {
-            // Fallback to list of lists collective creation if the partition
-            // group list does not utilize all the partitions.
-            if (partition_group_list.num_total_devices() != num_partitions) {
-              return CreateAllGatherListsOfLists(
-                  num_replicas, num_partitions, b, operand, ag_shape,
-                  partition_group_list, channel_id, all_gather_dimension);
-            }
-            return b->AddInstruction(HloInstruction::CreateAllGather(
-                ag_shape, {operand}, all_gather_dimension,
-                ExpandPartitionGroupListAcrossReplicas(
-                    partition_group_list, num_replicas, num_partitions),
-                /*constrain_layout=*/false, channel_id,
-                /*use_global_device_ids=*/true));
-          }};
+  };
   return result;
 }
 
@@ -5347,13 +5344,12 @@ SpmdPartitioner::AllGatherShardsInternal(
       // fallback to list of lists representation.
       auto partition_group_list =
           GetIotaPartitionGroupsForReplication(sharding, {*it});
-      if (partition_group_list.has_value() &&
-          collectives_creator.create_all_gather_with_iota_device_list) {
+      if (partition_group_list.has_value()) {
         result_shape.set_dimensions(
             *it, result_shape.dimensions(*it) *
-                     partition_group_list.value().num_devices_per_group());
-        result = collectives_creator.create_all_gather_with_iota_device_list(
-            b, result, result_shape, partition_group_list.value(),
+                     partition_group_list->num_devices_per_group());
+        result = collectives_creator.create_all_gather(
+            b, result, result_shape, *partition_group_list,
             (*next_channel_id)++,
             /*all_gather_dimension=*/*it);
       } else {
@@ -5385,12 +5381,11 @@ SpmdPartitioner::AllGatherShardsInternal(
   // fallback to list of lists representation.
   auto partition_group_list =
       GetIotaPartitionGroupsForReplication(sharding, selected_dims);
-  if (partition_group_list.has_value() &&
-      collectives_creator.create_all_gather_with_iota_device_list) {
+  if (partition_group_list.has_value()) {
     shape[0] *= partition_group_list.value().num_devices_per_group();
-    result = collectives_creator.create_all_gather_with_iota_device_list(
+    result = collectives_creator.create_all_gather(
         b, result, ShapeUtil::MakeShape(operand->shape().element_type(), shape),
-        partition_group_list.value(), (*next_channel_id)++,
+        *partition_group_list, (*next_channel_id)++,
         /*all_gather_dimension=*/0);
   } else {
     auto partition_subgroups =

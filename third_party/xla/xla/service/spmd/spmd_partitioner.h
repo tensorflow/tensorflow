@@ -227,17 +227,6 @@ struct SPMDCollectiveOpsCreator {
       const CollectiveDeviceListBase& partition_subgroups, int64_t channel_id,
       int64_t all_gather_dimension)>
       create_all_gather;
-
-  // Function used to create a cross-partition all-gather HLO using device list
-  // in iota format. This function is optional: if it is a nullptr, use
-  // create_all_gather.
-  // TODO(b/316622399): Merge this and create_all_gather into a
-  // function that uses CollectiveDeviceList.
-  std::function<HloInstruction*(
-      SpmdBuilder*, HloInstruction* operand, const Shape& ag_shape,
-      const IotaReplicaGroupList& partition_group_list, int64_t channel_id,
-      int64_t all_gather_dimension)>
-      create_all_gather_with_iota_device_list;
 };
 
 // Create a default SPMDCollectiveOpsCreator.
