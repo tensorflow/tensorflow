@@ -159,80 +159,104 @@ TEST_F(HloShardingTest, IotaProtoRoundTrip) {
   EXPECT_THAT(sharding.ToProto(), EqualsProto(proto));
 }
 
-TEST_F(HloShardingTest, Tile) {
-  {
-    // Test should fail because of a duplicate tile assignment.
-    HloSharding sharding =
-        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 0, 2, 3}));
-    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
-                                       /*num_devices=*/4));
-  }
+using TileTest = HloShardingTest;
+TEST_F(TileTest, FailsWithDuplicateDeviceInTileAssignment) {
+  HloSharding sharding =
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 0, 2, 3}));
+  EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
+                                     /*num_devices=*/4));
+  // No need to test NamedSharding here as constructing Mesh with duplicate
+  // device ids is not valid.
+}
 
+TEST_F(TileTest, FailsWhenDeviceUsedGreaterThanNumDevices) {
+  HloSharding sharding =
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
+  EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+                                     /*num_devices=*/2));
   {
-    // Test should fail because of more devices used than `num_device`.
-    HloSharding sharding =
-        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
-    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+    Mesh mesh({2, 2}, {"x", "y"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"x"}, {"y"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
                                        /*num_devices=*/2));
   }
+}
 
+TEST_F(TileTest, FailsWhenNotAllDevicesArePresentInTileAssignment) {
+  HloSharding sharding =
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
+  EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+                                     /*num_devices=*/5));
   {
-    // Test should fail because not all devices present in tile assignment.
-    HloSharding sharding =
-        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
-    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+    Mesh mesh({2, 2}, {"x", "y"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"x"}, {"y"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
                                        /*num_devices=*/5));
   }
+}
 
+TEST_F(TileTest, PassesValidationAndMatchesTileInfo) {
+  Shape shape = ShapeUtil::MakeShape(U32, {4, 5});
+  HloSharding sharding =
+      HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1}));
+  EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
+                                 /*num_devices=*/4));
   {
-    // Test should pass.
-    Shape shape = ShapeUtil::MakeShape(U32, {4, 5});
-    HloSharding sharding =
-        HloSharding::Tile(Array<int64_t>({2, 2}, {0, 3, 2, 1}));
+    Mesh mesh(Array<int64_t>({2, 2}, {0, 3, 2, 1}), {"x", "y"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"x"}, {"y"}});
+    HloSharding sharding(named_sharding);
+
     EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
                                    /*num_devices=*/4));
-
-    EXPECT_EQ(sharding.TileOffsetForDevice(shape, 0),
-              (std::vector<int64_t>{0, 0}));
-    EXPECT_EQ(sharding.TileOffsetForDevice(shape, 3),
-              (std::vector<int64_t>{0, 3}));
-    EXPECT_EQ(sharding.TileOffsetForDevice(shape, 2),
-              (std::vector<int64_t>{2, 0}));
-    EXPECT_EQ(sharding.TileOffsetForDevice(shape, 1),
-              (std::vector<int64_t>{2, 3}));
-
-    EXPECT_EQ(sharding.TileLimitForDevice(shape, 0),
-              (std::vector<int64_t>{2, 3}));
-    EXPECT_EQ(sharding.TileLimitForDevice(shape, 3),
-              (std::vector<int64_t>{2, 5}));
-    EXPECT_EQ(sharding.TileLimitForDevice(shape, 2),
-              (std::vector<int64_t>{4, 3}));
-    EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
-              (std::vector<int64_t>{4, 5}));
-
-    EXPECT_FALSE(sharding.HasUniqueDevice());
-
-    // {device_index, tile_offest, tile_limit}.
-    std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
-        tiles;
-    TF_ASSERT_OK(sharding.EachTile(
-        shape.dimensions(),
-        [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
-                 absl::Span<const int64_t> tile_limit) {
-          std::vector<int64_t> offset(tile_offset.begin(), tile_offset.end());
-          std::vector<int64_t> limit(tile_limit.begin(), tile_limit.end());
-          tiles.emplace_back(device_index, std::move(offset), std::move(limit));
-        }));
-    EXPECT_THAT(tiles, ::testing::UnorderedElementsAre(
-                           std::make_tuple(0, std::vector<int64_t>{0, 0},
-                                           std::vector<int64_t>{2, 3}),
-                           std::make_tuple(1, std::vector<int64_t>{2, 3},
-                                           std::vector<int64_t>{4, 5}),
-                           std::make_tuple(2, std::vector<int64_t>{2, 0},
-                                           std::vector<int64_t>{4, 3}),
-                           std::make_tuple(3, std::vector<int64_t>{0, 3},
-                                           std::vector<int64_t>{2, 5})));
   }
+
+  EXPECT_EQ(sharding.TileOffsetForDevice(shape, 0),
+            (std::vector<int64_t>{0, 0}));
+  EXPECT_EQ(sharding.TileOffsetForDevice(shape, 3),
+            (std::vector<int64_t>{0, 3}));
+  EXPECT_EQ(sharding.TileOffsetForDevice(shape, 2),
+            (std::vector<int64_t>{2, 0}));
+  EXPECT_EQ(sharding.TileOffsetForDevice(shape, 1),
+            (std::vector<int64_t>{2, 3}));
+
+  EXPECT_EQ(sharding.TileLimitForDevice(shape, 0),
+            (std::vector<int64_t>{2, 3}));
+  EXPECT_EQ(sharding.TileLimitForDevice(shape, 3),
+            (std::vector<int64_t>{2, 5}));
+  EXPECT_EQ(sharding.TileLimitForDevice(shape, 2),
+            (std::vector<int64_t>{4, 3}));
+  EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
+            (std::vector<int64_t>{4, 5}));
+
+  EXPECT_FALSE(sharding.HasUniqueDevice());
+
+  // {device_index, tile_offest, tile_limit}.
+  std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
+      tiles;
+  TF_ASSERT_OK(sharding.EachTile(
+      shape.dimensions(),
+      [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
+               absl::Span<const int64_t> tile_limit) {
+        std::vector<int64_t> offset(tile_offset.begin(), tile_offset.end());
+        std::vector<int64_t> limit(tile_limit.begin(), tile_limit.end());
+        tiles.emplace_back(device_index, std::move(offset), std::move(limit));
+      }));
+  EXPECT_THAT(tiles, ::testing::UnorderedElementsAre(
+                         std::make_tuple(0, std::vector<int64_t>{0, 0},
+                                         std::vector<int64_t>{2, 3}),
+                         std::make_tuple(1, std::vector<int64_t>{2, 3},
+                                         std::vector<int64_t>{4, 5}),
+                         std::make_tuple(2, std::vector<int64_t>{2, 0},
+                                         std::vector<int64_t>{4, 3}),
+                         std::make_tuple(3, std::vector<int64_t>{0, 3},
+                                         std::vector<int64_t>{2, 5})));
 }
 
 TEST_F(HloShardingTest, EachTile) {
