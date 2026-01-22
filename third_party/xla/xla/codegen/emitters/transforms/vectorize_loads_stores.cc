@@ -261,15 +261,52 @@ bool IsConflictFree(mlir::tensor::ExtractOp op) {
       op->getParentRegion());
 }
 
+bool InductionVarIsPotentiallyUsedForControlFlow(scf::ForOp loop) {
+  auto induction_var = loop.getInductionVar();
+  // We are a bit conservative here. We can be sure that the induction var is
+  // not used for control flow if the direct usage is an ApplyIndexingOp that is
+  // then used only by tensor::ExtractOp or tensor::InsertOp, or direct usages
+  // by vector::InsertOp or vector::ExtractOp.
+  for (const mlir::OpOperand& use : induction_var.getUses()) {
+    auto indexing_op = use.getOwner();
+    if (mlir::isa<mlir::vector::InsertOp, mlir::vector::ExtractOp>(
+            indexing_op)) {
+      continue;
+    }
+    if (!mlir::isa<ApplyIndexingOp>(indexing_op)) {
+      return true;
+    }
+    for (const mlir::OpOperand& indexing_use : indexing_op->getUses()) {
+      if (!mlir::isa<mlir::tensor::ExtractOp, mlir::tensor::InsertOp>(
+              indexing_use.getOwner())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 struct VectorizeLoad : mlir::OpRewritePattern<mlir::tensor::ExtractOp> {
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
       mlir::tensor::ExtractOp op,
       mlir::PatternRewriter& rewriter) const override {
-    auto loop = mlir::dyn_cast_or_null<scf::ForOp>(op->getParentOp());
+    auto parent = op->getParentOp();
+    bool skipped_control_flow_parent = false;
+    while (parent != nullptr && mlir::isa<scf::IfOp>(parent)) {
+      parent = parent->getParentOp();
+      skipped_control_flow_parent = true;
+    }
+    auto loop = mlir::dyn_cast_or_null<scf::ForOp>(parent);
     if (!loop) {
       return rewriter.notifyMatchFailure(op, "no loop found");
+    }
+    if (skipped_control_flow_parent &&
+        InductionVarIsPotentiallyUsedForControlFlow(loop)) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "the loop induction variable is potentially used for control flow");
     }
     if (!IsConflictFree(op)) {
       return rewriter.notifyMatchFailure(op,
