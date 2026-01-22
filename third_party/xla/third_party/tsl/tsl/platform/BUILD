@@ -535,6 +535,7 @@ exports_files(
         "init_main.h",
         "logging.h",
         "mem.h",
+        "macros.h",
         "net.h",
         "numa.h",
         "snappy.h",
@@ -689,11 +690,13 @@ cc_library(
         "snappy.h",
     ],
     deps = tf_windows_aware_platform_deps("platform_port") + [
+        ":macros",
         ":platform",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/time",
         "@local_xla//xla/tsl/platform:byte_order",
         "@local_xla//xla/tsl/platform:dynamic_annotations",
+        "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:types",
     ],
 )
@@ -1257,6 +1260,17 @@ tsl_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:env_impl",
+        "@local_xla//xla/tsl/platform:test",
+    ],
+)
+
+tsl_cc_test(
+    name = "init_main_test",
+    size = "small",
+    srcs = ["init_main_test.cc"],
+    deps = [
+        ":platform_port",
+        ":test_main",
         "@local_xla//xla/tsl/platform:test",
     ],
 )

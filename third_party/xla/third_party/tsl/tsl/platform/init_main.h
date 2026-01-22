@@ -16,11 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 #define TENSORFLOW_TSL_PLATFORM_INIT_MAIN_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/time/time.h"
+#include "xla/tsl/platform/macros.h"
+
 namespace tsl {
 namespace port {
 
 void InitMain(const char* usage, int* argc, char*** argv);
+
+TF_EXPORT const std::vector<std::string>& GetArgvs();
+
+TF_EXPORT const char* GetArgv0();
 
 absl::Duration GetUptime();
 
