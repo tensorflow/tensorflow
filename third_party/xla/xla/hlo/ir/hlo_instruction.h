@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1414,6 +1415,18 @@ class HloInstruction {
     // Allow subclasses to mix additional data into h before returning
     hlo.HashAdditionalAttributes(absl::HashState::Create(&h));
     return h;
+  }
+
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0x6b1290c337eb8fbf;
+    // Using just opcode and shape might cause collisions.
+    uint64_t hash = StableHashValue(opcode(), seed);
+    hash = StableHashValue(shape().StableHash(), hash);
+    if (!IsCrossModuleAllReduce()) {
+      hash = StableHashValue(operand_count(), hash);
+    }
+    return hash;
   }
 
   // Returns whether the instruction has a constant operand.

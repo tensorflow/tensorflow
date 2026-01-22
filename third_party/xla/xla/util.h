@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/protobuf.h"
 
@@ -1059,6 +1060,27 @@ Container ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds) {
     remainder = remainder % divisor;
   }
   return digits;
+}
+
+// Returns a stable hash of the given value. Guarantees hash to be stable across
+// processes and executions. Note that hash is not cryptographically secure.
+template <typename T>
+inline uint64_t StableHashValue(const T value, uint64_t seed) {
+  static_assert(
+      std::is_enum<T>::value || std::is_same<T, bool>::value ||
+          std::is_same<T, size_t>::value || std::is_same<T, int8_t>::value ||
+          std::is_same<T, uint8_t>::value || std::is_same<T, int16_t>::value ||
+          std::is_same<T, uint16_t>::value ||
+          std::is_same<T, uint32_t>::value || std::is_same<T, int32_t>::value ||
+          std::is_same<T, int64_t>::value || std::is_same<T, uint64_t>::value,
+      "StableHashValue only supports size_t, 8 to 64 int and uint types, "
+      "enums and bools.");
+
+  if constexpr (std::is_enum<T>::value) {
+    return tsl::FingerprintCat64(static_cast<uint64_t>(to_underlying(value)),
+                                 seed);
+  }
+  return tsl::FingerprintCat64(static_cast<uint64_t>(value), seed);
 }
 
 }  // namespace xla

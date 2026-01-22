@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/compilation_environments.h"
@@ -1367,6 +1369,191 @@ std::vector<HloComputation*> HloModule::MakeComputationSorted(
     SortComputationsByContent(&result);
   }
   return result;
+}
+
+namespace {
+// Class for stably comparing HLO computations based on their hash.
+class ComputationComparator {
+ public:
+  // To achieve total ordering, comparator should be:
+  //    irreflexive (a < a == false)
+  //    symmetric (a < b ==> !(b < a))
+  //    transitive (a < b && b < c ==> a < c)
+  //    consistent when a == b
+  // Note that hashes should be stable across machines/runs/seeds.
+  bool operator()(const HloComputation* a, const HloComputation* b) {
+    if (a == b) {
+      return false;
+    }
+    if (a->instruction_count() != b->instruction_count()) {
+      return a->instruction_count() < b->instruction_count();
+    }
+    const uint64_t a_hash = GetHash(a);
+    const uint64_t b_hash = GetHash(b);
+    if (a_hash != b_hash) {
+      return a_hash < b_hash;
+    }
+    // Use ToString for tie-breaking to resolve hash collisions.
+    return a->ToString() < b->ToString();
+  }
+
+ private:
+  absl::flat_hash_map<const HloComputation*, uint64_t> computation_hashes_;
+
+  uint64_t GetHash(const HloComputation* computation) {
+    auto [it, inserted] = computation_hashes_.try_emplace(computation);
+    if (inserted) {
+      it->second = computation->StableHash();
+    }
+    return it->second;
+  }
+};
+
+// Returns a list of root computations in the module.
+std::vector<HloComputation*> CollectRootComputations(const HloModule* module) {
+  absl::flat_hash_set<HloComputation*> nonroot_computations;
+  for (auto* computation : module->computations()) {
+    for (const HloInstructionInfo& inst :
+         computation->instructions_with_info()) {
+      if (HloInstruction::MightHaveCalledComputations(inst.opcode())) {
+        for (HloComputation* called_computation : inst->called_computations()) {
+          nonroot_computations.insert(called_computation);
+        }
+      }
+    }
+  }
+  std::vector<HloComputation*> root_computations;
+  for (auto* computation : module->computations()) {
+    if (!nonroot_computations.contains(computation)) {
+      root_computations.push_back(computation);
+    }
+  }
+  return root_computations;
+}
+
+struct TraversalState {
+  // The computation that is currently being processed.
+  HloComputation* computation;
+  // During construction, post_order is std::moved into this object to
+  // make iterator pointing to valid memory.
+  std::vector<HloInstruction*> post_order;
+  // The const iterator over the `post_order`
+  std::vector<HloInstruction*>::const_iterator iterator;
+
+  TraversalState(HloComputation* computation,
+                 std::vector<HloInstruction*> post_order)
+      : computation(computation), post_order(std::move(post_order)) {
+    iterator = this->post_order.cbegin();
+  }
+};
+
+// Helper function that identifies called computations, sorts them, and pushes
+// unvisited ones onto the stack.
+void ProcessInstructionForDFS(
+    const HloInstruction* instruction, ComputationComparator& comparator,
+    absl::flat_hash_set<HloComputation*>& visited,
+    absl::InlinedVector<TraversalState, 8>& dfs_stack) {
+  if (instruction == nullptr ||
+      !HloInstruction::MightHaveCalledComputations(instruction->opcode())) {
+    return;
+  }
+
+  PtrVec<HloComputation*> called_computations =
+      instruction->called_computations();
+
+  // Sort called computations by fingerprint to ensure stable order.
+  absl::c_sort(called_computations, comparator);
+
+  for (HloComputation* called_computation : called_computations) {
+    if (visited.insert(called_computation).second) {
+      std::vector<HloInstruction*> post_order =
+          called_computation->MakeInstructionCanonicalPostOrder().instructions;
+      dfs_stack.push_back(TraversalState(called_computation, post_order));
+    }
+  }
+}
+
+// Builds a canonical post-order list of computations called directly or
+// indirectly by instructions in `computation`. The returned list does NOT
+// include `computation` itself. The canonical ordering is deterministic
+// and produces stable ordering.
+std::vector<HloComputation*> MakeEmbeddedComputationCanonicalPostOrder(
+    HloComputation* computation, ComputationComparator& comparator) {
+  absl::flat_hash_set<HloComputation*> visited;
+  std::vector<HloComputation*> post_order;
+  absl::InlinedVector<TraversalState, 8> dfs_stack;
+
+  std::vector<HloInstruction*> instruction_post_order =
+      computation->MakeInstructionCanonicalPostOrder().instructions;
+
+  for (const HloInstruction* instruction : instruction_post_order) {
+    // Seed the stack with computations called by the instructions.
+    ProcessInstructionForDFS(instruction, comparator, visited, dfs_stack);
+
+    // Fully explore the sub-DAG rooted at the newly pushed computations.
+    while (!dfs_stack.empty()) {
+      TraversalState& current_state = dfs_stack.back();
+      HloComputation* computation = current_state.computation;
+      if (current_state.iterator == current_state.post_order.cend()) {
+        dfs_stack.pop_back();
+        post_order.push_back(computation);
+        continue;
+      }
+
+      HloInstruction* instruction = *current_state.iterator;
+      // Move to the next instruction for the next iteration.
+      ++current_state.iterator;
+      ProcessInstructionForDFS(instruction, comparator, visited, dfs_stack);
+    }
+  }
+  return post_order;
+}
+}  // namespace
+
+std::vector<HloComputation*> HloModule::MakeComputationCanonicalPostOrder(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  CHECK(to_be_deleted_computations_.empty())
+      << "CleanupComputations() should be called before "
+      << "MakeComputationCanonicalPostOrder()";
+
+  std::vector<HloComputation*> roots = CollectRootComputations(this);
+
+  // Sort root computations by fingerprint to ensure stable order.
+  ComputationComparator comparator;
+  absl::c_sort(roots, comparator);
+
+  absl::flat_hash_set<HloComputation*> added_computations;
+  std::vector<HloComputation*> post_order;
+  added_computations.reserve(computation_count());
+  post_order.reserve(computation_count());
+
+  for (HloComputation* root_computation : roots) {
+    std::vector<HloComputation*> embedded_computations =
+        MakeEmbeddedComputationCanonicalPostOrder(root_computation, comparator);
+    for (HloComputation* embedded_computation : embedded_computations) {
+      if (added_computations.insert(embedded_computation).second) {
+        post_order.push_back(embedded_computation);
+      }
+    }
+    // Root computations should only be encountered once.
+    CHECK(!added_computations.contains(root_computation));
+    post_order.push_back(root_computation);
+    added_computations.insert(root_computation);
+  }
+
+  CHECK_EQ(post_order.size(), computation_count())
+      << "Mismatch computation count: post_order=" << post_order.size()
+      << " num_computations=" << computation_count();
+
+  if (!execution_threads.empty()) {
+    post_order.erase(std::remove_if(post_order.begin(), post_order.end(),
+                                    [&](HloComputation* computation) {
+                                      return !execution_threads.contains(
+                                          computation->execution_thread());
+                                    }),
+                     post_order.end());
+  }
+  return post_order;
 }
 
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations(

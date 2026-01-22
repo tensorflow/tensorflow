@@ -446,6 +446,19 @@ class HloComputation {
                       instructions.size());
   }
 
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0x4211c98d21f3f7f7;
+
+    CanonicalPostOrder post_order = MakeInstructionCanonicalPostOrder();
+    uint64_t hash = StableHashValue(post_order.hashes.size(), seed);
+
+    for (const uint64_t inst_hash : post_order.hashes) {
+      hash = StableHashValue(inst_hash, hash);
+    }
+    return hash;
+  }
+
   using InstructionSequence = tsl::gtl::iterator_range<
       UnwrappingIterator<HloInstructionList::iterator>>;
 
@@ -512,6 +525,24 @@ class HloComputation {
   // A calls computation B (eg, via a map instruction) then A will appear after
   // B in the list.
   std::vector<HloComputation*> MakeEmbeddedComputationsList() const;
+
+  struct CanonicalPostOrder {
+    std::vector<HloInstruction*> instructions;
+    std::vector<uint64_t> hashes;
+  };
+
+  // Generates post order traversal, where definitions of values always appear
+  // before their uses, in addition to that, guarantees that it's left to right
+  // traversal of the instruction tree and disconnected instructions are
+  // sorted by hash of their properties.
+  //
+  // Order is deterministic and stable across different runs.
+  // Returns both the instructions in post order and their hashes.
+  CanonicalPostOrder MakeInstructionCanonicalPostOrder() const;
+
+  // Same as MakeInstructionCanonicalPostOrder but with channel dependencies.
+  CanonicalPostOrder MakeInstructionCanonicalPostOrder(
+      const ChannelDependencies& channel_dependencies) const;
 
   // Creates a fusion instruction containing the given instructions.
   // `fusion_kind` indicates the type of the fusion, e.g., loop fusion or fusion

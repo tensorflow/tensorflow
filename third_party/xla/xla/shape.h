@@ -555,6 +555,42 @@ class Shape {
     return Shape::Hash(std::move(h), s);
   }
 
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0xd8ec09a1cc277ef7;
+    if (const auto* const state = if_tuple_state()) {
+      uint64_t hash = StableHashValue(state->tuple_shapes.size(), seed);
+      for (const Shape& subshape : state->tuple_shapes) {
+        hash = StableHashValue(subshape.StableHash(), hash);
+      }
+      return hash;
+    }
+
+    if (const auto* const state = if_array_state()) {
+      uint64_t hash = StableHashValue(element_type_, seed);
+      hash = StableHashValue(state->dimensions.size(), hash);
+      for (int64_t dim : state->dimensions) {
+        hash = StableHashValue(dim, hash);
+      }
+      hash = StableHashValue(state->dynamic_dimensions.size(), hash);
+      for (bool dynamic_dim : state->dynamic_dimensions) {
+        hash = StableHashValue(dynamic_dim, hash);
+      }
+      if (state->layout.has_value()) {
+        hash = StableHashValue(state->layout->StableHash(), hash);
+      }
+      return hash;
+    }
+
+    if (const auto* const state = if_buffer_state()) {
+      uint64_t hash = StableHashValue(state->buffer_shape->StableHash(), seed);
+      hash = StableHashValue(element_type_, hash);
+      return hash;
+    }
+
+    return StableHashValue(element_type_, seed);
+  }
+
  private:
   friend class ShapeUtil;
   friend absl::Status ValidateNonLayoutProperties(const Shape& shape);

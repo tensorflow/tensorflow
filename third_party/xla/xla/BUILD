@@ -344,6 +344,7 @@ cc_library(
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:bfloat16",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:protobuf",

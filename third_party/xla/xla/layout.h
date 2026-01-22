@@ -104,6 +104,16 @@ class Tile {
     return H::combine(std::move(h), t.dimensions_);
   }
 
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0xbab33f4dada7ab60;
+    uint64_t hash = StableHashValue(dimensions_.size(), seed);
+    for (int64_t dim : dimensions_) {
+      hash = StableHashValue(dim, hash);
+    }
+    return hash;
+  }
+
  private:
   // The bounds of the tile.
   absl::InlinedVector<int64_t, 2> dimensions_;
@@ -174,6 +184,16 @@ class SplitConfig {
   template <typename H>
   friend H AbslHashValue(H h, const SplitConfig& t) {
     return H::combine(std::move(h), t.dimension_, t.split_indices_);
+  }
+
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0xa9ecfe64de1ddae3;
+    uint64_t hash = StableHashValue(dimension_, seed);
+    for (int64_t split_index : split_indices_) {
+      hash = StableHashValue(split_index, hash);
+    }
+    return hash;
   }
 
  private:
@@ -456,6 +476,28 @@ class Layout {
                       l.element_size_in_bits_, l.index_primitive_type_,
                       l.pointer_primitive_type_, l.memory_space_,
                       l.split_configs_, l.tail_padding_alignment_in_elements_);
+  }
+
+  uint64_t StableHash() const {
+    // openssl rand generated seed.
+    static constexpr uint64_t seed = 0x6b1290c337eb8fbf;
+    uint64_t hash = StableHashValue(minor_to_major_.size(), seed);
+    for (int64_t dim : minor_to_major_) {
+      hash = StableHashValue(dim, hash);
+    }
+    hash = StableHashValue(tiles_.size(), hash);
+    for (const Tile& tile : tiles_) {
+      hash = StableHashValue(tile.StableHash(), hash);
+    }
+    hash = StableHashValue(index_primitive_type_, hash);
+    hash = StableHashValue(pointer_primitive_type_, hash);
+    hash = StableHashValue(memory_space_, hash);
+    hash = StableHashValue(split_configs_.size(), hash);
+    for (const SplitConfig& split_config : split_configs_) {
+      hash = StableHashValue(split_config.StableHash(), hash);
+    }
+    hash = StableHashValue(tail_padding_alignment_in_elements_, hash);
+    return hash;
   }
 
  private:

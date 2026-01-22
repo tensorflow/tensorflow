@@ -993,6 +993,74 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   return post_order;
 }
 
+HloComputation::CanonicalPostOrder
+HloComputation::MakeInstructionCanonicalPostOrder() const {
+  return MakeInstructionCanonicalPostOrder(ComputeChannelDependencies());
+}
+
+HloComputation::CanonicalPostOrder
+HloComputation::MakeInstructionCanonicalPostOrder(
+    const ChannelDependencies& channel_dependencies) const {
+  std::vector<HloInstruction*> post_order;
+  post_order.reserve(instruction_count());
+  VisitMap visited(instructions_.size());
+  std::vector<HloInstruction*> dfs_stack_scratch;
+  dfs_stack_scratch.reserve(instruction_count());
+
+  std::vector<HloInstruction*> all_instructions;
+  absl::flat_hash_map<HloInstruction*, uint64_t> instruction_hashes;
+  for (const auto& instruction : instructions()) {
+    // We don't consider users outside any computation as real users. This can
+    // happen when creating new instructions for replacement when cloning
+    // computations.
+    if (absl::c_all_of(instruction->users(), [](const HloInstruction* user) {
+          return user->parent() == nullptr;
+        })) {
+      all_instructions.push_back(instruction);
+      instruction_hashes[instruction] = instruction->StableHash();
+    }
+  };
+
+  absl::c_sort(
+      all_instructions,
+      [&instruction_hashes](const HloInstruction* a, const HloInstruction* b) {
+        if (a == b) {
+          return false;
+        }
+        const uint64_t a_hash = instruction_hashes.at(a);
+        const uint64_t b_hash = instruction_hashes.at(b);
+        if (a_hash != b_hash) {
+          return a_hash < b_hash;
+        }
+        const absl::string_view a_name = a->name();
+        const absl::string_view b_name = b->name();
+        if (a_name != b_name) {
+          return a_name < b_name;
+        }
+        return a->ToString() < b->ToString();
+      });
+
+  for (const auto& instruction : all_instructions) {
+    ComputeInstructionPostOrder(instruction, channel_dependencies, visited,
+                                post_order, &dfs_stack_scratch);
+  }
+  CHECK_EQ(instruction_count(), post_order.size())
+      << "number of instructions does not match post order size";
+
+  std::vector<uint64_t> post_order_hashes;
+  post_order_hashes.reserve(post_order.size());
+  for (const auto* instruction : post_order) {
+    auto it = instruction_hashes.find(instruction);
+    if (it != instruction_hashes.end()) {
+      post_order_hashes.push_back(it->second);
+    } else {
+      post_order_hashes.push_back(instruction->StableHash());
+    }
+  }
+
+  return {post_order, post_order_hashes};
+}
+
 std::vector<HloInstruction*>
 HloComputation::MakeInstructionPostOrderWithReshapeFirst() const {
   std::vector<HloInstruction*> frontier_std;
