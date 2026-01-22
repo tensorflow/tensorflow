@@ -61,73 +61,12 @@ class Platform {
     NameGetter name_getter_;
   };
 
-  // Non-owning, pointer-like wrapper around `IdInfo`, needed to replace the
-  // previously used `void*` in a backwards compatible manner.
-  // TODO: b/465773559 - After we make the changes on the TF side, remove this
-  // and just use a `const IdInfo*`.
-  class IdPtr {
-   public:
-    IdPtr() = default;
-    explicit constexpr IdPtr(const IdInfo* id_info) : id_info_(id_info) {}
-
-    constexpr IdPtr(void* ptr)  // NOLINT(google-explicit-constructor)
-        : id_info_(absl::bit_cast<const IdInfo*>(ptr)) {}
-
-    operator void*() const {  // NOLINT(google-explicit-constructor)
-      return absl::bit_cast<void*>(id_info_);
-    }
-
-    friend bool operator==(const IdPtr& lhs, const IdPtr& rhs) {
-      return lhs.id_info_ == rhs.id_info_;
-    }
-    friend bool operator!=(const IdPtr& lhs, const IdPtr& rhs) {
-      return !(lhs == rhs);
-    }
-
-    friend bool operator==(const IdPtr& lhs, std::nullptr_t) {
-      return lhs.id_info_ == nullptr;
-    }
-
-    friend bool operator==(std::nullptr_t, const IdPtr& rhs) {
-      return rhs.id_info_ == nullptr;
-    }
-
-    friend bool operator!=(const IdPtr& lhs, std::nullptr_t) {
-      return lhs.id_info_ != nullptr;
-    }
-
-    friend bool operator!=(std::nullptr_t, const IdPtr& rhs) {
-      return rhs.id_info_ != nullptr;
-    }
-
-    // This is often used in hash tables.
-    template <typename H>
-    friend H AbslHashValue(H h, const IdPtr& id) {
-      return H::combine(std::move(h), id.id_info_);
-    }
-
-    // Pointer-like access to IdInfo.
-    const IdInfo* operator->() const { return id_info_; }
-    const IdInfo& operator*() const { return *id_info_; }
-
-    template <typename Sink>
-    friend void AbslStringify(Sink& sink, const IdPtr& id) {
-      sink.Append(id == nullptr ? "nullptr" : id->ToName());
-    }
-
-   private:
-    const IdInfo* id_info_;
-  };
-
   // A platform ID is a unique identifier for each registered platform type -
   // each platform is required to expose an ID to ensure unique registration and
   // as a target against which plugins can register.
   //
   // The macro below is provided to help generate a [process-unique] identifier.
-  using Id = IdPtr;
-
-#define PLATFORM_DEFINE_ID_IMPL_1(ID_VAR_NAME) \
-  PLATFORM_DEFINE_ID_IMPL_2(ID_VAR_NAME, ID_VAR_NAME)
+  using Id = const IdInfo*;
 
 // Helper macro to define a plugin ID. To be used only inside plugin
 // implementation files. Works by "reserving" an address/value (guaranteed to be
@@ -135,7 +74,7 @@ class Platform {
 //
 // ID_VAR_NAME: The name of the variable to initialize with the platform ID.
 // PLATFORM_NAME: The string name of the platform.
-#define PLATFORM_DEFINE_ID_IMPL_2(ID_VAR_NAME, PLATFORM_NAME)   \
+#define PLATFORM_DEFINE_ID(ID_VAR_NAME, PLATFORM_NAME)          \
   namespace {                                                   \
   constexpr ::stream_executor::Platform::IdInfo                 \
       kInternalIdInfo_##PLATFORM_NAME(                          \
@@ -144,15 +83,6 @@ class Platform {
   }                                                             \
   constexpr ::stream_executor::Platform::Id ID_VAR_NAME(        \
       &kInternalIdInfo_##PLATFORM_NAME);
-
-#define PLATFORM_DEFINE_ID_GET_MACRO(_1, _2, NAME, ...) NAME
-
-// Because we can't make cross cutting changes across XLA and TF, we need this
-// to support the old single parameter PLATFORM_DEFINE_ID macro.
-// TODO: b/455530217 - Remove this, and keep only the 2 parameter version.
-#define PLATFORM_DEFINE_ID(...)                                        \
-  PLATFORM_DEFINE_ID_GET_MACRO(__VA_ARGS__, PLATFORM_DEFINE_ID_IMPL_2, \
-                               PLATFORM_DEFINE_ID_IMPL_1)(__VA_ARGS__)
 
   // Returns a key uniquely identifying this platform.
   virtual Id id() const = 0;
