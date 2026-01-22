@@ -391,12 +391,6 @@ absl::Status NcclCollectives::Deallocate(void* location) {
 
 absl::StatusOr<GpuCollectives::CliqueIdCallback>
 NcclCollectives::InitializeTopology(const Topology& topology) {
-  // TODO(b/476253257): Replace this with proper topology argument for
-  // custom calls.
-  topology_.process_id = topology.process_id;
-  topology_.num_processes = topology.num_processes;
-  topology_.device_count_per_process = topology.device_count_per_process;
-
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
     TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
     TF_RETURN_IF_ERROR(

@@ -158,10 +158,6 @@ class GpuCollectives : public Collectives {
 
   virtual absl::Status Deallocate(void* buffer) = 0;
 
-  virtual absl::StatusOr<Topology> GetTopology() {
-    return absl::UnimplementedError("Not implemented for this backend.");
-  }
-
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>
   CreateCommunicator() = 0;
