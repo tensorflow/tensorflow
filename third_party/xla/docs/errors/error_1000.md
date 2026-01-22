@@ -110,7 +110,13 @@ allocations, for hints on their JAX source code.
 ### Section 3. Aggregate Allocations Exceed HBM Limit
 
 If the program runs out of capacity due to the aggregate sum of allocations
-exceeding the HBM limit, use the following steps to optimize memory footprint.
+exceeding the HBM limit, it is often helpful to visualize the memory profile to
+identify the specific buffers contributing to the peak usage. See
+[Debug OOM errors with XProf](https://openxla.org/xla/oom_debugging.md) for a
+step-by-step guide on identifying peak memory contributors.
+
+Once you have identified some of the top contributors, use the following steps
+to optimize the memory footprint.
 
 #### A. Check tensor padding and alignment
 
@@ -123,6 +129,10 @@ dimension sizes. See
 [Array Layouts](https://docs.jax.dev/en/latest/pallas/tpu/details.html#array-layouts).
 
 * **Audit shapes of large buffers:** (On TPU v5 with default layouts)
+  * Hovering over a buffer in
+  [Xprof Memory Viewer](https://openxla.org/xprof/memory_viewer#memory_viewer_components)
+  brings up the buffer details card which contains buffer details including
+  padding information.
   * *Example*: A shape of `(129, 1024)` might be padded to `(256, 1024)`,
   resulting in nearly 50% memory waste.
   * *Correction:* A shape of `(128, 1024)` requires no padding and incurs 0%
@@ -189,9 +199,13 @@ for HBM.
 
 #### F. Use advanced profiling tools
 
-[Xprof/Tensorboard Memory Viewer](https://openxla.org/xprof/memory_viewer)
-visualizes the compiler's view of HBM usage, showing peak memory allocation
-and buffer lifetimes. This is crucial for understanding what consumes HBM at the
-point of peak utilization. See
+[Debug OOM errors with XProf](https://openxla.org/xla/oom_debugging.md) provides
+a tutorial on using the
+[XProf Memory Viewer](https://openxla.org/xprof/memory_viewer) to visualize the
+compiler's view of HBM usage.
+
+This tool allows you to see peak memory allocation and buffer lifetimes, which
+is crucial for understanding exactly what consumes HBM at the point of peak
+utilization. For general profiling setup, see
 [Getting started with Xprof](https://openxla.org/xprof#getting_started) and
 [TensorBoard Profiling](https://docs.jax.dev/en/latest/profiling.html#xprof-tensorboard-profiling).
