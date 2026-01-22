@@ -1,4 +1,3 @@
-#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 /* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,13 +30,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -292,26 +291,23 @@ class DynamicMemcpyThunk : public Thunk {
     }
   };
 
-  DynamicMemcpyThunk(ThunkInfo thunk_info,
-                     const BufferAllocation::Slice& source_buffer,
-                     const BufferAllocation::Slice& destination_buffer,
-                     uint64_t mem_size, Offsets offsets);
+  DynamicMemcpyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
+                     const ShapedSlice& destination_buffer, uint64_t mem_size,
+                     Offsets offsets);
   DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
   DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
 
   Offsets offsets() const { return offsets_; }
   uint64_t mem_size() const { return mem_size_; }
-  const BufferAllocation::Slice& source() const { return source_buffer_; }
-  const BufferAllocation::Slice& destination() const {
-    return destination_buffer_;
-  }
+  const ShapedSlice& source() const { return source_buffer_; }
+  const ShapedSlice& destination() const { return destination_buffer_; }
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   BufferUses buffer_uses() const override {
     return {
-        BufferUse::Read(source_buffer_),
-        BufferUse::Write(destination_buffer_),
+        BufferUse::Read(source_buffer_.slice, source_buffer_.shape),
+        BufferUse::Write(destination_buffer_.slice, destination_buffer_.shape),
     };
   }
 
@@ -321,8 +317,8 @@ class DynamicMemcpyThunk : public Thunk {
       absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
-  BufferAllocation::Slice source_buffer_;
-  BufferAllocation::Slice destination_buffer_;
+  ShapedSlice source_buffer_;
+  ShapedSlice destination_buffer_;
   uint64_t mem_size_;
   Offsets offsets_;
 };

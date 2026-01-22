@@ -880,8 +880,8 @@ class DynamicSliceFusionCmd : public Command {
 // buffer to another, it is only supported for static slice.
 class DynamicSliceCopyFusionCmd : public Command {
  public:
-  DynamicSliceCopyFusionCmd(const BufferAllocation::Slice& source_buffer,
-                            const BufferAllocation::Slice& destination_buffer,
+  DynamicSliceCopyFusionCmd(const ShapedSlice& source_buffer,
+                            const ShapedSlice& destination_buffer,
                             uint64_t mem_size,
                             DynamicMemcpyThunk::Offsets offsets);
 
@@ -897,8 +897,8 @@ class DynamicSliceCopyFusionCmd : public Command {
   BufferUseVector buffers() const override;
 
  private:
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
+  const ShapedSlice source_buffer_;
+  const ShapedSlice destination_buffer_;
   uint64_t mem_size_;
   DynamicMemcpyThunk::Offsets offsets_;
 };

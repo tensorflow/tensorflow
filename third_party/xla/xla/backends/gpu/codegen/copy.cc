@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -142,16 +143,24 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
 
   const auto* src_instr =
       &SkipOptionalBitcast(root.GetOperand(source_operand_index)).instruction();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice src_buffer,
       ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
+      Shape src_shape,
+      ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(src_instr,
+                                                                    {}));
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_buffer,
       ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion, {}));
+  ASSIGN_OR_RETURN(
+      Shape dst_shape,
+      ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(&fusion,
+                                                                    {}));
 
   FusionEmissionResult result;
 
-  TF_ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
   const auto& memcpy_config =
       config.fusion_backend_config().dynamic_memcpy_config();
   DynamicMemcpyThunk::Offsets offsets;
@@ -164,8 +173,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
   result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
-      /*source_buffer=*/src_buffer,
-      /*destination_buffer=*/dst_buffer,
+      /*source_buffer=*/ShapedSlice{src_buffer, src_shape},
+      /*destination_buffer=*/ShapedSlice{dst_buffer, dst_shape},
       /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape), offsets));
   return result;
 }

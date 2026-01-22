@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -497,15 +498,19 @@ TEST(DynamicMemcpyThunkTest, ToProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+
   DynamicMemcpyThunk thunk(thunk_info,
                            /*source_buffer=*/
                            {BufferAllocation::Slice(&buffer_allocations[0],
                                                     /*offset=*/0,
-                                                    /*size=*/1024)},
+                                                    /*size=*/1024),
+                            shape},
                            /*destination_buffer=*/
                            {BufferAllocation::Slice(&buffer_allocations[1],
                                                     /*offset=*/0,
-                                                    /*size=*/1024)},
+                                                    /*size=*/1024),
+                            shape},
                            /*mem_size=*/256,
                            {DynamicMemcpyThunk::Offsets{
                                /*depends_on_loop=*/true,
@@ -520,8 +525,24 @@ TEST(DynamicMemcpyThunkTest, ToProto) {
           execution_stream_id: 123
         }
         dynamic_memcpy_thunk {
-          source_buffer { offset: 0 size: 1024 buffer_allocation_index: 0 }
-          destination_buffer { offset: 0 size: 1024 buffer_allocation_index: 1 }
+          source_buffer {
+            slice { offset: 0 size: 1024 buffer_allocation_index: 0 }
+            shape {
+              element_type: F32
+              dimensions: 256
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+              is_dynamic_dimension: false
+            }
+          }
+          destination_buffer {
+            slice { offset: 0 size: 1024 buffer_allocation_index: 1 }
+            shape {
+              element_type: F32
+              dimensions: 256
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+              is_dynamic_dimension: false
+            }
+          }
           mem_size: 256
           offsets {
             depends_on_loop: true
@@ -535,24 +556,37 @@ TEST(DynamicMemcpyThunkTest, ToProto) {
 }
 
 TEST(DynamicMemcpyThunkTest, FromProto) {
-  auto dynamic_memcpy_thunk_proto =
-      ParseTextProtoOrDie<DynamicMemcpyThunkProto>(
-          R"pb(
-            source_buffer { offset: 0 size: 1024 buffer_allocation_index: 0 }
-            destination_buffer {
-              offset: 0
-              size: 1024
-              buffer_allocation_index: 1
-            }
-            mem_size: 256
-            offsets {
-              depends_on_loop: true
-              src_offsets: 4
-              src_offsets: 8
-              dst_offsets: 16
-              dst_offsets: 32
-            }
-          )pb");
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+  auto dynamic_memcpy_thunk_proto = ParseTextProtoOrDie<
+      DynamicMemcpyThunkProto>(
+      R"pb(
+        source_buffer {
+          slice { offset: 0 size: 1024 buffer_allocation_index: 0 }
+          shape {
+            element_type: F32
+            dimensions: 256
+            layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            is_dynamic_dimension: false
+          }
+        }
+        destination_buffer {
+          slice { offset: 0 size: 1024 buffer_allocation_index: 1 }
+          shape {
+            element_type: F32
+            dimensions: 256
+            layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            is_dynamic_dimension: false
+          }
+        }
+        mem_size: 256
+        offsets {
+          depends_on_loop: true
+          src_offsets: 4
+          src_offsets: 8
+          dst_offsets: 16
+          dst_offsets: 32
+        }
+      )pb");
 
   Thunk::ThunkInfo thunk_info{};
   thunk_info.profile_annotation = "profile_annotation";
@@ -572,13 +606,16 @@ TEST(DynamicMemcpyThunkTest, FromProto) {
       /*src_offsets=*/std::vector<int64_t>{4, 8},
       /*dst_offsets=*/std::vector<int64_t>{16, 32}};
   EXPECT_EQ(thunk->offsets(), reference_offsets);
-  EXPECT_EQ(thunk->source(), BufferAllocation::Slice(&buffer_allocations[0],
-                                                     /*offset=*/0,
-                                                     /*size=*/1024));
+  EXPECT_EQ(thunk->source(),
+            (ShapedSlice{BufferAllocation::Slice(&buffer_allocations[0],
+                                                 /*offset=*/0,
+                                                 /*size=*/1024),
+                         shape}));
   EXPECT_EQ(thunk->destination(),
-            BufferAllocation::Slice(&buffer_allocations[1],
-                                    /*offset=*/0,
-                                    /*size=*/1024));
+            (ShapedSlice{BufferAllocation::Slice(&buffer_allocations[1],
+                                                 /*offset=*/0,
+                                                 /*size=*/1024),
+                         shape}));
   EXPECT_EQ(thunk->mem_size(), 256);
 }
 

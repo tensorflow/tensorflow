@@ -2422,9 +2422,8 @@ Command::BufferUseVector DynamicSliceFusionCmd::buffers() const {
 //===----------------------------------------------------------------------===//
 
 DynamicSliceCopyFusionCmd::DynamicSliceCopyFusionCmd(
-    const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
-    DynamicMemcpyThunk::Offsets offsets)
+    const ShapedSlice& source_buffer, const ShapedSlice& destination_buffer,
+    uint64_t mem_size, DynamicMemcpyThunk::Offsets offsets)
     : Command(CommandType::kDynamicSliceCopyFusionCmd),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
@@ -2437,9 +2436,10 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
                                   RecordAction record_action,
                                   se::CommandBuffer* command_buffer) {
   se::DeviceAddressBase src_data =
-      execute_params.buffer_allocations->GetDeviceAddress(source_buffer_);
+      execute_params.buffer_allocations->GetDeviceAddress(source_buffer_.slice);
   se::DeviceAddressBase dst_data =
-      execute_params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+      execute_params.buffer_allocations->GetDeviceAddress(
+          destination_buffer_.slice);
 
   return Handle(
       std::move(record_action),
@@ -2484,8 +2484,10 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
 
 Command::BufferUseVector DynamicSliceCopyFusionCmd::buffers() const {
   Command::BufferUseVector buffers;
-  buffers.emplace_back(BufferUse::Read(source_buffer_));
-  buffers.emplace_back(BufferUse::Write(destination_buffer_));
+  buffers.emplace_back(
+      BufferUse::Read(source_buffer_.slice, source_buffer_.shape));
+  buffers.emplace_back(
+      BufferUse::Write(destination_buffer_.slice, destination_buffer_.shape));
   return buffers;
 }
 

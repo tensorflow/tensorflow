@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
@@ -390,10 +390,11 @@ std::optional<AsyncEventsUniqueId> CopyDoneThunk::GetAsyncEventsUniqueId()
 // DynamicMemcpyThunk
 //===----------------------------------------------------------------------===//
 
-DynamicMemcpyThunk::DynamicMemcpyThunk(
-    ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
-    const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
-    DynamicMemcpyThunk::Offsets offsets)
+DynamicMemcpyThunk::DynamicMemcpyThunk(ThunkInfo thunk_info,
+                                       const ShapedSlice& source_buffer,
+                                       const ShapedSlice& destination_buffer,
+                                       uint64_t mem_size,
+                                       DynamicMemcpyThunk::Offsets offsets)
     : Thunk(Kind::kCopy, std::move(thunk_info)),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
@@ -402,9 +403,9 @@ DynamicMemcpyThunk::DynamicMemcpyThunk(
 
 absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceAddressBase src_data =
-      params.buffer_allocations->GetDeviceAddress(source_buffer_);
+      params.buffer_allocations->GetDeviceAddress(source_buffer_.slice);
   se::DeviceAddressBase dst_data =
-      params.buffer_allocations->GetDeviceAddress(destination_buffer_);
+      params.buffer_allocations->GetDeviceAddress(destination_buffer_.slice);
 
   int64_t iteration_index = 0;
   if (offsets_.depends_on_loop) {
@@ -464,13 +465,12 @@ absl::StatusOr<std::unique_ptr<DynamicMemcpyThunk>>
 DynamicMemcpyThunk::FromProto(
     ThunkInfo thunk_info, const DynamicMemcpyThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
-                      BufferAllocation::Slice::FromProto(
-                          thunk_proto.source_buffer(), buffer_allocations));
   TF_ASSIGN_OR_RETURN(
-      BufferAllocation::Slice dst_slice,
-      BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
-                                         buffer_allocations));
+      ShapedSlice src_slice,
+      ShapedSlice::FromProto(thunk_proto.source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(ShapedSlice dst_slice,
+                      ShapedSlice::FromProto(thunk_proto.destination_buffer(),
+                                             buffer_allocations));
   TF_ASSIGN_OR_RETURN(Offsets offsets,
                       Offsets::FromProto(thunk_proto.offsets()));
   return std::make_unique<DynamicMemcpyThunk>(std::move(thunk_info), src_slice,

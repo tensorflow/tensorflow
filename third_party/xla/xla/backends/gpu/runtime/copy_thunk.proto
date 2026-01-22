@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
-import "xla/service/buffer_assignment.proto";
+import "xla/service/shaped_slice.proto";
 
 option java_multiple_files = true;
 option java_outer_classname = "CopyThunkProto";
@@ -29,8 +29,8 @@ message DynamicMemcpyThunkProto {
     repeated int64 dst_offsets = 3;
   }
 
-  xla.buffer_assignment.BufferAllocationSliceProto source_buffer = 1;
-  xla.buffer_assignment.BufferAllocationSliceProto destination_buffer = 2;
+  ShapedSliceProto source_buffer = 1;
+  ShapedSliceProto destination_buffer = 2;
   int64 mem_size = 3;
   Offsets offsets = 4;
 }

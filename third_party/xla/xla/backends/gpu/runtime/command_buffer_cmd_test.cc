@@ -468,13 +468,15 @@ TEST(CommandBufferCmdTest, DynamicSliceCopyFusionCmd) {
   BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
   BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
   CommandSequence commands;
   commands.Emplace<DynamicSliceCopyFusionCmd>(
-      slice_a, slice_b, 16, DynamicMemcpyThunk::Offsets{false, {16}, {16}});
+      ShapedSlice{slice_a, shape}, ShapedSlice{slice_b, shape}, 16,
+      DynamicMemcpyThunk::Offsets{false, {16}, {16}});
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
