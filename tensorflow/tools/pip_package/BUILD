@@ -328,6 +328,7 @@ tf_wheel(
         "@platforms//cpu:arm64": "arm64",
         "@platforms//cpu:x86_64": "x86_64",
         "@platforms//cpu:ppc": "ppc64le",
+        "@platforms//cpu:riscv64": "riscv64",
     }),
     source_files = [
         "MANIFEST.in",
@@ -443,6 +444,7 @@ verify_manylinux_compliance_test(
     name = "manylinux_compliance_test",
     aarch64_compliance_tag = "manylinux_2_27_aarch64",
     ppc64le_compliance_tag = "manylinux_2_17_ppc64le",
+    riscv64_compliance_tag = "manylinux_2_39_riscv64",
     test_tags = [
         "manual",
     ],

@@ -41,5 +41,6 @@ def python_init_rules(extra_patches = []):
             "@local_xla//third_party/py:rules_python_pip_version.patch",
             "@local_xla//third_party/py:rules_python_freethreaded.patch",
             "@local_xla//third_party/py:rules_python_versions.patch",
+            "@local_xla//third_party/py:rules_python_riscv64_pypi.patch",
         ] + extra_patches,
     )
