@@ -385,10 +385,9 @@ std::vector<HloInstruction*> MakePartitionOffsets(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
       std::vector<int32_t> offset_array(sharding.num_devices());
-      sharding.tile_assignment().Each(
-          [&](absl::Span<const int64_t> indices, int64_t device) {
-            offset_array[device] = indices[i] * shard_shape.dimensions(i);
-          });
+      sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
+        offset_array[device] = indices[i] * shard_shape.dimensions(i);
+      });
       offsets.push_back(
           TableLookup<int32_t>(offset_array, S32, partition_id, b));
     }
@@ -1129,15 +1128,14 @@ std::optional<HloInstruction*> ExchangeHalo(
   for (int64_t i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1;
        i >= 0 && (-i - 1) * input_shard_size < right_bound; --i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
-    target.tile_assignment().Each(
-        [&](absl::Span<const int64_t> indices, int64_t device) {
-          if (indices[dim] > i) {
-            std::vector<int64_t> source_indices(indices.begin(), indices.end());
-            source_indices[dim] -= i + 1;
-            source_target_pairs.emplace_back(
-                target.tile_assignment()(source_indices), device);
-          }
-        });
+    target.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
+      if (indices[dim] > i) {
+        std::vector<int64_t> source_indices(indices.begin(), indices.end());
+        source_indices[dim] -= i + 1;
+        source_target_pairs.emplace_back(
+            target.tile_assignment()(source_indices), device);
+      }
+    });
     int64_t halo_size_including_skips =
         std::min(max_left_halo_size - input_shard_size * i, input_shard_size);
     int64_t halo_right_skips =
@@ -1208,15 +1206,14 @@ std::optional<HloInstruction*> ExchangeHalo(
   for (int64_t i = skipped_right_halos;
        i < CeilOfRatio(max_right_halo_size, input_shard_size); ++i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
-    target.tile_assignment().Each(
-        [&](absl::Span<const int64_t> indices, int64_t device) {
-          if (indices[dim] > i) {
-            std::vector<int64_t> target_indices(indices.begin(), indices.end());
-            target_indices[dim] -= i + 1;
-            source_target_pairs.emplace_back(
-                device, target.tile_assignment()(target_indices));
-          }
-        });
+    target.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
+      if (indices[dim] > i) {
+        std::vector<int64_t> target_indices(indices.begin(), indices.end());
+        target_indices[dim] -= i + 1;
+        source_target_pairs.emplace_back(
+            device, target.tile_assignment()(target_indices));
+      }
+    });
     int64_t halo_size_including_skips =
         std::min(max_right_halo_size - input_shard_size * i, input_shard_size);
     int64_t halo_left_skips =
@@ -2454,10 +2451,9 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
 
   std::vector<std::vector<int64_t>> device_to_index(
       num_devices, std::vector<int64_t>(sharding.num_dimensions()));
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> index, int64_t device) {
-        device_to_index[device].assign(index.begin(), index.end());
-      });
+  sharding.EachTile([&](absl::Span<const int64_t> index, int64_t device) {
+    device_to_index[device].assign(index.begin(), index.end());
+  });
   int64_t group_count = 1;
   for (int64_t i = 0; i < sharding.num_dimensions(); ++i) {
     if (device_to_index[device_groups(0, 0)][i] ==
@@ -2993,8 +2989,7 @@ CollectiveDeviceList GetPartitionGroupsAcrossTargetDims(
       group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
   std::vector<std::vector<int64_t>> groups(sharding.num_devices() /
                                            total_group_size);
-  sharding.tile_assignment().Each([&](absl::Span<const int64_t> indices,
-                                      int64_t device) {
+  sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
     int64_t group_id = 0;
     for (int64_t dim = 0; dim < indices.size(); ++dim) {
       if (auto it = absl::c_find(target_dims, dim); it != target_dims.end()) {

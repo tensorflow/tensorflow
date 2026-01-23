@@ -2348,7 +2348,7 @@ PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
     }
   }
   std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-  sharding().tile_assignment().Each(
+  sharding().EachTile(
       [&](absl::Span<const int64_t> indices, int64_t src_device) {
         int64_t dst_device = target.tile_assignment()(indices);
         src_dst_pairs.emplace_back(src_device, dst_device);
@@ -3535,7 +3535,7 @@ absl::Status SpmdPartitioningVisitor::HandleAllReduce(HloInstruction* hlo) {
         << "Cross-partition allreduce in partial manual partitioning mode must "
            "use global device IDs.";
     std::vector<int64_t> partition_to_group_id(hlo->sharding().num_devices());
-    hlo->sharding().tile_assignment().Each(
+    hlo->sharding().EachTile(
         [&](absl::Span<const int64_t> indices, int64_t partition) {
           int64_t group_id = 0;
           for (int64_t i = 0; i < indices.size(); ++i) {

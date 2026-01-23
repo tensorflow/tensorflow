@@ -311,13 +311,12 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
   };
   // Collect the start offsets for each tile for the sharding we are evaluating
   // against.
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t device) {
-        auto indices_per_device = get_sharding_offsets(device);
-        for (int64_t i = 0; i < tiled_data_rank; ++i) {
-          indices_per_device[i] = base_tile[i] * indices[i];
-        }
-      });
+  sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
+    auto indices_per_device = get_sharding_offsets(device);
+    for (int64_t i = 0; i < tiled_data_rank; ++i) {
+      indices_per_device[i] = base_tile[i] * indices[i];
+    }
+  });
   // Compare the start offsets and the end offset of the tiles for each device.
   auto& potential_ta = potential_subsharding.tile_assignment().array();
   absl::Status ok_if_no_violation = potential_ta.EachStatus(
@@ -2379,7 +2378,7 @@ PartialReplicatedGroupShardingWithAssignedDeviceGroups(
   std::vector<DimensionVector> device_to_index(
       Product(sharding.dimensions()),
       DimensionVector(sharding.num_dimensions()));
-  sharding.tile_assignment().Each(
+  sharding.EachTile(
       [&device_to_index](absl::Span<const int64_t> indices, int64_t device) {
         device_to_index[device].assign(indices.begin(), indices.end());
       });
