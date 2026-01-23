@@ -27,7 +27,6 @@ py_strict_library(
     ],
 )
 
-
 py_strict_library(
     name = "np_utils",
     srcs = ["np_utils.py"],
