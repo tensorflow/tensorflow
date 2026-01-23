@@ -756,9 +756,10 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
   tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
   VLOG(1) << "TfrtGpuClient::Load";
 
-  TF_ASSIGN_OR_RETURN(
-      auto local_executables,
-      se_executable->ConsumeExecutable(xla_client_, compile_options));
+  TF_ASSIGN_OR_RETURN(auto local_executable, se_executable->ConsumeExecutable(
+                                                 xla_client_, compile_options));
+  std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+  local_executables.push_back(std::move(local_executable));
   return LoadInternal(std::move(local_executables), compile_options);
 }
 
