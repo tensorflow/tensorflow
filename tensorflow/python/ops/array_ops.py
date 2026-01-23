@@ -6398,6 +6398,160 @@ def extract_image_patches(  # pylint: disable=missing-docstring
 
 extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
 
+@tf_export("experimental.fold")
+def fold(patches, output_size, kernel_size, stride, padding='VALID', 
+         dilation=1):
+    """
+    Fold operation - inverse of tf.image.extract_patches.
+
+    Note: For overlapping patches with floating-point data, the output may be
+    nondeterministic due to the order of accumulation in scatter_nd. To ensure
+    deterministic behavior, enable op determinism before calling this function:
+    
+        tf.config.experimental.enable_op_determinism()
+    
+    Args:
+        patches: Tensor of shape (batch, out_h, out_w, kernel_h*kernel_w*channels)
+                 This is the OUTPUT format from tf.image.extract_patches
+                 
+        output_size: Tuple (height, width) of the reconstructed image
+                    (before removing padding if padding='VALID')
+                    
+        kernel_size: Int or tuple (kernel_h, kernel_w) - size of each patch
+        
+        stride: Int or tuple (stride_h, stride_w) - step between patches
+        
+        padding: 'VALID' or 'SAME' or int or tuple (pad_h, pad_w)
+                 - 'VALID': no padding (default)
+                 - 'SAME': automatic padding to match input size
+                 - int: same padding on all sides
+                 - tuple: (pad_h, pad_w) padding for height and width
+                 
+        dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
+                 kernel elements (called 'rates' in tf.image.extract_patches)
+                
+    
+    Returns:
+        Tensor of shape (batch, height, width, channels)
+        
+    Example:
+        # Extract patches with dilation and padding
+        image = tf.random.normal((1, 8, 8, 3))
+        patches = tf.image.extract_patches(
+            images=image,
+            sizes=[1, 3, 3, 1],
+            strides=[1, 2, 2, 1],
+            rates=[1, 2, 2, 1],  # dilation
+            padding='SAME'
+        )
+        
+        # Reconstruct image
+        reconstructed = fold(
+            patches, 
+            output_size=(8, 8), 
+            kernel_size=3, 
+            stride=2,
+            dilation=2,
+            padding='SAME'
+        )
+    """
+
+    
+    # Handle scalar inputs
+    if isinstance(kernel_size, int):
+        kernel_h = kernel_w = kernel_size
+    else:
+        kernel_h, kernel_w = kernel_size
+        
+    if isinstance(stride, int):
+        stride_h = stride_w = stride
+    else:
+        stride_h, stride_w = stride
+        
+    if isinstance(dilation, int):
+        # TODO: dilation should be >=1
+        dilation_h = dilation_w = dilation
+    else:
+        dilation_h, dilation_w = dilation
+    
+    # Get dimensions
+    batch_size = tensor_shape.TensorShape(patches)[0]
+    out_h = tensor_shape.TensorShape(patches)[1]
+    out_w = tensor_shape.TensorShape(patches)[2]
+    patch_dim = tensor_shape.TensorShape(patches)[3]
+    channels = patch_dim // (kernel_h * kernel_w)
+    
+    height, width = output_size
+    
+    # Calculate padding
+    if isinstance(padding, str):
+        if padding == 'VALID':
+            pad_h = pad_w = 0
+        elif padding == 'SAME':
+            # Calculate padding needed for SAME mode
+            effective_kernel_h = (kernel_h - 1) * dilation_h + 1
+            effective_kernel_w = (kernel_w - 1) * dilation_w + 1
+            pad_h = max(0, ((out_h - 1) * stride_h + effective_kernel_h - height) // 2)
+            pad_w = max(0, ((out_w - 1) * stride_w + effective_kernel_w - width) // 2)
+        else:
+            raise ValueError(f"padding must be 'VALID', 'SAME', int, or tuple, got {padding}")
+    # TODO: Why effective_kernel in padding=SAME but not when p=1?    
+    elif isinstance(padding, int):
+        pad_h = pad_w = padding
+    else:
+        pad_h, pad_w = padding
+    
+    # Padded output size
+    padded_height = height + 2 * pad_h
+    padded_width = width + 2 * pad_w
+    
+    # Reshape patches
+    patches_reshaped = reshape(
+        patches, 
+        [batch_size, out_h, out_w, kernel_h, kernel_w, channels]
+    )
+    
+    # Create coordinate grids
+    batch_range = gen_math_ops.range(batch_size)
+    h_range = gen_math_ops.range(out_h)
+    w_range = gen_math_ops.range(out_w)
+    kh_range = gen_math_ops.range(kernel_h)
+    kw_range = gen_math_ops.range(kernel_w)
+    
+    b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
+        batch_range, h_range, w_range, kh_range, kw_range,
+        indexing='ij'
+    )
+    
+    # Calculate output coordinates with dilation
+    # extract_patches formula: output_pixel = input[i*stride + kh*dilation, j*stride + kw*dilation]
+    # fold formula: output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
+    out_h_coords = h_grid * stride_h + kh_grid * dilation_h
+    out_w_coords = w_grid * stride_w + kw_grid * dilation_w
+    
+    # Build scatter indices
+    indices = array_ops_stack.stack([
+        reshape(b_grid, [-1]),
+        reshape(out_h_coords, [-1]),
+        reshape(out_w_coords, [-1])
+    ], axis=1)
+    
+    updates = reshape(patches_reshaped, [-1, channels])
+    
+    # Scatter into padded output
+    output = gen_array_ops.scatter_nd(
+        indices=indices,
+        updates=updates,
+        shape=[batch_size, padded_height, padded_width, channels]
+    )
+    
+    # Remove padding if VALID mode
+    if pad_h > 0 or pad_w > 0:
+        output = output[:, pad_h:pad_h+height, pad_w:pad_w+width, :]
+    
+    return output
+
+
 
 @tf_export("fingerprint")
 @dispatch.add_dispatch_support
