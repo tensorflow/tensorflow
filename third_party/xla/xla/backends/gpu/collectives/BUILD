@@ -254,6 +254,46 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "gpu_collectives_test",
+    srcs = ["gpu_collectives_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":gpu_clique_key",
+        ":gpu_collectives",
+        ":gpu_communicator",
+        ":nccl_or_rccl_collectives",
+        "//xla:future",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "gpu_communicator",
     hdrs = ["gpu_communicator.h"],
