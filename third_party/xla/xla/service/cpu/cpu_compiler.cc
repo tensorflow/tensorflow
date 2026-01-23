@@ -834,8 +834,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
 
-  // Run fp16 dots/convs in fp32 and then downcast the result to fp16.
-  // Justification:
+  // If we aren't going to call a library, run fp16 dots/convs in fp32 and then
+  // downcast the result to fp16. Justification:
   //
   //   - This is significantly faster on our CPUs today than true fp16.
   //   - It's numerically more accurate.  (Granted, this is not always
@@ -843,8 +843,27 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //   - It matches more closely the GPU's behavior on fp16 dot/conv, where
   //     accumulation happens in f32.
   if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
-    pipeline.AddPass<ChangeOpDataType>(
-        F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
+    auto dot_conv_f16_to_f32_filter = [&](const HloInstruction* instr) {
+      if (instr->opcode() != HloOpcode::kDot &&
+          instr->opcode() != HloOpcode::kConvolution) {
+        return false;
+      }
+
+#ifdef XLA_ONEDNN
+      const DebugOptions& debug_options = module->config().debug_options();
+      if ((debug_options.xla_cpu_use_onednn() ||
+           debug_options.xla_cpu_experimental_onednn_custom_call()) &&
+          cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
+        return false;
+      }
+#endif  // XLA_ONEDNN
+
+      if (call_library_for_instruction(*instr)) {
+        return false;
+      }
+      return true;
+    };
+    pipeline.AddPass<ChangeOpDataType>(F16, F32, dot_conv_f16_to_f32_filter);
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(

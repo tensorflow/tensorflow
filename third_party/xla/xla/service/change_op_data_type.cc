@@ -76,16 +76,6 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
         continue;
       }
 
-#ifdef XLA_ONEDNN
-      // TODO(penporn): Move this logic outside of this pass.
-      const DebugOptions& debug_options = module->config().debug_options();
-      if ((debug_options.xla_cpu_use_onednn() ||
-           debug_options.xla_cpu_experimental_onednn_custom_call()) &&
-          cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
-        continue;
-      }
-#endif  // XLA_ONEDNN
-
       const PrimitiveType to_type = it->second;
       absl::InlinedVector<HloInstruction*, 8> new_operands;
       for (HloInstruction* operand : instr->mutable_operands()) {
