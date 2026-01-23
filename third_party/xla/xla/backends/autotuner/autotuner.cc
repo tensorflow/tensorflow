@@ -271,7 +271,9 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
   // 6. Apply the results to all candidate instructions, must be already in
   // cache_ due to step 3 and 5 above.
-  for (auto& [_, instructions] : all_instructions_by_fingerprint) {
+  for (tsl::Fprint128 fingerprint : sorted_fingerprints) {
+    std::vector<HloInstruction*>& instructions =
+        all_instructions_by_fingerprint[fingerprint];
     CHECK(!instructions.empty());
     std::optional<Config> cached_config = LookUp(instructions[0]);
     CHECK(cached_config.has_value())
