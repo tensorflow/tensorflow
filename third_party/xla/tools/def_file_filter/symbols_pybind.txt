@@ -504,7 +504,7 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//external/local_tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
+[//external/tsl/tsl/platform:tensor_float_32_utils] # tensor_float_32
 tsl::enable_tensor_float_32_execution
 tsl::tensor_float_32_execution_enabled
 

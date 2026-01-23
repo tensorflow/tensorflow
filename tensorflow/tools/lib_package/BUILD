@@ -12,7 +12,7 @@ package(default_visibility = ["//visibility:private"])
 pkg_zip(
     name = "libtensorflow_proto",
     srcs = ["//tensorflow/core:protos_all_proto_srcs"],
-    strip_prefix = "/external/local_tsl",
+    strip_prefix = "/external/tsl",
 )
 
 # Shared objects that all TensorFlow libraries depend on.
@@ -38,7 +38,7 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    # TODO(ddunleavy): Remove `local_tsl` after TSL move is completed.
+    # TODO(ddunleavy): Remove `tsl` after TSL move is completed.
     remap_paths = {
         "external/xla/xla": "xla",
         "external/tsl/tsl": "tsl",

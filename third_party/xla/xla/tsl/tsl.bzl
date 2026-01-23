@@ -67,7 +67,7 @@ def clean_dep(target):
     """
 
     # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, e.g. @local_tsl or tsl.
+    # Label() call appears, e.g. @tsl or tsl.
     # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
     label = Label(target)
     not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
