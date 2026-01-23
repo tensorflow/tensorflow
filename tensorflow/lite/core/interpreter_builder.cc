@@ -736,7 +736,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     } else {
       if (subgraph->SetTensorParametersReadWrite(
               i, type, get_name(tensor), dims, quantization, is_variable,
-              dims_signature) != kTfLiteOk) {
+              dims_signature, tensor->external_buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);
