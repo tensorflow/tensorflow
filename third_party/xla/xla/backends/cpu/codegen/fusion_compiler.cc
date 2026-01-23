@@ -338,6 +338,9 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
       stablehlo_to_linalg_options;
   stablehlo_to_linalg_options.enablePrimitiveOps = true;
+  // Has to run before legalize-to-linalg for specialzed implementations of SHLO
+  // ops for XTile.
+  pm.addPass(xtile::createStablehloLowerToXtilePass());
   pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
   pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
 
