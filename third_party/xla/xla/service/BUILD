@@ -4059,6 +4059,7 @@ cc_library(
         ":hlo_cse_constant_key",
         ":hlo_domain_map",
         "//xla:shape_util",
+        "//xla:side_effect_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
