@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/spacetodepth_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -179,8 +180,18 @@ struct SpaceToDepthOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     const int output_depth = output.dimension(1);
     const int output_height = output.dimension(2);
     const int output_width = output.dimension(3);
-    const int output_area = output_width * output_height;
-    const int output_depth_by_output_area = output_depth * output_area;
+    int64_t output_area_64 = MultiplyWithoutOverflow(output_width, output_height);
+    if (output_area_64 < 0 || output_area_64 > INT32_MAX) {
+      LOG(ERROR) << "output_width * output_height overflow in SpaceToDepthOpFunctor";
+      return;
+    }
+    int64_t output_depth_by_output_area_64 = MultiplyWithoutOverflow(output_depth, output_area_64);
+    if (output_depth_by_output_area_64 < 0 || output_depth_by_output_area_64 > INT32_MAX) {
+      LOG(ERROR) << "output_depth * output_area overflow in SpaceToDepthOpFunctor";
+      return;
+    }
+    const int output_area = static_cast<int>(output_area_64);
+    const int output_depth_by_output_area = static_cast<int>(output_depth_by_output_area_64);
 
     // We improve performance by generating instantiations of the loop kernel
     // for the most common block sizes.

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/avgpooling_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -88,7 +89,22 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int stride_w, const int pad_t,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
-  int x_size = num * height * width * channels;
+  int64_t temp1 = MultiplyWithoutOverflow(num, height);
+  if (temp1 < 0 || temp1 > INT32_MAX) {
+    LOG(ERROR) << "num * height overflow in RunAvePoolBackwardNHWC";
+    return false;
+  }
+  int64_t temp2 = MultiplyWithoutOverflow(temp1, width);
+  if (temp2 < 0 || temp2 > INT32_MAX) {
+    LOG(ERROR) << "num * height * width overflow in RunAvePoolBackwardNHWC";
+    return false;
+  }
+  int64_t x_size_64 = MultiplyWithoutOverflow(temp2, channels);
+  if (x_size_64 < 0 || x_size_64 > INT32_MAX) {
+    LOG(ERROR) << "x_size overflow in RunAvePoolBackwardNHWC";
+    return false;
+  }
+  int x_size = static_cast<int>(x_size_64);
   GpuLaunchConfig config = GetGpuLaunchConfig(x_size, d);
   TF_CHECK_OK(GpuLaunchKernel(
       AvePoolBackwardNHWC<T>, config.block_count, config.thread_per_block, 0,

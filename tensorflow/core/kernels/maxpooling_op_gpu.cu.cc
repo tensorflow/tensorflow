@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/kernels/maxpooling_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace {
@@ -363,7 +364,22 @@ bool MaxPoolForwardNoMask_NCHW_VECT_C::operator()(
     const int stride_h, const int stride_w, const int pad_t, const int pad_l,
     int32_t* top_data, const Eigen::GpuDevice& d) {
   const int kThreadsPerBlock = 1024;
-  const int output_size = batch * channels * pooled_height * pooled_width;
+  int64_t bc = MultiplyWithoutOverflow(batch, channels);
+  if (bc < 0 || bc > INT32_MAX) {
+    LOG(ERROR) << "batch * channels overflow in MaxPoolForward";
+    return false;
+  }
+  int64_t bch = MultiplyWithoutOverflow(bc, pooled_height);
+  if (bch < 0 || bch > INT32_MAX) {
+    LOG(ERROR) << "batch * channels * pooled_height overflow in MaxPoolForward";
+    return false;
+  }
+  int64_t output_size_64 = MultiplyWithoutOverflow(bch, pooled_width);
+  if (output_size_64 < 0 || output_size_64 > INT32_MAX) {
+    LOG(ERROR) << "output_size overflow in MaxPoolForward";
+    return false;
+  }
+  const int output_size = static_cast<int>(output_size_64);
   if (output_size == 0) return true;
   TF_CHECK_OK(GpuLaunchKernel(
       MaxPoolForwardNoMaskKernel_NCHW_VECT_C,
@@ -384,7 +400,22 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
     int64_t* mask, const Eigen::GpuDevice& d, bool propagate_nans,
     const bool include_batch_in_index) {
   const int kThreadsPerBlock = 1024;
-  const int output_size = batch * channels * pooled_height * pooled_width;
+  int64_t bc = MultiplyWithoutOverflow(batch, channels);
+  if (bc < 0 || bc > INT32_MAX) {
+    LOG(ERROR) << "batch * channels overflow in MaxPoolForward";
+    return false;
+  }
+  int64_t bch = MultiplyWithoutOverflow(bc, pooled_height);
+  if (bch < 0 || bch > INT32_MAX) {
+    LOG(ERROR) << "batch * channels * pooled_height overflow in MaxPoolForward";
+    return false;
+  }
+  int64_t output_size_64 = MultiplyWithoutOverflow(bch, pooled_width);
+  if (output_size_64 < 0 || output_size_64 > INT32_MAX) {
+    LOG(ERROR) << "output_size overflow in MaxPoolForward";
+    return false;
+  }
+  const int output_size = static_cast<int>(output_size_64);
   if (output_size == 0) return true;
   if (propagate_nans) {
     TF_CHECK_OK(

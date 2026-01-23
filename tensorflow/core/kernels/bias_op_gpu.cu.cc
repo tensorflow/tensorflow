@@ -22,6 +22,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -86,8 +87,28 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                          int32_t width, int depth, int32_t channel,
                          TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t hw = MultiplyWithoutOverflow(height, width);
+  if (hw < 0 || hw > INT32_MAX) {
+    LOG(ERROR) << "height * width overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t image_size_64 = MultiplyWithoutOverflow(hw, depth);
+  if (image_size_64 < 0 || image_size_64 > INT32_MAX) {
+    LOG(ERROR) << "height * width * depth overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t batch_bias = MultiplyWithoutOverflow(batch, bias_size);
+  if (batch_bias < 0 || batch_bias > INT32_MAX) {
+    LOG(ERROR) << "batch * bias_size overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t total_count_64 = MultiplyWithoutOverflow(batch_bias, image_size_64);
+  if (total_count_64 < 0 || total_count_64 > INT32_MAX) {
+    LOG(ERROR) << "total_count overflow in BiasGPU::compute";
+    return;
+  }
+  const int32_t image_size = static_cast<int32_t>(image_size_64);
+  const int32_t total_count = static_cast<int32_t>(total_count_64);
   if (total_count == 0) {
     return;
   }
@@ -224,8 +245,28 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                              int32_t width, int32_t depth, int32_t channel,
                              TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t hw = MultiplyWithoutOverflow(height, width);
+  if (hw < 0 || hw > INT32_MAX) {
+    LOG(ERROR) << "height * width overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t image_size_64 = MultiplyWithoutOverflow(hw, depth);
+  if (image_size_64 < 0 || image_size_64 > INT32_MAX) {
+    LOG(ERROR) << "height * width * depth overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t batch_bias = MultiplyWithoutOverflow(batch, bias_size);
+  if (batch_bias < 0 || batch_bias > INT32_MAX) {
+    LOG(ERROR) << "batch * bias_size overflow in BiasGPU::compute";
+    return;
+  }
+  int64_t total_count_64 = MultiplyWithoutOverflow(batch_bias, image_size_64);
+  if (total_count_64 < 0 || total_count_64 > INT32_MAX) {
+    LOG(ERROR) << "total_count overflow in BiasGPU::compute";
+    return;
+  }
+  const int32_t image_size = static_cast<int32_t>(image_size_64);
+  const int32_t total_count = static_cast<int32_t>(total_count_64);
   if (total_count == 0) {
     return;
   }
