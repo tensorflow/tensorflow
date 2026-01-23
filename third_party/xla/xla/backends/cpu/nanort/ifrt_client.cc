@@ -1221,13 +1221,13 @@ class NanoCompiler final
 
   using ifrt::Compiler::Compile;
 
-  absl::StatusOr<ifrt::LoadedExecutableRef> CompileAndLoad(
+  tsl::Future<ifrt::LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<ifrt::Program> program,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return NanoExecutable::Create(client_, std::move(program));
   }
 
-  absl::StatusOr<ifrt::ExecutableRef> Compile(
+  tsl::Future<ifrt::ExecutableRef> Compile(
       std::unique_ptr<ifrt::Program> program, const ifrt::Topology& topology,
       std::unique_ptr<ifrt::CompileOptions> options) override {
     return absl::UnimplementedError("Partial compilation is not implemented.");
@@ -1239,7 +1239,7 @@ class NanoCompiler final
     return absl::UnimplementedError("Not implemented");
   }
 
-  absl::StatusOr<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
+  tsl::Future<ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<ifrt::DeserializeExecutableOptions> options) override {
     return absl::UnimplementedError(

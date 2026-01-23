@@ -1435,9 +1435,11 @@ tsl::Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
                               client_.get(), xla_options->compile_options));
     }
 
-    TF_ASSIGN_OR_RETURN(auto executable,
-                        client_->GetDefaultCompiler()->CompileAndLoad(
-                            std::move(program), std::move(options)));
+    TF_ASSIGN_OR_RETURN(
+        auto executable,
+        client_->GetDefaultCompiler()
+            ->CompileAndLoad(std::move(program), std::move(options))
+            .Await());
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
         NewIfrtResponse(request->request_metadata().op_id());

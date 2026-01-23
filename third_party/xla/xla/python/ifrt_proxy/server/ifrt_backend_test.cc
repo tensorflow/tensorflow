@@ -385,7 +385,8 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
     }
 
     EXPECT_CALL(mock_compiler_, CompileAndLoad(_, _))
-        .WillOnce(Return(ByMove(std::move(loaded_executable))));
+        .WillOnce(Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(
+            std::move(loaded_executable))));
 
     TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
                         CallBackend(std::move(request)));
@@ -1676,7 +1677,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
               ASSERT_EQ(loaded_host_callbacks.size(), 1);
               loaded_host_callback = loaded_host_callbacks.front();
             },
-            Return(ByMove(std::move(e)))));
+            Return(tsl::Future<xla::ifrt::LoadedExecutableRef>(std::move(e)))));
 
     TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
                             CallBackend(std::move(request)));

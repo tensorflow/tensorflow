@@ -221,11 +221,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
 
 class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
-  MOCK_METHOD(absl::StatusOr<ExecutableRef>, Compile,
+  MOCK_METHOD(tsl::Future<ExecutableRef>, Compile,
               (std::unique_ptr<Program> program, const Topology& topology,
                std::unique_ptr<CompileOptions> options),
               (final));
-  MOCK_METHOD(absl::StatusOr<LoadedExecutableRef>, CompileAndLoad,
+  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, CompileAndLoad,
               (std::unique_ptr<Program> program,
                std::unique_ptr<CompileOptions> options),
               (final));
@@ -233,7 +233,7 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
               (const xla::ifrt::ExecutableVersion& executable_version,
                const xla::ifrt::DeviceListRef& devices),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<LoadedExecutableRef>, DeserializeLoadedExecutable,
+  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
               (absl::string_view serialized,
                std::unique_ptr<DeserializeExecutableOptions> options),
               (final));

@@ -200,8 +200,10 @@ TEST_F(CompilerTest, Compile) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
-      compiler.CompileAndLoad(std::make_unique<TestProgram>(),
-                              std::make_unique<TestCompileOptions>()));
+      compiler
+          .CompileAndLoad(std::make_unique<TestProgram>(),
+                          std::make_unique<TestCompileOptions>())
+          .Await());
 
   EXPECT_EQ(requests_queue.Pop().compile_request().program().type_name(),
             "xla::ifrt::proxy::TestProgram");

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -86,7 +87,7 @@ absl::Status TranslateDeviceIds(PjRtClient* client,
   return absl::OkStatus();
 }
 
-absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
+tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
   if (client_ == nullptr) {
@@ -109,7 +110,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
       std::move(xla_compile_options->devices));
 }
 
-absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
+tsl::Future<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
@@ -134,7 +135,7 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
                                 *pjrt_topology->description());
 }
 
-absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
+tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
