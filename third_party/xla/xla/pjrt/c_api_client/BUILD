@@ -66,6 +66,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_memory_descriptions_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_shardings_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_tpu_topology_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",

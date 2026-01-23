@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -152,6 +153,46 @@ static absl::Status PopulateExecutableCostAnalysis(
   return absl::OkStatus();
 }
 
+static absl::Status PopulateExecutableParameterShardings(
+    PJRT_Executable* executable) {
+  std::optional<std::vector<xla::OpSharding>> shardings =
+      executable->get()->GetParameterShardings();
+  if (!shardings.has_value()) {
+    executable->has_parameter_shardings = false;
+    return absl::OkStatus();
+  }
+  executable->has_parameter_shardings = true;
+
+  executable->parameter_shardings.reserve(shardings->size());
+  executable->parameter_sharding_ptrs.reserve(shardings->size());
+  executable->parameter_sharding_sizes.reserve(shardings->size());
+  for (const auto& sharding : *shardings) {
+    std::string serialized;
+    if (!sharding.SerializeToString(&serialized)) {
+      return xla::ResourceExhausted(
+          "OpSharding serialization failed for executable %s.",
+          executable->get()->name());
+    }
+    executable->parameter_shardings.push_back(std::move(serialized));
+  }
+  for (const auto& sharding_str : executable->parameter_shardings) {
+    executable->parameter_sharding_ptrs.push_back(sharding_str.data());
+    executable->parameter_sharding_sizes.push_back(sharding_str.size());
+  }
+
+  return absl::OkStatus();
+}
+
+static absl::Status EnsureExecutableParameterShardingsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(executable->mutex);
+  if (!executable->parameter_shardings_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableParameterShardings(executable));
+    executable->parameter_shardings_ran = true;
+  }
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputElementTypes(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(auto output_types,
@@ -245,6 +286,46 @@ static absl::Status EnsureExecutableOutputLayoutsPopulated(
   if (!executable->out_layouts_ran) {
     TF_RETURN_IF_ERROR(PopulateExecutableOutputLayouts(executable));
     executable->out_layouts_ran = true;
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status PopulateExecutableOutputShardings(
+    PJRT_Executable* executable) {
+  std::optional<std::vector<xla::OpSharding>> shardings =
+      executable->get()->GetOutputShardings();
+  if (!shardings.has_value()) {
+    executable->has_output_shardings = false;
+    return absl::OkStatus();
+  }
+  executable->has_output_shardings = true;
+
+  executable->output_shardings.reserve(shardings->size());
+  executable->output_sharding_ptrs.reserve(shardings->size());
+  executable->output_sharding_sizes.reserve(shardings->size());
+  for (const auto& sharding : *shardings) {
+    std::string serialized;
+    if (!sharding.SerializeToString(&serialized)) {
+      return xla::ResourceExhausted(
+          "OpSharding serialization failed for executable %s.",
+          executable->get()->name());
+    }
+    executable->output_shardings.push_back(std::move(serialized));
+  }
+  for (const auto& sharding_str : executable->output_shardings) {
+    executable->output_sharding_ptrs.push_back(sharding_str.data());
+    executable->output_sharding_sizes.push_back(sharding_str.size());
+  }
+
+  return absl::OkStatus();
+}
+
+static absl::Status EnsureExecutableOutputShardingsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(executable->mutex);
+  if (!executable->output_shardings_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableOutputShardings(executable));
+    executable->output_shardings_ran = true;
   }
   return absl::OkStatus();
 }
@@ -1738,6 +1819,29 @@ PJRT_Error* PJRT_Executable_GetCostAnalysis(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Shardings_PJRT_Executable_ParameterShardings(
+    PJRT_Shardings_PJRT_Executable_ParameterShardings_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Shardings_PJRT_Executable_ParameterShardings_Args",
+      PJRT_Shardings_PJRT_Executable_ParameterShardings_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableParameterShardingsPopulated(args->executable));
+
+  if (!args->executable->has_parameter_shardings) {
+    args->num_parameters = 0;
+    args->shardings = nullptr;
+    args->sharding_sizes = nullptr;
+    return nullptr;
+  }
+
+  args->num_parameters = args->executable->parameter_sharding_ptrs.size();
+  args->shardings = args->executable->parameter_sharding_ptrs.data();
+  args->sharding_sizes = args->executable->parameter_sharding_sizes.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_OutputElementTypes(
     PJRT_Executable_OutputElementTypes_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -1770,6 +1874,29 @@ PJRT_Error* PJRT_Executable_OutputDimensions(
   args->num_outputs = args->executable->out_dimension_sizes.size();
   args->dim_sizes = args->executable->out_dimension_sizes.data();
   args->dims = args->executable->out_dimensions.data();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Shardings_PJRT_Executable_OutputShardings(
+    PJRT_Shardings_PJRT_Executable_OutputShardings_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Shardings_PJRT_Executable_OutputShardings_Args",
+      PJRT_Shardings_PJRT_Executable_OutputShardings_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableOutputShardingsPopulated(args->executable));
+
+  if (!args->executable->has_output_shardings) {
+    args->num_outputs = 0;
+    args->shardings = nullptr;
+    args->sharding_sizes = nullptr;
+    return nullptr;
+  }
+
+  args->num_outputs = args->executable->output_sharding_ptrs.size();
+  args->shardings = args->executable->output_sharding_ptrs.data();
+  args->sharding_sizes = args->executable->output_sharding_sizes.data();
   return nullptr;
 }
 
@@ -3417,6 +3544,19 @@ PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
       pjrt::PJRT_DeviceDescription_MemoryDescriptions,
       /*PJRT_MemoryDescription_Kind=*/
       pjrt::PJRT_MemoryDescription_Kind};
+}
+
+PJRT_Shardings_Extension CreateShardingsExtension(PJRT_Extension_Base* next) {
+  return PJRT_Shardings_Extension{
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Shardings_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type_Shardings,
+          /*next=*/next,
+      },
+      /*PJRT_Shardings_PJRT_Executable_ParameterShardings=*/
+      pjrt::PJRT_Shardings_PJRT_Executable_ParameterShardings,
+      /*PJRT_Shardings_PJRT_Executable_OutputShardings=*/
+      pjrt::PJRT_Shardings_PJRT_Executable_OutputShardings};
 }
 
 }  // namespace pjrt

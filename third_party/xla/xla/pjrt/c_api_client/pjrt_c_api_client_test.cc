@@ -625,6 +625,35 @@ TEST(PjRtCApiClientTest, GetOutputShapes) {
   EXPECT_EQ(output_shapes[0], expected_shape);
 }
 
+TEST(PjRtCApiClientTest, GetParameterAndOutputShardings) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  // CPU usually returns nullopt for shardings if not explicitly set.
+  auto parameter_shardings = executable->GetParameterShardings();
+  auto output_shardings = executable->GetOutputShardings();
+
+  // We expect them to be either nullopt or some default shardings.
+  // For CPU with default options, they are typically nullopt.
+  if (parameter_shardings.has_value()) {
+    EXPECT_EQ(parameter_shardings->size(), 2);
+  }
+  if (output_shardings.has_value()) {
+    EXPECT_EQ(output_shardings->size(), 1);
+  }
+}
+
 TEST(PjRtClientTest, BufferFromLiteralInt4) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
