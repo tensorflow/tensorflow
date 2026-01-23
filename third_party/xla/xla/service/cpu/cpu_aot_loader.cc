@@ -205,8 +205,9 @@ CpuAotLoader::LoadAotCompilationResult(
     if (feature[0] == '+' &&
         (!host_machine_features.contains(feature.substr(1)) ||
          !host_machine_features[feature.substr(1)])) {
-      // TODO: b/457415427 - Turn this warning into an error once a mechanism
-      // for passing target machine features to the CPU compiler is implemented.
+      // TODO: b/477590953 - Turn this warning into an absl::Status Internal
+      // error once a mechanism for passing CPU topology to host offloaded
+      // programs is implemented.
       LOG(ERROR)
           << "Loading XLA:CPU AOT result. Target machine feature " << feature
           << " is not  supported on the host machine. Machine type used for "
