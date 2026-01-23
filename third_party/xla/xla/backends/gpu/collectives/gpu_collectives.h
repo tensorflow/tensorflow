@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
@@ -125,7 +125,7 @@ class GpuCollectives : public Collectives {
                                 const std::optional<CliqueIds>& clique_ids,
                                 absl::Span<const DeviceRank> ranks,
                                 const Collectives::Config& config,
-                                std::atomic_bool* cancel) {
+                                std::shared_ptr<CancellationToken> cancel) {
     // By default, we ignore cancel.
     return CreateCommunicators(clique_key, clique_ids, ranks, config);
   }
@@ -136,7 +136,7 @@ class GpuCollectives : public Collectives {
                                int32_t color, absl::Span<const RankId> keys,
                                const Collectives::Config& config,
                                absl::Span<const DeviceRank> ranks,
-                               std::atomic_bool* cancel) {
+                               std::shared_ptr<CancellationToken> cancel) {
     // By default, we ignore cancel.
     return SplitCommunicators(comms, color, keys, config, ranks);
   }

@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_ERRORS_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_ERRORS_H_
 
-#include <atomic>
-
 #include "absl/status/status.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/util.h"  // IWYU pragma: keep
 
@@ -58,7 +57,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Polls the provided communicator until it is "done" or aborted.
+// Polls the provided communicator until it is "done" or cancelled.
 //
 // NCCL communicators can be blocking or non-blocking. Operations performed on
 // non-blocking communicators return immediately, and it is the responsibility
@@ -71,7 +70,7 @@ namespace xla::gpu {
 // scheduled on the GPU but has not yet executed. Refer to the NCCL
 // documentation and exercise caution when reasoning about whether an operation
 // is really "done".
-absl::Status PollUntilDone(ncclComm_t comm, const std::atomic_bool& aborted);
+absl::Status PollUntilDone(ncclComm_t comm, const CancellationToken& cancel);
 
 }  // namespace xla::gpu
 

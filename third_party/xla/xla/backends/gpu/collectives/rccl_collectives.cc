@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/rccl_collectives.h"
 
-#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -39,6 +38,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/rccl_communicator.h"
@@ -191,7 +191,7 @@ absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 RcclCollectives::CreateCommunicatorsWithCancel(
     const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
     absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
-    std::atomic_bool* cancel) {
+    std::shared_ptr<CancellationToken> cancel) {
   // Validate clique ids. With the NCCL backend, we rely on the host to exchange
   // unique clique ids.
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
@@ -244,8 +244,8 @@ RcclCollectives::CreateCommunicatorsWithCancel(
     for (size_t i = 0; i < ranks.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<RcclCommunicator>> comm =
-            RcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution, cancel);
+            RcclCommunicator::Create(std::bind(make_comm, i), cancel,
+                                     gpu_config.async_execution);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;
@@ -262,7 +262,8 @@ absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
 RcclCollectives::SplitCommunicatorsWithCancel(
     absl::Span<const Communicator* const> comms, int32_t color,
     absl::Span<const RankId> keys, const Collectives::Config& config,
-    absl::Span<const DeviceRank> ranks, std::atomic_bool* cancel) {
+    absl::Span<const DeviceRank> ranks,
+    std::shared_ptr<CancellationToken> cancel) {
   auto rank_formatter = [](std::string* str, RankId rank) {
     absl::StrAppend(str, rank.value());
   };
@@ -305,8 +306,8 @@ RcclCollectives::SplitCommunicatorsWithCancel(
     for (size_t i = 0; i < comms.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<RcclCommunicator>> comm =
-            RcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config.async_execution, cancel);
+            RcclCommunicator::Create(std::bind(make_comm, i), cancel,
+                                     gpu_config.async_execution);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;

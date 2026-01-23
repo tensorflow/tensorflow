@@ -44,6 +44,7 @@ namespace xla::gpu {
 struct CollectiveParams;
 class CollectiveCliqueRequests;
 class CollectiveCliques;
+class CollectiveMemoryRequests;
 }  // namespace xla::gpu
 
 //===----------------------------------------------------------------------===//
@@ -68,6 +69,7 @@ struct XLA_FFI_ExecutionContext {
     stream_executor::DeviceAddressAllocator* allocator = nullptr;
     const xla::gpu::CollectiveParams* collective_params = nullptr;
     xla::gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
+    xla::gpu::CollectiveMemoryRequests* collective_memory_requests = nullptr;
     const xla::gpu::CollectiveCliques* collective_cliques = nullptr;
   };
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
@@ -74,8 +75,9 @@ CreateCommunicators(se::StreamExecutor* executor0,
   config.async_execution = !blocking;
 
   TF_ASSIGN_OR_RETURN(auto comms,
-                      collectives->CreateCommunicators(clique_key, clique_ids,
-                                                       {rank0, rank1}, config));
+                      collectives->CreateCommunicatorsWithCancel(
+                          clique_key, clique_ids, {rank0, rank1}, config,
+                          std::make_shared<CancellationToken>()));
   CHECK_EQ(comms.size(), 2);
 
   std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;

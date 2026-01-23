@@ -250,6 +250,9 @@ inline mlir::NamedAttribute GetDivisibilityAttr(mlir::ImplicitLocOpBuilder& b) {
                         b.getIntegerAttr(b.getI32Type(), 16));
 }
 
+mlir::Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder,
+                                             mlir::Value value);
+
 }  // namespace xla::xtile
 
 #endif  // XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_

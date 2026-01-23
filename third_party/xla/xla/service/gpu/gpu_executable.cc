@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
@@ -469,23 +470,33 @@ absl::Status ExecuteThunksImpl(
                        LocalDeviceId(main_stream->parent()->device_ordinal()),
                        collective_max_nchannels, p2p_max_nchannels));
 
-  CollectiveCliqueRequests clique_requests;
+  CollectiveCliqueRequests collective_clique_requests;
+  CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                        &multimem_registry, executor,
+    Thunk::PrepareParams prepare_params{&collective_params,
+                                        &collective_clique_requests,
+                                        &collective_memory_requests,
+                                        &multimem_registry,
+                                        executor,
                                         &buffer_allocations};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
   }
 
+  XLA_VLOG_DEVICE(3, run_options->device_ordinal())
+      << "Prepared GPU executable for execution:"
+      << " #collective_cliques=" << collective_clique_requests.size()
+      << " #collective_memories=" << collective_memory_requests.size();
+
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
       run_options->run_options().clique_keys();
   if (clique_keys != nullptr) {
-    for (const GpuCliqueKey& clique_key : clique_requests.RequestedCliques()) {
+    for (const GpuCliqueKey& clique_key :
+         collective_clique_requests.RequestedCliques()) {
       clique_keys->push_back(std::make_unique<GpuCliqueKey>(clique_key));
     }
   }
@@ -493,9 +504,9 @@ absl::Status ExecuteThunksImpl(
   // Acquire collective cliques requested by thunks.
   CollectiveCliques collective_cliques;
   if (!mock_collectives) {
-    ASSIGN_OR_RETURN(
-        collective_cliques,
-        AcquireCollectiveCliques(collective_params, clique_requests));
+    ASSIGN_OR_RETURN(collective_cliques,
+                     AcquireCollectiveCliques(collective_params,
+                                              collective_clique_requests));
   }
 
   RETURN_IF_ERROR(multimem_registry.Build());

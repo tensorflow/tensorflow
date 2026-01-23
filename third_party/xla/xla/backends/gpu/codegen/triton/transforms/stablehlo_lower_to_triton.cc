@@ -816,24 +816,6 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
   }
 };
 
-Value UnsignedIntegerToSignlessInteger(mlir::PatternRewriter& rewriter,
-                                       Value value) {
-  CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
-      << "Expected unsigned integer element type, got: "
-      << ::xla::xtile::MlirToString(value.getType());
-  Type signless_integer_type_type = IntegerType::get(
-      rewriter.getContext(),
-      getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
-      IntegerType::SignednessSemantics::Signless);
-  if (auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType())) {
-    signless_integer_type_type =
-        shaped_type.clone(shaped_type.getShape(), signless_integer_type_type);
-  }
-  return UnrealizedConversionCastOp::create(rewriter, value.getLoc(),
-                                            signless_integer_type_type, value)
-      .getResult(0);
-}
-
 template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
           typename UnsignedIntArithOp = IntArithOp>
 class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
@@ -856,7 +838,8 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
         Type operand_type = op.getOperands().front().getType();
         for (Value operand : op.getOperands()) {
           signless_operands.push_back(
-              UnsignedIntegerToSignlessInteger(rewriter, operand));
+              ::xla::xtile::UnsignedIntegerToSignlessInteger(rewriter,
+                                                             operand));
         }
         new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
                                             signless_operands.front().getType(),

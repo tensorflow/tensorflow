@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -295,14 +296,18 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations buffer_allocations({}, 0, &allocator);
+
   CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(buffer_allocations);
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
-  stream_executor::StreamExecutorAddressAllocator allocator(executor);
-  BufferAllocations buffer_allocations({}, 0, &allocator);
+
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor,
-                                      &buffer_allocations};
+                                      &memory_requests,   &multimem_registry,
+                                      executor,           &buffer_allocations};
 
   Thunk::InitializeParams initialize_params;
   initialize_params.stream = stream.get();
@@ -359,14 +364,18 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations buffer_allocations({}, 0, &allocator);
+
   CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(buffer_allocations);
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
-  stream_executor::StreamExecutorAddressAllocator allocator(executor);
-  BufferAllocations buffer_allocations({}, 0, &allocator);
+
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor,
-                                      &buffer_allocations};
+                                      &memory_requests,   &multimem_registry,
+                                      executor,           &buffer_allocations};
 
   Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(

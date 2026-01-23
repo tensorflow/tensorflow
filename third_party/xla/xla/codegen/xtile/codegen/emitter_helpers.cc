@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -261,16 +262,10 @@ bool IsFp8Type(Type t) {
 }
 
 Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
-  Type src_ty = value.getType();
-  Type src_element_ty = src_ty;
-  Type fp16_ty = b.getF16Type();
-  Type fp32_ty = b.getF32Type();
-  Type dst_ty = dst_element_ty;
+  auto src_ty = value.getType();
+  auto dst_ty = dst_element_ty;
   if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-    src_element_ty = src_shaped_ty.getElementType();
     dst_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), dst_element_ty);
-    fp16_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF16Type());
-    fp32_ty = src_shaped_ty.clone(src_shaped_ty.getShape(), b.getF32Type());
   }
   if (src_ty == dst_ty) {
     return value;
@@ -280,99 +275,7 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
     return ma::IndexCastOp::create(b, dst_ty, value);
   }
 
-  // All operations on bf16 are done through f32.
-  if (src_element_ty.isBF16()) {
-    return Cast(b, ma::ExtFOp::create(b, fp32_ty, value), dst_element_ty);
-  }
-  if (dst_element_ty.isBF16()) {
-    // S8 -> BF16 is directly supported and doesn't need to go through f32.
-    if (!src_element_ty.isInteger(8)) {
-      return ma::TruncFOp::create(b, dst_ty, Cast(b, value, b.getF32Type()));
-    }
-  }
-
-  // float => float
-  auto src_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(src_element_ty);
-  auto dst_fp_element_ty = mlir::dyn_cast<mlir::FloatType>(dst_element_ty);
-  if (src_fp_element_ty && dst_fp_element_ty) {
-    if (IsFp8Type(src_element_ty) && IsFp8Type(dst_element_ty)) {
-      // FP8 <-> FP8 conversion needs to go through FP16
-      auto fp16_value = ma::ExtFOp::create(b, fp16_ty, value);
-      return ma::TruncFOp::create(b, dst_ty, fp16_value);
-    }
-
-    if (src_fp_element_ty.getFPMantissaWidth() >
-        dst_fp_element_ty.getFPMantissaWidth()) {
-      return ma::TruncFOp::create(b, dst_ty, value);
-    }
-    return ma::ExtFOp::create(b, dst_ty, value);
-  }
-  // int => int
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) &&
-      mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (src_element_ty.getIntOrFloatBitWidth() <
-        dst_element_ty.getIntOrFloatBitWidth()) {
-      if (src_element_ty.isInteger(1)) {
-        return ma::ExtUIOp::create(b, dst_ty, value);
-      }
-      return ma::ExtSIOp::create(b, dst_ty, value);
-    }
-    // int => bool is always value != 0.
-    if (dst_element_ty.isInteger(1)) {
-      return ma::CmpIOp::create(b, ma::CmpIPredicate::ne, value,
-                                ZerosLike(b, value));
-    }
-    return ma::TruncIOp::create(b, dst_ty, value);
-  }
-  // int => float
-  if (mlir::isa<mlir::IntegerType>(src_element_ty) && dst_fp_element_ty) {
-    // The current logic handles signed integer types only.
-    if (src_element_ty.isInteger(1)) {
-      return ma::UIToFPOp::create(b, dst_ty, value);
-    }
-    return ma::SIToFPOp::create(b, dst_ty, value);
-  }
-  // float => int
-  if (src_fp_element_ty && mlir::isa<mlir::IntegerType>(dst_element_ty)) {
-    if (dst_element_ty.isInteger(1)) {
-      return ma::CmpFOp::create(b, ma::CmpFPredicate::UNE, value,
-                                ZerosLike(b, value));
-    }
-    // The current logic handles signed integer types only. Additional handling
-    // is needed for unsigned integer types.
-    auto cst_int = [&](int64_t x) -> Value {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, dst_element_ty, x, src_shaped_ty.getShape());
-      }
-      return CreateConst(b, dst_element_ty, x);
-    };
-    auto cst_float = [&](int64_t x) -> Value {
-      if (auto src_shaped_ty = mlir::dyn_cast<ShapedType>(src_ty)) {
-        return CreateConst(b, src_fp_element_ty, x, src_shaped_ty.getShape());
-      }
-      return CreateConst(b, src_fp_element_ty, x);
-    };
-    auto fptosi = ma::FPToSIOp::create(b, dst_ty, value);
-    int64_t min = llvm::minIntN(dst_element_ty.getIntOrFloatBitWidth());
-    int64_t max = llvm::maxIntN(dst_element_ty.getIntOrFloatBitWidth());
-
-    // value <= static_cast<float>(INT_MIN) ? INT_MIN : ...
-    auto clamped = ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OLE, value, cst_float(min)),
-        cst_int(min), fptosi);
-    // value >= static_cast<float>(INT_MAX) ? INT_MAX : ...
-    clamped = ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::OGE, value, cst_float(max)),
-        cst_int(max), clamped);
-    // isnan(value) ? 0 : ...
-    return ma::SelectOp::create(
-        b, ma::CmpFOp::create(b, ma::CmpFPredicate::UNO, value, value),
-        cst_int(0), clamped);
-  }
-
-  LOG(FATAL) << "Type conversion not supported: "
-             << llvm_ir::DumpToString(src_element_ty) << " -> "
-             << llvm_ir::DumpToString(dst_element_ty);
+  return mlir::stablehlo::ConvertOp::create(b, dst_ty, value);
 }
 
 Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
@@ -684,6 +587,23 @@ TensorValue Splat(mlir::ImplicitLocOpBuilder& b, Value value,
         b, mlir::RankedTensorType::get({}, value.getType()), value);
   }
   return BroadcastInDims(b, tensor_value, output_shape, /*dims=*/{});
+}
+
+Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder, Value value) {
+  CHECK(getElementTypeOrSelf(value.getType()).isUnsignedInteger())
+      << "Expected unsigned integer element type, got: "
+      << ::xla::xtile::MlirToString(value.getType());
+  Type signless_integer_type_type = mlir::IntegerType::get(
+      builder.getContext(),
+      getElementTypeOrSelf(value.getType()).getIntOrFloatBitWidth(),
+      mlir::IntegerType::SignednessSemantics::Signless);
+  if (auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType())) {
+    signless_integer_type_type =
+        shaped_type.clone(shaped_type.getShape(), signless_integer_type_type);
+  }
+  return mlir::UnrealizedConversionCastOp::create(
+             builder, value.getLoc(), signless_integer_type_type, value)
+      .getResult(0);
 }
 
 }  // namespace xla::xtile

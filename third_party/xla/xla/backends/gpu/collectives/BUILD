@@ -44,10 +44,16 @@ cc_library(
 )
 
 cc_library(
+    name = "cancellation_token",
+    hdrs = ["cancellation_token.h"],
+)
+
+cc_library(
     name = "gpu_clique",
     srcs = ["gpu_clique.cc"],
     hdrs = ["gpu_clique.h"],
     deps = [
+        ":cancellation_token",
         ":gpu_clique_key",
         ":gpu_communicator",
         "//xla:util",
@@ -140,6 +146,7 @@ cc_library(
     srcs = ["gpu_cliques.cc"],
     hdrs = ["gpu_cliques.h"],
     deps = [
+        ":cancellation_token",
         ":gpu_clique",
         ":gpu_clique_key",
         ":gpu_collectives",
@@ -163,6 +170,7 @@ cc_library(
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -188,6 +196,7 @@ cc_library(
     srcs = ["gpu_collectives.cc"],
     hdrs = ["gpu_collectives.h"],
     deps = [
+        ":cancellation_token",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
@@ -222,6 +231,7 @@ xla_cc_test(
         "requires-gpu-nvidia:2",
     ],
     deps = [
+        ":cancellation_token",
         ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
@@ -304,6 +314,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         "//xla:util",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:logging",
@@ -345,6 +356,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
@@ -367,6 +379,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         ":gpu_clique_key",
         ":gpu_collectives",
         ":nccl_communicator",
@@ -420,6 +433,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         ":gpu_clique_key",
         ":gpu_collectives",
         ":rccl_communicator",
@@ -473,6 +487,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         ":gpu_collectives",
         ":gpu_communicator",
         ":nccl_errors",
@@ -481,6 +496,7 @@ cc_library(
         "//xla:future",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
@@ -524,6 +540,7 @@ cc_library(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        ":cancellation_token",
         ":gpu_collectives",
         ":gpu_communicator",
         ":rccl_errors",
@@ -531,6 +548,7 @@ cc_library(
         "//xla:future",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
