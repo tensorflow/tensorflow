@@ -907,6 +907,7 @@ ARRAY_DEPS = [
     "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
     "//tensorflow/core/util:bad_indices_policy",
+    "//tensorflow/core/util:overflow",
     "@eigen_archive//:eigen3",
 ]
 
