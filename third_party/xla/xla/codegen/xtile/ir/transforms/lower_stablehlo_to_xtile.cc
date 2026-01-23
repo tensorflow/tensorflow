@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -270,6 +271,90 @@ class LowerConvertOp
   }
 };
 
+std::optional<mlir::arith::CmpIPredicate> GetCmpIPredicate(
+    mlir::stablehlo::ComparisonDirection direction, bool is_unsigned) {
+  switch (direction) {
+    case mlir::stablehlo::ComparisonDirection::EQ:
+      return mlir::arith::CmpIPredicate::eq;
+    case mlir::stablehlo::ComparisonDirection::NE:
+      return mlir::arith::CmpIPredicate::ne;
+    case mlir::stablehlo::ComparisonDirection::LT:
+      return is_unsigned ? mlir::arith::CmpIPredicate::ult
+                         : mlir::arith::CmpIPredicate::slt;
+    case mlir::stablehlo::ComparisonDirection::GT:
+      return is_unsigned ? mlir::arith::CmpIPredicate::ugt
+                         : mlir::arith::CmpIPredicate::sgt;
+    case mlir::stablehlo::ComparisonDirection::LE:
+      return is_unsigned ? mlir::arith::CmpIPredicate::ule
+                         : mlir::arith::CmpIPredicate::sle;
+    case mlir::stablehlo::ComparisonDirection::GE:
+      return is_unsigned ? mlir::arith::CmpIPredicate::uge
+                         : mlir::arith::CmpIPredicate::sge;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<mlir::arith::CmpFPredicate> GetCmpFPredicate(
+    mlir::stablehlo::ComparisonDirection direction) {
+  switch (direction) {
+    case mlir::stablehlo::ComparisonDirection::EQ:
+      return mlir::arith::CmpFPredicate::OEQ;
+    case mlir::stablehlo::ComparisonDirection::NE:
+      return mlir::arith::CmpFPredicate::UNE;
+    case mlir::stablehlo::ComparisonDirection::GE:
+      return mlir::arith::CmpFPredicate::OGE;
+    case mlir::stablehlo::ComparisonDirection::GT:
+      return mlir::arith::CmpFPredicate::OGT;
+    case mlir::stablehlo::ComparisonDirection::LE:
+      return mlir::arith::CmpFPredicate::OLE;
+    case mlir::stablehlo::ComparisonDirection::LT:
+      return mlir::arith::CmpFPredicate::OLT;
+    default:
+      return std::nullopt;
+  }
+}
+
+class LowerCompareOp
+    : public mlir::OpRewritePattern<mlir::stablehlo::CompareOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+ private:
+  mlir::LogicalResult matchAndRewrite(
+      mlir::stablehlo::CompareOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    Value compare_result = GetCompareOp(rewriter, op);
+
+    rewriter.replaceOp(op, compare_result);
+    return mlir::success();
+  }
+
+  Value GetCompareOp(mlir::PatternRewriter& rewriter,
+                     mlir::stablehlo::CompareOp op) const {
+    const Type element_type = mlir::getElementTypeOrSelf(op.getLhs());
+    auto direction = op.getComparisonDirection();
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    if (mlir::isa<mlir::IntegerType>(element_type)) {
+      if (element_type.isUnsignedInteger()) {
+        lhs = ::xla::xtile::UnsignedIntegerToSignlessInteger(rewriter, lhs);
+        rhs = ::xla::xtile::UnsignedIntegerToSignlessInteger(rewriter, rhs);
+      }
+
+      return mlir::arith::CmpIOp::create(
+          rewriter, op.getLoc(),
+          GetCmpIPredicate(direction,
+                           /*is_unsigned=*/element_type.isUnsignedInteger() ||
+                               element_type.isInteger(1))
+              .value(),
+          lhs, rhs);
+    }
+    return mlir::arith::CmpFOp::create(
+        rewriter, op.getLoc(), GetCmpFPredicate(direction).value(), lhs, rhs);
+  }
+};
+
 struct StablehloLowerToXtilePass
     : public impl::StablehloLowerToXtilePassBase<StablehloLowerToXtilePass> {
   using StablehloLowerToXtilePassBase::StablehloLowerToXtilePassBase;
@@ -277,7 +362,7 @@ struct StablehloLowerToXtilePass
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<LowerConvertOp>(mlir_context);
+    patterns.add<LowerConvertOp, LowerCompareOp>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

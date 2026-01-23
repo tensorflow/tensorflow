@@ -283,22 +283,8 @@ Value Subtract(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
 }
 
 Value Compare(mlir::ImplicitLocOpBuilder& b, ValueRange values,
-              mh::ComparisonDirection direction) {
-  const Type type = mlir::getElementTypeOrSelf(values[0]);
-  if (mlir::isa<mlir::IntegerType>(type)) {
-    return ma::CmpIOp::create(b,
-                              mh::impl::getCmpPredicate<ma::CmpIPredicate>(
-                                  direction,
-                                  /*isSigned=*/!type.isInteger(1))
-                                  .value(),
-                              values[0], values[1]);
-  }
-  return ma::CmpFOp::create(
-      b,
-      mh::impl::getCmpPredicate<ma::CmpFPredicate>(direction,
-                                                   /*isSigned=*/true)
-          .value(),
-      values[0], values[1]);
+              mlir::stablehlo::ComparisonDirection direction) {
+  return mlir::stablehlo::CompareOp::create(b, values[0], values[1], direction);
 }
 
 Value Maximum(mlir::ImplicitLocOpBuilder& b, ValueRange values) {
@@ -383,14 +369,14 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
     case HloOpcode::kCompare:
       return Compare(
           b, inputs,
-          mh::symbolizeComparisonDirection(
+          mlir::stablehlo::symbolizeComparisonDirection(
               ComparisonDirectionToString(hlo.comparison_direction()))
               .value());
     case HloOpcode::kSelect:
       return ma::SelectOp::create(
           b,
           Compare(b, {inputs[0], ZerosLike(b, inputs[0])},
-                  mh::ComparisonDirection::NE),
+                  mlir::stablehlo::ComparisonDirection::NE),
           inputs[1], inputs[2]);
     case HloOpcode::kReducePrecision:
       return mh::reducePrecision<mlir::tensor::BitcastOp>(
