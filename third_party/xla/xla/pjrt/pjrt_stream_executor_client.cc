@@ -2951,6 +2951,18 @@ PjRtStreamExecutorClient::LoadInternal(
     }
   }
 
+  const auto& result_shape =
+      local_executables[0]->executable()->module().result_shape();
+  if (result_shape.IsTuple()) {
+    for (auto& leaf_shape : result_shape.tuple_shapes()) {
+      if (leaf_shape.IsTuple()) {
+        return absl::InternalError(
+            absl::StrCat("Nested tuples are not supported with "
+                         "PjRtStreamExecutorClient. got: ",
+                         result_shape.ToString()));
+      }
+    }
+  }
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables),
       compile_options.parameter_is_tupled_arguments,

@@ -570,6 +570,16 @@ PjRtCpuClient::LoadInternal(
       }
     }
   }
+  const auto& result_shape = cpu_executable->cpu_executable()->result_shape();
+  if (result_shape.IsTuple()) {
+    for (auto& leaf_shape : result_shape.tuple_shapes()) {
+      if (leaf_shape.IsTuple()) {
+        return absl::InternalError(absl::StrCat(
+            "Nested tuples are not supported with PjRtCpuClient. got: ",
+            result_shape.ToString()));
+      }
+    }
+  }
   return std::make_unique<PjRtCpuLoadedExecutable>(
       std::move(cpu_executable), std::move(device_assignment),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
