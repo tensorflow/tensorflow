@@ -1906,6 +1906,7 @@ absl::StatusOr<PjRtStreamExecutorExecutionOutput>
 StreamExecutorGpuClient::RunAsync(
     LocalExecutable& exec, PjRtDevice* device,
     std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+    absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
     ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
     absl::Span<const Shape> executable_parameter_shapes) {
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
@@ -2026,8 +2027,7 @@ StreamExecutorGpuClient::RunAsync(
 
   std::set<se::DeviceAddressBase> buffers_in_result;
 
-  auto make_result = [&](const ShapeIndex& index)
-      -> absl::StatusOr<tsl::AsyncValueRef<RawSEDeviceMemory>> {
+  auto set_result = [&](const ShapeIndex& index, int i) -> absl::Status {
     const gpu::GpuExecutable::OutputInfo& output_info =
         gpu_exec->output_info().at(index);
     const BufferAllocation* allocation =
@@ -2038,6 +2038,9 @@ StreamExecutorGpuClient::RunAsync(
         << "Looking at: allocation " << output_info.allocation_index
         << " @ index: " << index.ToString();
 
+    auto buf =
+        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
+            ->device_buffer();
     if (output_info.alias_config) {
       PjRtStreamExecutorExecutionInput& input =
           flat_arguments[parameter_is_tupled_arguments
@@ -2056,7 +2059,10 @@ StreamExecutorGpuClient::RunAsync(
         // may alias, not buffers that must alias.
         buffers_in_result.insert(input.buf->mem());
         input.is_donated = false;
-        return input.buf;
+        if (input.buf != buf) {
+          return absl::InvalidArgumentError("An alias result does not match.");
+        }
+        return absl::OkStatus();
       } else if (!output_info.passthrough &&
                  !ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
                       .IsTuple()) {
@@ -2094,24 +2100,21 @@ StreamExecutorGpuClient::RunAsync(
     }
     buffers_in_result.insert(result_buffer);
 
-    return RawSEDeviceMemory::Create(
-        result_buffer,
+    RawSEDeviceMemory::ConstructDelayed(
+        buf, result_buffer,
         tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
             ->local_device_state(),
         memory_allocator);
+    return absl::OkStatus();
   };
 
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> results;
   if (gpu_exec->result_shape().IsTuple()) {
     int tuple_count = gpu_exec->result_shape().tuple_shapes().size();
-    results.reserve(tuple_count);
     for (int i = 0; i < tuple_count; ++i) {
-      TF_ASSIGN_OR_RETURN(auto arr, make_result({i}));
-      results.push_back(std::move(arr));
+      TF_RETURN_IF_ERROR(set_result({i}, i));
     }
   } else {
-    TF_ASSIGN_OR_RETURN(auto arr, make_result({}));
-    results.push_back(std::move(arr));
+    TF_RETURN_IF_ERROR(set_result({}, 0));
   }
 
   TF_RETURN_IF_ERROR(gpu_exec->ExecuteThunks(buffer_allocations, run_options));
@@ -2128,12 +2131,12 @@ StreamExecutorGpuClient::RunAsync(
     }
   }
 
-  return PjRtStreamExecutorExecutionOutput(
-      {std::move(results), std::move(to_be_released), {}});
+  return PjRtStreamExecutorExecutionOutput({std::move(to_be_released), {}});
 #else
   return PjRtStreamExecutorClient::RunAsync(
-      exec, device, std::move(flat_arguments), std::move(run_options_inp),
-      parameter_is_tupled_arguments, executable_parameter_shapes);
+      exec, device, std::move(flat_arguments), results,
+      std::move(run_options_inp), parameter_is_tupled_arguments,
+      executable_parameter_shapes);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 

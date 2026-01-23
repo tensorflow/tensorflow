@@ -88,7 +88,6 @@ struct PjRtStreamExecutorExecutionInput {
 };
 
 struct PjRtStreamExecutorExecutionOutput {
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> result;
   // Donated inputs which must be freed.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
   // For PjRtStreamExecutorClient implementations that
@@ -362,6 +361,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
       std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
       ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
       absl::Span<const Shape> executable_parameter_shapes);
 
@@ -395,6 +395,11 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
       bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  AllocateRawBufferForExecute(PjRtMemorySpace* memory_space,
+                              size_t on_device_bytes_count,
+                              bool retry_on_oom) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
       const Shape& on_device_shape, PjRtMemorySpace* memory_space,
@@ -543,7 +548,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices,
-      PjRtStreamExecutorClient* client);
+      PjRtStreamExecutorClient* client, xla::Shape result_shape,
+      std::vector<int> output_memory_space_kind_ids);
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
 
@@ -664,7 +670,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<PjRtBuffer* const> argument_handles,
       absl::Span<const CommonPjRtBuffer::ScopedHold> device_buffers) const;
 
-  absl::StatusOr<std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>>>
+  absl::StatusOr<absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>>
   EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
@@ -677,7 +683,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   MakeOutputBuffers(
       int device_ordinal, const ExecuteOptions& options,
       const xla::Shape& output_device_shape,
-      std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> result_buffer,
+      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>& results,
       BufferSequencingEventRef definition_event, PjRtDevice* device,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
@@ -705,6 +711,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // True if the executables were compiled expecting arguments in a single
   // tuple.
   const bool parameter_is_tupled_arguments_;
+  xla::Shape result_shape_;
+  std::vector<int> output_memory_space_kind_ids_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

@@ -193,6 +193,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
       std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
       ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
       absl::Span<const Shape> executable_parameter_shapes) override;
 

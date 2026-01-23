@@ -73,6 +73,11 @@ class RawSEDeviceMemory {
   static tsl::AsyncValueRef<RawSEDeviceMemory> Create(
       se::DeviceAddressBase value, LocalDeviceState* local_device,
       se::DeviceAddressAllocator* allocator);
+  static tsl::AsyncValueRef<RawSEDeviceMemory> CreateDelayedMemory();
+  static void ConstructDelayed(tsl::AsyncValueRef<RawSEDeviceMemory> buf,
+                               se::DeviceAddressBase value,
+                               LocalDeviceState* local_device,
+                               se::DeviceAddressAllocator* allocator);
   static tsl::AsyncValueRef<RawSEDeviceMemory> CreateForeign(
       se::DeviceAddressBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);

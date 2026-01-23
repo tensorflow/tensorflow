@@ -115,6 +115,18 @@ tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::Create(
       value, local_device, allocator);
 }
 
+/*static*/ void RawSEDeviceMemory::ConstructDelayed(
+    tsl::AsyncValueRef<RawSEDeviceMemory> buf, se::DeviceAddressBase value,
+    LocalDeviceState* local_device, se::DeviceAddressAllocator* allocator) {
+  tsl::Cast<AllocatedRawSEDeviceMemory>(buf).emplace(value, local_device,
+                                                     allocator);
+}
+
+/*static*/ tsl::AsyncValueRef<RawSEDeviceMemory>
+RawSEDeviceMemory::CreateDelayedMemory() {
+  return tsl::MakeUnconstructedAsyncValueRef<AllocatedRawSEDeviceMemory>();
+}
+
 class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
  public:
   ForeignRawSEDeviceMemory(se::DeviceAddressBase value,
