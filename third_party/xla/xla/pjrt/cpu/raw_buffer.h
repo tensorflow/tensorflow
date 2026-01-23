@@ -154,7 +154,7 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
 
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
 
-  bool is_mutable() const { return is_mutable_; }
+  bool is_mutable() const final { return is_mutable_; }
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,

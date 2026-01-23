@@ -84,6 +84,17 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError("AllocateRawBuffer is not supported");
   }
 
+  // Allocates a raw buffer of a particular size. Backends may support retrying
+  // allocation on oom which can be controlled via retry_on_oom.
+  // This is separate from AllocateRawBuffer so that backends can specialize
+  // allocating buffers used in the execute path.
+  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  AllocateRawBufferForExecute(PjRtMemorySpace* memory_space,
+                              size_t on_device_bytes_count, bool retry_on_oom) {
+    return AllocateRawBuffer(memory_space, on_device_bytes_count, retry_on_oom,
+                             {});
+  }
+
   // Imports foreign memory as a raw buffer.
   virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
   ImportForeignMemory(void* device_ptr,
