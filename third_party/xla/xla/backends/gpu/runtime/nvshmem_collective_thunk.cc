@@ -97,7 +97,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, GetAsyncStreamKind(),
                       /*include_participant_groups=*/false));
-  return params.clique_requests->RequestClique(clique_key);
+  return params.collective_clique_requests->RequestClique(clique_key);
 }
 
 absl::Status NvshmemCollectiveThunk::Initialize(

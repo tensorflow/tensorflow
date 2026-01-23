@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
@@ -61,7 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -1947,16 +1948,20 @@ TEST_F(DynamicSliceThunkTest,
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
+
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(/*buffers=*/{lhs, rhs, out, workspace},
                                 /*device_ordinal=*/executor->device_ordinal(),
                                 /*memory_allocator=*/&allocator);
+
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(allocations);
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
+
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor,
-                                      &allocations};
+                                      &memory_requests,   &multimem_registry,
+                                      executor,           &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),
