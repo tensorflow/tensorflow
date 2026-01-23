@@ -2227,7 +2227,6 @@ def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> 
   let arguments = (ins
     TF_Int32Tensor:$embedding_ids,
     TF_Int32Tensor:$sample_ids,
-    TF_Float32Tensor:$gains,
     TF_Tensor:$embedding_table,
 
     ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
