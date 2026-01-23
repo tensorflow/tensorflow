@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 
+#include <limits>
 #include <unordered_set>
 
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -63,6 +65,10 @@ class MemmappedTensorAllocator : public Allocator {
   const absl::Status& allocation_status() const { return allocation_status_; }
 
   void set_delete_on_deallocate() { delete_on_deallocate_ = true; }
+  
+  uint64_t memory_region_length() const {
+    return memory_region_ ? memory_region_->length() : 0;
+  }
 
   // Make sure tensors or complex types (strings, variants, resources) don't get
   // their constructor called via a placement new since that would require
@@ -104,6 +110,49 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES(ctx, dtype_ != DT_STRING,
               errors::Unimplemented("Sorry, DT_STRING is not currently "
                                     "supported for ImmutableConstOp."));
+  
+  // Validate that the tensor size can be computed without overflow
+  const int64_t num_elements = shape_.num_elements();
+  OP_REQUIRES(ctx, num_elements >= 0,
+              errors::InvalidArgument(
+                  "Shape ", shape_.DebugString(),
+                  " results in overflow when computing number of elements"));
+  
+  // Check that num_elements fits in size_t
+  OP_REQUIRES(
+      ctx, 
+      static_cast<uint64_t>(num_elements) <= 
+          std::numeric_limits<size_t>::max(),
+      errors::InvalidArgument(
+          "Number of elements (", num_elements, 
+          ") exceeds maximum representable size on this platform"));
+  
+  // Validate that the byte size doesn't overflow
+  const size_t element_size = DataTypeSize(dtype_);
+  OP_REQUIRES(ctx, element_size > 0,
+              errors::InvalidArgument(
+                  "Cannot determine element size for dtype ",
+                  DataTypeString(dtype_)));
+  
+  // Check for overflow when computing total bytes
+  const int64_t num_bytes_int64 = MultiplyWithoutOverflow(num_elements, 
+                                                           element_size);
+  OP_REQUIRES(ctx, num_bytes_int64 >= 0,
+              errors::InvalidArgument(
+                  "Tensor size computation overflows: ", num_elements,
+                  " elements * ", element_size, " bytes per element"));
+  
+  const size_t num_bytes = static_cast<size_t>(num_bytes_int64);
+  
+  // Validate that the computed size matches the memory region size
+  const uint64_t region_length = allocator->memory_region_length();
+  OP_REQUIRES(ctx, num_bytes == region_length,
+              errors::InvalidArgument(
+                  "Memory region size (", region_length, " bytes) does not "
+                  "match expected tensor size (", num_bytes, " bytes) for shape ",
+                  shape_.DebugString(), " and dtype ", 
+                  DataTypeString(dtype_)));
+  
   ctx->set_output(0, Tensor(allocator.get(), dtype_, shape_));
   OP_REQUIRES_OK(ctx, allocator->allocation_status());
   // Allocator is owned by the tensor from this point.
