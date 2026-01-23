@@ -144,7 +144,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   // Check that the run returned error.
   EXPECT_EQ(
       session->Run({}, {result.node()->name() + ":0"}, {}, &outputs).code(),
-      error::INTERNAL);
+      absl::StatusCode::kInvalidArgument);
 }
 
 absl::Status CreateTempFileFloat(Env* env, float value, uint64_t size,
@@ -242,7 +242,7 @@ TEST(ImmutableConstantOpTest, LargeShapeDimensionsOverflow) {
   // 2147482841 * 2147485163 would overflow
   const TensorShape kOverflowShape({2147482841, 2147485163});
   
-  auto result = ops::ImmutableConst(root, DT_FLOAT64, kOverflowShape, 
+  auto result = ops::ImmutableConst(root, DT_DOUBLE, kOverflowShape, 
                                     dummy_file);
   GraphDef graph_def;
   TF_ASSERT_OK(root.ToGraphDef(&graph_def));
