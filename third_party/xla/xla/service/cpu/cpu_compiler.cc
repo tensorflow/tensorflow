@@ -1601,6 +1601,7 @@ class AotLlvmMultipleModuleCompiler : public LlvmMultipleModuleCompiler {
         CopyLlvmModuleToLocalContext(*llvm_context_, *tsm.getModuleUnlocked()));
 
     // Match data layouts to avoid warning messages.
+    cloned_module->setTargetTriple(llvm_module_->getTargetTriple());
     cloned_module->setDataLayout(llvm_module_->getDataLayout());
     linker_->linkInModule(std::move(cloned_module));
     return absl::OkStatus();
@@ -1648,6 +1649,7 @@ CpuCompiler::CompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
                       ir_compiler->build_target_machine());
 
+  llvm_module->setTargetTriple(target_machine->getTargetTriple());
   llvm_module->setDataLayout(target_machine->createDataLayout());
 
   if (pic_level != llvm::PICLevel::NotPIC) {
