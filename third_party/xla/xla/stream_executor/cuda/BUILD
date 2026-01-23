@@ -1450,6 +1450,7 @@ cc_library(
         ":buffer_comparator_kernel_cuda",
         ":buffer_debug_float_check_kernel_cuda",
         ":buffer_debug_xor_checksum_kernel_cuda",
+        ":collective_signal_cuda",
         ":cublas_plugin",
         ":cuda_platform",
         ":cudnn_plugin",
@@ -2447,6 +2448,24 @@ cuda_library(
 )
 
 cuda_library(
+    name = "collective_signal_cuda",
+    hdrs = [
+        "collective_signal_cuda.cu.h",
+        "//xla/stream_executor/gpu:collective_signal.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+    alwayslink = 1,
+)
+
+cuda_library(
     name = "all_reduce_kernel_cuda",
     srcs = [
         "all_reduce_kernel_cuda.cc",
@@ -2458,6 +2477,7 @@ cuda_library(
         "gpu",
     ],
     deps = [
+        ":collective_signal_cuda",
         ":cuda_platform_id",
         "//xla:types",
         "//xla/service:collective_ops_utils",

@@ -667,7 +667,9 @@ py_strict_library(
     deps = [
         ":pywrap_tensorflow_internal",
         "//tensorflow/python/platform:self_check",
-    ],
+    ] + if_windows([
+        "//tensorflow/python/platform:windows_lib_diagnostics",
+    ]),
 )
 
 pywrap_tensorflow_macro(

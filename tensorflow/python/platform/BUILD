@@ -35,6 +35,11 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "windows_lib_diagnostics",
+    srcs = ["windows_lib_diagnostics.py"],
+)
+
+py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
     deps = if_oss(

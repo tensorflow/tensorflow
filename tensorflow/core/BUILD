@@ -2030,13 +2030,16 @@ tf_cc_test_mkl(
 filegroup(
     name = "image_testdata",
     srcs = [
-        "//tensorflow/core/lib/bmp:bmp_testdata",
-        "//tensorflow/core/lib/gif/testdata:gif_testdata",
-        "//tensorflow/core/lib/jpeg/testdata",
-        "//tensorflow/core/lib/jxl:testdata",
+        # PNG data
         "//tensorflow/core/lib/png:testdata",
-        "//tensorflow/core/lib/psnr:testdata",
         "//tensorflow/core/lib/ssim:testdata",
+        "//tensorflow/core/lib/psnr:testdata",
+        # JPEG data
+        "//tensorflow/core/lib/jpeg/testdata",
+        # GIF data
+        "//tensorflow/core/lib/gif/testdata:gif_testdata",
+        # BMP data
+        "//tensorflow/core/lib/bmp:bmp_testdata",
         "//tensorflow/core/lib/webp:testdata",
     ],
     visibility = ["//visibility:public"],
