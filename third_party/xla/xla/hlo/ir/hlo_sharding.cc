@@ -587,7 +587,7 @@ std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
   CHECK(!IsUnknown());
   CHECK(!IsTuple());
   std::vector<int64_t> ret_index;
-  tile_assignment_.Each([&](absl::Span<const int64_t> index, int64_t d) {
+  EachTile([&](absl::Span<const int64_t> index, int64_t d) {
     if (d == device) {
       ret_index = {index.begin(), index.end()};
     }
@@ -637,6 +637,16 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
   return index;
 }
 
+void HloSharding::EachTile(
+    absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
+  if (UseNamedShardingLeaf()) {
+    // TODO(b/477530474): Profile this method
+    V3ToV2Sharding(*named_sharding_).EachTile(f);
+    return;
+  }
+  return tile_assignment_.Each(f);
+}
+
 absl::Status HloSharding::EachTile(
     absl::Span<const int64_t> dims,
     absl::FunctionRef<void(int64_t, absl::Span<const int64_t>,
@@ -653,13 +663,18 @@ absl::Status HloSharding::EachTile(
   // replication/sharding and other semantics.  They do not participate in
   // determining the tile origin and shape.
   const absl::Span<const int64_t> sharding_dims = dimensions();
-  const int num_devices = tile_assignment().array().num_elements();
 
   if (dims.size() != TiledDataRank()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Shape rank is not same as tile rank: %d vs %d",
                         dims.size(), TiledDataRank()));
   }
+
+  if (UseNamedShardingLeaf()) {
+    // TODO(b/477530474): Profile this method
+    return V3ToV2Sharding(*named_sharding_).EachTile(dims, f);
+  }
+
   absl::InlinedVector<int64_t, 6> tile_dims;
   tile_dims.reserve(dims.size());
   for (int64_t i = 0; i < dims.size(); ++i) {
@@ -690,13 +705,13 @@ absl::Status HloSharding::EachTile(
           std::min(tile_dims[i] * (unique_tile_index[i] + 1), dims[i]);
     }
     for (int64_t i = 0; i < num_replicas; ++i) {
-      CHECK_LT(flat_tile_index, num_devices);
+      CHECK_LT(flat_tile_index, num_devices());
       const int64_t device_id = flat_tile_assignment[flat_tile_index];
-      if (device_id < 0 || device_id >= num_devices) {
+      if (device_id < 0 || device_id >= num_devices()) {
         return absl::InvalidArgumentError(
             absl::StrFormat("Out of range device id in device_assignment: %d; "
                             "valid range: [0, %d)",
-                            device_id, num_devices));
+                            device_id, num_devices()));
       }
       f(device_id, tile_offset, tile_limit);
       ++flat_tile_index;
