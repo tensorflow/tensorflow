@@ -2439,6 +2439,7 @@ PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args) {
 
   if (args->dst == nullptr) {
     args->dst_size = host_buffer_size;
+    args->event = nullptr;
     return nullptr;
   }
 

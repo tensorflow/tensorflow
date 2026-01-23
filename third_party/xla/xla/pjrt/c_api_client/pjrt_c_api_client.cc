@@ -3051,6 +3051,7 @@ Future<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.src = buffer_.get();
+  args.event = nullptr;
 
   const xla::Shape& shape = literal->shape();
 
@@ -3062,6 +3063,11 @@ Future<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
   args.dst = literal->untyped_data();
+  if (args.dst == nullptr) {
+    // For zero-sized buffers, args.dst will be nullptr. In that case, the C API
+    // will return early and not allocate an event.
+    return Future<>(absl::OkStatus());
+  }
   absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {
     c_layout_data =
@@ -3083,7 +3089,7 @@ Future<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
   if (error != nullptr) {
     return Future<>(::pjrt::PjrtErrorToStatus(error.get(), api));
   }
-
+  CHECK(args.event != nullptr);
   return pjrt::ConvertCEventToCppFuture(args.event, api);
 }
 
