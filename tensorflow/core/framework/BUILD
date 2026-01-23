@@ -1243,7 +1243,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "framework_run_handler_test",
-    size = "small",
+    size = "medium",
     srcs = ["run_handler_test.cc"],
     deps = [
         "//tensorflow/core:core_cpu",

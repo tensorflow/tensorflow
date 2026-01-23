@@ -2977,6 +2977,7 @@ tf_cuda_cc_test(
 # enables support for TensorFlow Debugger (tfdbg).
 tf_cc_test(
     name = "direct_session_with_debug_test",
+    size = "large",
     srcs = ["direct_session_test.cc"],
     features = ["-layering_check"],
     deps = [
