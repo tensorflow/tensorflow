@@ -687,6 +687,9 @@ message DebugOptions {
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
 
+  // Experimentally enable rewriting conv as fusion in GPU compiler passes.
+  optional bool xla_gpu_experimental_enable_conv_fusion = 446;
+
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
@@ -1361,7 +1364,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 446
+  // Next id: 447
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

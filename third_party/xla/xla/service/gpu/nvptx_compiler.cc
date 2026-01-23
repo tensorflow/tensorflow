@@ -82,6 +82,8 @@ limitations under the License.
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/service/gpu/transforms/conv_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/conv_kind_assignment.h"
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 #include "xla/service/gpu/transforms/conv_rewriter.h"
 #include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
@@ -199,11 +201,17 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
-    pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
-                                             dnn_version, toolkit_version);
-    pipeline.AddPass<ConvPaddingLegalization>();
-    pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
+    if (hlo_module->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_conv_fusion()) {
+      pipeline.AddPass<ConvKindAssignment>(gpu_version, dnn_version);
+    } else {
+      pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
+      pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
+                                               dnn_version, toolkit_version);
+      pipeline.AddPass<ConvPaddingLegalization>();
+      pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
+    }
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that

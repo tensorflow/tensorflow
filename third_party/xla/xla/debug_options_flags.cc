@@ -436,6 +436,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
   // --xla_ignore_channel_id should be kept false by default while channel ids
   // are load-bearing.
   opts.set_xla_ignore_channel_id(false);
@@ -2483,6 +2484,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_disable_binary_libraries(),
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_enable_conv_fusion",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_experimental_enable_conv_fusion),
+                debug_options->xla_gpu_experimental_enable_conv_fusion(),
+                "enable experimental XLA GPU passes that rewrites conv as hlo "
+                "fusion instead of custom call."));
   flag_list->push_back(
       tsl::Flag("xla_ignore_channel_id",
                 bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
