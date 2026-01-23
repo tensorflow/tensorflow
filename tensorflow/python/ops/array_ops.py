@@ -6475,10 +6475,10 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         dilation_h, dilation_w = dilation
     
     # Get dimensions
-    batch_size = tensor_shape.TensorShape(patches)[0]
-    out_h = tensor_shape.TensorShape(patches)[1]
-    out_w = tensor_shape.TensorShape(patches)[2]
-    patch_dim = tensor_shape.TensorShape(patches)[3]
+    batch_size = shape_internal(patches)[0]
+    out_h = shape_internal(patches)[1]
+    out_w = shape_internal(patches)[2]
+    patch_dim = shape_internal(patches)[3]
     channels = patch_dim // (kernel_h * kernel_w)
     
     height, width = output_size
@@ -6512,11 +6512,11 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     )
     
     # Create coordinate grids
-    batch_range = gen_math_ops.range(batch_size)
-    h_range = gen_math_ops.range(out_h)
-    w_range = gen_math_ops.range(out_w)
-    kh_range = gen_math_ops.range(kernel_h)
-    kw_range = gen_math_ops.range(kernel_w)
+    batch_range = gen_math_ops._range(0,batch_size,1)
+    h_range = gen_math_ops._range(0,out_h,1)
+    w_range = gen_math_ops._range(0,out_w,1)
+    kh_range = gen_math_ops._range(0,kernel_h,1)
+    kw_range = gen_math_ops._range(0,kernel_w,1)
     
     b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
         batch_range, h_range, w_range, kh_range, kw_range,
