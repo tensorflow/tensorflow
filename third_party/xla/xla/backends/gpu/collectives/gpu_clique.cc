@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique.h"
@@ -42,11 +43,12 @@ namespace xla::gpu {
 GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-    bool peer_access_enabled)
+    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel)
     : Clique(std::move(communicators)),
       key_(key),
       ids_(ids),
-      peer_access_enabled_(peer_access_enabled) {}
+      peer_access_enabled_(peer_access_enabled),
+      cancel_(std::move(cancel)) {}
 
 std::optional<GpuDeviceCommunicator*> GpuClique::device_comm(
     RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const {
@@ -112,6 +114,13 @@ absl::Status GpuClique::Abort() {
   return result;
 }
 
+void GpuClique::Cancel() {
+  VLOG(1) << "Cancel GpuClique " << key().ToString();
+  cancel_->Cancel();
+}
+
+bool GpuClique::IsCancelled() const { return cancel_->IsCancelled(); }
+
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %s", clique.key().ToString());
 }
@@ -119,15 +128,17 @@ std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
 LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-    bool peer_access_enabled)
+    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel)
     : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
-               peer_access_enabled) {}
+               peer_access_enabled, std::move(cancel)) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
 }
 
 absl::Status LockableGpuClique::Abort() { return mutable_value().Abort(); }
+
+void LockableGpuClique::Cancel() { mutable_value().Cancel(); }
 
 std::string LockableGpuClique::DebugString() const {
   return absl::StrFormat("LockableGpuClique: %s", value().DebugString());
