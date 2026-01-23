@@ -101,7 +101,7 @@ cc_library(
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/tsl/framework/fixedpoint",
+        "@xla//xla/tsl/framework/fixedpoint",
     ],
 )
 
@@ -287,9 +287,9 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir/framework/ir:xla_framework",
-        "@local_xla//xla/mlir/framework/transforms:passes",
-        "@local_xla//xla/mlir_hlo:all_passes",
+        "@xla//xla/mlir/framework/ir:xla_framework",
+        "@xla//xla/mlir/framework/transforms:passes",
+        "@xla//xla/mlir_hlo:all_passes",
     ],
 )
 
