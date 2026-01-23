@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
@@ -63,6 +65,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
@@ -71,9 +74,11 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/rendezvous.h"
@@ -105,6 +110,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/random.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -1052,11 +1058,15 @@ absl::Status GpuExecutable::ExecuteThunks(
   });
 
   if (VLOG_IS_ON(5)) {
-    se::StreamExecutor* executor = run_options->stream()->parent();
     // Debug code to compare current allocation's address with previous run's
     // address, and report the allocation info if memory addressed changed.
     // Useful for identify in user's model if it is command buffer perf friendly
     // (no command buffer update cost).
+    se::StreamExecutor* executor = run_options->stream()->parent();
+
+    // Collect the set of allocations that changed between executions.
+    std::vector<std::pair<int32_t, std::string>> changed_allocations;
+
     absl::MutexLock lock(module_handle_mutex_);
     if (module_allocations_.find(executor) == module_allocations_.end()) {
       std::vector<se::DeviceAddressBase> allocs_addr;
@@ -1079,9 +1089,16 @@ absl::Status GpuExecutable::ExecuteThunks(
             allocation.is_entry_computation_parameter() ? "parameter"
             : allocation.maybe_live_out()               ? "live-out"
                                                         : "temp";
-        VLOG(5) << "Gpu address changed for module " << module_name_
-                << ", allocation " << i << " (" << allocation_type << ")";
+        changed_allocations.emplace_back(i, allocation_type);
       }
+    }
+
+    if (!changed_allocations.empty()) {
+      VLOG(5) << "Buffer allocations changed address between module "
+              << module_name_ << " executions: ["
+              << absl::StrJoin(changed_allocations, ", ",
+                               absl::PairFormatter(":"))
+              << "]";
     }
   }
 
