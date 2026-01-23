@@ -202,6 +202,7 @@ class CustomCallThunk : public Thunk {
       const BufferAllocations* absl_nullable buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const ffi::ExecutionContext* absl_nullable execution_context);
 
@@ -211,6 +212,7 @@ class CustomCallThunk : public Thunk {
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques);
 
   absl::Status ExecuteFfiHandler(
@@ -219,6 +221,7 @@ class CustomCallThunk : public Thunk {
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
+      CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques);
 
   // API version of the custom call. If not set, it means the custom call thunk

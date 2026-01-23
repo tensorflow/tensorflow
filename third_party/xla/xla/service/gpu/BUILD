@@ -657,6 +657,7 @@ cc_library(
     name = "buffer_allocations",
     srcs = ["buffer_allocations.cc"],
     hdrs = ["buffer_allocations.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
@@ -701,6 +702,7 @@ cc_library(
         "//xla/backends/gpu/runtime:annotation",
         "//xla/backends/gpu/runtime:collective_clique_requests",
         "//xla/backends/gpu/runtime:collective_cliques",
+        "//xla/backends/gpu/runtime:collective_memory_requests",
         "//xla/backends/gpu/runtime:collective_multimem_registry",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/backends/gpu/runtime:command_buffer_conversion_pass",

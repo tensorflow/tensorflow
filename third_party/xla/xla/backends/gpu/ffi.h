@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -42,6 +43,7 @@ struct Allocator {};                 //  `se::DeviceAddressAllocator*`
 struct ScratchAllocator {};          //  `se::OwningScratchAllocator`
 struct CollectiveParams {};          //  `const xla::gpu::CollectiveParams*`
 struct CollectiveCliqueRequests {};  //  `xla::gpu::CollectiveCliqueRequests*`
+struct CollectiveMemoryRequests {};  //  `xla::gpu::CollectiveMemoryRequests*`
 struct CollectiveCliques {};         //  `const xla::gpu::CollectiveCliques*`
 
 // Parametrized type tag for platform stream, e.g. `cudaStream_t`
@@ -141,6 +143,20 @@ struct CtxDecoding<CollectiveCliqueRequests> {
         api, ctx, diagnostic,
         api->internal_api->XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
         "collective clique requests");
+  }
+};
+
+template <>
+struct CtxDecoding<CollectiveMemoryRequests> {
+  using Type = xla::gpu::CollectiveMemoryRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
+        "collective memory requests");
   }
 };
 

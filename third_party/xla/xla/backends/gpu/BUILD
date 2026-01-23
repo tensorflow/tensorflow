@@ -22,6 +22,7 @@ cc_library(
     deps = [
         "//xla/backends/gpu/runtime:collective_clique_requests",
         "//xla/backends/gpu/runtime:collective_cliques",
+        "//xla/backends/gpu/runtime:collective_memory_requests",
         "//xla/backends/gpu/runtime:collective_params",
         "//xla/ffi",
         "//xla/ffi/api:c_api",

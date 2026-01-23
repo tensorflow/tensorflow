@@ -1406,7 +1406,7 @@ absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode,
                       AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  return params.clique_requests->RequestClique(clique_key);
+  return params.collective_clique_requests->RequestClique(clique_key);
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*>

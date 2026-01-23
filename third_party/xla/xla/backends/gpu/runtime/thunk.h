@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_H_
 
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -250,7 +250,9 @@ class Thunk {
     // Parameters for executing collective operations.
     const CollectiveParams* collective_params = nullptr;
     // Clique requests for preparing collective communicators.
-    CollectiveCliqueRequests* clique_requests = nullptr;
+    CollectiveCliqueRequests* collective_clique_requests = nullptr;
+    // Collective memory requests for preparing symmetric allocations.
+    CollectiveMemoryRequests* collective_memory_requests = nullptr;
     // Multimem registry for preparing multimem objects.
     CollectiveMultimemRegistry* absl_nonnull multimem_registry = nullptr;
     // Stream executor for the thunk.

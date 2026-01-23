@@ -167,7 +167,8 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   if (!use_collective_kernel) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(params.clique_requests->RequestClique(clique_key));
+  TF_RETURN_IF_ERROR(
+      params.collective_clique_requests->RequestClique(clique_key));
 
   absl::MutexLock lock(mutex_);
   if (!per_stream_memory_.contains(params.executor)) {

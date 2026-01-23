@@ -364,6 +364,7 @@ xla_test(
         "gpu",
     ],
     deps = [
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
@@ -395,8 +396,8 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
@@ -866,6 +867,7 @@ xla_test(
     srcs = ["custom_call_thunk_test.cc"],
     backends = ["gpu"],
     deps = [
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":custom_call_thunk",
         ":shaped_slice",
@@ -1456,6 +1458,7 @@ xla_test(
     deps = [
         ":collective_clique_requests",
         ":collective_kernel_thunk",
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":collective_params",
         ":collective_thunk",
@@ -1857,6 +1860,40 @@ xla_cc_test(
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/runtime:device_id",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "collective_memory_requests",
+    srcs = ["collective_memory_requests.cc"],
+    hdrs = ["collective_memory_requests.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        "//xla:util",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:device_address",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_memory_requests_test",
+    srcs = ["collective_memory_requests_test.cc"],
+    deps = [
+        ":collective_memory_requests",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/runtime:device_id",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:device_address",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
@@ -2483,6 +2520,7 @@ cc_library(
     deps = [
         ":collective_clique_requests",
         ":collective_cliques",
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":collective_params",
         ":thunk_id",
@@ -3765,6 +3803,7 @@ xla_test(
         ":buffer_debug_log_structs",
         ":buffers_checksum_thunk",
         ":collective_clique_requests",
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":collective_params",
         ":thunk",
@@ -3842,6 +3881,7 @@ xla_test(
         ":buffer_debug_log_structs",
         ":buffers_float_check_thunk",
         ":collective_clique_requests",
+        ":collective_memory_requests",
         ":collective_multimem_registry",
         ":collective_params",
         ":thunk",

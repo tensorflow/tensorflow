@@ -343,7 +343,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, is_p2p_));
-  return params.clique_requests->RequestClique(clique_key);
+  return params.collective_clique_requests->RequestClique(clique_key);
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
