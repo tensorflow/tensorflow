@@ -62,6 +62,8 @@ struct InputHandle {
   xla::ifrt::ShardingRef ifrt_sharding;
   // The layout of the input tensor.
   xla::ifrt::LayoutRef xla_input_layout;
+  // Static shape for dynamic DMA.
+  std::optional<tensorflow::TensorShape> static_shape = std::nullopt;
 };
 
 // A per-request H2D transfer executor. The caller should call
