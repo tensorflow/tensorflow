@@ -5825,8 +5825,16 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":hlo_creation_utils",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ] + if_onednn([
         "//xla/service/cpu:onednn_contraction_rewriter",
     ]),
@@ -5901,10 +5909,15 @@ xla_cc_test(
     deps = [
         ":change_op_data_type",
         ":pattern_matcher",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
