@@ -25,7 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
@@ -44,7 +47,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -265,6 +267,114 @@ TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
                        fission_backend_->GetDefaultConfig(*fusion));
   EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
   EXPECT_EQ(module->computation_count(), 1);
+}
+
+TEST_F(CublasFissionBackendTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
+  constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=$0,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )";
+
+  std::string hlo_string =
+      absl::Substitute(kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3");
+  auto module_statusor = ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_statusor.ok());
+  auto module = std::move(module_statusor).value();
+
+  auto configs_statusor = fission_backend_->GetSupportedConfigs(
+      *module->entry_computation()->root_instruction());
+  ASSERT_TRUE(configs_statusor.ok());
+  auto configs = std::move(configs_statusor).value();
+
+  auto hasCublasConfig = [&](const auto& configs) {
+    for (const auto& config : configs) {
+      AutotuneResult::GemmKey gemm_key;
+      if (config->UnpackTo(&gemm_key)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_TRUE(hasCublasConfig(configs))
+      << "There is dot_algorithm_rewrite that supports fallback to cublas "
+         "implementation for dot_tf32_tf32_f32_x3.";
+}
+
+TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
+  constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=$0,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )";
+
+  std::string hlo_string =
+      absl::Substitute(kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32");
+  auto module_statusor = ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_statusor.ok());
+  auto module = std::move(module_statusor).value();
+
+  auto configs_statusor = fission_backend_->GetSupportedConfigs(
+      *module->entry_computation()->root_instruction());
+  ASSERT_TRUE(configs_statusor.ok());
+  auto configs = std::move(configs_statusor).value();
+
+  auto hasCublasConfig = [&](const auto& configs) {
+    for (const auto& config : configs) {
+      AutotuneResult::GemmKey gemm_key;
+      if (config->UnpackTo(&gemm_key)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const auto& comp = device_description_.gpu_compute_capability();
+
+  if (!comp.IsRocm()) {
+    auto cc = comp.cuda_compute_capability();
+    // Ampere (8.0) and newer should have fallback.
+    if (cc->IsAtLeastAmpere()) {
+      EXPECT_TRUE(hasCublasConfig(configs))
+          << "There should be a cublas fallback for dot_bf16_bf16_f32";
+    } else {
+      EXPECT_FALSE(hasCublasConfig(configs));
+    }
+  } else {
+    // ROCm
+    EXPECT_TRUE(hasCublasConfig(configs));
+  }
 }
 
 TEST_P(FissionTest, CanCreateFissionBackend) {
