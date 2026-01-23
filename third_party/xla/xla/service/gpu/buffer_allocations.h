@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -76,6 +77,9 @@ class BufferAllocations {
     std::string out;
     for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
       const auto& buf = buffers_[i];
+      if (i > 0) {
+        absl::StrAppend(&out, "; ");
+      }
       absl::StrAppendFormat(&out, "Buffer %d -> %p (%d B)", i, buf.opaque(),
                             buf.size());
     }
