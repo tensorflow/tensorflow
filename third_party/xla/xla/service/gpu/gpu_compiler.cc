@@ -2819,28 +2819,46 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 
   if (options.early_exit_point() !=
       AotCompilationOptions::EarlyExitPoint::kNone) {
+    LOG(WARNING) << "eusebiodm early exit" << tsl::CurrentStackTrace();
     return EarlyExitCompileAheadOfTime(std::move(hlo_module), options);
   }
 
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_aot_compiled_thunks()) {
+  if (true || hlo_module->config()
+                  .debug_options()
+                  .xla_gpu_experimental_aot_compiled_thunks()) {
+    LOG(WARNING) << "eusebiodm new compile ahead of time "
+                 << tsl::CurrentStackTrace();
     return NewCompileAheadOfTime(std::move(hlo_module), options);
   }
 
+  LOG(WARNING) << "eusebiodm legacy compile ahead of time"
+               << tsl::CurrentStackTrace();
   return LegacyCompileAheadOfTime(std::move(hlo_module), options);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                    const AotCompilationOptions& options) {
+  std::unique_ptr<HloModule> optimized_module;
   CompileOptions compile_options;
   compile_options.device_allocator = options.device_allocator();
   compile_options.gpu_topology = options.gpu_topology();
 
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      RunBackend(std::move(hlo_module), options.executor(), compile_options));
+  if (!hlo_module->has_schedule()) {
+    tsl::profiler::ScopedAnnotation annotation{[&] {
+      return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
+                             hlo_module->name(), hlo_module->unique_id());
+    }};
+    ASSIGN_OR_RETURN(optimized_module,
+                     RunHloPasses(std::move(hlo_module), options.executor(),
+                                  compile_options));
+  } else {
+    optimized_module = std::move(hlo_module);
+  }
+
+  ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                   RunBackend(std::move(optimized_module), options.executor(),
+                              compile_options));
 
   std::vector<std::unique_ptr<CompiledModule>> results;
   TF_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
@@ -2927,10 +2945,10 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     return Internal("GpuExecutable is null");
   }
 
-  if (gpu_executable->module()
-          .config()
-          .debug_options()
-          .xla_gpu_experimental_aot_compiled_thunks()) {
+  if (true || gpu_executable->module()
+                  .config()
+                  .debug_options()
+                  .xla_gpu_experimental_aot_compiled_thunks()) {
     ASSIGN_OR_RETURN(GpuExecutableProto proto, gpu_executable->ToProto());
     return GpuAotCompilationResult::FromProto(std::move(proto));
   }
@@ -3166,6 +3184,8 @@ GpuCompiler::LoadAotCompilationResult(
   auto reader =
       std::make_unique<riegeli::StringReader<>>(serialized_aot_result);
   ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
+  LOG(WARNING) << "is_split_proto: " << is_split_proto << "eusebiodm "
+               << tsl::CurrentStackTrace() << "proto: ";
   if (is_split_proto) {
     RETURN_IF_ERROR(ReadSplitProto(std::move(reader), gpu_executable_proto));
     return GpuAotCompilationResult::FromProto(std::move(gpu_executable_proto));
@@ -3175,6 +3195,8 @@ GpuCompiler::LoadAotCompilationResult(
     return InvalidArgument(
         "Failed to parse serialized AOT result as GpuExecutableProto.");
   }
+  LOG(WARNING) << "LegacyGpuAotCompilationResult::FromProto proto: "
+               << gpu_executable_proto.DebugString();
   return LegacyGpuAotCompilationResult::FromProto(gpu_executable_proto,
                                                   pointer_size_, this);
 }

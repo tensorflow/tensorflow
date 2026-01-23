@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
+#include "tsl/platform/stacktrace.h"
 
 namespace xla::gpu {
 
@@ -58,6 +59,8 @@ class GpuAotCompilationResult : public CompiledModule {
   }
 
   absl::StatusOr<std::string> SerializeAsString() const final {
+    LOG(WARNING) << "SerializeAsString GpuAotCompilationResult"
+                 << tsl::CurrentStackTrace();
     std::string serialized;
     TF_RETURN_IF_ERROR(WriteSplitGpuExecutable(
         executable_, std::make_unique<riegeli::StringWriter<>>(&serialized)));
