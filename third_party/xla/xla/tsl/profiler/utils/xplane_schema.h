@@ -209,6 +209,7 @@ enum StatType {
   kQueueId,
   kQueueAddr,
   kRequestId,
+  kGlobalChipId,
   kRunId,
   kReplicaId,
   kGraphType,
@@ -285,12 +286,16 @@ enum StatType {
   kBytesTransferred,
   kDmaQueue,
   kDcnCollectiveInfo,
+  kPerformanceCounterId,
   // Performance counter related.
   kRawValue,
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
   kHbmUtilizationPercent,
+  kCounterValue,
+  kPerformanceCounterDescription,
+  kPerformanceCounterSets,
   // Cost analysis related.
   kTimeScaleMultiplier,
   // XLA metadata map related.
