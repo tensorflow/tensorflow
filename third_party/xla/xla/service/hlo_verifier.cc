@@ -451,6 +451,7 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
       }
     }
   } else {
+    // For all reduce
     TF_RET_CHECK(group_mode !=
                  CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID)
         << "Replica groups must be specified in flattened-id mode";

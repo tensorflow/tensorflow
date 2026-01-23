@@ -757,16 +757,19 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       TF_RET_CHECK(proto.dimensions().size() == 1)
           << "AllGather cannot have more than 1 all-gather dimensions";
       int64_t all_gather_dimension = proto.dimensions(0);
+      std::unique_ptr<CollectiveDeviceListBase> device_list =
+          CollectiveDeviceListBase::DeviceListFromProto(proto);
+
       if (opcode == HloOpcode::kAllGather) {
-        instruction = CreateAllGather(
-            shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
-            channel_id, proto.use_global_device_ids());
+        instruction =
+            CreateAllGather(shape, all_operands(), all_gather_dimension,
+                            *device_list, proto.constrain_layout(), channel_id,
+                            proto.use_global_device_ids());
       } else {
-        instruction = CreateAllGatherStart(
-            shape, all_operands(), all_gather_dimension,
-            CollectiveDeviceList::FromProto(proto), proto.constrain_layout(),
-            channel_id, proto.use_global_device_ids());
+        instruction =
+            CreateAllGatherStart(shape, all_operands(), all_gather_dimension,
+                                 *device_list, proto.constrain_layout(),
+                                 channel_id, proto.use_global_device_ids());
       }
       break;
     }
@@ -785,24 +788,25 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      CollectiveDeviceList device_list = CollectiveDeviceList::FromProto(proto);
+      std::unique_ptr<CollectiveDeviceListBase> device_list =
+          CollectiveDeviceListBase::DeviceListFromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
-            CreateAllReduce(shape, all_operands(), computations(0), device_list,
-                            proto.constrain_layout(), channel_id,
+            CreateAllReduce(shape, all_operands(), computations(0),
+                            *device_list, proto.constrain_layout(), channel_id,
                             proto.use_global_device_ids());
       } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions().size() == 1)
             << "ReduceScatter cannot have more than 1 scatter dimensions";
         int64_t scatter_dimension = proto.dimensions(0);
         instruction = CreateReduceScatter(
-            shape, all_operands(), computations(0), device_list,
+            shape, all_operands(), computations(0), *device_list,
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
       } else {
         instruction =
             CreateAllReduceStart(shape, all_operands(), computations(0),
-                                 device_list, proto.constrain_layout(),
+                                 *device_list, proto.constrain_layout(),
                                  channel_id, proto.use_global_device_ids());
       }
       break;
@@ -821,9 +825,10 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                "is specified";
         split_dimension = proto.dimensions(0);
       }
-      instruction = CreateAllToAll(
-          shape, all_operands(), CollectiveDeviceList::FromProto(proto),
-          proto.constrain_layout(), channel_id, split_dimension);
+      instruction =
+          CreateAllToAll(shape, all_operands(),
+                         *CollectiveDeviceListBase::DeviceListFromProto(proto),
+                         proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
     case HloOpcode::kRaggedAllToAll: {
@@ -833,9 +838,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       TF_RET_CHECK(all_operands().size() == 6)
           << "RaggedAllToAll must have 6 operands";
-      instruction = CreateRaggedAllToAll(shape, all_operands(),
-                                         CollectiveDeviceList::FromProto(proto),
-                                         channel_id);
+      instruction = CreateRaggedAllToAll(
+          shape, all_operands(),
+          *CollectiveDeviceListBase::DeviceListFromProto(proto), channel_id);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -844,7 +849,8 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         channel_id = proto.channel_id();
       }
       instruction = CreateCollectiveBroadcast(
-          shape, all_operands(), CollectiveDeviceList::FromProto(proto), false,
+          shape, all_operands(),
+          *CollectiveDeviceListBase::DeviceListFromProto(proto), false,
           channel_id);
       break;
     }

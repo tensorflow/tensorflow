@@ -102,6 +102,9 @@ class CollectiveDeviceListBase {
     return ToString();
   };
 
+  static std::unique_ptr<CollectiveDeviceListBase> DeviceListFromProto(
+      const HloInstructionProto& proto);
+
   virtual std::unique_ptr<CollectiveDeviceListBase> Clone() const = 0;
   virtual CollectiveDeviceListVersion version() const = 0;
 
