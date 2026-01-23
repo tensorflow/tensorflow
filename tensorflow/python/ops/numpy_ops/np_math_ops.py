@@ -534,8 +534,15 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
-      return a == b
-
+      # Numpy supports integer inputs for isclose by promoting to float
+      # we follow the same behavior to match Numpy semantics
+      a_f = math_ops.cast(a, dtypes.float64)
+      b_f = math_ops.cast(b, dtypes.float64)
+      rtol_ = ops.convert_to_tensor(rtol, dtypes.float64)
+      atol_ = ops.convert_to_tensor(atol, dtypes.float64)
+      result = math_ops.abs(a_f - b_f) <= atol_ + rtol_ * math_ops.abs(b_f)
+      return result
+      
   return _bin_op(f, a, b)
 
 
