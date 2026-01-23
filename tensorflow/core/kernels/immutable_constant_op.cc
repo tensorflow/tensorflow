@@ -18,7 +18,10 @@ limitations under the License.
 #include <limits>
 #include <unordered_set>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
@@ -41,13 +44,13 @@ class MemmappedTensorAllocator : public Allocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     if ((reinterpret_cast<intptr_t>(memory_region_->data())) % alignment != 0) {
       allocation_status_ =
-          errors::Internal("Readonly memory region has wrong alignment");
+          absl::InternalError("Readonly memory region has wrong alignment");
       return nullptr;
     }
     if (num_bytes > memory_region_->length()) {
-      allocation_status_ = errors::Internal(
+      allocation_status_ = absl::InternalError(absl::StrCat(
           "Readonly memory region has wrong length (", memory_region_->length(),
-          ") when allocating ", num_bytes);
+          ") when allocating ", num_bytes));
       return nullptr;
     }
     return const_cast<void*>(memory_region_->data());
@@ -96,7 +99,7 @@ ImmutableConstantOp::ImmutableConstantOp(OpKernelConstruction* context)
                  context->GetAttr(kMemoryRegionNameAttr, &region_name_));
   OP_REQUIRES_OK(context, context->GetAttr(kDTypeAttr, &dtype_));
   OP_REQUIRES(context, dtype_ != DT_RESOURCE && dtype_ != DT_VARIANT,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Resource and variant dtypes are invalid for this op."));
   OP_REQUIRES_OK(context, context->GetAttr(kShapeAttr, &shape_));
 }
@@ -108,50 +111,50 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx,
                  allocator->InitializeFromRegion(region_name_, ctx->env()));
   OP_REQUIRES(ctx, dtype_ != DT_STRING,
-              errors::Unimplemented("Sorry, DT_STRING is not currently "
-                                    "supported for ImmutableConstOp."));
+              absl::UnimplementedError("Sorry, DT_STRING is not currently "
+                                       "supported for ImmutableConstOp."));
   
   // Validate that the tensor size can be computed without overflow
   const int64_t num_elements = shape_.num_elements();
   OP_REQUIRES(ctx, num_elements >= 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Shape ", shape_.DebugString(),
-                  " results in overflow when computing number of elements"));
+                  " results in overflow when computing number of elements")));
   
   // Check that num_elements fits in size_t
   OP_REQUIRES(
       ctx, 
       static_cast<uint64_t>(num_elements) <= 
           std::numeric_limits<size_t>::max(),
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "Number of elements (", num_elements, 
-          ") exceeds maximum representable size on this platform"));
+          ") exceeds maximum representable size on this platform")));
   
   // Validate that the byte size doesn't overflow
   const size_t element_size = DataTypeSize(dtype_);
   OP_REQUIRES(ctx, element_size > 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Cannot determine element size for dtype ",
-                  DataTypeString(dtype_)));
+                  DataTypeString(dtype_))));
   
   // Check for overflow when computing total bytes
   const int64_t num_bytes_int64 = MultiplyWithoutOverflow(num_elements, 
                                                            element_size);
   OP_REQUIRES(ctx, num_bytes_int64 >= 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Tensor size computation overflows: ", num_elements,
-                  " elements * ", element_size, " bytes per element"));
+                  " elements * ", element_size, " bytes per element")));
   
   const size_t num_bytes = static_cast<size_t>(num_bytes_int64);
   
   // Validate that the computed size matches the memory region size
   const uint64_t region_length = allocator->memory_region_length();
   OP_REQUIRES(ctx, num_bytes == region_length,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Memory region size (", region_length, " bytes) does not "
                   "match expected tensor size (", num_bytes, " bytes) for shape ",
                   shape_.DebugString(), " and dtype ", 
-                  DataTypeString(dtype_)));
+                  DataTypeString(dtype_))));
   
   ctx->set_output(0, Tensor(allocator.get(), dtype_, shape_));
   OP_REQUIRES_OK(ctx, allocator->allocation_status());
