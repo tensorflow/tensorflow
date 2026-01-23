@@ -57,6 +57,7 @@ namespace gpu {
 
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
+  int64_t global_scratch_memory_size = 0;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
 

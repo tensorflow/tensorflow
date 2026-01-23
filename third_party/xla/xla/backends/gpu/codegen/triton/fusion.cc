@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
@@ -193,7 +192,8 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
     TF_ASSIGN_OR_RETURN(
         llvm::Function * kernel,
         RemoveUnusedTritonAbiArguments(local_module.get(), ir_emitter_context,
-                                       sanitized_kernel_name));
+                                       sanitized_kernel_name,
+                                       /*keep_scratch=*/false));
 
     AnnotateAttrsIfUnset(kernel_arguments, *kernel);
     PopulateNvvmAnnotations(local_module.get(), kernel, triton_wrapper_result);

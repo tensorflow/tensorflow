@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -63,11 +65,13 @@ KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
                          LaunchDimensions launch_dimensions,
                          std::optional<se::ClusterDim> cluster_dim,
                          int64_t shmem_bytes,
-                         stream_executor::gpu::TmaMetadata tma_metadata)
+                         stream_executor::gpu::TmaMetadata tma_metadata,
+                         std::vector<int64_t> zeroed_output_buffer_indices)
     : Thunk(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
       args_shape_(kernel_arguments.GetArgumentBufferShapes()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
+      zeroed_output_buffer_indices_(std::move(zeroed_output_buffer_indices)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
@@ -137,10 +141,15 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
       stream_executor::gpu::TmaMetadata tma_metadata,
       stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
 
+  std::vector<int64_t> zeroed_output_buffer_indices(
+      proto.zeroed_output_buffer_indices().begin(),
+      proto.zeroed_output_buffer_indices().end());
+
   return std::make_unique<KernelThunk>(
       thunk_info, proto.kernel_name(),
       emitters::KernelArguments(std::move(arguments)), launch_dimensions,
-      cluster_dim, proto.shmem_bytes(), tma_metadata);
+      cluster_dim, proto.shmem_bytes(), tma_metadata,
+      std::move(zeroed_output_buffer_indices));
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
@@ -189,6 +198,12 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
         /*level=*/TraceMeLevel::kVerbose);
     TF_ASSIGN_OR_RETURN(
         stream, GetStreamForExecution(Thunk::execution_stream_id(), params));
+  }
+
+  for (int64_t index : zeroed_output_buffer_indices_) {
+    se::DeviceAddressBase address =
+        params.buffer_allocations->GetDeviceAddress(args_[index]);
+    TF_RETURN_IF_ERROR(stream->MemZero(&address, address.size()));
   }
 
   {

@@ -17,7 +17,6 @@ limitations under the License.
 #include "nvidia/include/NVGPUToLLVM/Passes.h"
 #include "nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h"
 #include "absl/strings/str_format.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/NVVMToLLVM/NVVMToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
@@ -131,27 +130,36 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mt_xla::CreateExtractTmaInfoPass());
 }
 
-// Based on make_llir() in
-// @triton//:third_party/nvidia/backend/compiler.py
+int GetDefaultPtxVersion(
+    const stream_executor::CudaComputeCapability& cuda_cc) {
+  if (cuda_cc.IsAtLeastHopper()) {
+    // Upstream defaults to 8.6
+    // @triton//:third_party/nvidia/backend/compiler.py
+    return 86;
+  }
+  // Fallback for older architectures.
+  return 80;
+}
+
 static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::CudaComputeCapability& cuda_cc) {
   const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
+  const int final_ptx_version = GetDefaultPtxVersion(cuda_cc);
+
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::triton::gluon::createGluonInline());
-  pm->addPass(mt::createAllocateSharedMemoryNvPass(
-      cuda_cc_as_int,
-      mlir::triton::AllocateSharedMemoryNvOptions{}.ptxVersion));
+  pm->addPass(
+      mt::createAllocateSharedMemoryNvPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
   pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
   // We could add a flag to XLA to optionally enable the following pass:
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
-  pm->addPass(mt::createConvertTritonGPUToLLVMPass(
-      cuda_cc_as_int,
-      mlir::triton::ConvertTritonGPUToLLVMOptions{}.ptxVersion));
+  pm->addPass(
+      mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVM());
