@@ -78,16 +78,6 @@ limitations under the License.
 
 namespace xla {
 
-namespace cpu {
-
-PjRtPlatformId PlatformId();
-
-absl::string_view PlatformName();
-
-absl::string_view PlatformVersion();
-
-}  // namespace cpu
-
 class PjRtCpuExecutable;
 
 class PjRtCpuClient final : public CommonPjRtClient {
@@ -116,14 +106,14 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
-  PjRtPlatformId platform_id() const override { return cpu::PlatformId(); }
+  PjRtPlatformId platform_id() const override { return xla::CpuPlatformId(); }
 
   absl::string_view platform_name() const override {
-    return cpu::PlatformName();
+    return xla::CpuPlatformName();
   }
 
   absl::string_view platform_version() const override {
-    return cpu::PlatformVersion();
+    return xla::CpuPlatformVersion();
   }
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(

@@ -351,6 +351,7 @@ xla_cc_test(
         ":cpu_client",
         ":cpu_pjrt_compiler",
         "//xla:debug_options_flags",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
