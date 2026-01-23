@@ -190,7 +190,6 @@ py_strict_library(
     ],
 )
 
-
 cuda_py_strict_test(
     name = "np_dtypes_test",
     srcs = ["np_dtypes_test.py"],
