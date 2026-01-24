@@ -37,6 +37,13 @@ class AudioSpectrogramOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+    OP_REQUIRES(context, window_size_ > 0,
+                errors::InvalidArgument("window_size must be > 0, but got ",
+                                        window_size_));
+    OP_REQUIRES(
+        context, stride_ > 0,
+        errors::InvalidArgument("stride must be > 0, but got ", stride_));
+
     const Tensor& input = context->input(0);
     OP_REQUIRES(context, input.dims() == 2,
                 errors::InvalidArgument("input must be 2-dimensional",
