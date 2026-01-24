@@ -18,8 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
