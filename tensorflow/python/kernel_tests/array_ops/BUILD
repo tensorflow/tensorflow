@@ -14,6 +14,7 @@ cuda_py_strict_test(
     srcs = ["array_ops_test.py"],
     shard_count = 10,
     tags = [
+        "noasan",  # TODO: b/478339567
         "optonly",  # times out
     ],
     deps = [
