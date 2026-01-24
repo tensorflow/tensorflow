@@ -61,7 +61,10 @@ class CliqueKey {
   virtual std::string ToString() const = 0;
 
   template <typename H>
-  friend H AbslHashValue(H state, const CliqueKey& value);
+  friend H AbslHashValue(H state, const CliqueKey& key);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const CliqueKey& key);
 
  private:
   virtual void HashValue(absl::HashState state) const = 0;
@@ -70,10 +73,15 @@ class CliqueKey {
 };
 
 template <typename H>
-H AbslHashValue(H state, const CliqueKey& value) {
-  state = H::combine(std::move(state), std::type_index(typeid(&value)));
-  value.HashValue(absl::HashState::Create(&state));
+H AbslHashValue(H state, const CliqueKey& key) {
+  state = H::combine(std::move(state), std::type_index(typeid(&key)));
+  key.HashValue(absl::HashState::Create(&state));
   return state;
+}
+
+template <typename Sink>
+void AbslStringify(Sink& sink, const CliqueKey& key) {
+  sink.Append(key.ToString());
 }
 
 inline std::ostream& operator<<(std::ostream& os, const CliqueKey& key) {

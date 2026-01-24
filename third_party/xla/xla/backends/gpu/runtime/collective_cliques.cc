@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -105,19 +106,21 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
   }
 
   VLOG(2) << absl::StreamFormat(
-      "Acquire %d collective cliques for global device id %v; run_id=%d; "
-      "max number of channels for collectives %d; max number of channels for "
-      "p2p %d",
-      ordered_cliques.size(), params.global_device_id, params.run_id.ToInt(),
+      "[%d] Acquire %d collective cliques for global device id %v; "
+      "run_id=%d; max number of channels for collectives %d; max number of "
+      "channels for p2p %d",
+      params.executor->device_ordinal(), ordered_cliques.size(),
+      params.global_device_id, params.run_id.ToInt(),
       params.collective_max_nchannels, params.p2p_max_nchannels);
 
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
     const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
     VLOG(2) << absl::StreamFormat(
-        "  clique #%d (for global device id %v): num_local_participants=%d; "
-        "id=%d; key=%s; dev_comms=[%s]",
-        i, params.global_device_id, r.key.num_local_participants(), r.id,
-        r.key.ToString(), absl::StrJoin(r.dev_comms, ", "));
+        "[%d]    clique #%d (global device %v): "
+        "num_local_participants=%d; id=%d; key=%s; dev_comms=[%s]",
+        params.executor->device_ordinal(), i, params.global_device_id,
+        r.key.num_local_participants(), r.id, r.key.ToString(),
+        absl::StrJoin(r.dev_comms, ", "));
   }
 
   tsl::profiler::TraceMe trace([&] {
@@ -170,9 +173,11 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
 
   auto end_micros = tsl::Env::Default()->NowMicros();
   VLOG(2) << absl::StreamFormat(
-      "Acquired %d collective cliques for global device id %v in %d μs; "
-      "run_id=%d",
-      cliques_map.size(), params.global_device_id, (end_micros - start_micros),
+      "[%d] Acquired %d collective cliques for global device id %v in "
+      "%s; run_id=%d",
+      params.executor->device_ordinal(), cliques_map.size(),
+      params.global_device_id,
+      absl::FormatDuration(absl::Microseconds(end_micros - start_micros)),
       params.run_id.ToInt());
 
   // After we acquired all GPU cliques, check if they already have required
@@ -191,8 +196,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
       }
 
       VLOG(2) << absl::StreamFormat(
-          "Create device communicator: rank=%v clique=%s", *rank,
-          r.key.ToString());
+          "[%d] Create device communicator: rank=%v clique=%s",
+          params.executor->device_ordinal(), *rank, r.key.ToString());
 
       auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
       DCHECK(comm) << "Communicator must be in the acquired clique";

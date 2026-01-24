@@ -801,7 +801,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
 
   VLOG(3) << absl::StreamFormat(
       "[%d] Launch NCCL CollectivePermute operation; send_buffer=%p; "
-      "recv_buffer=%p; dtype=%s; source_rank=%s; target_ranks=[%s]; "
+      "recv_buffer=%p; dtype=%s; source_rank=%s; target_[ranks=%s]; "
       "count=%d; "
       "comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
@@ -162,8 +163,9 @@ class NcclCommunicator : public GpuCommunicator {
         comm_(comm),
         executor_(std::move(executor)),
         cancel_(std::move(cancel)) {
-    VLOG(1) << "Created NCCL communicator" << *this << " on device ordinal "
-            << stream_executor_->device_ordinal();
+    VLOG(1) << absl::StreamFormat("[%d] Created NCCL communicator %s",
+                                  stream_executor_->device_ordinal(),
+                                  this->ToString());
   }
 
   absl::Status GroupStart();

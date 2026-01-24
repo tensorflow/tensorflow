@@ -844,7 +844,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     for (const std::unique_ptr<CliqueKey>& clique_key : clique_keys) {
       gpu::GpuCliqueKey* gpu_clique_key = CHECK_NOTNULL(
           tensorflow::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
-      if (absl::Status s = CheckCliqueKeyIsntStale(*gpu_clique_key); !s.ok()) {
+      if (absl::Status s = CheckCliqueIsntStale(*gpu_clique_key); !s.ok()) {
         VLOG(1) << "GPU clique key " << gpu_clique_key->ToString()
                 << " is stale";
         complete_event.SetError(s);

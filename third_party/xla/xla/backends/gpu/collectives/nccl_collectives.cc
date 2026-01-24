@@ -135,6 +135,26 @@ class NcclIdStore {
 // NcclCollectives
 //===----------------------------------------------------------------------===//
 
+static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
+  auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+  return device->stream_executor()->device_ordinal();
+}
+
+static auto DeviceOrdinalsToString(
+    absl::Span<const Collectives::DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+    absl::StrAppend(str, device->stream_executor()->device_ordinal());
+  });
+}
+
+static auto DeviceRanksToString(
+    absl::Span<const Collectives::DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    absl::StrAppend(str, rank.rank.value());
+  });
+}
+
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
@@ -215,10 +235,12 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         "CliqueIds size must be 1 for NCCL communicator initialization");
   }
   VLOG(1) << absl::StreamFormat(
-      "Initialize NCCL (version %d.%d.%d) communicators for %d local devices "
-      "(out of %d global devices); fingerprint(id)=%v",
-      NCCL_MAJOR, NCCL_MINOR, NCCL_PATCH, ranks.size(),
-      clique_key.num_devices(), clique_ids->fingerprint());
+      "[%s] ranks=[%s] Initialize NCCL (version %d.%d.%d) "
+      "communicators for %d local devices (out of %d global devices); "
+      "fingerprint(id)=%v",
+      DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), NCCL_MAJOR,
+      NCCL_MINOR, NCCL_PATCH, ranks.size(), clique_key.num_devices(),
+      clique_ids->fingerprint());
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
@@ -234,9 +256,10 @@ NcclCollectives::CreateCommunicatorsWithCancel(
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     VLOG(1) << absl::StreamFormat(
-        "Initialize NCCL communicator for rank #%v of %d; fingerprint(id)=%v; "
-        "size(id)=%zu",
-        ranks[i].rank, clique_key.num_devices(), clique_ids->fingerprint(),
+        "[%d] [rank=%v] Initialize NCCL communicator for rank %v of %d; "
+        "fingerprint(id)=%v; size(id)=%zu",
+        DeviceOrdinal(ranks[i]), ranks[i].rank, ranks[i].rank,
+        clique_key.num_devices(), clique_ids->fingerprint(),
         clique_ids->data().size());
 
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
@@ -290,7 +313,9 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   };
 
   VLOG(1) << absl::StreamFormat(
-      "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
+      "[%s] ranks=[%s] Split %d NCCL communicators using color %d and "
+      "keys [%s]",
+      DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), comms.size(),
       color, absl::StrJoin(keys, ",", rank_formatter));
 
   if (keys.size() != comms.size()) {
@@ -309,7 +334,9 @@ NcclCollectives::SplitCommunicatorsWithCancel(
                         AsNcclConfig(gpu_config, stream_executors[i]));
 
     VLOG(1) << absl::StreamFormat(
-        "Split NCCL communicator %p with color %d and key %v",
+        "[%d] [rank=%v] Split NCCL communicator %p with color %d and "
+        "key %v",
+        DeviceOrdinal(ranks[i]), ranks[i].rank,
         static_cast<const void*>(comms[i]), color, keys[i]);
     ncclComm_t split_comm;
     XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(

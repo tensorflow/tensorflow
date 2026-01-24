@@ -179,8 +179,8 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root_device=0; "
-            "num_local_participants=2; incarnations=[]");
+            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root=0; "
+            "local_participants=2; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
