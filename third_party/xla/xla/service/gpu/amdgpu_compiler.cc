@@ -344,7 +344,8 @@ absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
     const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
     stream_executor::StreamExecutor* stream_executor,
     const Compiler::GpuTargetConfig* target_config,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
   if (stream_executor == nullptr) {
     return absl::OkStatus();
   }
@@ -369,8 +370,7 @@ absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
       AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
                             thread_pool, ShouldAutotuneBetweenFusionEmitters,
                             target_config, options.device_allocator,
-                            /*optimize_scratch_bytes=*/false,
-                            MultiProcessKeyValueStore(),
+                            /*optimize_scratch_bytes=*/false, key_value_store,
                             /*allow_reg_spills=*/true));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();

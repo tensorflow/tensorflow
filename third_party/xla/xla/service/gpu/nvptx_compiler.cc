@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
@@ -443,7 +444,8 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
     const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
     stream_executor::StreamExecutor* stream_executor,
     const Compiler::GpuTargetConfig* target_config,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+    const MultiProcessKeyValueStore& key_value_store) {
   if (stream_executor == nullptr) {
     return absl::OkStatus();
   }
@@ -470,11 +472,11 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(
-          std::move(backends), debug_options, stream_executor, thread_pool,
-          should_autotune, target_config, options.device_allocator,
-          /*optimize_scratch_bytes=*/false, MultiProcessKeyValueStore(),
-          /*allow_reg_spills=*/true));
+      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
+                            thread_pool, should_autotune, target_config,
+                            options.device_allocator,
+                            /*optimize_scratch_bytes=*/false, key_value_store,
+                            /*allow_reg_spills=*/true));
   pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }

@@ -197,7 +197,8 @@ class GpuCompiler : public LLVMCompiler {
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
       const GpuTargetConfig* target_config,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const MultiProcessKeyValueStore& key_value_store) {
     return absl::OkStatus();
   }
 

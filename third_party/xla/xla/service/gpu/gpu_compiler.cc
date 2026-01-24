@@ -1681,7 +1681,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<FusionWrapper>(gpu_target_config.device_description);
     RETURN_IF_ERROR(AddFusionAutotuningPass(
         &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
-        &gpu_target_config, ShapeSizeBytesFunction()));
+        &gpu_target_config, ShapeSizeBytesFunction(), options.key_value_store));
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
