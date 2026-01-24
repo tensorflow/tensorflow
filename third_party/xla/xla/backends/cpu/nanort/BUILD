@@ -170,6 +170,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
