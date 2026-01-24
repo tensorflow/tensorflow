@@ -57,6 +57,18 @@ class ResizeBilinearGradOp : public XlaOpKernel {
   xla::PrimitiveType output_type_;
 };
 
+class ResizeBicubicOp : public XlaOpKernel {
+ public:
+  explicit ResizeBicubicOp(OpKernelConstruction* ctx);
+
+  void Compile(XlaOpKernelContext* ctx) override;
+
+ protected:
+  bool align_corners_ = true;
+  bool half_pixel_centers_ = true;
+  bool is_kernel_bilinear_ = true;  // Using bilinear as approximation for now
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
