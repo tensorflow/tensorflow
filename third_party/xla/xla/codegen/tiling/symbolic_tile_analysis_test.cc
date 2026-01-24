@@ -1690,8 +1690,7 @@ triton_softmax {
 ENTRY e {
   p0 = bf16[1024,512]{1,0} parameter(0)
   select = s32[] parameter(1)
-  ROOT triton_softmax = bf16[1,32,8,8,64] fusion(p0,  select), kind=kCustom, calls=triton_softmax,
-    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  ROOT triton_softmax = bf16[1,32,8,8,64] fusion(p0,  select), kind=kCustom, calls=triton_softmax
 }
 )"));
 
@@ -1901,7 +1900,6 @@ ENTRY main {
 TEST_F(SymbolicTileAnalysisTest, TileNestedDotFusions) {
   // Tile a dot of [8192,256] x [256,512] = [8192,512].
   // [M, K] * [K, N] = [M, N].
-  // M is tiled to 128, K: 8, N: 32.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 lhs {
@@ -1917,16 +1915,8 @@ dot {
   dot.p0 = bf16[8192,256]{1,0} parameter(0)
   dot.p1 = bf16[256,512]{1,0} parameter(1)
 
-  dot.lhs = bf16[8192,256]{1,0} fusion(dot.p0),
-    kind=kCustom, calls=lhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["128","8"]}]}}}
-  dot.rhs = bf16[256,512]{1,0} fusion(dot.p1),
-    kind=kCustom, calls=rhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["8","32"]}]}}}
+  dot.lhs = bf16[8192,256]{1,0} fusion(dot.p0), kind=kCustom, calls=lhs
+  dot.rhs = bf16[256,512]{1,0} fusion(dot.p1), kind=kCustom, calls=rhs
 
   ROOT dot = bf16[8192,512]{1,0} dot(dot.lhs, dot.rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
@@ -1942,6 +1932,7 @@ ENTRY main {
   const HloInstruction* dot_hlo =
       module->entry_computation()->root_instruction()->fused_expression_root();
   ASSERT_TRUE(analysis.has_value());
+  // M is tiled to 128, K: 8, N: 32.
   Tiling dot_tiling = Tiling(Tiling::TileMapping({{dot_hlo, {8, 128, 32}}}));
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           analysis->ComputeTiledHloInstructions(
@@ -2311,18 +2302,8 @@ rhs {
 dot {
   p0 = f32[137,115] parameter(0)
   p1 = f32[1,115] parameter(1)
-
-  lhs = f32[137,115] fusion(p0),
-    kind=kCustom, calls=lhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["16","32"]}]}}}
-  rhs = f32[1,115] fusion(p1),
-    kind=kCustom, calls=rhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["16","32"]}]}}}
-
+  lhs = f32[137,115] fusion(p0), kind=kCustom, calls=lhs
+  rhs = f32[1,115] fusion(p1), kind=kCustom, calls=rhs
   ROOT dot = f32[137,1] dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
@@ -2330,8 +2311,7 @@ dot {
 ENTRY main {
   p0 = f32[137,115] parameter(0)
   p1 = f32[1,115] parameter(1)
-  ROOT fusion = f32[137,1] fusion(p0, p1),
-    kind=kCustom, calls=dot
+  ROOT fusion = f32[137,1] fusion(p0, p1), kind=kCustom, calls=dot
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
@@ -2391,18 +2371,8 @@ rhs {
 dot {
   p0 = f32[1,137,115] parameter(0)
   p1 = f32[1,2,115] parameter(1)
-
-  lhs = f32[1,137,115] fusion(p0),
-    kind=kCustom, calls=lhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["1","16","32"]}]}}}
-  rhs = f32[1,2,115] fusion(p1),
-    kind=kCustom, calls=rhs, backend_config={
-      "fusion_backend_config":{
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["1","16","32"]}]}}}
-
+  lhs = f32[1,137,115] fusion(p0), kind=kCustom, calls=lhs
+  rhs = f32[1,2,115] fusion(p1), kind=kCustom, calls=rhs
   ROOT dot = f32[1,137,2] dot(lhs, rhs),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
