@@ -15,6 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 
+#include <cstdint>
+#include <numeric>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/hlo/builder/value_inference.h"

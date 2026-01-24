@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 
 #include "absl/status/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
