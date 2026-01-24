@@ -1476,7 +1476,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
     ENTRY test {
       p = f32[] parameter(0)
       b = f32[1000,1000] broadcast(p), dimensions={}
-      ROOT reduce = f32[] reduce(b, f32[] constant(-inf)), dimensions={0,1}, to_apply=max_f32
+      ROOT reduce = f32[] reduce(b, f32[] constant(0)), dimensions={0,1}, to_apply=max_f32
     }
   )";
 
@@ -1484,8 +1484,9 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
                           ParseAndReturnVerifiedModule(kModuleStrForMax));
   AlgebraicSimplifierOptions options = default_options_;
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Parameter(0)));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
 
   // Test Reduce(Broadcast(x), a, And)
   constexpr absl::string_view kModuleStrForAnd = R"(
@@ -1505,8 +1506,9 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastOfScalar) {
 
   TF_ASSERT_OK_AND_ASSIGN(m, ParseAndReturnVerifiedModule(kModuleStrForAnd));
   ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
-  EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Parameter(0)));
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AndAnyOrder(m::Parameter(0), m::ConstantScalar(0))));
 }
 
 // Test that Const + A is canonicalized to A + Const.
@@ -12734,98 +12736,6 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfNonScalarBroadcast) {
   // Expect no Reduce operation after simplification.
   EXPECT_EQ(0, reduce_count);
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Multiply())));
-}
-
-TEST_F(AlgebraicSimplifierTest, PartialReduceOfNonScalarBroadcast) {
-  const std::string hlo_string = R"(
-    HloModule module
-    add {
-      a = f32[] parameter(0)
-      b = f32[] parameter(1)
-      ROOT sum = f32[] add(a, b)
-    }
-
-    ENTRY test {
-        a = f32[64,1001] parameter(0)
-        broadcast = f32[64,7,7,1001] broadcast(a), dimensions={0,3}
-        zero = f32[] constant(0)
-        ROOT reduce = f32[64,7] reduce(broadcast, zero), dimensions={2,3},
-                  to_apply=add
-      }
-    )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
-  HloInstruction* root = m->entry_computation()->root_instruction();
-  int64_t reduce_count =
-      absl::c_count_if(m->entry_computation()->instructions(),
-                       HloPredicateIsOp<HloOpcode::kReduce>);
-  // Expect one Reduce operation after simplification.
-  EXPECT_EQ(1, reduce_count);
-  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::MultiplyAnyOrder(
-                        m::Reduce(m::Parameter(0), m::ConstantScalar(0.0f)),
-                        m::Broadcast(m::ConstantScalar(7.0f))))));
-}
-
-TEST_F(AlgebraicSimplifierTest, PartialReduceOfNonScalarBroadcast2) {
-  const std::string hlo_string = R"(
-    HloModule module
-    add {
-      a = f32[] parameter(0)
-      b = f32[] parameter(1)
-      ROOT sum = f32[] add(a, b)
-    }
-
-    ENTRY test {
-        a = f32[2,3,5] parameter(0)
-        broadcast = f32[7,2,13,3,5,17] broadcast(a), dimensions={1,3,4}
-        zero = f32[] constant(0)
-        ROOT reduce = f32[7,2,3,17] reduce(broadcast, zero), dimensions={2,4},
-                  to_apply=add
-      }
-    )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
-  HloInstruction* root = m->entry_computation()->root_instruction();
-  int64_t reduce_count =
-      absl::c_count_if(m->entry_computation()->instructions(),
-                       HloPredicateIsOp<HloOpcode::kReduce>);
-  // Expect one Reduce operation after simplification.
-  EXPECT_EQ(1, reduce_count);
-  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::MultiplyAnyOrder(
-                        m::Reduce(m::Parameter(0), m::ConstantScalar(0.0f)),
-                        m::Broadcast(m::ConstantScalar(13.0f))))));
-}
-
-TEST_F(AlgebraicSimplifierTest, ReduceOfBroadcastIsBroadcastOfReduce) {
-  const std::string hlo_string = R"(
-    HloModule module
-    add {
-      a = f32[] parameter(0)
-      b = f32[] parameter(1)
-      ROOT sum = f32[] add(a, b)
-    }
-
-    ENTRY test {
-        a = f32[2,3,5] parameter(0)
-        broadcast = f32[7,2,13,3,5,17] broadcast(a), dimensions={1,3,4}
-        zero = f32[] constant(0)
-        ROOT reduce = f32[7,13,17] reduce(broadcast, zero), dimensions={1,3,4},
-                  to_apply=add
-      }
-    )";
-  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  ASSERT_THAT(simplifier.Run(m.get()), absl_testing::IsOkAndHolds(true));
-  HloInstruction* root = m->entry_computation()->root_instruction();
-  int64_t reduce_count =
-      absl::c_count_if(m->entry_computation()->instructions(),
-                       HloPredicateIsOp<HloOpcode::kReduce>);
-  // Expect one Reduce operation after simplification.
-  EXPECT_EQ(1, reduce_count);
-  EXPECT_THAT(root, GmockMatch(m::Broadcast(
-                        m::Reduce(m::Parameter(0), m::ConstantScalar(0.0f)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, RemoveConvertConstant) {

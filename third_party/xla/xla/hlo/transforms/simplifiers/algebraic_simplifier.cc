@@ -8431,9 +8431,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(x), +, init_value) with Broadcast(Add(Multiply(x),
-  // init_value))) if any reduction dimensions were introduced by Broadcast
-  if (arg->opcode() == HloOpcode::kBroadcast &&
+  // For Computation equal to Min, Max, And or Or, replace Reduce(Broadcast(x),
+  // a, Computation()) with Computation(x, a) when x is a scalar and the
+  // broadcast is reduced to a scalar.
+  if (HloInstruction* broadcast_arg;
+      Match(arg, m::Broadcast(m::Op(&broadcast_arg))) &&
       (Match(function->root_instruction(),
              m::MaximumAnyOrder(m::Parameter(0), m::Parameter(1))) ||
        Match(function->root_instruction(),
@@ -8441,64 +8443,67 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
        Match(function->root_instruction(),
              m::AndAnyOrder(m::Parameter(0), m::Parameter(1))) ||
        Match(function->root_instruction(),
-             m::OrAnyOrder(m::Parameter(0), m::Parameter(1))) ||
-       Match(reduce->to_apply()->root_instruction(),
-             m::AddAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+             m::OrAnyOrder(m::Parameter(0), m::Parameter(1))))) {
+    if (broadcast_arg->shape().dimensions().empty() &&
+        reduce->dimensions().size() == arg->shape().dimensions().size()) {
+      return ReplaceWithNewInstruction(
+          reduce,
+          HloInstruction::CreateBinary(
+              reduce_result_shape, function->root_instruction()->opcode(),
+              broadcast_arg, reduce->mutable_operand(1)));
+    }
+  }
+
+  // Replace Reduce(Broadcast(x), +, init_value) with Broadcast(Add(Multiply(x),
+  // init_value))) if all reduction dimensions were introduced by Broadcast
+  if (arg->opcode() == HloOpcode::kBroadcast &&
+      Match(reduce->to_apply()->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
     TF_RET_CHECK(
         std::is_sorted(arg->dimensions().begin(), arg->dimensions().end()))
         << "Broadcasts need to be canonicalized before algebraic "
            "simplification.";
+    bool only_reduce_dims_from_broadcast = true;
     int64_t common_dims_prod = 1;
-    DimensionVector new_broadcast_dims;
-    DimensionVector new_reduce_dims;
-    int64_t true_operand_dim = 0;
-    int64_t new_reduce_dim = 0;
+    int64_t num_common_dims = 0;
+    Shape new_broadcast_shape = arg->shape();
+    std::vector<int64_t> new_broadcast_dims;
 
     // Now we build up the new broadcast shape and dims vector
     for (int64_t i = 0; i < arg->shape().dimensions().size(); ++i) {
       bool added_by_broadcast = !absl::c_linear_search(arg->dimensions(), i);
       bool removed_by_reduce = absl::c_linear_search(reduce->dimensions(), i);
 
-      if (removed_by_reduce && added_by_broadcast) {
+      if (removed_by_reduce && !added_by_broadcast) {
+        only_reduce_dims_from_broadcast = false;
+        break;
+      } else if (removed_by_reduce && added_by_broadcast) {
+        new_broadcast_shape.DeleteDimension(i - num_common_dims);
         common_dims_prod *= arg->shape().dimensions(i);
+        num_common_dims++;
       } else if (!removed_by_reduce && !added_by_broadcast) {
-        new_broadcast_dims.push_back(new_reduce_dim);
-        ++new_reduce_dim;
-      } else if (removed_by_reduce) {
-        new_reduce_dims.push_back(true_operand_dim);
-      } else {
-        ++new_reduce_dim;
-      }
-      if (!added_by_broadcast) {
-        ++true_operand_dim;
+        new_broadcast_dims.push_back(i - num_common_dims);
       }
     }
 
-    if (common_dims_prod > 1 ||
-        new_broadcast_dims.size() < reduce->shape().dimensions().size()) {
-      auto opcode = function->root_instruction()->opcode();
+    if (only_reduce_dims_from_broadcast) {
       // HloConstantFolding will later remove any unnecessary multiply and add
       // instructions.
-      HloInstruction* new_reduce = arg->mutable_operand(0);
-      if (!new_reduce_dims.empty()) {
-        TF_ASSIGN_OR_RETURN(new_reduce, MakeReduceHlo(new_reduce, init_value,
-                                                      new_reduce_dims, opcode));
-      }
-      if (opcode == HloOpcode::kAdd && common_dims_prod > 1) {
-        HloInstruction* multiplier =
-            MakeScalarLike(new_reduce, common_dims_prod);
-        TF_ASSIGN_OR_RETURN(new_reduce, MakeBinaryHlo(HloOpcode::kMultiply,
-                                                      new_reduce, multiplier));
-      }
+      HloInstruction* multiplier =
+          MakeScalarLike(arg->mutable_operand(0), common_dims_prod);
+      TF_ASSIGN_OR_RETURN(HloInstruction * multiplied_scalar,
+                          MakeBinaryHlo(HloOpcode::kMultiply,
+                                        arg->mutable_operand(0), multiplier));
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * add,
+          MakeBinaryHlo(
+              HloOpcode::kAdd,
+              MakeBroadcastHlo(init_value, {}, multiplied_scalar->shape()),
+              multiplied_scalar));
       VLOG(10) << "Converting common reduce(broadcast) dimensions to multiply";
-      if (new_reduce->shape().dimensions().size() !=
-          reduce->shape().dimensions().size()) {
-        return ReplaceWithNewInstruction(
-            reduce, HloInstruction::CreateBroadcast(reduce->shape(), new_reduce,
-                                                    new_broadcast_dims));
-      } else {
-        return ReplaceInstruction(reduce, new_reduce);
-      }
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(new_broadcast_shape, add,
+                                                  new_broadcast_dims));
     }
   }
 
