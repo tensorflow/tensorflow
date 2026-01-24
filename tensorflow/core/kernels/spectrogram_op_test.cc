@@ -181,6 +181,21 @@ TEST(SpectrogramOpTest, InvalidStride) {
                                      ::testing::ContainsRegex("stride")));
 }
 
+TEST_F(SpectrogramOpTest, InvalidWindowSize) {
+  MakeOp(/*window_size=*/-35, /*stride=*/10, /*magnitude_squared=*/true);
+  AddInputFromArray<float>(TensorShape({1, 1}), {1.0f});
+  Status status = RunOpKernel();
+  EXPECT_FALSE(status.ok())  EXPECT_TRUE(absl::StrContains(status.message(), "window_size must be > 0"));
+}
+
+TEST_F(SpectrogramOpTest, InvalidStride) {
+  MakeOp(/*window_size=*/10, /*stride=*/-5, /*magnitude_squared=*/true);
+  AddInputFromArray<float>(TensorShape({1, 1}), {1.0f});
+  Status status = RunOpKernel();
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::StrContains(status.message(), "stride must be > 0"));
+}
+
 }  // namespace
 }  // namespace ops
 }  // namespace tensorflow
