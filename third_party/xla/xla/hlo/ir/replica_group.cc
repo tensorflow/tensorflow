@@ -61,6 +61,22 @@ CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
   }
 }
 
+std::unique_ptr<CollectiveDeviceListBase>
+CollectiveDeviceListBase::DeviceListFromProto(
+    const HloInstructionProto& proto) {
+  if (proto.has_iota_collective_device_list()) {
+    return std::make_unique<IotaReplicaGroupList>(
+        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list()));
+  }
+  if (proto.has_mesh_axes_replica_group_list()) {
+    return std::make_unique<MeshAxesReplicaGroupList>(
+        MeshAxesReplicaGroupList::FromProto(
+            proto.mesh_axes_replica_group_list()));
+  }
+  return std::make_unique<CollectiveDeviceList>(
+      CollectiveDeviceList::FromProto(proto));
+}
+
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups) {
   std::vector<std::string> replica_group_str;
