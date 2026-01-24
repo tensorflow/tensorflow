@@ -121,6 +121,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -524,6 +525,40 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 
 namespace ir_emitter_triton_internal {
 
+namespace {
+absl::StatusOr<absl::InlinedVector<int64_t, 4>> DotTilingParameters(
+    const HloInstruction* hlo,
+    const SymbolicTileAnalysis& symbolic_tile_analysis,
+    const BlockLevelParameters& block_level_parameters) {
+  const HloInstruction* lhs = hlo->operand(0);
+  // When encountering a `dot`, we always expect its operands to be nests.
+  auto backend_config = lhs->backend_config<GpuBackendConfig>();
+  if (!backend_config.ok() || !backend_config->fusion_backend_config()
+                                   .has_block_level_fusion_config()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("No block_level_fusion_config in ", lhs->ToString()));
+  }
+  std::vector<int64_t> lhs_output_tile_sizes =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          backend_config->fusion_backend_config().block_level_fusion_config())
+          .output_tile_sizes.front();
+
+  absl::InlinedVector<int64_t, 4> dot_tiling_parameters;
+  dot_tiling_parameters.reserve(
+      hlo->dot_dimension_numbers().lhs_contracting_dimensions().size());
+  for (int64_t contracting_dim_id :
+       hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
+    if (contracting_dim_id >= lhs_output_tile_sizes.size()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Output tile sizes index ", contracting_dim_id,
+                       " is out of bounds for ", lhs->ToString()));
+    }
+    dot_tiling_parameters.push_back(lhs_output_tile_sizes[contracting_dim_id]);
+  }
+  return dot_tiling_parameters;
+}
+}  // namespace
+
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const HloFusionInstruction* fusion,
     const SymbolicTileAnalysis& symbolic_tile_analysis,
@@ -538,34 +573,9 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     // TODO(b/419026602): handle reductions.
     if (hlo->opcode() == HloOpcode::kDot ||
         hlo->opcode() == HloOpcode::kScaledDot) {
-      const HloInstruction* lhs = hlo->operand(0);
-      // When encountering a `dot`, we always expect its operands to be nests.
-      auto backend_config = lhs->backend_config<GpuBackendConfig>();
-      if (!backend_config.ok() || !backend_config->fusion_backend_config()
-                                       .has_block_level_fusion_config()) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("No block_level_fusion_config in ", lhs->ToString()));
-      }
-      std::vector<int64_t> lhs_output_tile_sizes =
-          BlockLevelParameters::FromBlockLevelFusionConfig(
-              backend_config->fusion_backend_config()
-                  .block_level_fusion_config())
-              .output_tile_sizes.front();
-
-      absl::InlinedVector<int64_t, 4> dot_tiling_parameters;
-      dot_tiling_parameters.reserve(num_tiling_parameters);
-      for (int64_t contracting_dim_id :
-           hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
-        if (contracting_dim_id >= lhs_output_tile_sizes.size()) {
-          return absl::FailedPreconditionError(
-              absl::StrCat("Output tile sizes index ", contracting_dim_id,
-                           " is out of bounds for ", lhs->ToString()));
-        }
-        dot_tiling_parameters.push_back(
-            lhs_output_tile_sizes[contracting_dim_id]);
-      }
-
-      tile_mapping[hlo] = dot_tiling_parameters;
+      ASSIGN_OR_RETURN(tile_mapping[hlo],
+                       DotTilingParameters(hlo, symbolic_tile_analysis,
+                                           block_level_parameters));
     }
 
     // TODO(b/390559452): this should change for generalized multi-output
