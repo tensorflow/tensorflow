@@ -97,7 +97,7 @@ using ::mlir::MLIRContext;
 // `ComputeOutputTilingInfo` creates a new instance of this struct.
 struct OutputTilingInfo {
   // The number of output tiles for each dimension of the root indexing.
-  // For example, ,if dimensions are [29, 16] and tile size is [4, 8] then
+  // For example, if dimensions are [29, 16] and tile size is [4, 8] then
   // `num_output_tiles_per_dim` will be [8, 2] = [29 ceildiv 4, 16 ceildiv 8].
   llvm::SmallVector<int64_t> num_output_tiles_per_dim;
 
@@ -107,7 +107,7 @@ struct OutputTilingInfo {
   // The dimensions of the indexing map correspond to the dimensions passed
   // to `ComputeOutputTilingInfo` and the number of dimensions is equal to the
   // size of `num_output_tiles_per_dim`. For example above it would look like:
-  //   `(pid_0, pid_1){rt0, rt1, ..} -> (<tile 0 offset>, <tile 1 offset>)`.
+  //   `(pid_0, pid_1){rt0, rt1, ..} -> (<tile offset 0>, <tile offset 1>)`.
   IndexingMap output_tile_offset_indexing;
 
   // The subset of tiling parameters that are active for this tiling, in
@@ -118,12 +118,12 @@ struct OutputTilingInfo {
   // order specified in `active_tiling_parameters`. For the example in
   // `output_tile_offset_indexing`, and with `active_tiling_parameters` set to
   // {0, 1} (row-major order), it would look like:
-  //   `(d0){rt0, rt1, ..} -> (<tile 0 offset>, <tile 1 offset>)`.
+  //   `(d0){rt0, rt1, ..} -> (<tile offset 1>, <tile offset 1>)`.
   // where pid_0 is replaced by (d0 floordiv 2) and pid_1 is replaced by
   // (d0 mod 2) in tile offset expressions.
   IndexingMap linear_output_tile_offset_indexing;
 
-  std::string ToString(const absl::string_view field_separator = "\n") {
+  std::string ToString(const absl::string_view field_separator = "\n") const {
     return absl::StrCat(
         "num_output_tiles_per_dim: ", num_output_tiles_per_dim.size(),
         field_separator, absl::StrJoin(num_output_tiles_per_dim, ", "),

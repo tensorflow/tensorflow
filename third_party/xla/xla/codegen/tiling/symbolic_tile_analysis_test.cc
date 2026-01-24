@@ -2168,10 +2168,50 @@ ENTRY main {
                   /*tile_sizes=*/{32}, /*tile_strides=*/{1},
                   /*tile_offsets_indexing=*/
                   "(pid_0) -> (pid_0 * 32 - 256), domain: pid_0 in [8, 11]"));
+}
 
-  // Ensure that providing tile sizes that do not divide the resulting offsets
-  // results in the tiling being rejected, even if we pretend that `33`
-  // satisfies the constraints.
+TEST_F(SymbolicTileAnalysisTest,
+       RejectsConcatenateInNestedGemmFusionsWithNonDivisibleTileSize) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+nest0 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+nest1 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+nest2 {
+  ROOT p0 = s32[128] parameter(0)
+}
+
+concatenate {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[128] parameter(2)
+
+  fusion0 = s32[128] fusion(p0), kind=kCustom, calls=nest0
+  fusion1 = s32[128] fusion(p1), kind=kCustom, calls=nest1
+  fusion2 = s32[128] fusion(p2), kind=kCustom, calls=nest2
+
+  ROOT concatenate = s32[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
+}
+
+ENTRY main {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[128] parameter(2)
+  ROOT fusion = s32[384] fusion(p0, p1, p2),
+    kind=kCustom, calls=concatenate, backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  // 128 % 33 != 0 thus the tiling should be rejected for concatenate operands.
   auto tiled_hlo_computation_or = analysis->ComputeTiledHloInstructions(
       Tiling({{fusion_root, FlatTiling({33})}}), default_schedule_builder_,
       /*constraints_are_known_satisfied=*/true,
