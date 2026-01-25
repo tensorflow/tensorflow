@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
                 "Whether to wait for uploads to a symbol repository to "
                 "complete. See export_hlo.h for more on uploads."),
       tsl::Flag("result_output_file", &options.result_output_file,
-                "File to write a serialized xla.CompilationResult proto to. "
+                "File to write a serialized xla.CompilationResultProto to. "
                 "Required if --output_file is not set."),
   };
 

@@ -61,7 +61,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
 };
 
 TEST_F(XlaCompileLibTest, CompilesForCpu) {
-  CompilationResult result;
+  CompilationResultProto result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kCpu,
                                 std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
@@ -76,7 +76,7 @@ TEST_F(XlaCompileLibTest, ErrorsOnUnexpectedPlatform) {
 
 TEST_F(XlaCompileLibTest, WriteResultFilePropagatesErrors) {
   TimerStats stats;
-  CompilationResult result;
+  CompilationResultProto result;
   EXPECT_THAT(WriteResultFile("/does/not/exist", stats, result),
               Not(absl_testing::IsOk()));
 }
@@ -92,7 +92,7 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
     stats.max_secs = 5.5;
   }
 
-  CompilationResult result;
+  CompilationResultProto result;
   google::protobuf::Duration duration;
   duration.set_seconds(5);
   duration.set_nanos(0.5 * tsl::EnvTime::kSecondsToNanos);
@@ -101,7 +101,7 @@ TEST_F(XlaCompileLibTest, WriteResultFileWritesTheFile) {
 
   TF_ASSERT_OK(WriteResultFile(result_output_file, stats, result));
 
-  CompilationResult got_result;
+  CompilationResultProto got_result;
   TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_output_file,
                                     &got_result));
   // Sadly EqualsProto isn't OSS, so we inspect a few fields manually.
@@ -153,7 +153,7 @@ TEST_F(XlaCompileLibTest, MainForCpu) {
   options.result_output_file = result_file;
   TF_EXPECT_OK(XlaCompileMain(options));
 
-  CompilationResult result;
+  CompilationResultProto result;
   TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);

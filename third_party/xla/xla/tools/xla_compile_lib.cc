@@ -83,7 +83,7 @@ static absl::StatusOr<std::string> AotCompileCpuExecutable(
 static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<Compiler::GpuTargetConfig> target_config,
-    CompilationResult& result) {
+    CompilationResultProto& result) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
   platform_name = absl::AsciiStrToUpper(platform_name);
@@ -133,7 +133,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::GpuTargetConfig> target_config,
-    CompilationResult& result) {
+    CompilationResultProto& result) {
   if (backend == BackendType::kCpu) {
     return AotCompileCpuExecutable(std::move(hlo_module));
   }
@@ -143,7 +143,7 @@ absl::StatusOr<std::string> CompileExecutable(
 
 absl::Status WriteResultFile(const absl::string_view result_output_file,
                              TimerStats& stats,
-                             CompilationResult& compilation_result) {
+                             CompilationResultProto& compilation_result) {
   if (result_output_file.empty()) {
     return absl::OkStatus();
   }
@@ -289,7 +289,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   xla::TimerStats stats;
   xla::ScopedLoggingTimer timer("compilation", true, "xla_compile_main.cc", 1,
                                 &stats);
-  CompilationResult compilation_result;
+  CompilationResultProto compilation_result;
   absl::Cleanup cleanup([&] {
     // Make sure we stop the timer if compilation failed.
     timer.StopAndLog();

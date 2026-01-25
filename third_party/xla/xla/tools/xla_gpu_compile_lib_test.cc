@@ -60,7 +60,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
 };
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
-  CompilationResult result;
+  CompilationResultProto result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
                                 std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
@@ -74,7 +74,7 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
-  CompilationResult result;
+  CompilationResultProto result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
                                 std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
@@ -100,7 +100,7 @@ TEST_F(XlaCompileLibTest, MainForGpu) {
   options.gpu_options.use_attached_device = true;
   TF_EXPECT_OK(XlaCompileMain(options));
 
-  CompilationResult result;
+  CompilationResultProto result;
   TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
   EXPECT_TRUE(result.has_status());
   EXPECT_EQ(result.status().code(), tensorflow::error::OK);
