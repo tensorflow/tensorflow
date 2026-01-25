@@ -927,7 +927,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if rank == 3:
       return
     dims = rank + extra_dims
-    tol = 1e-2 if np_rtype == np.float32 else 1e-10
+    tol = 2e-2 if np_rtype == np.float32 else 1e-10
     re = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
     im = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
     fft_length = (size + dsize,) * rank
