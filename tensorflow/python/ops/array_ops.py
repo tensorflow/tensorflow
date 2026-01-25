@@ -6429,6 +6429,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
                  
         dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
                  kernel elements (called 'rates' in tf.image.extract_patches)
+                 Must be >= 1.
                 
     
     Returns:
@@ -6457,7 +6458,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     """
 
     
-    # Handle scalar inputs
+    # Handling inputs
     if isinstance(kernel_size, int):
         kernel_h = kernel_w = kernel_size
     else:
@@ -6469,10 +6470,13 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         stride_h, stride_w = stride
         
     if isinstance(dilation, int):
-        # TODO: dilation should be >=1
+        if dilation < 1:
+            raise ValueError(f"dilation must be >= 1, got {dilation}")
         dilation_h = dilation_w = dilation
     else:
         dilation_h, dilation_w = dilation
+        if dilation_h < 1 or dilation_w < 1:
+            raise ValueError(f"dilation values must be >= 1, got {dilation}")
     
     # Get dimensions
     batch_size = shape_internal(patches)[0]
@@ -6488,18 +6492,17 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         if padding == 'VALID':
             pad_h = pad_w = 0
         elif padding == 'SAME':
-            # Calculate padding needed for SAME mode
             effective_kernel_h = (kernel_h - 1) * dilation_h + 1
             effective_kernel_w = (kernel_w - 1) * dilation_w + 1
             pad_h = max(0, ((out_h - 1) * stride_h + effective_kernel_h - height) // 2)
             pad_w = max(0, ((out_w - 1) * stride_w + effective_kernel_w - width) // 2)
         else:
             raise ValueError(f"padding must be 'VALID', 'SAME', int, or tuple, got {padding}")
-    # TODO: Why effective_kernel in padding=SAME but not when p=1?    
     elif isinstance(padding, int):
-        pad_h = pad_w = padding
-    else:
-        pad_h, pad_w = padding
+        effective_kernel_h = (kernel_h - 1) * dilation_h + 1
+        effective_kernel_w = (kernel_w - 1) * dilation_w + 1
+        pad_h = padding * effective_kernel_h // kernel_h
+        pad_w = padding * effective_kernel_w // kernel_w
     
     # Padded output size
     padded_height = height + 2 * pad_h
@@ -6524,7 +6527,6 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     )
     
     # Calculate output coordinates with dilation
-    # extract_patches formula: output_pixel = input[i*stride + kh*dilation, j*stride + kw*dilation]
     # fold formula: output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
     out_h_coords = h_grid * stride_h + kh_grid * dilation_h
     out_w_coords = w_grid * stride_w + kw_grid * dilation_w
