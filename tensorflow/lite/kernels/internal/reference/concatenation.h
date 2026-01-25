@@ -70,6 +70,78 @@ inline void Concatenation(const ConcatenationParams& params,
   }
 }
 
+template <>
+inline void Concatenation<Int4>(const ConcatenationParams& params,
+                                const RuntimeShape* const* input_shapes,
+                                const Int4* const* input_data,
+                                const RuntimeShape& output_shape,
+                                Int4* output_data) {
+  int axis = params.axis;
+  int inputs_count = params.inputs_count;
+  const int concat_dimensions = output_shape.DimensionsCount();
+  TFLITE_DCHECK_LT(axis, concat_dimensions);
+
+  int64_t concat_size = 0;
+  for (int i = 0; i < inputs_count; i++) {
+    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
+    for (int j = 0; j < concat_dimensions; j++) {
+      if (j != axis) {
+        MatchingDim(*input_shapes[i], j, output_shape, j);
+      }
+    }
+    concat_size += input_shapes[i]->Dims(axis);
+  }
+  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
+  int64_t outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= output_shape.Dims(i);
+  }
+  // For all input arrays,
+  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
+  int64_t base_inner_size = 1;
+  for (int i = axis + 1; i < concat_dimensions; ++i) {
+    base_inner_size *= output_shape.Dims(i);
+  }
+
+  uint8_t* output_ptr = reinterpret_cast<uint8_t*>(output_data);
+  // We can't guarantee that the output buffer is initialized to 0, so we have
+  // to clear it to ensure the high/low nibbles not currently being written are
+  // not garbage.
+  // Note: output_shape.FlatSize() gives number of elements (nibbles).
+  // Bytes needed: (elements + 1) / 2.
+  memset(output_ptr, 0, (output_shape.FlatSize() + 1) / 2);
+
+  int64_t output_offset = 0;
+  for (int k = 0; k < outer_size; k++) {
+    for (int i = 0; i < inputs_count; ++i) {
+      const int64_t copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
+      const uint8_t* input_ptr =
+          reinterpret_cast<const uint8_t*>(input_data[i]);
+      // The input_ptr points to the start of the tensor data.
+      // We need to calculate the offset for the current outer loop iteration
+      // 'k'.
+      // The tensor has total elements = outer_size * copy_size.
+      // So current offset in elements is k * copy_size.
+      int64_t input_offset = k * copy_size;
+
+      for (int j = 0; j < copy_size; ++j) {
+        int64_t in_idx = input_offset + j;
+        uint8_t val = input_ptr[in_idx / 2];
+        uint8_t nibble = (in_idx % 2 == 0) ? (val & 0x0F) : ((val >> 4) & 0x0F);
+
+        int64_t out_idx = output_offset + j;
+        uint8_t* out_byte = output_ptr + (out_idx / 2);
+        if (out_idx % 2 == 0) {
+          *out_byte = (*out_byte & 0xF0) | nibble;
+        } else {
+          *out_byte = (*out_byte & 0x0F) | (nibble << 4);
+        }
+      }
+      output_offset += copy_size;
+    }
+  }
+}
+
 // TODO(b/174275780): The quantized implementation of concatentation isn't fully
 // quantized as it takes scale as a floating point value. This should be fixed
 // when optimizng this routine further.
