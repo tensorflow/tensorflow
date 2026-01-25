@@ -3687,9 +3687,10 @@ absl::StatusOr<XlaOp> XlaBuilder::ReduceInternal(
 XlaOp XlaBuilder::Scan(absl::Span<const XlaOp> inputs,
                        absl::Span<const XlaOp> inits,
                        const XlaComputation& computation,
-                       int64_t scan_dimension, bool is_reverse) {
+                       int64_t scan_dimension, bool is_reverse,
+                       TriState is_associative) {
   return Scan(inputs, inits, AddSubComputation(computation), scan_dimension,
-              is_reverse);
+              is_reverse, is_associative);
 }
 
 namespace {
@@ -3816,7 +3817,7 @@ absl::StatusOr<Shape> InferScanShape(
 XlaOp XlaBuilder::Scan(absl::Span<const XlaOp> inputs,
                        absl::Span<const XlaOp> inits,
                        XlaComputationId computation, int64_t scan_dimension,
-                       bool is_reverse) {
+                       bool is_reverse, TriState is_associative) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     std::vector<const Shape*> init_shapes;
     for (const auto& init : inits) {
@@ -3845,6 +3846,7 @@ XlaOp XlaBuilder::Scan(absl::Span<const XlaOp> inputs,
     instr.add_dimensions(scan_dimension);
     instr.set_is_reverse(is_reverse);
     instr.set_num_carries(num_carries);
+    instr.set_is_associative(is_associative);
     TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
 
     std::vector<XlaOp> all_operands;
@@ -5984,24 +5986,24 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            const XlaComputation& computation, int64_t scan_dimension,
-           bool is_reverse) {
+           bool is_reverse, TriState is_associative) {
   if (inputs.empty()) {
     return inits[0].builder()->Scan(inputs, inits, computation, scan_dimension,
-                                    is_reverse);
+                                    is_reverse, is_associative);
   }
   return inputs[0].builder()->Scan(inputs, inits, computation, scan_dimension,
-                                   is_reverse);
+                                   is_reverse, is_associative);
 }
 
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            XlaComputationId computation, int64_t scan_dimension,
-           bool is_reverse) {
+           bool is_reverse, TriState is_associative) {
   if (inputs.empty()) {
     return inits[0].builder()->Scan(inputs, inits, computation, scan_dimension,
-                                    is_reverse);
+                                    is_reverse, is_associative);
   }
   return inputs[0].builder()->Scan(inputs, inits, computation, scan_dimension,
-                                   is_reverse);
+                                   is_reverse, is_associative);
 }
 
 XlaOp ReduceAll(const XlaOp operand, const XlaOp init_value,

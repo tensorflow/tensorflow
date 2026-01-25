@@ -4841,8 +4841,13 @@ LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  xla::XlaOp result =
-      xla::Scan(inputs, inits, body, op.getDimension(), op.getIsReverse());
+  xla::TriState is_associative = xla::TRI_STATE_UNSPECIFIED;
+  if (op.getIsAssociative().has_value()) {
+    is_associative = op.getIsAssociative().value() ? xla::TRI_STATE_TRUE
+                                                   : xla::TRI_STATE_FALSE;
+  }
+  xla::XlaOp result = xla::Scan(inputs, inits, body, op.getDimension(),
+                                op.getIsReverse(), is_associative);
 
   for (int i = 0; i < op.getNumResults(); ++i) {
     value_map[op.getResult(i)] = xla::GetTupleElement(result, i);

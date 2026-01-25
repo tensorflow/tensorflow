@@ -894,10 +894,12 @@ class XlaBuilder {
 
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              const XlaComputation& computation, int64_t scan_dimension,
-             bool is_reverse = false);
+             bool is_reverse = false,
+             TriState is_associative = TRI_STATE_UNSPECIFIED);
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              XlaComputationId computation, int64_t scan_dimension,
-             bool is_reverse = false);
+             bool is_reverse = false,
+             TriState is_associative = TRI_STATE_UNSPECIFIED);
 
   XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                   XlaComputationId computation);
@@ -1648,10 +1650,11 @@ class XlaBuilder {
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits,
                     const XlaComputation& computation, int64_t scan_dimension,
-                    bool is_reverse);
+                    bool is_reverse, TriState is_associative);
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits, XlaComputationId computation,
-                    int64_t scan_dimension, bool is_reverse);
+                    int64_t scan_dimension, bool is_reverse,
+                    TriState is_associative);
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
   friend XlaOp ReduceWindow(XlaOp operand, XlaOp init_value,
@@ -2789,10 +2792,12 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 // Enqueues a scan instruction onto the computation.
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            const XlaComputation& computation, int64_t scan_dimension,
-           bool is_reverse = false);
+           bool is_reverse = false,
+           TriState is_associative = TRI_STATE_UNSPECIFIED);
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            XlaComputationId computation, int64_t scan_dimension,
-           bool is_reverse = false);
+           bool is_reverse = false,
+           TriState is_associative = TRI_STATE_UNSPECIFIED);
 
 // Convenience wrapper around the above that reduces all the dimensions in the
 // operand shape.
