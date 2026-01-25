@@ -1068,7 +1068,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 5;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       } else if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
         return 3;
