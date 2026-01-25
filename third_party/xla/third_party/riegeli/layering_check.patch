@@ -1,0 +1,40 @@
+diff --git a/riegeli/messages/BUILD b/riegeli/messages/BUILD
+index 2de9c70e..363df32d 100644
+--- a/riegeli/messages/BUILD
++++ b/riegeli/messages/BUILD
+@@ -29,6 +29,7 @@ cc_library(
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_protobuf//:protobuf_lite",
++        "@com_google_protobuf//src/google/protobuf/io",
+     ],
+ )
+ 
+@@ -58,6 +59,7 @@ cc_library(
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_absl//absl/types:span",
+         "@com_google_protobuf//:protobuf_lite",
++        "@com_google_protobuf//src/google/protobuf/io",
+     ],
+ )
+ 
+diff --git a/riegeli/records/BUILD b/riegeli/records/BUILD
+index 576f2ec3..42dc97b3 100644
+--- a/riegeli/records/BUILD
++++ b/riegeli/records/BUILD
+@@ -45,6 +45,7 @@ cc_library(
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_protobuf//:protobuf",
++        "@com_google_protobuf//:protobuf_lite",
+     ],
+ )
+ 
+@@ -88,6 +89,7 @@ cc_library(
+         "@com_google_absl//absl/strings:cord",
+         "@com_google_absl//absl/synchronization",
+         "@com_google_protobuf//:protobuf",
++        "@com_google_protobuf//:protobuf_lite",
+     ],
+ )
+ 
