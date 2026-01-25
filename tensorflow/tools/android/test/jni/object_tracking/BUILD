@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -62,7 +63,7 @@ cc_library(
 )
 
 # Definition of the test for the object tracking library
-tf_native_cc_binary(
+cc_binary(
     name = "object_tracking_test",
     testonly = True,
     srcs = [
