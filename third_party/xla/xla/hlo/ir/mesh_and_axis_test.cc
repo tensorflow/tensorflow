@@ -210,6 +210,42 @@ TEST(MeshAndAxisTest, ValidatesMesh) {
       "Mesh must have at least one axis");
 }
 
+TEST(MeshAndAxisTest, FromProtoValidation) {
+  {
+    MeshProto proto;
+    auto* axis = proto.add_axes();
+    axis->set_name("x");
+    axis->set_size(1);
+
+    // 1 axis of size 1, but 2 device IDs.
+    proto.add_device_ids(0);
+    proto.add_device_ids(1);
+
+    EXPECT_DEATH(
+        Mesh::FromProto(proto),
+        "Number of device ids must match the product of mesh axis sizes");
+  }
+
+  {
+    MeshProto proto;
+    auto* axis = proto.add_axes();
+    axis->set_name("x");
+    axis->set_size(0);
+
+    proto.add_device_ids(0);
+
+    EXPECT_DEATH(Mesh::FromProto(proto), "Mesh axis size must be positive");
+  }
+
+  {
+    MeshProto proto;
+    proto.add_device_ids(0);
+    proto.add_device_ids(1);
+    EXPECT_DEATH(Mesh::FromProto(proto),
+                 "Maximal mesh must have exactly 1 device id");
+  }
+}
+
 TEST(MeshAndAxisTest, MeshToString) {
   Mesh mesh_uvw({10, 12, 15}, {"u", "v", "w"});
   EXPECT_EQ(mesh_uvw.ToString(), "@mesh<u=10,v=12,w=15>");

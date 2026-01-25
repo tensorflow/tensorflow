@@ -162,13 +162,13 @@ MeshProto Mesh::ToProto() const {
 }
 
 Mesh Mesh::FromProto(const MeshProto& proto) {
-  // TODO(b/454008727): Add validators for Mesh and AxisRef FromProto methods.
   if (proto.axes_size() == 0) {
     if (proto.device_ids_size() == 0) {
       return Mesh();
     }
     // Maximal mesh
-    // TODO(b/454008727): Validate device_ids_size is 1.
+    CHECK_EQ(proto.device_ids_size(), 1)
+        << "Maximal mesh must have exactly 1 device id.";
     return Mesh(proto.device_ids(0));
   }
 
@@ -177,6 +177,7 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   mesh_axis_sizes.reserve(proto.axes_size());
   mesh_axis_names.reserve(proto.axes_size());
   for (const auto& axis : proto.axes()) {
+    CHECK_GT(axis.size(), 0) << "Mesh axis size must be positive.";
     mesh_axis_sizes.push_back(axis.size());
     mesh_axis_names.push_back(axis.name());
   }
@@ -193,6 +194,8 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   std::vector<int64_t> device_ids(proto.device_ids().begin(),
                                   proto.device_ids().end());
   Array<int64_t> device_ids_array(mesh_axis_sizes);
+  CHECK_EQ(device_ids.size(), device_ids_array.num_elements())
+      << "Number of device ids must match the product of mesh axis sizes.";
   absl::c_copy(device_ids, device_ids_array.begin());
 
   TileAssignment tile_assignment =
