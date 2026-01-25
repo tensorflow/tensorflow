@@ -181,19 +181,40 @@ TEST(SpectrogramOpTest, InvalidStride) {
                                      ::testing::ContainsRegex("stride")));
 }
 
-TEST_F(SpectrogramOpTest, InvalidWindowSize) {
-  MakeOp(/*window_size=*/-35, /*stride=*/10, /*magnitude_squared=*/true);
-  AddInputFromArray<float>(TensorShape({1, 1}), {1.0f});
-  Status status = RunOpKernel();
-  EXPECT_FALSE(status.ok())  EXPECT_TRUE(absl::StrContains(status.message(), "window_size must be > 0"));
+TEST(SpectrogramOpTest, NegativeWindowSize) {
+  Scope root = Scope::NewRootScope();
+  const int audio_size = 8;
+  const int channel_size = 2;
+  Tensor audio_tensor(DT_FLOAT, TensorShape({audio_size, channel_size}));
+  test::FillValues<float>(
+      &audio_tensor, {-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, -1.0f,
+                      -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f});
+  Output audio_const_op = Const(root.WithOpName("audio_const_op"),
+                                Input::Initializer(audio_tensor));
+  AudioSpectrogram spectrogram_op =
+      AudioSpectrogram(root.WithOpName("spectrogram_op"), audio_const_op,
+                       /*window_size=*/-35, /*stride=*/1);
+  EXPECT_THAT(root.status(),
+              absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                                     ::testing::ContainsRegex("window size must be > 1")));
 }
 
-TEST_F(SpectrogramOpTest, InvalidStride) {
-  MakeOp(/*window_size=*/10, /*stride=*/-5, /*magnitude_squared=*/true);
-  AddInputFromArray<float>(TensorShape({1, 1}), {1.0f});
-  Status status = RunOpKernel();
-  EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(absl::StrContains(status.message(), "stride must be > 0"));
+TEST(SpectrogramOpTest, NegativeStride) {
+  Scope root = Scope::NewRootScope();
+  const int audio_size = 8;
+  const int channel_size = 2;
+  Tensor audio_tensor(DT_FLOAT, TensorShape({audio_size, channel_size}));
+  test::FillValues<float>(
+      &audio_tensor, {-1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, -1.0f,
+                      -1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f});
+  Output audio_const_op = Const(root.WithOpName("audio_const_op"),
+                                Input::Initializer(audio_tensor));
+  AudioSpectrogram spectrogram_op =
+      AudioSpectrogram(root.WithOpName("spectrogram_op"), audio_const_op,
+                       /*window_size=*/35, /*stride=*/-5739);
+  EXPECT_THAT(root.status(),
+              absl_testing::StatusIs(tsl::error::Code::INVALID_ARGUMENT,
+                                     ::testing::ContainsRegex("stride must be strictly positive")));
 }
 
 }  // namespace
