@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -856,7 +857,11 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+    const Tensor& handle_t = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(handle_t.shape()),
+                errors::InvalidArgument("resource_handle must be a scalar"));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, /*input=*/0, &handle));
     // The iterator resource is guaranteed to
     // exist because the variant tensor wrapping the deleter is provided as an
     // unused input to this op, which guarantees that it has not run yet.

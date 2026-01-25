@@ -32,7 +32,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.platform import test
 
 
@@ -131,6 +133,21 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
   def setUp(self):
     super(MultiDeviceIteratorTest, self).setUp()
     self._devices = self.configureDevicesForMultiDeviceTest(3)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDeleteMultiDeviceIteratorWithEmptyHandleDoesNotCrash(self):
+    # Explicitly place these on CPU to avoid device-placement issues on
+    # GPU-enabled builds where `Empty` for resource/variant may otherwise be
+    # placed on a non-CPU device.
+    with ops.device("/device:CPU:0"):
+      empty_handle = array_ops.empty([0], dtypes.resource)
+      dummy_deleter = array_ops.empty([], dtypes.variant)
+      with self.assertRaises(errors.InvalidArgumentError):
+        gen_dataset_ops.delete_multi_device_iterator(
+            multi_device_iterator=empty_handle,
+            iterators=[],
+            deleter=dummy_deleter,
+        )
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

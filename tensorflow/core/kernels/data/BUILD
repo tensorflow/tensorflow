@@ -602,6 +602,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
