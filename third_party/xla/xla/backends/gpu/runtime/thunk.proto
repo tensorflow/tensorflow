@@ -131,24 +131,6 @@ enum ThunkKindProto {
   THUNK_KIND_WHILE = 73;
 }
 
-message CopyThunkProto {
-  ShapedSliceProto source_buffer = 1;
-  ShapedSliceProto destination_buffer = 2;
-  int64 mem_size = 3;
-}
-
-message DeviceToHostCopyThunkProto {
-  CopyThunkProto copy_thunk = 1;
-}
-
-message HostToDeviceCopyThunkProto {
-  CopyThunkProto copy_thunk = 1;
-}
-
-message DeviceToDeviceCopyThunkProto {
-  CopyThunkProto copy_thunk = 1;
-}
-
 message ConditionalThunkProto {
   ShapedSliceProto branch_index_buffer = 1;
   repeated SequentialThunkProto branch_thunks = 2;

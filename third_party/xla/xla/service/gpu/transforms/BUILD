@@ -258,7 +258,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:copy",
-        "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:dynamic_memcpy_thunk",
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",

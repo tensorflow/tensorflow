@@ -13,63 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_COPY_THUNK_H_
-#define XLA_BACKENDS_GPU_RUNTIME_COPY_THUNK_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_DEVICE_TO_DEVICE_COPY_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_DEVICE_TO_DEVICE_COPY_THUNK_H_
 
 #include <cstdint>
 #include <memory>
-#include <utility>
+#include <tuple>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
-namespace se = ::stream_executor;
-
-class CopyThunk : public Thunk {
+// A thunk that copies data from a device buffer to another device buffer.
+class DeviceToDeviceCopyThunk : public Thunk {
  public:
-  class AsyncEvents {
-   public:
-    // Add a new copy-start completion event.
-    absl::Status Emplace(se::StreamExecutor* executor,
-                         const HloInstruction* instr,
-                         std::unique_ptr<se::Event> event);
+  // Constructs a CopyThunk that copies host data from `source_buffer` to the
+  // device buffer `destination_buffer`.
+  DeviceToDeviceCopyThunk(ThunkInfo thunk_info,
+                          const ShapedSlice& source_buffer,
+                          const ShapedSlice& destination_buffer,
+                          int64_t mem_size);
 
-    // Retrieve a completion event started by copy-start instruction
-    // `instr`, and remove the event from the collection.
-    absl::StatusOr<std::unique_ptr<se::Event>> Extract(
-        se::StreamExecutor* executor, const HloInstruction* instr);
-
-   private:
-    using Key = std::pair<se::StreamExecutor*, const HloInstruction*>;
-    absl::Mutex mutex_;
-    absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
-        ABSL_GUARDED_BY(mutex_);
-  };
-
-  CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
-            const ShapedSlice& destination_buffer, int64_t mem_size);
+  DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
+  DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   const ShapedSlice& source() const { return source_buffer_; }
   const ShapedSlice& destination() const { return destination_buffer_; }
-  uint64_t size_bytes() const { return mem_size_; }
+  int64_t size_bytes() const { return mem_size_; }
 
   BufferUses buffer_uses() const override {
     return {
@@ -78,16 +59,25 @@ class CopyThunk : public Thunk {
     };
   }
 
-  bool operator==(const CopyThunk& other) const {
-    return source() == other.source() && destination() == other.destination() &&
-           size_bytes() == other.size_bytes();
-  }
-
   absl::StatusOr<ThunkProto> ToProto() const override;
 
-  static absl::StatusOr<std::unique_ptr<CopyThunk>> FromProto(
-      ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
+  static absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>> FromProto(
+      ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
+
+  friend bool operator==(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    if (lhs.size_bytes() != rhs.size_bytes()) {
+      return false;
+    }
+    return std::tie(lhs.source_buffer_, lhs.destination_buffer_) ==
+           std::tie(rhs.source_buffer_, rhs.destination_buffer_);
+  }
+
+  friend bool operator!=(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    return !(lhs == rhs);
+  }
 
  private:
   const ShapedSlice source_buffer_;
@@ -98,4 +88,4 @@ class CopyThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_COPY_THUNK_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_DEVICE_TO_DEVICE_COPY_THUNK_H_
