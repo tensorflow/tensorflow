@@ -825,6 +825,7 @@ cc_library(
         ":all_reduce_kernel_rocm",
         ":amdhipblaslt_plugin",
         ":buffer_comparator_kernel_rocm",
+        ":collective_signal_rocm",
         ":hipfft_plugin",
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
@@ -1249,6 +1250,24 @@ rocm_library(
 )
 
 rocm_library(
+    name = "collective_signal_rocm",
+    hdrs = [
+        "collective_signal_rocm.cu.h",
+        "//xla/stream_executor/gpu:collective_signal.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
+)
+
+rocm_library(
     name = "all_reduce_kernel_rocm",
     srcs = [
         "all_reduce_kernel_rocm.cc",
@@ -1260,6 +1279,7 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
+        ":collective_signal_rocm",
         ":rocm_platform_id",
         "//xla:types",
         "//xla/service:collective_ops_utils",

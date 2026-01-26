@@ -782,6 +782,7 @@ cc_library(
 
 exports_files([
     "buffer_comparator_kernel_lib.cu.h",
+    "collective_signal.cu.h",
     "all_reduce_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
     "repeat_buffer_kernel.cu.h",
