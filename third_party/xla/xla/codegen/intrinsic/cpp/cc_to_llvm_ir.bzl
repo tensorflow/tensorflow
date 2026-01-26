@@ -107,6 +107,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         "-Wno-psabi",
         "-std=c++17",
         "-fno-experimental-sanitize-metadata=all",
+        "-fno-sanitize=all",
     ] + copts
 
     # Disabled features to avoid instrumentations in the IR. ALL sanitizers must be disabled.
