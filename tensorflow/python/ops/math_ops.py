@@ -1024,6 +1024,12 @@ def cast(x, dtype, name=None):
     TypeError: If `x` cannot be cast to the `dtype`.
 
   """
+  if isinstance(x, dtypes.DType):
+    raise TypeError(
+        "tf.cast expects a Tensor as input, but received a tf.DType "
+        f"({x}). Did you mean to cast a Tensor?"
+    )
+
   base_type = dtypes.as_dtype(dtype).base_dtype
   if (
       isinstance(x, tensor_lib.Tensor) or _pywrap_utils.IsResourceVariable(x)
