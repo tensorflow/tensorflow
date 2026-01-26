@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
@@ -278,18 +279,22 @@ class GpuCompiler : public LLVMCompiler {
     return Unimplemented("LinkModules is not implemented.");
   }
 
-  // New AOT compilation as part of the AOT split project.
+  // Runs HLO passes on the given module. If the module has a schedule, it is
+  // assumed that the module is already optimized and no passes are run.
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPassesIfNeeded(
+      std::unique_ptr<HloModule> hlo_module,
+      se::StreamExecutor* absl_nullable executor,
+      const CompileOptions& compile_options);
+
+  // New AOT compilation which compiles up the the Thunk generation stage.
   absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                        const AotCompilationOptions& options);
+                        se::StreamExecutor* executor,
+                        const CompileOptions& compile_options);
   // Legacy AOT compilation.
   absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                            const AotCompilationOptions& options);
-
-  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-  EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                              const AotCompilationOptions& options);
 
   se::Platform::Id platform_id_;
 

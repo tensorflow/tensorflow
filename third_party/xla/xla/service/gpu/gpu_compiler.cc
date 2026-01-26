@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -2817,30 +2818,57 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   // compilation.
   CHECK_EQ(options.PlatformId(), PlatformId());
 
+  CompileOptions compile_options;
+  compile_options.device_allocator = options.device_allocator();
+  compile_options.gpu_topology = options.gpu_topology();
+  compile_options.early_exit_with_layouts =
+      options.early_exit_point() ==
+      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment;
+
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_hlo_module,
+                   RunHloPassesIfNeeded(std::move(hlo_module),
+                                        options.executor(), compile_options));
+
   if (options.early_exit_point() !=
       AotCompilationOptions::EarlyExitPoint::kNone) {
-    return EarlyExitCompileAheadOfTime(std::move(hlo_module), options);
+    std::vector<std::unique_ptr<CompiledModule>> results;
+    results.push_back(std::make_unique<EarlyExitCompilationResult>(
+        std::move(optimized_hlo_module)));
+    return results;
   }
 
-  if (hlo_module->config()
+  if (optimized_hlo_module->config()
           .debug_options()
           .xla_gpu_experimental_aot_compiled_thunks()) {
-    return NewCompileAheadOfTime(std::move(hlo_module), options);
+    return NewCompileAheadOfTime(std::move(optimized_hlo_module),
+                                 options.executor(), compile_options);
   }
 
-  return LegacyCompileAheadOfTime(std::move(hlo_module), options);
+  return LegacyCompileAheadOfTime(std::move(optimized_hlo_module), options);
+}
+
+absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesIfNeeded(
+    std::unique_ptr<HloModule> hlo_module,
+    se::StreamExecutor* absl_nullable executor,
+    const CompileOptions& compile_options) {
+  if (hlo_module->has_schedule()) {
+    return hlo_module;
+  }
+
+  tsl::profiler::ScopedAnnotation annotation{[&] {
+    return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
+                           hlo_module->name(), hlo_module->unique_id());
+  }};
+  return RunHloPasses(std::move(hlo_module), executor, compile_options);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                                   const AotCompilationOptions& options) {
-  CompileOptions compile_options;
-  compile_options.device_allocator = options.device_allocator();
-  compile_options.gpu_topology = options.gpu_topology();
-
+                                   se::StreamExecutor* executor,
+                                   const CompileOptions& compile_options) {
   ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      RunBackend(std::move(hlo_module), options.executor(), compile_options));
+      RunBackend(std::move(hlo_module), executor, compile_options));
 
   std::vector<std::unique_ptr<CompiledModule>> results;
   TF_ASSIGN_OR_RETURN(results.emplace_back(), Export(executable.get()));
@@ -2848,45 +2876,8 @@ GpuCompiler::NewCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
-GpuCompiler::EarlyExitCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
-                                         const AotCompilationOptions& options) {
-  bool early_exit_with_layouts =
-      options.early_exit_point() ==
-      AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment;
-  CompileOptions compile_options;
-  compile_options.device_allocator = options.device_allocator();
-  compile_options.gpu_topology = options.gpu_topology();
-  compile_options.early_exit_with_layouts = early_exit_with_layouts;
-
-  std::vector<std::unique_ptr<CompiledModule>> results;
-  TF_ASSIGN_OR_RETURN(
-      auto optimized_module,
-      RunHloPasses(std::move(hlo_module), options.executor(), compile_options));
-  results.push_back(std::make_unique<EarlyExitCompilationResult>(
-      std::move(optimized_module)));
-  return std::move(results);
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                                       const AotCompilationOptions& options) {
-  std::unique_ptr<HloModule> optimized_module;
-
-  if (!hlo_module->has_schedule()) {
-    tsl::profiler::ScopedAnnotation annotation{[&] {
-      return absl::StrFormat("XlaCompile:#module=%s,program_id=%d#",
-                             hlo_module->name(), hlo_module->unique_id());
-    }};
-    CompileOptions compile_options;
-    compile_options.device_allocator = options.device_allocator();
-    compile_options.gpu_topology = options.gpu_topology();
-    ASSIGN_OR_RETURN(optimized_module,
-                     RunHloPasses(std::move(hlo_module), options.executor(),
-                                  compile_options));
-  } else {
-    optimized_module = std::move(hlo_module);
-  }
-
   std::optional<Compiler::GpuTargetConfig> target_config;
   if (options.gpu_topology().has_value() &&
       options.gpu_topology()->has_gpu_target_config()) {
@@ -2899,7 +2890,7 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   llvm::LLVMContext llvm_context;
   ASSIGN_OR_RETURN(
       CompileResultWithMetadata res,
-      CompileToBackendResult(optimized_module.get(), &llvm_context,
+      CompileToBackendResult(hlo_module.get(), &llvm_context,
                              {options.device_allocator()}, gpu_device_info));
 
   // Create GpuThunkAotCompilationResult if thunk runtime is enabled.
@@ -2907,8 +2898,7 @@ GpuCompiler::LegacyCompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   TF_ASSIGN_OR_RETURN(
       results.emplace_back(),
       LegacyGpuAotCompilationResult::FromModule(
-          optimized_module.get(),
-          res.compile_module_results.buffer_assignment.get(),
+          hlo_module.get(), res.compile_module_results.buffer_assignment.get(),
           res.backend_result.asm_text, res.backend_result.binary,
           res.backend_result.dnn_compiled_graphs, pointer_size_, this));
 
