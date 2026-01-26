@@ -17,6 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/depthtospace_op.h"
 #include "tensorflow/core/platform/types.h"
@@ -146,7 +147,7 @@ namespace functor {
 
 template <typename T>
 struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
-  void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
     const int batch_size = output.dimension(0);
     const int input_height = input.dimension(1);
@@ -159,7 +160,7 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
     const int total_count =
         batch_size * output_height * output_width * output_depth;
     if (total_count == 0) {
-      return;
+      return absl::OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(GpuLaunchKernel(
@@ -167,16 +168,18 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
         config.virtual_thread_count, input.data(), block_size, batch_size,
         input_height, input_width, input_depth, output_height, output_width,
         output_depth, output.data()));
+    return absl::OkStatus();
   }
-  void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output) {
     LOG(FATAL) << "5-D tensors should not be used with NHWC format";
+    return absl::InternalError("5-D tensors should not be used with NHWC format");
   }
 };
 
 template <typename T>
 struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
-  void operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
     const int batch_size = input.dimension(0);
     const int input_depth = input.dimension(1);
@@ -186,12 +189,12 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
     int64_t input_area_64 = MultiplyWithoutOverflow(input_width, input_height);
     if (input_area_64 < 0 || input_area_64 > INT32_MAX) {
       LOG(ERROR) << "input_width * input_height overflow in DepthToSpaceOpFunctor";
-      return;
+      return absl::InternalError("input_width * input_height overflow in DepthToSpaceOpFunctor");
     }
     int64_t input_depth_by_input_area_64 = MultiplyWithoutOverflow(input_depth, input_area_64);
     if (input_depth_by_input_area_64 < 0 || input_depth_by_input_area_64 > INT32_MAX) {
       LOG(ERROR) << "input_depth * input_area overflow in DepthToSpaceOpFunctor";
-      return;
+      return absl::InternalError("input_depth * input_area overflow in DepthToSpaceOpFunctor");
     }
     const int input_area = static_cast<int>(input_area_64);
     const int input_depth_by_input_area = static_cast<int>(input_depth_by_input_area_64);
@@ -213,38 +216,40 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
               0, d.stream(), total_count, input.data(), input_width,
               output_width, output_depth_by_input_area,
               input_depth_by_input_area, output.data()));
-          return;
+          return absl::OkStatus();
         case 3:
           TF_CHECK_OK(GpuLaunchKernel(
               D2S_NCHW_LOOP<T, 3>, config.block_count, config.thread_per_block,
               0, d.stream(), total_count, input.data(), input_width,
               output_width, output_depth_by_input_area,
               input_depth_by_input_area, output.data()));
-          return;
+          return absl::OkStatus();
         case 4:
           TF_CHECK_OK(GpuLaunchKernel(
               D2S_NCHW_LOOP<T, 4>, config.block_count, config.thread_per_block,
               0, d.stream(), total_count, input.data(), input_width,
               output_width, output_depth_by_input_area,
               input_depth_by_input_area, output.data()));
-          return;
+          return absl::OkStatus();
       }
     }
 
     // Other block sizes are processed by the generic kernel.
     const int total_count = batch_size * input_depth_by_input_area;
     if (total_count == 0) {
-      return;
+      return absl::OkStatus();
     }
     auto config = GetGpuLaunchConfig(total_count, d);
     TF_CHECK_OK(GpuLaunchKernel(
         D2S_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
         config.virtual_thread_count, input.data(), block_size, input_width,
         output_depth * input_height, output.data()));
+    return absl::OkStatus();
   }
-  void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
+  absl::Status operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output) {
     LOG(FATAL) << "5-D tensors should not be used with NCHW format";
+    return absl::InternalError("5-D tensors should not be used with NCHW format");
   }
 };
 }  // end namespace functor

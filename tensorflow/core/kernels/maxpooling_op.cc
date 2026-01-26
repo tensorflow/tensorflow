@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
@@ -1483,16 +1484,15 @@ template <typename T>
 struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, bool propagate_nans) {
-    bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
+    absl::Status status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
         params.out_width, params.window_rows, params.window_cols,
         params.row_stride, params.col_stride, params.pad_top, params.pad_left,
         output->flat<T>().data(), nullptr, context->eigen_gpu_device(),
         propagate_nans, false);
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launching MaxPoolForwardNoMask"));
+    if (!status.ok()) {
+      context->SetStatus(status);
     }
   }
 };
@@ -1502,7 +1502,7 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64_t> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output, Tensor* argmax,
                      bool propagate_nans, bool include_batch_in_index) {
-    bool status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
+    absl::Status status = functor::MaxPoolForwardWithOptionalArgmax<T>()(
         input.flat<T>().data(), params.tensor_in_batch, params.tensor_in_rows,
         params.tensor_in_cols, params.depth, params.out_height,
         params.out_width, params.window_rows, params.window_cols,
@@ -1510,9 +1510,8 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T, int64_t> {
         output->flat<T>().data(),
         reinterpret_cast<int64_t*>(argmax->flat<int64_t>().data()),
         context->eigen_gpu_device(), propagate_nans, include_batch_in_index);
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launching MaxPoolForwardWithArgmax"));
+    if (!status.ok()) {
+      context->SetStatus(status);
     }
   }
 };
@@ -1529,14 +1528,13 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
     const int top_offset = params.out_height * params.out_width * params.depth;
     const int bottom_offset =
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
-    bool status = functor::MaxPoolBackwardWithArgmax<T>()(
+    absl::Status status = functor::MaxPoolBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64_t*>(argmax.flat<int64_t>().data()),
         top_offset, bottom_offset, grad_out->flat<T>().data(),
         context->eigen_gpu_device(), include_batch_in_index);
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launching MaxPoolBackwardWithArgmax"));
+    if (!status.ok()) {
+      context->SetStatus(status);
     }
   }
 };
@@ -1554,14 +1552,13 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
     const int bottom_offset =
         params.out_width * params.out_height * params.depth;
-    bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
+    absl::Status status = functor::MaxPoolGradBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64_t*>(argmax.flat<int64_t>().data()),
         top_offset, bottom_offset, grad_out->flat<T>().data(),
         context->eigen_gpu_device(), include_batch_in_index);
-    if (!status) {
-      context->SetStatus(
-          errors::Internal("Failed launching MaxPoolGradBackwardWithArgmax"));
+    if (!status.ok()) {
+      context->SetStatus(status);
     }
   }
 };

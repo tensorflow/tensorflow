@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEPTHTOSPACE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DEPTHTOSPACE_OP_H_
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -42,11 +43,11 @@ namespace functor {
 //      n,iY,bY,iX,bX,oC
 template <typename Device, typename T, TensorFormat data_format>
 struct DepthToSpaceOpFunctor {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
+  absl::Status operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output);
 
   // This 5-D version is to support NCHW_VECT_C.
-  void operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
+  absl::Status operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output);
 };
 

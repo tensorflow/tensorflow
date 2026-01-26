@@ -269,10 +269,11 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, input.shape(), &output));
     if (input.NumElements() > 0) {
-      BiasGPU<T>::compute(context->template eigen_device<Device>(),
+      OP_REQUIRES_OK(context,
+          BiasGPU<T>::compute(context->template eigen_device<Device>(),
                           input.flat<T>().data(), bias.flat<T>().data(),
                           output->flat<T>().data(), batch, width, height, depth,
-                          channel, data_format_);
+                          channel, data_format_));
     }
   }
 
@@ -398,10 +399,11 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                const Tensor& output_backprop, int32_t batch,
                                int32_t width, int32_t height, int32_t depth,
                                int32_t channel, Tensor* output) {
-    BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
+    OP_REQUIRES_OK(context,
+        BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
                             output_backprop.template flat<T>().data(),
                             output->flat<T>().data(), batch, width, height,
-                            depth, channel, data_format_);
+                            depth, channel, data_format_));
   }
 
   void ComputeWithReduceSum(OpKernelContext* context,

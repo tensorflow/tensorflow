@@ -618,7 +618,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                   in_cols, window_cols, /*dilation_rate=*/1,
                                   col_stride, padding_, &out_width, &pad_cols));
 
-      RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
+      OP_REQUIRES_OK(context,
+          RunAvePoolBackwardNHWC<T>(out_backprop.flat<T>().data(),  // top_diff
                                 out_backprop_batch,             // num
                                 in_rows,                        // height
                                 in_cols,                        // width
@@ -632,7 +633,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                 pad_rows,                       // pad_t
                                 pad_cols,                       // pad_l
                                 output->flat<T>().data(),       // bottom_diff
-                                context->eigen_gpu_device());   // d
+                                context->eigen_gpu_device()));  // d
     } else {
       DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
                                    ksize_, stride_, padding_,
