@@ -518,15 +518,17 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
                                absl::string_view data) {
   std::unique_ptr<WritableFile> file;
-  absl::Status s = env->NewWritableFile(fname, &file);
-  if (!s.ok()) {
-    return s;
-  }
-  s = file->Append(data);
-  if (s.ok()) {
-    s = file->Close();
-  }
-  return s;
+  TF_RETURN_IF_ERROR(env->NewWritableFile(fname, &file));
+  TF_RETURN_IF_ERROR(file->Append(data));
+  return file->Close();
+}
+
+absl::Status AppendStringToFile(Env* env, const std::string& fname,
+                                absl::string_view data) {
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
+  TF_RETURN_IF_ERROR(file->Append(data));
+  return file->Close();
 }
 
 absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,

@@ -709,10 +709,11 @@ absl::Status Autotuner::DumpLogsToFile() {
   std::string textproto;
   tsl::protobuf::TextFormat::PrintToString(logs_, &textproto);
 
-  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+  TF_RETURN_IF_ERROR(tsl::AppendStringToFile(
       tsl::Env::Default(), autotune_config_.dump_logs_to, textproto));
-  VLOG(1) << "Autotune logs serialized to file: "
+  VLOG(1) << "Autotune logs appended to file: "
           << autotune_config_.dump_logs_to;
+  logs_.Clear();
   return absl::OkStatus();
 }
 
