@@ -63,7 +63,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
 TEST_F(XlaCompileLibTest, CompilesForCpu) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kCpu,
-                                std::nullopt, result),
+                                std::nullopt, std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
 }
 

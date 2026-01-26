@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/duration.pb.h"
+#include "absl/base/call_once.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,10 +31,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm-c/Target.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -70,11 +73,14 @@ limitations under the License.
 namespace xla {
 
 static absl::StatusOr<std::string> AotCompileCpuExecutable(
-    std::unique_ptr<HloModule> hlo_module) {
+    std::unique_ptr<HloModule> hlo_module,
+    std::optional<Compiler::CpuTargetConfig> target_config) {
   cpu::CpuCompiler cpu_compiler;
+  Compiler::CompileOptions compile_options;
+  compile_options.cpu_target_config = std::move(target_config);
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, {nullptr}));
+      cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
@@ -132,13 +138,15 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
-    std::optional<Compiler::GpuTargetConfig> target_config,
+    std::optional<Compiler::GpuTargetConfig> gpu_target_config,
+    std::optional<Compiler::CpuTargetConfig> cpu_target_config,
     CompilationResult& result) {
   if (backend == BackendType::kCpu) {
-    return AotCompileCpuExecutable(std::move(hlo_module));
+    return AotCompileCpuExecutable(std::move(hlo_module),
+                                   std::move(cpu_target_config));
   }
-  return CompileGpuExecutable(std::move(hlo_module), std::move(target_config),
-                              result);
+  return CompileGpuExecutable(std::move(hlo_module),
+                              std::move(gpu_target_config), result);
 }
 
 absl::Status WriteResultFile(const absl::string_view result_output_file,
@@ -242,11 +250,59 @@ absl::StatusOr<bool> LoadAutotuneDataFromModule(HloModuleAndMetadata* mod,
   return false;
 }
 
+static absl::once_flag targets_init;
+
+static void InitializeTargets() {
+  // Initialize all LLVM targets so we can cross compile.
+#if XLA_LLVM_AARCH32_AVAILABLE
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+#endif
+#if XLA_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+#endif
+#if XLA_LLVM_HEXAGON_AVAILABLE
+  LLVMInitializeHexagonTarget();
+  LLVMInitializeHexagonTargetInfo();
+  LLVMInitializeHexagonTargetMC();
+  LLVMInitializeHexagonAsmParser();
+  LLVMInitializeHexagonAsmPrinter();
+#endif
+#if XLA_LLVM_POWERPC_AVAILABLE
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
+  LLVMInitializePowerPCAsmPrinter();
+#endif
+#if XLA_LLVM_S390X_AVAILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
+  LLVMInitializeSystemZAsmPrinter();
+#endif
+#if XLA_LLVM_X86_AVAILABLE
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+#endif
+}
+
 }  // namespace internal
 
 absl::Status XlaCompileMain(const XlaCompileOptions& options) {
+  absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<HloModule> hlo_module;
-  std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   if (options.platform != "cpu" && options.platform != "gpu") {
     return absl::UnimplementedError(
         absl::StrCat("platform", options.platform, " is not supported"));
@@ -260,6 +316,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   const BackendType backend =
       (options.platform == "gpu" ? BackendType::kGpu : BackendType::kCpu);
 
+  std::optional<Compiler::GpuTargetConfig> gpu_cfg = std::nullopt;
   absl::string_view symbol_repo = options.repo_options.symbol_repo;
   if (absl::string_view symbol_id = options.repo_options.symbol_id;
       !symbol_id.empty()) {
@@ -268,7 +325,7 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         ReadModuleFromSymbolRepo(symbol_repo, symbol_id, backend));
 
     hlo_module = std::move(mod->hlo_module);
-    target_config = ReadTargetConfigFromModule(mod.get(), backend);
+    gpu_cfg = std::move(*ReadTargetConfigFromModule(mod.get(), backend));
   } else {
     TF_ASSIGN_OR_RETURN(hlo_module, LoadModule(options.module_path));
   }
@@ -299,7 +356,8 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     }
   });
   // Run AOT compilation.
-  std::optional<Compiler::GpuTargetConfig> cfg = std::nullopt;
+  std::optional<Compiler::CpuTargetConfig> cpu_cfg = std::nullopt;
+
   if (backend == BackendType::kGpu) {
     if (absl::string_view gpu_target_config_path =
             options.gpu_options.gpu_target_config_path;
@@ -316,11 +374,8 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 
-      TF_ASSIGN_OR_RETURN(
-          Compiler::GpuTargetConfig parsed_target_config,
-          Compiler::GpuTargetConfig::FromProto(gpu_target_config_proto));
-      target_config = std::make_unique<Compiler::GpuTargetConfig>(
-          std::move(parsed_target_config));
+      TF_ASSIGN_OR_RETURN(gpu_cfg, Compiler::GpuTargetConfig::FromProto(
+                                       gpu_target_config_proto));
 
       if (absl::string_view autotune_results_path =
               options.gpu_options.autotune_results_path;
@@ -330,13 +385,19 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
             autotune_results_path));
       }
     }
-
-    cfg = (options.gpu_options.use_attached_device)
-              ? std::nullopt
-              : std::make_optional(*std::move(target_config));
+    if (options.gpu_options.use_attached_device) {
+      gpu_cfg = std::nullopt;
+    }
+  } else if (backend == BackendType::kCpu) {
+    cpu::TargetMachineOptions target_machine_options(
+        options.cpu_options.target_triple, options.cpu_options.target_cpu,
+        options.cpu_options.target_features);
+    cpu_cfg =
+        std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
   }
-  auto result = CompileExecutable(std::move(hlo_module), backend,
-                                  std::move(cfg), compilation_result);
+  auto result =
+      CompileExecutable(std::move(hlo_module), backend, std::move(gpu_cfg),
+                        std::move(cpu_cfg), compilation_result);
   *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
   if (!result.ok()) {
     return result.status();

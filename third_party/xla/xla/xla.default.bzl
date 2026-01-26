@@ -28,6 +28,9 @@ load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY + LEGACY_XLA_USERS)
 
+def xla_compile_target_cpu():
+    return ""
+
 def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
     pass

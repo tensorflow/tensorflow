@@ -30,6 +30,15 @@ load(
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load(
+    "//xla/tsl/platform/default:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
+    "if_llvm_hexagon_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
+load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
@@ -1004,16 +1013,53 @@ xla_cc_binary(
 )
 
 cc_library(
+    name = "llvm_targets",
+    deps = [
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+    ]) + if_llvm_hexagon_available([
+        "@llvm-project//llvm:HexagonAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:HexagonCodeGen",  # fixdeps: keep
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ]),
+)
+
+cc_library(
     name = "xla_compile_lib",
     srcs = ["xla_compile_lib.cc"],
     hdrs = ["xla_compile_lib.h"],
+    defines = if_llvm_aarch32_available(["XLA_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+        "XLA_LLVM_AARCH64_AVAILABLE=1",
+    ]) + if_llvm_hexagon_available([
+        "XLA_LLVM_HEXAGON_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "XLA_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "XLA_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "XLA_LLVM_X86_AVAILABLE=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":hlo_module_loader",
+        ":llvm_targets",  # fixdeps: keep
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:mlir_to_hlo",
@@ -1028,6 +1074,7 @@ cc_library(
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_executable",
+        "//xla/service/cpu:executable_proto_cc",
         "//xla/service/gpu:gpu_symbol_repository",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_address_allocator",
@@ -1043,6 +1090,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_to_from_proto",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1050,6 +1098,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:duration_cc_proto",
         "@com_google_protobuf//:protobuf",
+        "@llvm-project//llvm:Target",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

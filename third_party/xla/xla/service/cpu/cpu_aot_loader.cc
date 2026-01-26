@@ -164,6 +164,9 @@ CpuAotLoader::LoadAotCompilationResult(
 absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuAotLoader::LoadAotCompilationResult(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
+  VLOG(3) << "AOT result target machine options: "
+          << aot_result_proto.target_machine_options().DebugString();
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
@@ -200,6 +203,12 @@ CpuAotLoader::LoadAotCompilationResult(
       host_machine_features_vector.push_back(feature.str());
     }
   }
+
+  VLOG(3) << "Host machine options:"
+          << "\nHost CPU: " << llvm::sys::getHostCPUName().str()
+          << "\nHost triple: " << llvm::sys::getDefaultTargetTriple()
+          << "\nHost features: "
+          << absl::StrJoin(host_machine_features_vector, ",");
 
   for (const absl::string_view feature : compile_machine_features) {
     if (feature[0] == '+' &&

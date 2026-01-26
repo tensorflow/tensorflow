@@ -75,7 +75,7 @@ TEST_P(XlaDevicelessCompileLibTest, CompilesForGpuWithoutDevice) {
 
   CompilationResult result;
   ASSERT_THAT(CompileExecutable(std::move(module), BackendType::kGpu,
-                                target_config, result),
+                                target_config, std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
