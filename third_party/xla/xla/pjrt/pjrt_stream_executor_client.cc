@@ -1571,7 +1571,7 @@ PjRtStreamExecutorClient::RunAsync(
       auto buf =
           tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
               ->device_buffer();
-      if (&*buf == &*input.buf) {
+      if (buf.GetAsyncValue() == input.buf.GetAsyncValue()) {
         input.is_donated = true;
       }
     }
