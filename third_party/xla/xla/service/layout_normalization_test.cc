@@ -21,6 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
@@ -982,6 +984,52 @@ ENTRY main {
 // CHECK: %[[TRANSPOSE:.*]] = f32[2,2,3,2]{3,2,1,0} transpose
 // CHECK: multiply({{.*}}, %[[TRANSPOSE]])
 )");
+}
+
+TEST_F(LayoutNormalizationTest,
+       CustomCallTransformerModifiesInPlaceAndReturnsNullopt) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,2]{1,0} parameter(0)
+  ROOT custom-call = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="foo"
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  CustomCallTransformer transformer = [](HloCustomCallInstruction* instruction)
+      -> absl::StatusOr<std::optional<HloInstruction*>> {
+    instruction->set_custom_call_target("bar");
+    return std::nullopt;
+  };
+
+  LayoutNormalization layout_normalization(transformer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Verify the change actually happened
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->custom_call_target(), "bar");
+}
+
+TEST_F(LayoutNormalizationTest, GetTupleElementDoesNotTriggerChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,2]{1,0} parameter(0)
+  tuple = (f32[2,2]{1,0}) tuple(p0)
+  ROOT gte = f32[2,2]{1,0} get-tuple-element(tuple), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LayoutNormalization layout_normalization;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

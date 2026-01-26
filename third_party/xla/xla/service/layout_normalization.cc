@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -160,8 +162,10 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_normalized = MaybeBitcast(hlo, normalized_shape);
     SetVisited(*bc_to_normalized);
     auto bc_to_orig = MaybeBitcast(bc_to_normalized, shape);
-    TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
-    MarkAsChanged();
+    if (bc_to_orig != hlo) {
+      TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
+      MarkAsChanged();
+    }
     return absl::OkStatus();
   }
 
@@ -690,13 +694,24 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleCustomCall(HloInstruction* hlo) override {
     if (custom_call_transformer_) {
+      auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+      const std::string original_target = custom_call->custom_call_target();
+      const std::string original_backend_config =
+          custom_call->raw_backend_config_string();
+      absl::InlinedVector<HloInstruction*, 4> original_operands(
+          custom_call->operands().begin(), custom_call->operands().end());
       TF_ASSIGN_OR_RETURN(
           std::optional<HloInstruction*> transformed_custom_call,
-          custom_call_transformer_(Cast<HloCustomCallInstruction>(hlo)));
+          custom_call_transformer_(custom_call));
       if (transformed_custom_call) {
         SetVisited(*(*transformed_custom_call)->operand(0));
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
         return absl::OkStatus();
+      }
+      if (custom_call->custom_call_target() != original_target ||
+          custom_call->raw_backend_config_string() != original_backend_config ||
+          !absl::c_equal(custom_call->operands(), original_operands)) {
+        MarkAsChanged();
       }
     }
     return DefaultAction(hlo);
