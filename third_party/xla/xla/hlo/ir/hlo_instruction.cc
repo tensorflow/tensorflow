@@ -48,6 +48,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/util/message_differencer.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
