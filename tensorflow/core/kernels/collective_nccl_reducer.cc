@@ -108,7 +108,8 @@ void NcclReducer::Run(StatusCallback done) {
     nccl_done->WaitForNotification();
   }
   {
-    profiler::TraceMe activity("GroupSizeCopy", profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe activity("GroupSizeCopy",
+                               tsl::profiler::TraceMeLevel::kInfo);
     group_size_ready->WaitForNotification();
   }
   absl::Status final_status =
