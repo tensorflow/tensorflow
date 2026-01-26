@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_structs.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -181,6 +182,20 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
+    XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *gpu_compute_capability =
+        const_cast<stream_executor::GpuComputeCapability*>(  // NOLINT
+            gpu->gpu_compute_capability);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 const XLA_FFI_InternalApi* GetInternalApi() {
   static XLA_FFI_InternalApi internal_api = {
       // Generic XLA APIs available on all XLA backends.
@@ -202,6 +217,7 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
       XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
       XLA_FFI_INTERNAL_CollectiveCliques_Get,
+      XLA_FFI_INTERNAL_GpuComputeCapability_Get,
   };
 
   return &internal_api;

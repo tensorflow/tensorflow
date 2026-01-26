@@ -1353,7 +1353,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
       std::unique_ptr<Thunk> thunk,
       DeserializeThunkProto(proto.thunk(), params.mlir_allocations.value(),
                             params.debug_module.get(), platform_name,
-                            symbol_resolver));
+                            gpu_compute_capability, symbol_resolver));
 
   if (dynamic_cast<const SequentialThunk*>(thunk.get()) == nullptr) {
     return absl::InvalidArgumentError(

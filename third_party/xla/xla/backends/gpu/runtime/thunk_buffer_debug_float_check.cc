@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffers_float_check_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
@@ -57,7 +56,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -327,7 +328,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateDebugInitThunk(
   return CustomCallThunk::Create(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check_init",
       buffer_debug_init_bundle, /*operands=*/{shaped_log_slice},
-      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
+      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation(),
+      se::GpuComputeCapability());
 }
 
 absl::StatusOr<std::unique_ptr<CustomCallThunk>>
@@ -351,7 +353,8 @@ CreateBufferDebugFloatCheckThunk(
       Thunk::ThunkInfo(), "xla_gpu_buffer_debug_float_check",
       std::move(float_check_bundle),
       /*operands=*/{shaped_log_slice},
-      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation());
+      /*results=*/{}, /*attributes=*/{}, hlo_module->entry_computation(),
+      se::GpuComputeCapability());
 }
 
 }  // namespace

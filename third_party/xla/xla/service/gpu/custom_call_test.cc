@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -54,9 +55,13 @@ limitations under the License.
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
@@ -84,6 +89,7 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 namespace xla {
 namespace {
 using ::absl_testing::StatusIs;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class CustomCallTest : public ClientLibraryTestRunnerMixin<
@@ -1248,6 +1254,94 @@ TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
+}
+
+TEST_F(CustomCallHloTest, InstantiateCanAccessTargetGpuComputeCapability) {
+  XLA_FFI_DEFINE_HANDLER(
+      kInstantiateCanAccessTargetComputeCapability,
+      [](const se::GpuComputeCapability* gpu_compute_capability) {
+        if (gpu_compute_capability == nullptr) {
+          return absl::InvalidArgumentError("Gpu compute capability is null");
+        }
+        return absl::OkStatus();
+      },
+      ffi::Ffi::BindInstantiate().Ctx<ffi::TargetGpuComputeCapability>());
+
+  XLA_FFI_DEFINE_HANDLER(
+      kWriteTargetComputeCapabilityIntoBuffer,
+      ([](ffi::Result<ffi::AnyBuffer> output_buffer,
+          const se::GpuComputeCapability* gpu_compute_capability,
+          se::Stream* stream) -> absl::Status {
+        const stream_executor::CudaComputeCapability* cuda_compute_capability =
+            gpu_compute_capability->cuda_compute_capability();
+
+        std::array<int32_t, 2> result{};
+        if (cuda_compute_capability != nullptr) {
+          result[0] = gpu_compute_capability->cuda_compute_capability()->major;
+          result[1] = gpu_compute_capability->cuda_compute_capability()->minor;
+        } else {
+          // If we can't represent the compute capability with a pair of
+          // integers, we return a made up value.
+          result[0] = 42;
+          result[1] = 24;
+        }
+        se::DeviceAddressBase output_buffer_mem =
+            output_buffer->device_memory();
+        return stream->Memcpy(&output_buffer_mem, result.data(),
+                              result.size() * sizeof(int32_t));
+      }),
+      ffi::Ffi::Bind()
+          .Ret<ffi::AnyBuffer>()
+          .Ctx<ffi::TargetGpuComputeCapability>()
+          .Ctx<ffi::Stream>());
+
+  xla::ffi::Ffi::RegisterStaticHandler(
+      ffi::GetXlaFfiApi(), "xla.gpu.access_target_gpu_compute_capability",
+      PlatformName(),
+      {
+          /*.instantiate=*/kInstantiateCanAccessTargetComputeCapability,
+          /*.prepare=*/nullptr,
+          /*.initialize=*/nullptr,
+          /*.execute=*/kWriteTargetComputeCapabilityIntoBuffer,
+      });
+
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    p1 = s32[2] parameter(0)
+    ROOT v = s32[2] custom-call(p1), custom_call_target="xla.gpu.access_target_gpu_compute_capability",
+      api_version=API_VERSION_TYPED_FFI
+  })";
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnUnverifiedModule(
+          kModuleStr, GetModuleConfigForTest(/*replica_count=*/1)));
+
+  // The input literal is not used.
+  auto input_literal = LiteralUtil::CreateR1<int32_t>({1, 2});
+  ASSERT_OK_AND_ASSIGN(Literal result,
+                       Execute(std::move(module), {&input_literal}));
+
+  // Determining the compute capability of the device we're
+  // running on.
+  stream_executor::Platform* platform =
+      PlatformUtil::GetPlatform("gpu").value();
+  se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
+  se::GpuComputeCapability gpu_compute_capability =
+      stream_executor->GetDeviceDescription().gpu_compute_capability();
+  const se::CudaComputeCapability* cuda_compute_capability =
+      gpu_compute_capability.cuda_compute_capability();
+
+  // If we can represent the compute capability with a pair of integers, we
+  // expect to get those values back. Otherwise, we expect to get made up
+  // values.
+  if (cuda_compute_capability != nullptr) {
+    EXPECT_THAT(result.data<int32_t>(),
+                ElementsAre(cuda_compute_capability->major,
+                            cuda_compute_capability->minor));
+  } else {
+    EXPECT_THAT(result.data<int32_t>(), ElementsAre(42, 24));
+  }
 }
 
 }  // anonymous namespace

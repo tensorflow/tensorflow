@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 
@@ -71,6 +72,8 @@ struct XLA_FFI_ExecutionContext {
     xla::gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
     xla::gpu::CollectiveMemoryRequests* collective_memory_requests = nullptr;
     const xla::gpu::CollectiveCliques* collective_cliques = nullptr;
+    const stream_executor::GpuComputeCapability* gpu_compute_capability =
+        nullptr;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
