@@ -91,6 +91,22 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
 };
 
+class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
+ public:
+  explicit PjRtStreamExecutorDeviceEventSet(size_t reservation) {
+    events_.reserve(reservation);
+  }
+
+  void AddEvent(BufferSequencingEvent* event) { events_.insert(event); }
+
+  const absl::flat_hash_set<BufferSequencingEvent*>& events() const {
+    return events_;
+  }
+
+ private:
+  absl::flat_hash_set<BufferSequencingEvent*> events_;
+};
+
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
  public:
   PjRtStreamExecutorRawBuffer(

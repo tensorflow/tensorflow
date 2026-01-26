@@ -80,13 +80,6 @@ limitations under the License.
 
 namespace xla {
 
-struct PjRtStreamExecutorExecutionInput {
-  // Donation is not complete until ReleaseDeviceMemory() is called on the
-  // TrackedDeviceBuffer that provides buf.
-  bool is_donated;
-  tsl::AsyncValueRef<RawSEDeviceMemory> buf;
-};
-
 struct PjRtStreamExecutorExecutionOutput {
   // Donated inputs which must be freed.
   std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> to_be_released;
@@ -360,7 +353,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   virtual absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
-      std::vector<PjRtStreamExecutorExecutionInput> flat_arguments,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
       ExecutableRunOptions run_options, bool parameter_is_tupled_arguments,
       absl::Span<const Shape> executable_parameter_shapes);
@@ -663,7 +656,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // donated due to aliases that were specified by the computation.
   absl::Status SetUpDonation(bool tuple_inputs);
 
-  virtual absl::StatusOr<std::vector<PjRtStreamExecutorExecutionInput>>
+  virtual absl::StatusOr<std::vector<tsl::RCReference<CommonPjRtRawBuffer>>>
   MakeExecutionInputs(
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<const Shape> executable_parameter_shapes,
@@ -677,14 +670,6 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       PjRtDevice* device,
       std::vector<CommonPjRtBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
-
-  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeOutputBuffers(
-      int device_ordinal, const ExecuteOptions& options,
-      const xla::Shape& output_device_shape,
-      absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>& results,
-      BufferSequencingEventRef definition_event, PjRtDevice* device,
       std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
 
   absl::StatusOr<Result> ExecuteHelper(
