@@ -28,6 +28,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "google",
+    flag_values = {":oss_setting": "False"},
+    visibility = ["//visibility:public"],
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
@@ -579,6 +585,13 @@ config_setting(
 bool_flag(
     name = "ci_build",
     build_setting_default = False,
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "libtpu_on_gce",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("//tools/cc_target_os:gce", ":google"),
     visibility = ["//visibility:public"],
 )
 

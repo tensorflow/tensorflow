@@ -146,7 +146,7 @@ def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
         # copybara:uncomment_begin(different config setting in OSS)
-        # "//tools/cc_target_os:gce": if_true,
+        # "//xla/tsl:libtpu_on_gce": if_true,
         # copybara:uncomment_end_and_comment_begin
         clean_dep("//xla/tsl:with_tpu_support"): if_true,
         # copybara:comment_end
