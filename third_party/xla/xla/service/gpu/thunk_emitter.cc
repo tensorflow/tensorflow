@@ -948,24 +948,22 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceRadixSort(
     return Internal("Invalid number of operands for radix sort");
   }
 
-  absl::InlinedVector<BufferAllocation::Slice, 2> operands;
+  absl::InlinedVector<ShapedSlice, 2> operands;
   for (int i = 0; i < instr->operand_count(); ++i) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice operand,
-                        GetAllocationSliceForHlo(instr->operand(i), {}));
+    TF_ASSIGN_OR_RETURN(ShapedSlice operand,
+                        GetShapedSliceForHlo(instr->operand(i), {}));
     operands.push_back(operand);
   }
 
-  absl::InlinedVector<BufferAllocation::Slice, 2> results;
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
-                      GetAllocationSliceForHlo(instr, {0}));
+  absl::InlinedVector<ShapedSlice, 2> results;
+  TF_ASSIGN_OR_RETURN(ShapedSlice result, GetShapedSliceForHlo(instr, {0}));
   results.push_back(result);
 
   BufferAllocation::Slice scratch;
   if (instr->operand_count() == 1) {
     TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {1}));
   } else {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
-                        GetAllocationSliceForHlo(instr, {1}));
+    TF_ASSIGN_OR_RETURN(ShapedSlice result, GetShapedSliceForHlo(instr, {1}));
     results.push_back(result);
     TF_ASSIGN_OR_RETURN(scratch, GetAllocationSliceForHlo(instr, {2}));
   }
@@ -978,10 +976,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceRadixSort(
       CubSortThunk::Create(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
-          operand_shape.element_type(),
-          instr->operand_count() == 2
-              ? std::optional(instr->operand(1)->shape().element_type())
-              : std::nullopt,
           operands, results, scratch, options.descending(),
           Product(operand_shape.dimensions()) /
               operand_shape.dimensions(operand_shape.dimensions().size() - 1),

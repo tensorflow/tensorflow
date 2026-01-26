@@ -290,13 +290,11 @@ message CublasLtMatmulThunkProto {
 }
 
 message CubSortThunkProto {
-  xla.PrimitiveType type = 1;
-  optional xla.PrimitiveType value_type = 3;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto operands = 4;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto results = 5;
-  xla.buffer_assignment.BufferAllocationSliceProto scratch = 6;
-  bool descending = 7;
-  int64 batch_size = 8;
+  repeated ShapedSliceProto operands = 1;
+  repeated ShapedSliceProto results = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch = 3;
+  bool descending = 4;
+  int64 batch_size = 5;
 }
 
 message NormThunkProto {

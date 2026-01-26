@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -57,10 +58,8 @@ class CubSortRunnerInterface {
 class CubSortThunk : public Thunk {
  public:
   static absl::StatusOr<std::unique_ptr<CubSortThunk>> Create(
-      ThunkInfo thunk_info, PrimitiveType type,
-      std::optional<PrimitiveType> value_type,
-      absl::InlinedVector<BufferAllocation::Slice, 2> operands,
-      absl::InlinedVector<BufferAllocation::Slice, 2> results,
+      ThunkInfo thunk_info, absl::InlinedVector<ShapedSlice, 2> operands,
+      absl::InlinedVector<ShapedSlice, 2> results,
       BufferAllocation::Slice scratch, bool descending, int64_t batch_size,
       absl::string_view platform_name);
 
@@ -77,8 +76,8 @@ class CubSortThunk : public Thunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
-  BufferAllocation::Slice operand(int i) const { return operands_[i]; }
-  BufferAllocation::Slice result(int i) const { return results_[i]; }
+  BufferAllocation::Slice operand(int i) const { return operands_[i].slice; }
+  BufferAllocation::Slice result(int i) const { return results_[i].slice; }
   BufferAllocation::Slice scratch() const { return scratch_; }
   bool descending() const { return descending_; }
   int64_t batch_size() const { return batch_size_; }
@@ -87,13 +86,13 @@ class CubSortThunk : public Thunk {
   CubSortThunk(ThunkInfo thunk_info,
                std::unique_ptr<CubSortRunnerInterface> runner,
                PrimitiveType type, std::optional<PrimitiveType> value_type,
-               absl::InlinedVector<BufferAllocation::Slice, 2> operands,
-               absl::InlinedVector<BufferAllocation::Slice, 2> results,
+               absl::InlinedVector<ShapedSlice, 2> operands,
+               absl::InlinedVector<ShapedSlice, 2> results,
                BufferAllocation::Slice scratch, bool descending,
                int64_t batch_size);
   std::unique_ptr<CubSortRunnerInterface> runner_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> operands_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> results_;
+  absl::InlinedVector<ShapedSlice, 2> operands_;
+  absl::InlinedVector<ShapedSlice, 2> results_;
   BufferAllocation::Slice scratch_;
   PrimitiveType type_;
   std::optional<PrimitiveType> value_type_;

@@ -941,6 +941,7 @@ cc_library(
         "//xla/ffi/api:c_api",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/service/gpu:buffer_allocations",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
