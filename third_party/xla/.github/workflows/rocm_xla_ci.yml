@@ -49,6 +49,7 @@ jobs:
         run: |
           docker run -dt \
             --name ${{ env.CONTAINER_NAME }} \
+            --init \
             --network=host \
             --device=/dev/dri \
             --device=/dev/kfd \
@@ -58,6 +59,7 @@ jobs:
             --shm-size=16G \
             --cap-add=SYS_PTRACE \
             --security-opt=seccomp=unconfined \
+            --tmpfs /root/.cache/bazel:rw,exec,size=80g \
             -v ${{ github.workspace }}:/workspace \
             -v ${{ github.workspace }}/rocAutomation/resources/certificates:/tf/certificates:ro \
             -v ${{ github.workspace }}/rocAutomation/resources/upstream-xla-data/rocm_tag_filters.sh:/workspace/build_tools/rocm/rocm_tag_filters.sh:ro \
@@ -65,12 +67,29 @@ jobs:
             -w /workspace \
             ${{ env.DOCKER_IMAGE }}
 
-      - name: Test XLA
+      - name: CPU Info
+        run: |
+          docker exec ${{ env.CONTAINER_NAME }} bash -c "lscpu"
+
+      - name: ROCm info
+        run: |
+          docker exec ${{ env.CONTAINER_NAME }} bash -c "/opt/rocm/bin/rocminfo"
+
+      - name: Test XLA [single_gpu]
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
-            bash -c "build_tools/rocm/execute_ci_build.sh"
+            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_single_gpu --local_test_jobs=2 --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a"
+
+      - name: Test XLA [multi_gpu]
+        if: always()
+        run: |
+          docker exec \
+            ${{ env.CONTAINER_NAME }} \
+            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_multi_gpu --strategy=TestRunner=local --local_test_jobs=2"
 
       - name: Cleanup container
         if: always()
-        run: docker rm -f ${{ env.CONTAINER_NAME }} || true
+        run: |
+           docker stop --time=60 ${{ env.CONTAINER_NAME }} || true
+           docker rm -f ${{ env.CONTAINER_NAME }} || true
