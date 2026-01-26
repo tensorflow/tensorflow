@@ -100,7 +100,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
         np.minimum,
         'minimum',
         check_promotion_result_type=False)
-  
+
   def testMaximum(self):
     # The numpy version has strange result type when promotion happens,
     # so set check_promotion_result_type to False.
@@ -234,6 +234,15 @@ class MathTest(test.TestCase, parameterized.TestCase):
   def testIsCloseInt(self):
     a = np.asarray([1, 2, 3], np.int32)
     b = np.asarray([1, 3, 4], np.int32)
+
+    expected = np.isclose(a.astype(np.float64), b.astype(np.float64))
+    actual = np_math_ops.isclose(a, b)
+
+    self.match(actual, expected)
+
+  def testIsCloseIntBroadcasting(self):
+    a = np.asarray([[1, 2, 3], [4, 5, 6]], np.int32)
+    b = np.asarray([1], np.int32)
 
     expected = np.isclose(a.astype(np.float64), b.astype(np.float64))
     actual = np_math_ops.isclose(a, b)
