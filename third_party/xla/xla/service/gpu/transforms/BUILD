@@ -1889,6 +1889,41 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "mosaic_collective_metadata_rewriter",
+    srcs = ["mosaic_collective_metadata_rewriter.cc"],
+    hdrs = ["mosaic_collective_metadata_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_creation_utils",
+        "//xla/service/gpu:gpu_memory_space_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "mosaic_collective_metadata_rewriter_test",
+    srcs = ["mosaic_collective_metadata_rewriter_test.cc"],
+    deps = [
+        ":mosaic_collective_metadata_rewriter",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:layout_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "multi_output_fusion",
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],

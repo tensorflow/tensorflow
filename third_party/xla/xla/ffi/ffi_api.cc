@@ -104,7 +104,8 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
           options.collective_params,
           options.collective_clique_requests,
           options.collective_memory_requests,
-          options.collective_cliques};
+          options.collective_cliques,
+          options.gpu_compute_capability};
     }
   };
 

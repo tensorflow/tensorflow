@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
@@ -120,7 +120,8 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
     return DeserializeThunkProto(thunk_proto, fake_allocations_span,
                                  /*hlo_module*/ nullptr,
-                                 /*platform_name=*/"TEST_PLATFORM");
+                                 /*platform_name=*/"TEST_PLATFORM",
+                                 /*gpu_compute_capability=*/{});
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -591,7 +592,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_offsets{
@@ -751,7 +753,8 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
@@ -1459,7 +1462,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{

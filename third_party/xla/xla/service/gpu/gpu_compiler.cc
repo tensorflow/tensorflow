@@ -253,6 +253,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
 #include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
+#include "xla/service/gpu/transforms/mosaic_collective_metadata_rewriter.h"
 #include "xla/service/gpu/transforms/move_copy_to_users.h"
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/gpu/transforms/ragged_all_to_all_canonicalizer.h"
@@ -1362,6 +1363,7 @@ absl::Status RunLayoutNormalizationPasses(
     HloModule* hlo_module, const AlgebraicSimplifierOptions& algsimp_options,
     const se::GpuComputeCapability& gpu_version) {
   HloPassPipeline layout_normalization_pipeline("layout normalization");
+  layout_normalization_pipeline.AddPass<MosaicCollectiveMetadataRewriter>();
   layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
   layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
   layout_normalization_pipeline.AddPass<LayoutNormalization>(

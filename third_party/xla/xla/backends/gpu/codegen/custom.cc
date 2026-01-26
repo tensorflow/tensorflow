@@ -949,7 +949,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         thunk_info, call_target_name, std::move(ops), std::move(res),
         std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0],
-        ir_emitter_context.platform_name());
+        ir_emitter_context.platform_name(),
+        ir_emitter_context.gpu_compute_capability());
   };
 
   auto legacy_thunk =

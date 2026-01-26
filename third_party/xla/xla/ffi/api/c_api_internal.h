@@ -122,6 +122,11 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
     XLA_FFI_ExecutionContext* ctx, void** collective_clique);
 
+// Returns a pointer to `const xla::gpu::GpuTargetConfig` which allows FFI
+// handlers to access the GPU target config at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
+    XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -151,6 +156,7 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveCliques_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GpuComputeCapability_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD
