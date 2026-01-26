@@ -25,10 +25,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -41,11 +43,11 @@ class BasicAtomProgramCompiler final : public xla::ifrt::AtomProgramCompiler {
       xla::ifrt::Client* absl_nonnull client,
       absl::Span<const xla::ifrt::DeviceId> device_assignments);
 
-  absl::StatusOr<xla::ifrt::AtomProgramCompileResult> CompileXla(
+  tsl::Future<LoadedExecutableRef> CompileXla(
       std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
       xla::CompileOptions options) final;
 
-  absl::StatusOr<xla::ifrt::AtomProgramCompileResult> CompileMpmdReshard(
+  tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
       std::vector<xla::ifrt::DType> dtypes,
       std::vector<xla::ifrt::Shape> shapes,
       std::vector<xla::ifrt::IfrtArrayType> in_array_types,

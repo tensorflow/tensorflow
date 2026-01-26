@@ -476,6 +476,10 @@ def IfrtToDotPass :
     if the destination node has a control dependency to execute after the source
     node or uses an output of the source node directly, or indirectly via a
     `ifrt.CopyArraysOp`.
+
+    Note: Running this pass breaks asynchronous compilation since the pass needs
+    to query executable information, making IFRT IR compilation much more
+    expensive. Therefore, This pass must be enabled only for debugging purposes.
   }];
   let options = [
     Option<"dot_graph_dump_to", "dot_graph_dump_to", "std::string", "",

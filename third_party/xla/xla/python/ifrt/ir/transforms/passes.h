@@ -75,11 +75,11 @@ createIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
     IfrtToDotPassOptions options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createIfrtAtomProgramsToVhloPass(
@@ -109,7 +109,7 @@ void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
 
 // Registers IfrtVerifyBoundExternalLoadedExecutablePass to ifrt-opt.
 void registerIfrtVerifyBoundExternalLoadedExecutablePass(
@@ -118,7 +118,7 @@ void registerIfrtVerifyBoundExternalLoadedExecutablePass(
 // Registers IfrtToDotPass to ifrt-opt.
 void registerIfrtToDotPass(
     IfrtToDotPassOptions options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map);
 
 // Creates pipeline of all the IFRT IR passes that do not require
 // compilation-time information (e.g., device assignments).
@@ -146,7 +146,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
     std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 // Creates a pipeline that converts an IFRT IR program to a versioned IFRT IR
@@ -170,7 +170,7 @@ void createIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 }  // namespace ifrt

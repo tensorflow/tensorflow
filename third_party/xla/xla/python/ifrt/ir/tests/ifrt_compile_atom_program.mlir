@@ -5,13 +5,13 @@
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 module @call_hlo {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // CHECK: ifrt.CallLoadedExecutable @fake_component__fake_method
+    // CHECK: ifrt.CallLoadedExecutable @
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
         {ifrt.module_type = "xla"} : (!array) -> !array
     return %0 : !array
   }
 
-  // CHECK: ifrt.LoadedExecutable @fake_component__fake_method
+  // CHECK: ifrt.LoadedExecutable @
   // CHECK-SAME: on devices [0, 1]
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
@@ -34,14 +34,14 @@ module @call_hlo {
 module @call_hlo_sdy_lowered attributes {
     ifrt.sdy.meshes ="{mesh = #sdy.mesh<[\\\22x\\\22=2]>}"} {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
-    // CHECK: ifrt.CallLoadedExecutable @fake_component__fake_method_1(%arg0)
+    // CHECK: ifrt.CallLoadedExecutable @{{.*}}(%arg0)
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
         {ifrt.module_type = "xla", ifrt.is_sdy_partitioned} : (!array) -> !array
     return %0 : !array
   }
 
   // module @add_one attributes {mhlo.frontend_attributes = {xla.sdy.meshes = "{mesh = #sdy.mesh<[\\\22x\\\22=2]>}"}, sym_visibility = "private"}
-  // CHECK: ifrt.LoadedExecutable @fake_component__fake_method
+  // CHECK: ifrt.LoadedExecutable @
   // CHECK-SAME: on devices [0, 1]
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
