@@ -6620,7 +6620,22 @@ class ConvertXlaConvV2Op : public OpRewritePattern<TF::XlaConvV2Op> {
         "precision_config",
         xla::stablehlo::ConvertPrecisionConfig(&precision_config, &rewriter));
 
-    SmallVector<Value, 2> operands{op.getLhs(), op.getRhs()};
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
+    auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
+    auto lhs_element_type = lhs_type.getElementType();
+    auto rhs_element_type = rhs_type.getElementType();
+    if (lhs_element_type != rhs_element_type) {
+      assert(lhs_element_type.getIntOrFloatBitWidth() >=
+             rhs_element_type.getIntOrFloatBitWidth());
+      auto new_rhs_type =
+          RankedTensorType::get(rhs_type.getShape(), lhs_element_type);
+      rhs = stablehlo::ConvertOp::create(rewriter, op.getLoc(), new_rhs_type,
+                                         rhs);
+    }
+
+    SmallVector<Value, 2> operands{lhs, rhs};
     NamedAttribute attrs[] = {
         window_strides_named_attr,      padding_named_attr,
         lhs_dilation_named_attr,        rhs_dilation_named_attr,

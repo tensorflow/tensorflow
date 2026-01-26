@@ -681,9 +681,7 @@ absl::Status BuildHloFromTfInner(
                                             custom_legalization_passes,
                                             /*lower_to_xla_hlo=*/true));
 
-  mlir::Block& block =
-      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
-  return mlir::BuildHloFromMlirHlo(block, builder, xla_params, returns);
+  return mlir::BuildHloFromMlirHlo(module_op, builder, xla_params, returns);
 }
 
 absl::Status ConvertMLIRWithOptionalXlaComputation(
@@ -1055,10 +1053,8 @@ absl::Status BuildHloFromModule(mlir::ModuleOp module_op,
 
   TF_RETURN_IF_ERROR(RunMlirPipelineAndMaybeDumpResults(tf2xla, module_op));
 
-  mlir::Block& block =
-      module_op.lookupSymbol<mlir::func::FuncOp>("main").front();
-  TF_RETURN_IF_ERROR(
-      mlir::BuildHloFromMlirHlo(block, builder, remaining_xla_params, returns));
+  TF_RETURN_IF_ERROR(mlir::BuildHloFromMlirHlo(module_op, builder,
+                                               remaining_xla_params, returns));
 
   if (VLOG_IS_ON(2)) {
     tensorflow::DumpMlirOpToFile("build_hlo_tf_after", module_op);

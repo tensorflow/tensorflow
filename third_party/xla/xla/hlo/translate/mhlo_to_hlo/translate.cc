@@ -120,7 +120,7 @@ absl::Status ConvertMlirHloToHloViaBuilder(
 
   std::vector<xla::XlaOp> returns(1);
   TF_RETURN_IF_ERROR(
-      mlir::BuildHloFromMlirHlo(block, builder, xla_params, returns, options));
+      mlir::BuildHloFromMlirHlo(module, builder, xla_params, returns, options));
 
   xla::XlaOp return_value;
   if (returns.size() == 1)
