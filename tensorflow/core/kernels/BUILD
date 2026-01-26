@@ -2425,6 +2425,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -2440,6 +2441,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3817,6 +3819,9 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":cwise_op",
         ":relu_op",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3937,6 +3942,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -5883,7 +5889,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:types_proto_cc",
         "//third_party/icu/data:conversion_data",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
         "@icu//:common",
     ],
@@ -5923,6 +5933,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -7197,6 +7208,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7216,7 +7228,6 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
-        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -7229,6 +7240,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf",
         "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
@@ -8029,6 +8041,7 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
