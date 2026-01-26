@@ -335,6 +335,7 @@ def TF_IfRegionOp : TF_Op<"IfRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
+           "getSuccessorInputs",
        ]>
       ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
@@ -394,6 +395,7 @@ def TF_GeneratorDatasetRegionOp : TF_Op<"GeneratorDatasetRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
+           "getSuccessorInputs",
        ]>,
        SingleBlockImplicitTerminator<"YieldOp">,
        TF_GeneratorOpSideEffect,
