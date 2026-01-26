@@ -1500,5 +1500,18 @@ class CastTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(self.evaluate(test_fn()), [1])
 
+  def testCastRaisesOnDTypeInput(self):
+    """tf.cast should not accept a dtype object as input."""
+    with self.assertRaises(TypeError):
+      math_ops.cast(dtypes.float32, dtypes.float64)
+
+  def testCastRaisesOnDTypeInputInXLA(self):
+    @def_function.function(jit_compile=True)
+    def f():
+      return math_ops.cast(dtypes.float32, dtypes.float64)
+
+    with self.assertRaises(TypeError):
+      f()
+
 if __name__ == "__main__":
   googletest.main()
