@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// DEPRECATED: This file is deprecated and will be removed soon.
+// Please use autotuner.cc instead.
+
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 
 #include <algorithm>

@@ -494,9 +494,12 @@ message DebugOptions {
   // compilation, possibly multiple times per process. This only works on CUDA.
   optional string xla_gpu_dump_autotune_results_to = 222;
 
-  // The flag is being generalized to dump all autotuned instructions as we
-  // combine the autotuner passes into a single pass.
-  optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
+  // This flag will be deleted soon. Please use
+  // xla_gpu_dump_autotuned_instructions instead.
+  optional bool xla_gpu_dump_autotuned_gemm_fusions = 232 [deprecated = true];
+
+  // Whether to dump instructions before/after autotuning.
+  optional bool xla_gpu_dump_autotuned_instructions = 445;
 
   // Whether to dump llvm ir when compiling to ptx.
   optional bool xla_gpu_dump_llvmir = 155;
@@ -791,9 +794,10 @@ message DebugOptions {
 
   optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
-  // A textproto file to override autotune results. See also
-  // `xla_gpu_override_gemm_autotuner` to override with a single config.
-  optional string xla_gpu_gemm_autotuner_override_file = 434;
+  // Does not work anymore.
+  // TODO(446874531): Delete this and add a generalized override mechanism.
+  optional string xla_gpu_gemm_autotuner_override_file = 434
+      [deprecated = true];
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -879,7 +883,9 @@ message DebugOptions {
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   optional int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
 
-  optional string xla_gpu_override_gemm_autotuner = 295;
+  // Does not work anymore.
+  // TODO(446874531): Delete this and add a generalized override mechanism.
+  optional string xla_gpu_override_gemm_autotuner = 295 [deprecated = true];
 
   optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
@@ -1355,7 +1361,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 445
+  // Next id: 446
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
