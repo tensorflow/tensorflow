@@ -177,11 +177,18 @@ absl::Status CoordinationServiceAgent::Connect() {
     n.WaitForNotification();
 
     if (!connect_status.ok()) {
-      // Exponential backoff with jitter. Note we will retry for `init_timeout`
-      // time in total; the `14` here corresponds to an ~16s maximum interval
-      // between connection attempts.
+      // Exponential backoff with jitter. Note we will retry for
+      // `init_timeout` time in total; the `14` here corresponds to an ~16s
+      // maximum interval between connection attempts.
       const int backoff = 1 << std::min(14, attempt);
-      absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
+      absl::Duration backoff_duration =
+          absl::Milliseconds(backoff) * distribution(generator);
+      LOG(INFO) << absl::Substitute(
+          "Coordination service agent failed to register with the leader "
+          "(attempt #$0, will try again after $1). Error status: $2",
+          attempt, absl::FormatDuration(backoff_duration),
+          connect_status.ToString());
+      absl::SleepFor(backoff_duration);
     }
   } while (!connect_status.ok() && absl::Now() < deadline &&
            // Retries are attempted for:
