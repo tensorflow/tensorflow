@@ -104,7 +104,7 @@ void NcclReducer::Run(StatusCallback done) {
   // TODO(b/80529858): make this entirely non-blocking by getting rid of the
   // waits below and calling final op from the nccl kernel's DoneCallback.
   {
-    profiler::TraceMe activity("Nccl", profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe activity("Nccl", tsl::profiler::TraceMeLevel::kInfo);
     nccl_done->WaitForNotification();
   }
   {
