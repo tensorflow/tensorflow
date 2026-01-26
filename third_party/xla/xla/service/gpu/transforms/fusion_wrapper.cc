@@ -89,6 +89,7 @@ bool FusionWrapper::MustWrapInstruction(const HloInstruction& instruction) {
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
     case HloOpcode::kSlice:
+    case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
