@@ -352,18 +352,11 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
                     compile_options->mlir_dump_func_re,
                     compile_options->mlir_enable_timing);
 
-    xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions
-        outline_pipeline_options;
-    outline_pipeline_options.propagate_shardings =
-        compile_options->propagate_shardings;
-    xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(
-        pm, outline_pipeline_options);
+    xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 
     xla::ifrt::createIfrtPopulateAtomProgramMetadataPipeline(pm);
 
     OutlinedAtomProgramsToCompiledPipelineOptions compile_pipeline_options;
-    compile_pipeline_options.propagate_shardings =
-        compile_options->propagate_shardings;
     for (const auto device : devices) {
       compile_pipeline_options.platform_names.push_back(
           std::string(device->PlatformName()));

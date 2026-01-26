@@ -68,9 +68,7 @@ IfrtToDotPassOptions GetIfrtToDotPassOptions(
 
 }  // namespace
 
-void createIfrtToOutlinedAtomProgramsPipeline(
-    mlir::OpPassManager& pm,
-    const IfrtToOutlinedAtomProgramsPipelineOptions& options) {
+void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   // Passes that verify the correctness of the module.
   pm.addPass(createSpmdExpandableInterfaceVerificationPass(
       {{mlir::mhlo::MhloDialect::getDialectNamespace().str(),
@@ -80,14 +78,12 @@ void createIfrtToOutlinedAtomProgramsPipeline(
 
   pm.addPass(createIfrtOutlineAtomProgramToModulePass());
 
-  if (!options.propagate_shardings) {
-    pm.addPass(createIfrtVerifyShardingSpecifiedPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::ifrt::createIfrtMergeReshardsPass());
-    // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
-    // are specified.
-    pm.addPass(createIfrtReshardToCopyArraysPass());
-  }
+  pm.addPass(createIfrtVerifyShardingSpecifiedPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::ifrt::createIfrtMergeReshardsPass());
+  // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
+  // are specified.
+  pm.addPass(createIfrtReshardToCopyArraysPass());
 }
 
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
@@ -120,30 +116,13 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
   }
   pm.addPass(createIfrtVerifyDeviceTypeConsistencyPass(
       {/*platform_names=*/llvm::to_vector(options.platform_names)}));
-  if (!options.propagate_shardings) {
-    pm.addPass(createIfrtLowerMpmdReshardToCallPass());
-  }
+  pm.addPass(createIfrtLowerMpmdReshardToCallPass());
   pm.addPass(createIfrtPrecompileAtomProgramPreprocessingPass(
       {/*platform_names=*/llvm::to_vector(options.platform_names),
        /*compile_options=*/compile_options}));
-  if (options.propagate_shardings) {
-    pm.addPass(createIfrtCompileAndPropagateShardingsPass(
-        compiler, compile_options->compile_options_overrides,
-        atom_executable_map));
-    pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeReshardsPass());
-    pm.addPass(createIfrtReshardToCopyArraysPass());
-    pm.addPass(createIfrtLowerMpmdReshardToCallPass());
-    // Run again the compilation pass so that reshards that were converted to
-    // programs are compiled as well. The pass will be a no-op for the other
-    // atom programs because they have already dispatched for compilation.
-    pm.addPass(createIfrtCompileAndPropagateShardingsPass(
-        std::move(compiler), compile_options->compile_options_overrides,
-        std::move(atom_executable_map)));
-  } else {
-    pm.addPass(createIfrtCompileAtomProgramPass(
-        std::move(compiler), compile_options->compile_options_overrides,
-        std::move(atom_executable_map)));
-  }
+  pm.addPass(createIfrtCompileAtomProgramPass(
+      std::move(compiler), compile_options->compile_options_overrides,
+      std::move(atom_executable_map)));
   pm.addPass(mlir::createSymbolDCEPass());
 
   pm.addPass(createIfrtVerifyBoundExternalLoadedExecutablePass(
@@ -192,13 +171,10 @@ void registerIfrtPassesAndPipelines(
   registerIfrtCompileAtomProgramPass(compiler,
                                      compile_options->compile_options_overrides,
                                      atom_executable_map);
-  registerIfrtCompileAndPropagateShardingsPass(
-      compiler, compile_options->compile_options_overrides,
-      atom_executable_map);
   registerIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
   registerIfrtToDotPass(GetIfrtToDotPassOptions(*compile_options),
                         atom_executable_map);
-  mlir::PassPipelineRegistration<IfrtToOutlinedAtomProgramsPipelineOptions>(
+  mlir::PassPipelineRegistration<>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",
       createIfrtToOutlinedAtomProgramsPipeline);

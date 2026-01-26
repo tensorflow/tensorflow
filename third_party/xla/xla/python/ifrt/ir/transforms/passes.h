@@ -77,14 +77,6 @@ createIfrtCompileAtomProgramPass(
         compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createIfrtCompileAndPropagateShardingsPass(
-    std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<
-        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
-        compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
-
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
     IfrtToDotPassOptions options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
@@ -119,14 +111,6 @@ void registerIfrtCompileAtomProgramPass(
         compile_options_overrides,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
-// Registers IfrtCompileAndPropagateShardingsPass to ifrt-opt.
-void registerIfrtCompileAndPropagateShardingsPass(
-    std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<
-        absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
-        compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map);
-
 // Registers IfrtVerifyBoundExternalLoadedExecutablePass to ifrt-opt.
 void registerIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
@@ -136,19 +120,9 @@ void registerIfrtToDotPass(
     IfrtToDotPassOptions options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
-struct IfrtToOutlinedAtomProgramsPipelineOptions
-    : mlir::PassPipelineOptions<IfrtToOutlinedAtomProgramsPipelineOptions> {
-  Option<bool> propagate_shardings{
-      *this, "propagate_shardings",
-      llvm::cl::desc("Whether to propagate shardings from executables for "
-                     "unspecified shardings.")};
-};
-
 // Creates pipeline of all the IFRT IR passes that do not require
 // compilation-time information (e.g., device assignments).
-void createIfrtToOutlinedAtomProgramsPipeline(
-    mlir::OpPassManager& pm,
-    const IfrtToOutlinedAtomProgramsPipelineOptions& options);
+void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm);
 
 // Creates a pipeline that populates metadata info for each atom program.
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
@@ -164,11 +138,6 @@ struct OutlinedAtomProgramsToCompiledPipelineOptions
       *this, "platform_names",
       llvm::cl::desc("A list to represent a mapping from logical device IDs to "
                      "platform name (e.g., tpu, cuda).")};
-
-  Option<bool> propagate_shardings{
-      *this, "propagate_shardings",
-      llvm::cl::desc("Whether to propagate shardings from executables for "
-                     "unspecified shardings.")};
 };
 
 // Creates pipeline of all the IFRT IR passes that require compilation-time

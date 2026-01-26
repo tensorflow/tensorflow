@@ -592,10 +592,7 @@ void AddLowerToIfrtPasses(mlir::OpPassManager& pm,
     pm.addNestedPass<FuncOp>(CreateAddCtrlDependenciesPass());
   }
   // Outline the IFRT atom programs to modules.
-  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
-  outline_pipeline_options.propagate_shardings = false;
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
-                                                      outline_pipeline_options);
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 }
 
 void RegisterLowerToIfrtPasses() {

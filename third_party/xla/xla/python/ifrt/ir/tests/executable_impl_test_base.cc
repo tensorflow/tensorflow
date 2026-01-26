@@ -92,15 +92,11 @@ IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
 absl::StatusOr<std::unique_ptr<IfrtIRProgram>>
 IfrtIrExecutableImplTestBase::SerDeRoundTrip(
     std::unique_ptr<IfrtIRProgram> program,
-    Version::CompatibilityRequirement compatibility_requirement,
-    bool propagate_shardings) {
+    Version::CompatibilityRequirement compatibility_requirement) {
   // Ensure the atom programs are outlined to modules. If the atom programs are
   // already outlined, this pipeline will do nothing.
   mlir::PassManager pm(program->mlir_module.getContext());
-  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
-  outline_pipeline_options.propagate_shardings = propagate_shardings;
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
-                                                      outline_pipeline_options);
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
   mlir::BaseScopedDiagnosticHandler diag_handler(
       program->mlir_module.getContext());
   if (mlir::failed(pm.run(program->mlir_module))) {
