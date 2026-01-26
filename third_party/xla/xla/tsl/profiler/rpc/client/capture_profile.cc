@@ -209,6 +209,14 @@ absl::Status StartContinuousProfiling(
   return absl::OkStatus();
 }
 
+absl::Status StopContinuousProfiling(const char* service_addr) {
+  tensorflow::StopContinuousProfilingRequest request;
+  tensorflow::StopContinuousProfilingResponse response;
+  TF_RETURN_IF_ERROR(tsl::profiler::StopContinuousProfilingGrpc(
+      service_addr, request, &response));
+  return absl::OkStatus();
+}
+
 absl::Status GetSnapshot(const char* service_addr, const char* logdir) {
   tensorflow::GetSnapshotRequest request;
   ProfileResponse response;
