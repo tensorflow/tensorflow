@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/platform_util.h"
@@ -75,8 +76,10 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
   CompilationResult result;
-  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
-                                std::nullopt, std::nullopt, result),
+  EXPECT_THAT(CompileExecutable(
+                  std::move(module_), BackendType::kGpu,
+                  Compiler::GpuTargetConfig::FromProto(target_config).value(),
+                  /*cpu_target_config=*/std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
