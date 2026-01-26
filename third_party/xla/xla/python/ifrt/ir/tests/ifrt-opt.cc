@@ -104,6 +104,8 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
         /*executable=*/std::move(mock_executable)};
   }
 
+  bool SupportsMpmdReshard() const override { return true; }
+
   absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
       std::vector<IfrtArrayType> in_array_types,
