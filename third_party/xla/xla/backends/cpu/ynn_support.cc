@@ -354,6 +354,16 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
+  if (std::max({
+          lhs_shape.dimensions(conv_dimensions.input_feature_dimension()),
+          out_shape.dimensions(conv_dimensions.output_feature_dimension()),
+      }) <= 16) {
+    // If this  convolution is small, our overhead is probably too significant.
+    // TODO(b/458529782, b/473570788): This is here as a workaround for an
+    // unrelated bug.
+    return false;
+  }
+
   // Skip if output or filter is larger than input.
   // TODO(b/476207717): this should work fine in theory, but currently this
   // fails at one of the shape checks fails as statically false. I think the
