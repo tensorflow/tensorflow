@@ -45,6 +45,7 @@ do_external_licenses_check(){
 @bazel_tools//platforms
 @bazel_tools//third_party/
 @bazel_tools//tools
+@jpegxl//lib
 @local
 @xla//xla
 @tsl//tsl
@@ -76,6 +77,7 @@ EOF
 @com_google_absl//
 @com_google_protobuf//
 @internal_platforms_do_not_use//host
+@jpegxl//
 @pybind11_abseil//pybind11_abseil
 //external
 @local

@@ -30,6 +30,9 @@
     * Adds support for int4 in tfl.slice.
     * Adds support for uint4 type.
 
+*  `tf.image`
+    * Adds JPEG XL support in decode_image.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
