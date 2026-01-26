@@ -240,7 +240,6 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   return entry_func;
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     mlir::ModuleOp module, const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,

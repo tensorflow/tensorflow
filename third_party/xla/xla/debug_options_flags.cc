@@ -113,9 +113,6 @@ static auto FindRepeatedFieldValue(google::protobuf::RepeatedField<int>* list, T
 }
 
 // Returns a `DebugOptions` setter for repeated enum flag of type `T`.
-// NOLINTBEGIN(readability-function-cognitive-complexity)
-// We disable the cognitive complexity check here because we need to return a
-// lambda function.
 template <typename T>
 static auto SetterForRepeatedEnum(
     absl::string_view flag_name, absl::string_view enum_prefix,
@@ -159,7 +156,6 @@ static auto SetterForRepeatedEnum(
     return true;
   };
 }
-// NOLINTEND(readability-function-cognitive-complexity)
 
 }  // namespace
 
