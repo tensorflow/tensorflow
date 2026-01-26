@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_compile_runtime_flags_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -94,6 +95,11 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
       const override;
 
  private:
+  // Initializes device specific attributes.
+  void InitAttributes();
+  // Initialize device specific memory descriptions.
+  void InitMemoryDescriptions() const;
+
   const PJRT_Api* c_api_;
   // `device_description_` is owned by the `PJRT_Client` wrapped by `client_`
   PJRT_DeviceDescription* device_description_;
@@ -104,11 +110,6 @@ class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
       memory_space_description_pointers_;
   mutable absl::StatusOr<PjRtMemorySpaceDescription*>
       default_memory_space_description_;
-
-  // Initializes device specific attributes.
-  void InitAttributes();
-  // Initialize device specific memory descriptions.
-  void InitMemoryDescriptions() const;
 };
 
 class PjRtCApiMemorySpace : public PjRtMemorySpace {
@@ -202,7 +203,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
 class PjRtCApiCompiler : public PjRtCompiler {
  public:
-  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
+  explicit PjRtCApiCompiler(const PJRT_Api* c_api);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
@@ -216,8 +217,13 @@ class PjRtCApiCompiler : public PjRtCompiler {
   DeserializePjRtTopologyDescription(
       const std::string& serialized_topology) override;
 
+  absl::Status ValidateCompileRuntimeFlags(
+      const CompileOptions& options,
+      const PjRtTopologyDescription& topology) const;
+
  private:
   const PJRT_Api* c_api_;
+  PJRT_CompileRuntimeFlags_Extension* compile_runtime_flags_extension_;
 };
 
 class PjRtCApiTopologyDescription : public PjRtTopologyDescription {

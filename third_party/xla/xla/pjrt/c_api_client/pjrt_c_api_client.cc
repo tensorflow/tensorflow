@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_compile_runtime_flags_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
@@ -94,6 +95,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -4069,6 +4071,12 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
   return ret;
 }
 
+PjRtCApiCompiler::PjRtCApiCompiler(const PJRT_Api* c_api)
+    : c_api_(c_api),
+      compile_runtime_flags_extension_(
+          pjrt::FindExtension<PJRT_CompileRuntimeFlags_Extension>(
+              c_api, PJRT_Extension_Type_CompileRuntimeFlags)) {}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
@@ -4104,6 +4112,31 @@ PjRtCApiCompiler::DeserializePjRtTopologyDescription(
 
   return std::make_unique<PjRtCApiTopologyDescription>(c_api_, args.topology,
                                                        /*owned=*/true);
+}
+
+absl::Status PjRtCApiCompiler::ValidateCompileRuntimeFlags(
+    const CompileOptions& options,
+    const PjRtTopologyDescription& topology) const {
+  if (compile_runtime_flags_extension_ == nullptr) {
+    return absl::OkStatus();
+  }
+
+  PJRT_CompileRuntimeFlags_Validate_Args args;
+  args.struct_size = PJRT_CompileRuntimeFlags_Validate_Args_STRUCT_SIZE;
+
+  args.topology =
+      tensorflow::down_cast<const PjRtCApiTopologyDescription*>(&topology)
+          ->c_topology();
+
+  ASSIGN_OR_RETURN(CompileOptionsProto options_proto, options.ToProto());
+  const std::string serialized_options = options_proto.SerializeAsString();
+
+  args.compile_options = serialized_options.c_str();
+  args.compile_options_size = serialized_options.size();
+
+  RETURN_STATUS_IF_PJRT_ERROR(compile_runtime_flags_extension_->validate(&args),
+                              c_api_);
+  return absl::OkStatus();
 }
 
 // -------------------------------- API access ---------------------------------
