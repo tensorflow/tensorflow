@@ -393,12 +393,21 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
     } else if (inst->opcode() == HloOpcode::kCall ||
                inst->opcode() == HloOpcode::kFusion) {
       auto called = inst->called_computations().front();
-      for (int64_t i = 0; i < inst->operand_count(); ++i) {
-        changed |= propagate_shapetree(inst->operand(i),
-                                       called->parameter_instruction(i));
+      // If the called computation has several call sites, conservatively mark
+      // everything inside as not-replicated, since we can't reason about
+      // context sensitivity.
+      if (called->caller_instructions().size() > 1) {
+        changed |= ComputeHloReplicationOnComputation(
+            called,
+            /*mark_everything_not_replicated=*/true);
+      } else {
+        for (int64_t i = 0; i < inst->operand_count(); ++i) {
+          changed |= propagate_shapetree(inst->operand(i),
+                                         called->parameter_instruction(i));
+        }
+        changed |= ComputeHloReplicationOnComputation(
+            called, mark_everything_not_replicated);
       }
-      changed |= ComputeHloReplicationOnComputation(
-          called, mark_everything_not_replicated);
       changed |= propagate_shapetree(called->root_instruction(), inst);
     } else if (inst->opcode() == HloOpcode::kConditional) {
       // Propagate inputs' shape trees to the called computations' parameters.
