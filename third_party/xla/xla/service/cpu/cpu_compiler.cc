@@ -1010,10 +1010,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
-  bool use_multi_output_fusion =
-      options::UseMultiOutputFusion(module->config());
-  pipeline.AddPass<CpuInstructionFusion>(
-      /*may_duplicate=*/!use_multi_output_fusion);
+  pipeline.AddPass<CpuInstructionFusion>();
 
   if (is_fusion_emitters) {
     bool use_experimental_loop_fusion =
@@ -1023,6 +1020,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
                                     use_tiled_emitter);
   }
 
+  bool use_multi_output_fusion =
+      options::UseMultiOutputFusion(module->config());
   AliasInfo alias_info;
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);

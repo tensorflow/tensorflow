@@ -76,8 +76,12 @@ bool CpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
     return false;
   }
 
-  if (instr->IsLoopFusion() &&
-      instr->fused_expression_root()->opcode() != HloOpcode::kDot) {
+  if (instr->IsLoopFusion()) {
+    HloOpcode opcode = instr->fused_expression_root()->opcode();
+    if (!emitters::IsSupportedElementalOp(opcode) ||
+        opcode == HloOpcode::kDot) {
+      return false;
+    }
     return true;
   }
 
