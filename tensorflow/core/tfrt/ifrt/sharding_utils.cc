@@ -184,6 +184,7 @@ SplitAndCreateArraysFromHostBuffer(
                               xla::ifrt::Shape(tensor.shape().dim_sizes()),
                               GetByteStrides(tensor_data_type, tensor.shape()),
                               std::move(single_device_sharding),
+                              /*layout=*/nullptr,
                               xla::ifrt::Client::HostBufferSemantics::
                                   kImmutableUntilTransferCompletes,
                               [tensor, slice_idx]() {
@@ -347,6 +348,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> CreateArrayFromHostTensorForSingleDevice(
       tensor.data(), dtype, ToIfrtShape(tensor.shape()),
       GetByteStrides(tensor.dtype(), tensor.shape()),
       std::move(single_device_sharding),
+      /*layout=*/nullptr,
       xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
       [tensor]() {
         // Keep tensor alive
@@ -731,6 +733,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
         input_tensor.data(), ifrt_dtype, ToIfrtShape(input_tensor.shape()),
         GetByteStrides(input_tensor.dtype(), input_tensor.shape()),
         std::move(ifrt_sharding),
+        /*layout=*/nullptr,
         xla::ifrt::Client::HostBufferSemantics::
             kImmutableUntilTransferCompletes,
         [input_tensor]() {  // keep tensor alive

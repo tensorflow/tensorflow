@@ -121,6 +121,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
             split_tensor.data(), dtype, ToIfrtShape(split_tensor.shape()),
             GetByteStrides(split_tensor.dtype(), split_tensor.shape()),
             std::move(single_device_sharding),
+            /*layout=*/nullptr,
             xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/{}));
     split_arrays.push_back(std::move(array));
