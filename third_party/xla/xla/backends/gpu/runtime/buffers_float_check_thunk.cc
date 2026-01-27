@@ -184,12 +184,14 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
     PrimitiveType buffer_type = buffer.element_type();
     se::DeviceAddressBase device_buffer =
         params.buffer_allocations->GetDeviceAddress(buffer);
+    size_t num_blocks = 0;
     if (buffer_type == PrimitiveType::F32) {
       VLOG(1) << "F32 buffer detected with id: " << entry_id
               << " and size: " << device_buffer.size();
       se::DeviceAddress<float> f32_buffer(device_buffer);
       const se::BlockDim block_dim = GetBlockDimForBuffer<float>(
           params.stream, f32_buffer, tmp_size_elements);
+      num_blocks = block_dim.x * block_dim.y * block_dim.z;
       TF_RETURN_IF_ERROR(kernels->f32.Launch(
           thread_dim, block_dim, params.stream, f32_buffer,
           f32_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
@@ -199,6 +201,7 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       se::DeviceAddress<Eigen::bfloat16> bf16_buffer(device_buffer);
       const se::BlockDim block_dim = GetBlockDimForBuffer<Eigen::bfloat16>(
           params.stream, bf16_buffer, tmp_size_elements);
+      num_blocks = block_dim.x * block_dim.y * block_dim.z;
       TF_RETURN_IF_ERROR(kernels->bf16.Launch(
           thread_dim, block_dim, params.stream, bf16_buffer,
           bf16_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
@@ -210,10 +213,11 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
 
     // Operations on the same stream perform in sequence, so at this point the
     // results of the previous FloatCheck operation are available.
-    TF_RETURN_IF_ERROR(kernels->reduce.Launch(
-        thread_dim, se::BlockDim(1, 1, 1), params.stream, tmp_ptr,
-        tmp_size_elements, entry_id, buffer_debug_log.GetDeviceHeader(),
-        buffer_debug_log.GetDeviceEntries()));
+    TF_RETURN_IF_ERROR(
+        kernels->reduce.Launch(thread_dim, se::BlockDim(1, 1, 1), params.stream,
+                               tmp_ptr, std::min(tmp_size_elements, num_blocks),
+                               entry_id, buffer_debug_log.GetDeviceHeader(),
+                               buffer_debug_log.GetDeviceEntries()));
   }
 
   return absl::OkStatus();

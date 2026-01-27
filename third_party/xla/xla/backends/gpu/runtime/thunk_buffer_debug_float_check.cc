@@ -80,7 +80,7 @@ namespace {
 size_t CalculateTempBufferSize(const Thunk& thunk) {
   size_t max_buffer_size_bytes = 0;
   for (const BufferUse& use : thunk.buffer_uses()) {
-    if (use.HasDefinedContentsOnInput() || use.HasDefinedContentsOnOutput()) {
+    if (use.HasDefinedContentsOnOutput()) {
       max_buffer_size_bytes =
           std::max<size_t>(max_buffer_size_bytes, use.slice().size());
     }
