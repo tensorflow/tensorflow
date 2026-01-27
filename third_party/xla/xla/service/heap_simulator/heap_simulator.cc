@@ -34,6 +34,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/heap_simulator/free_chunks_manager.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
@@ -675,6 +677,12 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
   } else if (type == kSpatial) {
     buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
     CHECK(buffer_interval_compare == nullptr);
+  } else if (type == kFastMerge) {
+    buffer_interval_compare_ = GetStartTimeBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
+  } else if (type == kFastSplit) {
+    buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+    CHECK(buffer_interval_compare == nullptr);
   } else {
     CHECK(type == kCustom);
     CHECK(buffer_interval_compare != nullptr);
@@ -693,6 +701,20 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTemporalBufferIntervalCompare()
     }
     // Sort by duration (descending), size (descending), buffer (ascending).
     return std::make_tuple(x.start - x_end, -x.size, std::cref(*x.buffer));
+  });
+}
+
+template <typename BufferType>
+typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap<BufferType>::GetStartTimeBufferIntervalCompare()
+    const {
+  return LessThanByKey([this](const BufferInterval& x) {
+    int64_t x_start = x.end;
+    for (auto colocation : GetTransitiveColocations(x)) {
+      x_start = std::min(x_start, buffer_intervals_.at(colocation).start);
+    }
+    // Sort by start time (ascending), size (descending), buffer (ascending).
+    return std::make_tuple(x.start, -x.size, std::cref(*x.buffer));
   });
 }
 
@@ -2608,10 +2630,13 @@ template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     const GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
         buffer_interval,
-    GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
+    GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk,
+    bool add_to_tree) {
   CHECK_EQ(chunk.size, buffer_interval.size);
   result_.heap_size = result_.UpdatedHeapSize(chunk);
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
+  if (add_to_tree) {
+    interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
+  }
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
     // Create a colocation chunk with the same offset but with the correct size
@@ -2619,8 +2644,10 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
     Chunk colocation_chunk =
         Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
     result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
-    interval_tree_.Add(colocation_interval.start, colocation_interval.end,
-                       colocation_chunk);
+    if (add_to_tree) {
+      interval_tree_.Add(colocation_interval.start, colocation_interval.end,
+                         colocation_chunk);
+    }
     AddToChunkMap(colocation, colocation_chunk);
   }
 
@@ -2636,6 +2663,22 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::AddToChunkMap(
 
 absl::StatusOr<HeapSimulator::Result<HloValue>>
 ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
+  switch (type_) {
+    case kSpatial:
+    case kTemporal:
+    case kCustom:
+      return FinishBestOfSpatialTemporal();
+    case kFastMerge:
+      return FinishFastMerge();
+    case kFastSplit:
+      return FinishFastSplit();
+    default:
+      return absl::InternalError("Unknown heap algorithm type");
+  }
+}
+
+absl::StatusOr<HeapSimulator::Result<HloValue>>
+ConstrainedGlobalDecreasingSizeBestFitHeap::FinishBestOfSpatialTemporal() {
   std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
   // Convert into std::list so that erase() is O(1).
   std::list<BufferInterval> sorted_buffer_intervals(sorted_buffer_vec.begin(),
@@ -2645,34 +2688,8 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
   // even if `sorted_buffer_intervals` is empty.
   Result multi_heap_result;
   do {
-    // Place buffers into the currently processed heap as many as possible.
-    for (auto it = sorted_buffer_intervals.begin();
-         it != sorted_buffer_intervals.end();) {
-      BufferInterval buffer_interval = *it;
-      if (!buffer_interval.need_allocation) {
-        it = sorted_buffer_intervals.erase(it);
-        continue;
-      }
-      if (buffer_interval.size > size_limit_per_heap_) {
-        LOG(WARNING) << "Alloc buffer size " << buffer_interval.size
-                     << " larger than the per-heap size limit "
-                     << size_limit_per_heap_;
-      }
+    AllocateBuffersInSingleHeap(sorted_buffer_intervals);
 
-      Chunk chunk_candidate = FindChunkCandidate(buffer_interval);
-      if (chunk_candidate.chunk_end() <= size_limit_per_heap_ ||
-          // Commit the chunk as long as the heap is empty. We do this because
-          // we want the size constraint to be soft, meaning that results are
-          // successfully generated even if there are some buffer sizes larger
-          // than the given constraint size.
-          result_.heap_size == 0) {
-        CommitChunk(buffer_interval, chunk_candidate);
-        it = sorted_buffer_intervals.erase(it);
-        continue;
-      }
-
-      ++it;
-    }
     // Collect the result from the currently processed heap and reset the heap
     // states.
     multi_heap_result.heap_size += result_.heap_size;
@@ -2684,6 +2701,209 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
   VLOG(1) << "Number of heaps produced = "
           << multi_heap_result.heap_results.size();
   return multi_heap_result;
+}
+
+int64_t ConstrainedGlobalDecreasingSizeBestFitHeap::AllocateBuffersInSingleHeap(
+    std::list<BufferInterval>& buffer_intervals_in_order) {
+  int64_t max_end = 0;
+  // Place buffers into the currently processed heap as many as possible.
+  for (auto it = buffer_intervals_in_order.begin();
+       it != buffer_intervals_in_order.end();) {
+    if (!CheckBufferInterval(*it)) {
+      it = buffer_intervals_in_order.erase(it);
+      continue;
+    }
+    BufferInterval buffer_interval = *it;
+    Chunk chunk_candidate = FindChunkCandidate(buffer_interval);
+    if (chunk_candidate.chunk_end() <= size_limit_per_heap_ ||
+        // Commit the chunk as long as the heap is empty. We do this because
+        // we want the size constraint to be soft, meaning that results are
+        // successfully generated even if there are some buffer sizes larger
+        // than the given constraint size.
+        result_.heap_size == 0) {
+      max_end = std::max(max_end, chunk_candidate.chunk_end());
+      CommitChunk(buffer_interval, chunk_candidate);
+      it = buffer_intervals_in_order.erase(it);
+      continue;
+    }
+
+    ++it;
+  }
+  return max_end;
+}
+
+absl::StatusOr<HeapSimulator::Result<HloValue>>
+ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastMerge() {
+  std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
+
+  std::list<BufferInterval> sorted_buffer_intervals_fast(
+      sorted_buffer_vec.begin(), sorted_buffer_vec.end());
+
+  Result multi_heap_result;
+  do {
+    FreeChunksManager chunks_manager(
+        [this](int64_t addr) { return ComputeAlignedChunkEnd(addr); });
+    AllocateBuffersSortedByTimeInSingleHeap(sorted_buffer_intervals_fast,
+                                            chunks_manager);
+    // Collect the result from the currently processed heap and reset the heap
+    // states.
+    multi_heap_result.heap_size += result_.heap_size;
+    multi_heap_result.heap_results.push_back(std::move(result_));
+    result_ = {};
+    interval_tree_.Clear();
+  } while (!sorted_buffer_intervals_fast.empty());
+
+  VLOG(1) << "Number of heaps produced = "
+          << multi_heap_result.heap_results.size();
+  return multi_heap_result;
+}
+
+absl::StatusOr<HeapSimulator::Result<HloValue>>
+ConstrainedGlobalDecreasingSizeBestFitHeap::FinishFastSplit() {
+  std::vector<BufferInterval> sorted_buffer_vec = GetSortedBufferIntervals();
+
+  // Split the buffers into two groups: those that will be be scheduled using
+  // an expensive pass and those that will be scheduled using a fast pass. The
+  // fast pass only works for buffers without colocations.
+  // To avoid using too much memory, we schedule the largest buffers without
+  // colocations in the expensive pass.
+  std::list<BufferInterval> sorted_buffer_intervals_slow;
+  std::vector<BufferInterval> sorted_buffer_vec_fast;
+
+  // Constant is chosen so that even if there are that many buffers, in the
+  // worst-case (where the interval tree takes a quadratic time), the slow
+  // pass should terminate within few seconds.
+  const int64_t kMaxBuffersWithoutColocationsInExpensivePass = 500;
+  int64_t buffers_without_colocations_in_expensive_pass = 0;
+  for (const auto& buffer_interval : sorted_buffer_vec) {
+    if (!CheckBufferInterval(buffer_interval)) {
+      continue;
+    }
+
+    auto colocations = GetTransitiveColocations(buffer_interval);
+    if (colocations.empty() &&
+        buffers_without_colocations_in_expensive_pass >=
+            kMaxBuffersWithoutColocationsInExpensivePass) {
+      sorted_buffer_vec_fast.push_back(buffer_interval);
+    } else {
+      buffers_without_colocations_in_expensive_pass += colocations.empty();
+      sorted_buffer_intervals_slow.push_back(buffer_interval);
+    }
+  }
+  // The buffers of the fast pass need to be sorted by start time.
+  absl::c_sort(sorted_buffer_vec_fast, GetStartTimeBufferIntervalCompare());
+  std::list<BufferInterval> sorted_buffer_intervals_fast(
+      sorted_buffer_vec_fast.begin(), sorted_buffer_vec_fast.end());
+
+  Result multi_heap_result;
+  do {
+    FreeChunksManager chunks_manager(
+        [this](int64_t addr) { return ComputeAlignedChunkEnd(addr); });
+
+    // First phase: process the buffers without colocations.
+    int64_t max_end_in_phase_one =
+        AllocateBuffersInSingleHeap(sorted_buffer_intervals_slow);
+
+    // Pessimistically occupy everything used in the first phase.
+    chunks_manager.Insert(0, max_end_in_phase_one);
+
+    // Second phase: process the rest of the buffers.
+    AllocateBuffersSortedByTimeInSingleHeap(sorted_buffer_intervals_fast,
+                                            chunks_manager);
+
+    // Collect the result from the currently processed heap and reset the heap
+    // states.
+    multi_heap_result.heap_size += result_.heap_size;
+    multi_heap_result.heap_results.push_back(std::move(result_));
+    result_ = {};
+    interval_tree_.Clear();
+  } while (!sorted_buffer_intervals_slow.empty() ||
+           !sorted_buffer_intervals_fast.empty());
+
+  VLOG(1) << "Number of heaps produced = "
+          << multi_heap_result.heap_results.size();
+  return multi_heap_result;
+}
+
+bool ConstrainedGlobalDecreasingSizeBestFitHeap::CheckBufferInterval(
+    const BufferInterval& buffer_interval) {
+  if (!buffer_interval.need_allocation) {
+    return false;
+  }
+  if (buffer_interval.size > size_limit_per_heap_) {
+    LOG(WARNING) << "Alloc buffer size " << buffer_interval.size
+                 << " larger than the per-heap size limit "
+                 << size_limit_per_heap_;
+  }
+  return true;
+}
+
+void ConstrainedGlobalDecreasingSizeBestFitHeap::
+    AllocateBuffersSortedByTimeInSingleHeap(
+        std::list<BufferInterval>& buffer_intervals_in_order,
+        FreeChunksManager& chunks_manager) {
+  struct ChunkToErase {
+    int64_t when;
+    MemoryChunk chunk;
+
+    bool operator<(const ChunkToErase& other) const {
+      return when == other.when ? chunk.start_ < other.chunk.start_
+                                : when < other.when;
+    }
+  };
+  absl::btree_set<ChunkToErase> chunks_to_remove;
+  for (auto it = buffer_intervals_in_order.begin();
+       it != buffer_intervals_in_order.end();) {
+    BufferInterval buffer_interval = *it;
+    if (!CheckBufferInterval(buffer_interval)) {
+      it = buffer_intervals_in_order.erase(it);
+      continue;
+    }
+
+    int64_t colocation_size = buffer_interval.size;
+    int64_t min_time = buffer_interval.start;
+    int64_t max_time = buffer_interval.end;
+    for (const auto colocation : GetTransitiveColocations(buffer_interval)) {
+      colocation_size =
+          std::max(colocation_size, buffer_intervals_[colocation].size);
+      min_time = std::min(min_time, buffer_intervals_[colocation].start);
+      max_time = std::max(max_time, buffer_intervals_[colocation].end);
+    }
+
+    // Remove chunks that are no longer valid.
+    while (!chunks_to_remove.empty() &&
+           chunks_to_remove.begin()->when <= min_time) {
+      chunks_manager.Erase(chunks_to_remove.begin()->chunk.start_,
+                           chunks_to_remove.begin()->chunk.end_);
+      chunks_to_remove.erase(chunks_to_remove.begin());
+    }
+
+    MemoryChunk memory_chunk =
+        chunks_manager.FindJustLargeEnough(colocation_size);
+    CHECK(memory_chunk.end_ - memory_chunk.aligned_chunk_start_ >=
+          colocation_size);
+    auto chunk_end = memory_chunk.aligned_chunk_start_ + colocation_size;
+    CHECK_LE(chunk_end, memory_chunk.end_);
+    memory_chunk.end_ = chunk_end;
+    if (memory_chunk.end_ <= size_limit_per_heap_ ||
+        // Commit the chunk as long as the heap is empty. We do this because
+        // we want the size constraint to be soft, meaning that results are
+        // successfully generated even if there are some buffer sizes larger
+        // than the given constraint size.
+        result_.heap_size == 0) {
+      Chunk chunk_candidate = Chunk::FromOffsetEnd(
+          memory_chunk.aligned_chunk_start_, memory_chunk.end_);
+      chunks_manager.Insert(memory_chunk.start_, memory_chunk.end_);
+      // This chunk will be removed at the end of the buffer interval's live
+      // range.
+      chunks_to_remove.insert({max_time, memory_chunk});
+      CommitChunk(buffer_interval, chunk_candidate, /*add_to_tree=*/false);
+      it = buffer_intervals_in_order.erase(it);
+      continue;
+    }
+
+    ++it;
+  }
 }
 
 template <typename BufferType>
