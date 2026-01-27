@@ -115,7 +115,6 @@ filegroup(
         "@local_config_tensorrt//:LICENSE",
         "@ml_dtypes_py//:LICENSE",
         "@org_brotli//:LICENSE",
-        "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
         "@snappy//:COPYING",
