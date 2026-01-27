@@ -2481,7 +2481,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildVhloCaseOp(
   const auto parent_subgraph_ind =
       subgraph_index_map_[parent_func.getSymName().str()];
 
-  std::vector<int32_t> new_operands(operands);
+  std::vector<int32_t> new_operands;
+  if (!operands.empty()) {
+    new_operands.push_back(operands[0]);
+  }
   for (auto val : *iso_result) {
     const auto val_name = name_mapper_.GetUniqueName(val);
     const auto val_tensor_id = tensor_index_map_[parent_subgraph_ind][val_name];
