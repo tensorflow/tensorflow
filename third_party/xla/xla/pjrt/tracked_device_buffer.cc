@@ -200,7 +200,7 @@ absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
 TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
                                                 Future<> dependency) {
   auto* se_client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client());
+      absl::down_cast<PjRtStreamExecutorClient*>(memory_space->client());
 
   // Copy all the data in the existing tracked_buffer.
   const auto& original_definition_events = definition_events();
@@ -218,8 +218,8 @@ TrackedDeviceBuffer::CloneWithControlDependency(PjRtMemorySpace* memory_space,
   auto new_device_buffer = std::make_unique<TrackedDeviceBuffer>(
       device_, raw_buffer(), std::move(definition_events));
 
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   LocalDeviceState* local_device = device->local_device_state();
   dependency.OnReady(
       [definition_event_for_status = std::move(definition_event_for_status),
@@ -299,8 +299,7 @@ void TrackedDeviceBuffer::AddUsageEvent(
     tsl::RCReference<PjRtDeviceEvent> event) {
   if (event) {
     AddUsageEvent(
-        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
-            ->event(),
+        absl::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())->event(),
         true);
   }
 }
