@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
@@ -64,6 +65,15 @@ class CollectiveMetadataThunk : public Thunk {
   // All participants should call this method to construct their local
   // metadata.
   static absl::Status ConstructCollectiveMetadata(
+      const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+      std::vector<se::DeviceAddressBase> parameters,
+      std::shared_ptr<CollectiveMultimem> multimem,
+      se::DeviceAddressBase destination);
+
+  // Same as above, but returns the collective metadata so it can be used on
+  // CPU.
+  static absl::StatusOr<CollectiveKernelMetadata>
+  ConstructAndReturnCollectiveMetadata(
       const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
       std::vector<se::DeviceAddressBase> parameters,
       std::shared_ptr<CollectiveMultimem> multimem,
