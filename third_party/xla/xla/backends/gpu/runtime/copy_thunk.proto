@@ -20,7 +20,6 @@ package xla.gpu;
 import "xla/service/shaped_slice.proto";
 
 option java_multiple_files = true;
-option java_outer_classname = "CopyThunkProto";
 
 message CopyThunkProto {
   xla.ShapedSliceProto source_buffer = 1;
