@@ -22,11 +22,19 @@ cc_library(
 )
 
 cc_binary(
-    name = "ir_to_string",
-    srcs = ["ir_to_string.cc"],
+    name = "embed_bitcode",
+    srcs = ["embed_bitcode.cc"],
     deps = [
+        "//tensorflow/compiler/aot:embedded_constant_buffers",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:AArch64AsmParser",  # buildcleaner: keep
+        "@llvm-project//llvm:AArch64CodeGen",  # buildcleaner: keep
+        "@llvm-project//llvm:ARMAsmParser",  # buildcleaner: keep
+        "@llvm-project//llvm:ARMCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:X86AsmParser",  # buildcleaner: keep
+        "@llvm-project//llvm:X86CodeGen",  # buildcleaner: keep
     ],
 )
 
