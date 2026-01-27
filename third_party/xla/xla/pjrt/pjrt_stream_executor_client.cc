@@ -1655,14 +1655,17 @@ PjRtStreamExecutorClient::RunAsync(
 // converted on success.
 // When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
 // to initialize `run_options`.
-absl::Status PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
+absl::StatusOr<PjRtRawLoadedExecutable::RawExecuteResult>
+PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options, PjRtDevice* device,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
     PjRtDeviceEventSet& events,
     std::shared_ptr<DeviceAssignment> device_assignment,
-    std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const {
+    bool fill_future) const {
+  const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
+  std::vector<absl::AnyInvocable<void() &&>> compute_callbacks;
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->local_device_id()
@@ -1838,7 +1841,57 @@ absl::Status PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
                                     device_assignment)}]() {});
   }
 
-  return absl::OkStatus();  // std::move(results);
+  auto definition_event = [&]() -> tsl::RCReference<PjRtDeviceEvent> {
+    LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
+    se::Stream* stream = device_state->compute_stream();
+
+    auto definition_event_or = device_state->GetEventForComputeStreamSyncPoint(
+        device_state->GetNextComputeStreamSyncPoint(),
+        client_->async_work_runner());
+    if (!definition_event_or.ok()) {
+      StallStreamOnError(device_state, stream);
+      return client_->CreateErrorDeviceEvent(definition_event_or.status());
+    }
+    return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
+        std::move(*definition_event_or), "PjRtStreamExecutorLoadedExecutable",
+        "Execute");
+  }();
+  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> buffers_to_release;
+  if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
+    buffers_to_release.reserve(results.size() + flat_arguments.size());
+    for (auto& node : results) {
+      buffers_to_release.push_back(
+          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
+              ->device_buffer());
+    }
+    for (auto& node : flat_arguments) {
+      buffers_to_release.push_back(
+          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
+              ->device_buffer());
+    }
+  }
+  std::optional<Future<>> maybe_future;
+  if (fill_future) {
+    auto [promise, future] = MakePromise<>();
+    maybe_future = std::move(future);
+    compute_callbacks.push_back(
+        [promise = std::move(promise)]() mutable { promise.Set(); });
+  }
+  definition_event->AndThen(
+      [callbacks{std::move(compute_callbacks)},
+       buffers_to_release{std::move(buffers_to_release)}]() mutable {
+        for (auto& fn : callbacks) {
+          std::move(fn)();
+        }
+        callbacks.clear();
+      });
+  metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
+                                       start_time_usecs);
+
+  PjRtRawLoadedExecutable::RawExecuteResult execute_results;
+  execute_results.future = std::move(maybe_future);
+  execute_results.primary_execute_event = std::move(definition_event);
+  return execute_results;
 }
 
 static absl::Status GetFirstInputError(
@@ -1866,7 +1919,6 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options, bool fill_future,
     PjRtDevice* device) const {
-  const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -1919,7 +1971,6 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
-  std::vector<absl::AnyInvocable<void() &&>> compute_callbacks;
   absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4> device_buffers;
   device_buffers.reserve(argument_handles.size());
   PjRtStreamExecutorDeviceEventSet events(argument_handles.size());
@@ -1936,81 +1987,28 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
           result_shape_, device_buffers,
           executable_->executable()->module().input_output_alias_config(),
           device, output_memory_space_kind_ids_));
-  absl::Status status =
+
+  absl::StatusOr<PjRtRawLoadedExecutable::RawExecuteResult> status_or_results =
       EnqueueExecution(argument_handles, replica, partition, run_id, options,
                        device, input_buffers, result_buffer, events,
-                       std::move(device_assignment), compute_callbacks);
+                       std::move(device_assignment), fill_future);
 
-  if (!status.ok()) {
-    LOG(ERROR) << "Execution of replica " << replica << " failed: " << status;
-    return status;
+  if (!status_or_results.ok()) {
+    LOG(ERROR) << "Execution of replica " << replica
+               << " failed: " << status_or_results.status();
+    return status_or_results.status();
   }
 
-  LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
-  se::Stream* stream = device_state->compute_stream();
-
-  auto definition_event_or = device_state->GetEventForComputeStreamSyncPoint(
-      device_state->GetNextComputeStreamSyncPoint(),
-      client_->async_work_runner());
-  if (!definition_event_or.ok()) {
-    StallStreamOnError(device_state, stream);
-    for (CommonPjRtBuffer::ScopedHold& b : device_buffers) {
-      if (b.type() == CommonPjRtBuffer::ScopedHold::kDonation) {
-        // Even though there was an error we need to call ConfirmDonation, which
-        // renders b invalid, since the computation has been enqueued and b has
-        // been donated.
-        b.ConfirmDonation();
-      }
-    }
-    return definition_event_or.status();
-  }
-  std::vector<tsl::AsyncValueRef<RawSEDeviceMemory>> buffers_to_release;
-  if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
-    buffers_to_release.reserve(result_buffer.size() + device_buffers.size());
-    for (auto& node : result_buffer) {
-      buffers_to_release.push_back(
-          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
-              ->device_buffer());
-    }
-    for (CommonPjRtBuffer::ScopedHold& b : device_buffers) {
-      if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
-        buffers_to_release.push_back(
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                b.buffer()->raw_buffer().get())
-                ->device_buffer());
-      }
-    }
-  }
-  auto definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-      *definition_event_or, "PjRtStreamExecutorLoadedExecutable", "Execute");
-  PjRtRawLoadedExecutable::RawExecuteResult results;
-  std::optional<Future<>>& maybe_future = results.future;
-  results.primary_execute_event = definition_event;
-  if (fill_future) {
-    auto [promise, future] = MakePromise<>();
-    maybe_future = std::move(future);
-    compute_callbacks.push_back(
-        [promise = std::move(promise)]() mutable { promise.Set(); });
-  }
-  definition_event->AndThen(
-      [callbacks{std::move(compute_callbacks)},
-       buffers_to_release{std::move(buffers_to_release)}]() mutable {
-        for (auto& fn : callbacks) {
-          std::move(fn)();
-        }
-        callbacks.clear();
-      });
+  auto& results = status_or_results.value();
 
   for (CommonPjRtBuffer::ScopedHold& b : device_buffers) {
     if (b.type() == CommonPjRtBuffer::ScopedHold::kUsage) {
-      b.ConvertUsageHold(definition_event);
+      b.ConvertUsageHold(results.primary_execute_event);
     } else {
       CHECK(b.type() == CommonPjRtBuffer::ScopedHold::kDonation);
       b.ConfirmDonation();
     }
   }
-  metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
-                                       start_time_usecs);
   return PjRtLoadedExecutable::Result(
       {/*future=*/std::move(results.future),
        /*buffers=*/client()->CreateOutputs(
