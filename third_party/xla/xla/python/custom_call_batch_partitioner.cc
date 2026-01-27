@@ -75,7 +75,8 @@ HloSharding GetBatchSharding(const HloSharding& sharding,
 // Append `num_replicate_dims` replicated dimensions to the given HLO sharding.
 HloSharding InsertNonBatchSharding(const HloSharding& sharding,
                                    int64_t num_replicate_dims) {
-  if (num_replicate_dims < 0) {
+  // TODO: b/479441627 - Add tests
+  if (!sharding.IsTiled() || num_replicate_dims < 0) {
     return HloSharding::Replicate(sharding.metadata());
   }
   return hlo_sharding_util::AddShapeDimensions(

@@ -920,6 +920,15 @@ TEST(HloShardingUtilTest, RemoveShapeDimensions) {
   EXPECT_EQ(target_sharding.named_sharding(), expected);
 }
 
+TEST(HloShardingUtilTest, AddShapeDimensionsReplicatedTiledSharding) {
+  EXPECT_EQ(AddShapeDimensions(HloSharding::Replicate(), 2, 2),
+            HloSharding::Replicate());
+}
+TEST(HloShardingUtilTest, AddShapeDimensionsReplicatedNamedSharding) {
+  EXPECT_EQ(AddShapeDimensions(HloSharding(NamedSharding::Replicate()), 2, 2),
+            HloSharding(NamedSharding::Replicate()));
+}
+
 TEST(HloShardingUtilTest, AddShapeDimensionsTiledSharding) {
   HloSharding source_sharding =
       HloSharding::PartialTile(TileAssignment({2, 3, 5, 11}));

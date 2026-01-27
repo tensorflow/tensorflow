@@ -1705,11 +1705,12 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 
 HloSharding AddShapeDimensions(const HloSharding& sharding,
                                int64_t insertion_index, int64_t num_dims) {
-  CHECK_GE(insertion_index, 0);
-  CHECK_LE(insertion_index, sharding.TiledDataRank());
-  if (sharding.IsTileMaximal() || num_dims == 0) {
+  if (!sharding.IsTiled() || num_dims == 0) {
     return sharding;
   }
+
+  CHECK_GE(insertion_index, 0);
+  CHECK_LE(insertion_index, sharding.TiledDataRank());
 
   if (sharding.UseNamedShardingLeaf()) {
     absl::Span<const NamedSharding::DimensionSharding> dim_shardings =
