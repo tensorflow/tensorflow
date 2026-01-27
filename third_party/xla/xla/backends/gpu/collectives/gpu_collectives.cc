@@ -37,7 +37,7 @@ GpuCollectives* GpuCollectives::Default(absl::string_view platform_name) {
       CollectivesRegistry::Default(platform_name);
   CHECK_OK(collectives) << "Failed to get GPU collectives";  // Crash OK
 
-  if (auto* gpu_collectives = tsl::down_cast<GpuCollectives*>(*collectives)) {
+  if (auto* gpu_collectives = absl::down_cast<GpuCollectives*>(*collectives)) {
     return gpu_collectives;
   }
 
