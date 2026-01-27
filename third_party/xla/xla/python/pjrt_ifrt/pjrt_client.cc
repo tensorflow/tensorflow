@@ -838,7 +838,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   }
 
   for (Device* ifrt_device : client->addressable_devices_) {
-    auto* device = tensorflow::down_cast<PjRtDevice*>(ifrt_device);
+    auto* device = absl::down_cast<PjRtDevice*>(ifrt_device);
     auto* pjrt_device = device->pjrt_device();
     device->memories_.reserve(pjrt_device->memory_spaces().size());
     for (xla::PjRtMemorySpace* pjrt_memory_space :
@@ -1090,14 +1090,14 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                           }));
       }
       TF_ASSIGN_OR_RETURN(
-          buffer, pjrt_client_->BufferFromHostBuffer(
-                      data, primitive_type, shape.dims(), byte_strides,
-                      semantics, on_done_with_host_buffer_per_device,
-                      tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
-                      xla_layout));
+          buffer,
+          pjrt_client_->BufferFromHostBuffer(
+              data, primitive_type, shape.dims(), byte_strides, semantics,
+              on_done_with_host_buffer_per_device,
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory(), xla_layout));
     } else {
       TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
-                          tensorflow::down_cast<PjRtDevice*>(device)
+                          absl::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
                               ->default_memory_space());
       TF_ASSIGN_OR_RETURN(
@@ -1171,7 +1171,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
           buffers.emplace_back(),
           pjrt_client_->CreateErrorBuffer(
               error, xla_shape,
-              tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
+              absl::down_cast<PjRtMemory*>(memory)->pjrt_memory()));
     }
     TF_ASSIGN_OR_RETURN(
         arrays.emplace_back(),
