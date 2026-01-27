@@ -30,7 +30,7 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -40,8 +40,12 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -124,7 +128,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/tstring.h"
 
 using absl::StatusOr;
@@ -564,14 +567,89 @@ struct SignatureDefData {
   uint32_t subgraph_index;
 };
 
+// Helper class to store buffers for export. This class is used to store
+// buffers for export and provides utility functions to get size and hash of
+// the buffers.
+class ExportBufferStorage {
+ private:
+  // Abstract base class for type erasure
+  struct ExportBufferBase {
+    using ApplyDataFuncT = absl::FunctionRef<absl::Status(absl::string_view)>;
+    virtual ~ExportBufferBase() = default;
+    inline virtual absl::Status ApplyData(ApplyDataFuncT apply_data_func) = 0;
+    inline virtual std::string GetData() = 0;
+    inline virtual uint64_t GetHash() = 0;
+  };
+
+  template <typename T>
+  class ExportBuffer final : public ExportBufferBase {
+   public:
+    using ApplyDataFromBufferFuncT = absl::AnyInvocable<absl::Status(
+        const T&, ExportBufferBase::ApplyDataFuncT) const>;
+
+    ExportBuffer(T item, ApplyDataFromBufferFuncT apply, uint64_t hash)
+        : item_(std::move(item)), apply_(std::move(apply)), hash_(hash) {}
+
+    inline absl::Status ApplyData(
+        ExportBufferBase::ApplyDataFuncT apply_data_func) override {
+      return apply_(item_, apply_data_func);
+    }
+
+    inline uint64_t GetHash() override { return hash_; }
+
+    inline std::string GetData() override {
+      std::string data;
+      data.reserve(32);
+      auto status = ApplyData([&data](absl::string_view chunk) {
+        data.append(chunk.data(), chunk.size());
+        return absl::OkStatus();
+      });
+      return data;
+    }
+
+    ExportBuffer(const ExportBuffer&) = delete;
+    ExportBuffer& operator=(const ExportBuffer&) = delete;
+    ExportBuffer(ExportBuffer&&) noexcept = default;
+    ExportBuffer& operator=(ExportBuffer&&) noexcept = default;
+
+   private:
+    T item_;
+    ExportBuffer<T>::ApplyDataFromBufferFuncT apply_;
+    uint64_t hash_;
+  };
+
+  // Store pointers to the base class
+  absl::flat_hash_map<int64_t, std::unique_ptr<ExportBufferBase>> buffers_;
+
+ public:
+  template <typename T, typename F>
+  inline void Insert(int64_t index, T&& item, F&& apply, uint64_t hash) {
+    // Ensure T is the actual value type, not a reference etc.
+    using CleanT = std::decay_t<T>;
+
+    auto export_buffer = std::make_unique<ExportBuffer<CleanT>>(
+        std::forward<T>(item), std::forward<F>(apply), hash);
+    buffers_[index] = std::move(export_buffer);
+  }
+
+  auto& buffers() { return buffers_; }
+
+  ExportBufferStorage(const ExportBufferStorage&) = delete;
+  ExportBufferStorage& operator=(const ExportBufferStorage&) = delete;
+  ExportBufferStorage(ExportBufferStorage&&) noexcept = default;
+  ExportBufferStorage& operator=(ExportBufferStorage&&) noexcept = default;
+  ExportBufferStorage() = default;
+};
+
 // Translates an MLIR module in TFLite dialect to TFLite FlatBuffer.
 class Translator {
  public:
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns std::nullopt on unsupported, invalid inputs
   // or internal error.
-  static std::optional<std::string> Translate(
-      ModuleOp module, const tflite::ConverterFlags& converter_flags,
+  static absl::Status Translate(
+      ModuleOp module, llvm::raw_pwrite_stream& export_stream,
+      tflite::ConverterFlags converter_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata,
@@ -581,7 +659,7 @@ class Translator {
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(ModuleOp module,
+  explicit Translator(ModuleOp module, llvm::raw_pwrite_stream& export_stream,
                       const tflite::ConverterFlags& converter_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
@@ -601,7 +679,8 @@ class Translator {
         serialize_debug_metadata_(converter_flags.serialize_debug_metadata()),
         use_buffer_offset_(converter_flags.use_buffer_offset()),
         custom_option_alignment_(custom_option_alignment),
-        disable_buffer_deduping_(disable_buffer_deduping) {
+        disable_buffer_deduping_(disable_buffer_deduping),
+        export_stream_(export_stream) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -625,7 +704,7 @@ class Translator {
         ->getOrLoadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
   }
 
-  std::optional<std::string> TranslateInternal();
+  absl::Status TranslateInternal();
 
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
@@ -767,19 +846,11 @@ class Translator {
 
   // Append constant and custom op buffers at the end of the flatbuffer and
   // calculate the offsets
-  void AppendBufferData(std::string& result, int64_t offset);
-
-  // Utility function to return the size of the buffer data.
-  int64_t GetBufferDataSize();
+  absl::Status AppendBufferData();
 
   // Update constant & custom op buffer offsets
   // Return false if fail to update offset
   bool UpdateBufferOffsets(tflite::Model* mutable_model);
-
-  // check if Flatbuffer builder can no longer hold the given amount of the data
-  inline bool IsModelBiggerThan2GB(const uint64_t data_size) {
-    return data_size > flatbuffer_size_max - builder_.GetSize();
-  }
 
   // helper function for build stablehlo operators
   std::optional<BufferOffset<tflite::Operator>>
@@ -890,19 +961,7 @@ class Translator {
   // Maps buffer data to corresponding buffer index
   // in the idx map, the value is a pair of offset and size
   absl::flat_hash_map<int, std::pair<uint64_t, uint64_t>> buffer_idx_map_;
-  // Maps buffer index to buffer data. Prefer string_view to avoid one extra
-  // copy. As it is, this data will be copied at least once to the flatbuffer.
-  // We need to find a way to avoid this copy.
-  absl::flat_hash_map<int, absl::string_view> buffer_data_map_;
-  bool buffer_data_exported_ = false;
-  // strings, buffers, and Tensors that need to be deleted after the flatbuffer
-  // is built. We're currently using these to hold the data that are created
-  // from DenseResourceElementsAttr or DenseElementsAttr and hold constant data.
-  std::vector<std::unique_ptr<tensorflow::Tensor>> tf_tensors_to_delete_;
-  std::vector<std::unique_ptr<char[], std::function<void(char*)>>>
-      string_buffers_to_delete_;
-  std::vector<std::unique_ptr<std::vector<uint8_t>>>
-      packed_low_bit_buffers_to_delete_;
+  ExportBufferStorage buffer_storage_;
 
   // Maps custom options data to corresponding node
   // Key is set to be the list of input tensor indices and list of output tensor
@@ -961,8 +1020,6 @@ class Translator {
 
   bool use_buffer_offset_ = false;
 
-  bool require_use_buffer_offset_ = false;
-
   std::optional<size_t> custom_option_alignment_ = std::nullopt;
 
   bool disable_buffer_deduping_ = false;
@@ -978,6 +1035,9 @@ class Translator {
   absl::flat_hash_map<std::string,
                       std::pair<int, absl::flat_hash_map<Operation*, int>>>
       debug_metadata_idx_map_;
+
+  // The stream to export the flatbuffer bytes to.
+  std::reference_wrapper<llvm::raw_pwrite_stream> export_stream_;
 
   std::string debug_metadata_serialized_string_;
 };
@@ -1088,108 +1148,91 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   auto type = mlir::cast<TensorType>(value.getType());
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
+
   if (tflite_element_type == tflite::TensorType_INT4 ||
       tflite_element_type == tflite::TensorType_UINT4 ||
       tflite_element_type == tflite::TensorType_INT2) {
-    std::vector<uint8_t> data;
-    for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
-      data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
-    }
-    auto packed_buffer =
-        std::make_unique<std::vector<uint8_t>>(tflite::PackLowBitValuesDensely(
-            data, /*bit_width=*/(
-                tflite_element_type == tflite::TensorType_INT4 ||
-                        tflite_element_type == tflite::TensorType_UINT4
-                    ? 4
-                    : 2)));
-    if (use_buffer_offset_) {
-      buffer_data_map_[index] =
-          absl::string_view(reinterpret_cast<char*>(packed_buffer->data()),
-                            packed_buffer->size());
-      packed_low_bit_buffers_to_delete_.emplace_back(std::move(packed_buffer));
-      return tflite::CreateBuffer(builder_, 0, 1, 1);
-    } else {
-      if (IsModelBiggerThan2GB(packed_buffer->size())) {
-        require_use_buffer_offset_ = true;
-        return empty_buffer_;
-      }
-      auto buffer_data =
-          builder_.CreateVector(packed_buffer->data(), packed_buffer->size());
-      return tflite::CreateBuffer(builder_, buffer_data);
-    }
+    int bit_width = tflite_element_type == tflite::TensorType_INT4 ||
+                            tflite_element_type == tflite::TensorType_UINT4
+                        ? 4
+                        : 2;
+    buffer_storage_.Insert(
+        index, attr,
+        [bit_width](const mlir::ElementsAttr& attr, auto apply) {
+          std::vector<uint8_t> data;
+          for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
+            data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
+          }
+          auto packed_buffer = tflite::PackLowBitValuesDensely(data, bit_width);
+          return apply(
+              absl::string_view(reinterpret_cast<char*>(packed_buffer.data()),
+                                packed_buffer.size()));
+        },
+        /*hash=*/mlir::hash_value(attr));
+  } else {
+    buffer_storage_.Insert(
+        index, std::make_pair(attr, inst),
+        [](const auto& attr_and_inst, auto apply) {
+          auto [attr, inst] = attr_and_inst;
+          auto tensor = std::make_unique<tensorflow::Tensor>();
+          auto status = tensorflow::ConvertToTensor(attr, tensor.get());
+
+          // Reset the attribute after copying it to a tensorflow::Tensor
+          // because the attribute is not needed anymore.
+          if (auto dense_resource_attr =
+                  dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+            dense_resource_attr.getRawHandle().getResource()->setBlob({});
+          }
+
+          if (!status.ok()) {
+            std::string error_message =
+                "failed to convert value attribute to tensor with error: " +
+                status.ToString();
+            inst->emitError(Twine(error_message));
+            return absl::InvalidArgumentError(error_message);
+          }
+
+          // TensorFlow and TensorFlow Lite use different string encoding
+          // formats. Convert to TensorFlow Lite format is it's a constant
+          // string tensor.
+          if (tensor->dtype() == tensorflow::DT_STRING) {
+            ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
+            auto flat = tensor->flat<::tensorflow::tstring>();
+            for (int i = 0; i < flat.size(); ++i) {
+              const auto& str = flat(i);
+              if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
+                std::string error_message =
+                    "failed to add string to dynamic buffer with error: " +
+                    status.ToString();
+                inst->emitError(Twine(error_message));
+                return absl::InvalidArgumentError(error_message);
+              }
+            }
+
+            char* tensor_buffer;
+            int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
+            auto apply_result = apply(absl::string_view(tensor_buffer, bytes));
+            free(tensor_buffer);
+
+            return apply_result;
+          } else {
+            return apply(tensor->tensor_data());
+          }
+        },
+        /*hash=*/mlir::hash_value(attr));
   }
 
-  auto tensor = std::make_unique<tensorflow::Tensor>();
-  auto status = tensorflow::ConvertToTensor(attr, tensor.get());
-  // Reset the attribute after copying it to a tensorflow::Tensor because the
-  // attribute is not needed anymore.
-  if (auto dense_resource_attr =
-          dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-    dense_resource_attr.getRawHandle().getResource()->setBlob({});
-  }
-  if (!status.ok()) {
-    inst->emitError(
-        Twine("failed to convert value attribute to tensor with error: " +
-              status.ToString()));
-    return std::nullopt;
-  }
-
-  // TensorFlow and TensorFlow Lite use different string encoding formats.
-  // Convert to TensorFlow Lite format is it's a constant string tensor.
-  if (tensor->dtype() == tensorflow::DT_STRING) {
-    ::mlir::TFL::SimpleDynamicBuffer dynamic_buffer;
-    auto flat = tensor->flat<::tensorflow::tstring>();
-    for (int i = 0; i < flat.size(); ++i) {
-      const auto& str = flat(i);
-      if (!dynamic_buffer.AddString(str.c_str(), str.length())) {
-        inst->emitError(
-            Twine("failed to add string to dynamic buffer with error: " +
-                  status.ToString()));
-        return std::nullopt;
-      }
-    }
-    char* tensor_buffer;
-    int bytes = dynamic_buffer.WriteToBuffer(&tensor_buffer);
-    if (use_buffer_offset_) {
-      // Avoid creating std::vector and std::string
-      buffer_data_map_[index] = absl::string_view(tensor_buffer, bytes);
-      string_buffers_to_delete_.push_back(
-          std::unique_ptr<char[], std::function<void(char*)>>(tensor_buffer,
-                                                              free));
-      return tflite::CreateBuffer(builder_, 0, 1, 1);
-    } else {
-      if (IsModelBiggerThan2GB(bytes)) {
-        require_use_buffer_offset_ = true;
-        return empty_buffer_;
-      }
-      auto buffer_data = builder_.CreateVector(
-          reinterpret_cast<uint8_t*>(tensor_buffer), bytes);
-      free(tensor_buffer);
-      return tflite::CreateBuffer(builder_, buffer_data);
-    }
-  }
-
-  absl::string_view tensor_data = std::move(tensor->tensor_data());
   if (use_buffer_offset_) {
-    buffer_data_map_[index] = std::move(tensor_data);
-    tf_tensors_to_delete_.push_back(std::move(tensor));
+    // If use_buffer_offset_ is true, creates an empty buffer with offset 0.
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
-    if (IsModelBiggerThan2GB(tensor_data.size())) {
-      require_use_buffer_offset_ = true;
-      return empty_buffer_;
-    }
-    if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(tensor_data.size(), sizeof(uint8_t),
-                                    custom_option_alignment_.value());
-    }
+    // Otherwise, creates a buffer with the data immediately.
+    auto storage_it = buffer_storage_.buffers().find(index);
+    std::string buffer = storage_it->second->GetData();
+    buffer_storage_.buffers().erase(storage_it);
+
     auto buffer_data = builder_.CreateVector(
-        reinterpret_cast<const uint8_t*>(tensor_data.data()),
-        tensor_data.size());
-    // Delete the tensor as the call to CreateVector copies the
-    // data. We need a better design for this so that we don't have to
-    // delete the tensor based on the implementation details.
-    tensor.reset();
+        reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
     return tflite::CreateBuffer(builder_, buffer_data);
   }
 }
@@ -1639,16 +1682,19 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*builtin_options_2=*/0,
         /*debug_metadata_index=*/
         GetOperatorDebugMetadataIndex(inst));
-  }
-  if (IsModelBiggerThan2GB(custom_option_vector.size())) {
-    require_use_buffer_offset_ = true;
+  } else {
+    if (custom_option_alignment_.has_value()) {
+      builder_.ForceVectorAlignment(custom_option_vector.size(),
+                                    sizeof(uint8_t),
+                                    custom_option_alignment_.value());
+    }
+    auto custom_option_fbs_vector =
+        builder_.CreateVector<uint8_t>(custom_option_vector);
     return tflite::CreateOperator(
         builder_, opcode_index, builder_.CreateVector(operands),
         builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-        /*builtin_options=*/0,
-        /*custom_options=*/0,
-        /*custom_options_format=*/tflite::CustomOptionsFormat_FLEXBUFFERS,
-        /*mutating_variable_inputs=*/0,
+        /*builtin_options=*/0, custom_option_fbs_vector,
+        tflite::CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
         /*intermediates=*/0, /*large_custom_options_offset=*/0,
         /*large_custom_options_size=*/0,
         /*builtin_options_2_type=*/tflite::BuiltinOptions2_NONE,
@@ -1656,23 +1702,6 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*debug_metadata_index=*/
         GetOperatorDebugMetadataIndex(inst));
   }
-  if (custom_option_alignment_.has_value()) {
-    builder_.ForceVectorAlignment(custom_option_vector.size(), sizeof(uint8_t),
-                                  custom_option_alignment_.value());
-  }
-  auto custom_option_fbs_vector =
-      builder_.CreateVector<uint8_t>(custom_option_vector);
-  return tflite::CreateOperator(
-      builder_, opcode_index, builder_.CreateVector(operands),
-      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
-      /*builtin_options=*/0, custom_option_fbs_vector,
-      tflite::CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
-      /*intermediates=*/0, /*large_custom_options_offset=*/0,
-      /*large_custom_options_size=*/0,
-      /*builtin_options_2_type=*/tflite::BuiltinOptions2_NONE,
-      /*builtin_options_2=*/0,
-      /*debug_metadata_index=*/
-      GetOperatorDebugMetadataIndex(inst));
 }
 
 std::optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
@@ -1689,10 +1718,6 @@ std::optional<CustomOptionsOffset> Translator::CreateFlexOpCustomOptions(
     flex_builder->String(node_def_str);
   });
   flex_builder->Finish();
-  if (IsModelBiggerThan2GB(flex_builder->GetSize()) && !use_buffer_offset_) {
-    require_use_buffer_offset_ = true;
-    return builder_.CreateVector({});
-  }
   return builder_.CreateVector(flex_builder->GetBuffer());
 }
 
@@ -2014,9 +2039,10 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
         return std::nullopt;
       }
       flex_builder->EndMap(attr_start);
-    } else
+    } else {
       // Unhandled attribute type.
       return std::nullopt;
+    }
   }
 
   flex_builder->EndMap(map_start);
@@ -3474,8 +3500,6 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         return std::nullopt;
     }
 
-    if (require_use_buffer_offset_) return std::nullopt;
-
     // Skip constant ops as they don't represent a TFLite operator.
     if (IsConst(&inst)) continue;
 
@@ -4027,8 +4051,12 @@ bool UpdateEntryFunction(ModuleOp module) {
   return true;
 }
 
-std::optional<std::string> Translator::Translate(
-    ModuleOp module, const tflite::ConverterFlags& converter_flags,
+constexpr absl::string_view kFlatbufferSizeLimitExceededError =
+    "Flatbuffer size exceeds 2gb limit.";
+
+absl::Status Translator::Translate(
+    ModuleOp module, llvm::raw_pwrite_stream& export_stream,
+    tflite::ConverterFlags converter_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata,
@@ -4037,40 +4065,46 @@ std::optional<std::string> Translator::Translate(
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
   if (!op_or_arg_name_mapper)
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
-  if (!UpdateEntryFunction(module)) return std::nullopt;
-  if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
+  if (!UpdateEntryFunction(module)) {
+    return absl::InvalidArgumentError("No entry function found.");
+  }
+  if (!IsValidTFLiteMlirModule(module)) {
+    return absl::InvalidArgumentError("Invalid TFLite MLIR module.");
+  }
 
-  auto new_converter_flags = converter_flags;
-  // If the module size is greater than 2GB, we need to use buffer offset. This
-  // will prevent running export twice, if the module size is known to be
-  // greater than 2GB.
-  if (mlir::TFL::GetApproximateModuleSize(module) > flatbuffer_size_max) {
+  // Best-effort attempt to enable buffer offset for models that are close to
+  // the flatbuffer size limit (a lossy threshold is used to encourage buffer
+  // offset and avoid a second retry)
+  const int64_t enable_buffer_offset_threshold =
+      flatbuffer_size_max - (512 * 1024 * 1024 /* 512MB */);
+  if (!converter_flags.use_buffer_offset() &&
+      mlir::TFL::GetApproximateModuleSize(module) >
+          enable_buffer_offset_threshold) {
     llvm::errs() << "Module size is greater than 2GB\n";
-    new_converter_flags.set_use_buffer_offset(true);
+    converter_flags.set_use_buffer_offset(true);
   }
 
-  auto translator = std::unique_ptr<Translator>(new Translator(
-      module, new_converter_flags, tags, op_or_arg_name_mapper, metadata,
-      custom_option_alignment, disable_buffer_deduping));
-  translator->convert_stablehlo_ = serialize_stablehlo_ops;
-  auto ret = translator->TranslateInternal();
+  auto translate = [&]() {
+    Translator translator(module, export_stream, converter_flags, tags,
+                          op_or_arg_name_mapper, metadata,
+                          custom_option_alignment, disable_buffer_deduping);
+    translator.convert_stablehlo_ = serialize_stablehlo_ops;
+    return translator.TranslateInternal();
+  };
 
-  // Re-run the translator with use_buffer_offset set to true, if
-  // require_use_buffer_offset_ flag is set during the first run.
-  if (translator->require_use_buffer_offset_ &&
-      !new_converter_flags.use_buffer_offset()) {
-    ret = std::nullopt;
-    auto new_converter_flags = converter_flags;
-    new_converter_flags.set_use_buffer_offset(true);
-    translator = std::unique_ptr<Translator>(new Translator(
-        module, new_converter_flags, tags, op_or_arg_name_mapper, metadata,
-        custom_option_alignment, disable_buffer_deduping));
-    return translator->TranslateInternal();
+  auto status = translate();
+  if (!converter_flags.use_buffer_offset() && !status.ok() &&
+      absl::StrContains(status.message(), kFlatbufferSizeLimitExceededError)) {
+    // Automatically retry once with use_buffer_offset enabled when the model
+    // is too large to fit into a flatbuffer and use_buffer_offset is not
+    // already enabled.
+    converter_flags.set_use_buffer_offset(true);
+    status = translate();
   }
-  return ret;
+  return status;
 }
 
-std::optional<std::string> Translator::TranslateInternal() {
+absl::Status Translator::TranslateInternal() {
   // Debug metadata needs to be serialized before subgraph/operator
   // serialization, since subgraph/operator serialization needs debug metadata
   // index.
@@ -4136,7 +4170,6 @@ std::optional<std::string> Translator::TranslateInternal() {
   // index in the subgraph list.
   int subgraph_index = 0;
   for (const auto& it : llvm::enumerate(named_regions)) {
-    if (require_use_buffer_offset_ && !use_buffer_offset_) return std::nullopt;
     auto subgraph_or =
         BuildSubGraph(it.value().first, it.value().second, subgraph_index);
     if (!subgraph_or) {
@@ -4183,8 +4216,6 @@ std::optional<std::string> Translator::TranslateInternal() {
                     "https://www.tensorflow.org/lite/guide/ops_custom";
   }
 
-  if (require_use_buffer_offset_) return std::nullopt;
-
   if (first_failed_func != -1) {
     std::string failed_flex_ops_summary =
         GetOpsSummary(failed_flex_ops_, /*summary_title=*/"TF Select");
@@ -4206,10 +4237,9 @@ std::optional<std::string> Translator::TranslateInternal() {
           failed_custom_ops_summary + "\n";
 
     auto& failed_region = named_regions[first_failed_func];
-    return failed_region.second->getParentOp()->emitError()
-               << "failed while converting: '" << failed_region.first
-               << "': " << err,
-           std::nullopt;
+    failed_region.second->getParentOp()->emitError()
+        << "failed while converting: '" << failed_region.first << "': " << err;
+    return absl::InvalidArgumentError(err);
   }
 
   // Log MAC count.
@@ -4248,7 +4278,9 @@ std::optional<std::string> Translator::TranslateInternal() {
   auto description = builder_.CreateString(model_description.data());
   VectorBufferOffset<int32_t> metadata_buffer = 0;  // Deprecated
   auto metadata = CreateMetadataVector();
-  if (!metadata) return std::nullopt;
+  if (!metadata) {
+    return absl::InternalError("Failed to create metadata vector");
+  }
 
   std::vector<SignatureDefData> signature_defs_vec;
   subgraph_index = 0;
@@ -4279,181 +4311,90 @@ std::optional<std::string> Translator::TranslateInternal() {
 
   tflite::FinishModelBuffer(builder_, model);
   // There is a limit of 2GB for a flatbuffer.
-  bool flatbuffer_limit_exceeded = builder_.GetSize() > flatbuffer_size_max;
-  if (flatbuffer_limit_exceeded && require_use_buffer_offset_ == false) {
-    require_use_buffer_offset_ = true;
-    return std::nullopt;
-  }
-  if (flatbuffer_limit_exceeded) {
+  if (builder_.GetSize() > flatbuffer_size_max) {
+    auto status = absl::InternalError(kFlatbufferSizeLimitExceededError);
     LOG(ERROR) << "Model structure size is bigger than 2gb";
-    return std::nullopt;
+    return status;
   }
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
 
-  std::string result_string;
-  int64_t final_result_size = builder_.GetSize();
-
-  // If we need to use buffer offset, we need to add the buffer data size to the
-  // final result size. This is because the buffer data size is not included in
-  // the flatbuffer size.
-  if (use_buffer_offset_) {
-    final_result_size += GetBufferDataSize();
-  }
-  result_string.reserve(final_result_size);
-
-  int64_t offset = 0;
-  auto fbs = absl::string_view(
-      reinterpret_cast<const char*>(builder_.GetBufferPointer()),
-      builder_.GetSize());
-  result_string.replace(offset, fbs.size(), fbs);
-
   // Return serialized string for the built FlatBuffer.
   if (use_buffer_offset_) {
-    offset += fbs.size();
+    export_stream_.get().write_zeros(builder_.GetSize());
     // Pad to be 16 bytes aligned
-    {
-      std::string pad(kFbAlignment - offset % kFbAlignment, '\0');
-      size_t pad_size = pad.size();
-      result_string.replace(offset, pad_size, std::move(pad));
-      offset += pad_size;
+    export_stream_.get().write_zeros(kFbAlignment -
+                                     builder_.GetSize() % kFbAlignment);
+
+    if (auto status = AppendBufferData(); !status.ok()) {
+      return status;
     }
-    AppendBufferData(result_string, offset);
-    auto mutable_model = tflite::GetMutableModel(result_string.data());
-    bool ret = UpdateBufferOffsets(mutable_model);
-    if (!ret) {
-      return std::nullopt;
+
+    auto mutable_model = tflite::GetMutableModel(builder_.GetBufferPointer());
+    if (!UpdateBufferOffsets(mutable_model)) {
+      return absl::InternalError("Failed to update buffer offsets");
     }
-    return result_string;
-  }
 
-  // Free all the buffers/tensors, etc. that were created but were kept around
-  // to copy into the flatbuffer.
-  for (auto& packed_low_bit_buffer : packed_low_bit_buffers_to_delete_) {
-    packed_low_bit_buffer.reset();
+    export_stream_.get().pwrite(
+        reinterpret_cast<const char*>(builder_.GetBufferPointer()),
+        builder_.GetSize(), /*offset=*/0);
+  } else {
+    export_stream_.get().write(
+        reinterpret_cast<const char*>(builder_.GetBufferPointer()),
+        builder_.GetSize());
   }
-  packed_low_bit_buffers_to_delete_.clear();
-
-  for (auto& str_buffer : string_buffers_to_delete_) {
-    str_buffer.reset();
-  }
-  string_buffers_to_delete_.clear();
-
-  for (auto& tensor : tf_tensors_to_delete_) {
-    auto tensor_ptr = tensor.release();
-    delete tensor_ptr;
-  }
-  tf_tensors_to_delete_.clear();
-
-  return std::move(result_string);
+  return absl::OkStatus();
 }
 
-int64_t Translator::GetBufferDataSize() {
-  int64_t final_size = 0;
-  // 1. FlatBuffer Size, which will be included prior to the buffer data.
+absl::Status Translator::AppendBufferData() {
+  auto offset = [this]() { return export_stream_.get().tell(); };
 
-  // 2. Alignment Padding for FlatBuffer (if needed)
-  if (use_buffer_offset_) {
-    final_size += 16;
-  }
-
-  // 3. Buffer Data Size (with deduplication)
-  absl::flat_hash_set<uint64_t> unique_buffer_hashes;
-  for (const auto& [_, buffer] : buffer_data_map_) {
-    uint64_t hash = tsl::Fingerprint64(buffer);
-    if (unique_buffer_hashes.insert(hash).second) {  // Unique buffer
-      final_size += buffer.size();
-      final_size += 16;  // Alignment
-    }
-  }
-
-  // 4. Additional Padding for XNNPack
-  final_size += 16;  // Assuming 16 bytes of padding
-
-  // 5. Custom Op Data Size
-  for (const auto& [_, custom_data] : custom_op_data_map_) {
-    final_size += 16;  // Alignment
-    if (custom_option_alignment_.has_value()) {
-      final_size += custom_option_alignment_.value() -
-                    final_size % custom_option_alignment_.value();
-    }
-    final_size += custom_data.size();
-  }
-
-  // 6. Final Alignment Padding
-  final_size += 16;
-
-  return final_size;
-}
-
-void Translator::AppendBufferData(std::string& result, int64_t offset) {
   std::unordered_map<uint64_t, std::pair<int64_t, int64_t>> hashcode_to_pos;
-  // Buffer data should be exported only once.
-  assert(!buffer_data_exported_);
-
-  for (const auto& [index, buffer] : buffer_data_map_) {
-    int64_t size = buffer.size();
-    uint64_t hash = tsl::Fingerprint64(buffer);
+  for (const auto& [index, buffer] : buffer_storage_.buffers()) {
+    uint64_t hash = buffer->GetHash();
     if (hashcode_to_pos.find(hash) == hashcode_to_pos.end()) {
-      hashcode_to_pos[hash] = std::make_pair(offset, size);
-      buffer_idx_map_[index] = std::make_pair(offset, size);
-      result.replace(offset, size, std::move(buffer));
-      offset += size;
-      // Pad to be 16 bytes aligned.
-      {
-        std::string pad(kFbAlignment - offset % kFbAlignment, '\0');
-        size_t pad_size = pad.size();
-        result.replace(offset, pad_size, std::move(pad));
-        offset += pad_size;
+      int64_t size = 0;
+      int64_t buffer_offset = offset();
+      auto status = buffer->ApplyData([this, &size](absl::string_view data) {
+        size += data.size();
+        export_stream_.get().write(data.data(), data.size());
+        return absl::OkStatus();
+      });
+      hashcode_to_pos[hash] = std::make_pair(buffer_offset, size);
+      buffer_idx_map_[index] = std::make_pair(buffer_offset, size);
+      if (!status.ok()) {
+        return status;
       }
     } else {
       // only update offset/index.
       buffer_idx_map_[index] = hashcode_to_pos[hash];
     }
-    buffer_data_exported_ = true;
   }
-  {
-    // pad 16 bytes for the last buffer for XNNPack
-    std::string pad(16, '\0');
-    size_t pad_size = pad.size();
-    result.replace(offset, pad_size, std::move(pad));
-    offset += pad_size;
-  }
+  // pad 16 bytes for the last buffer for XNNPack
+  export_stream_.get().write_zeros(16);
+
   // pad to be 16 bytes aligned
-  {
-    std::string pad(kFbAlignment - offset % kFbAlignment, '\0');
-    size_t pad_size = pad.size();
-    result.replace(offset, pad_size, std::move(pad));
-    offset += pad_size;
-  }
+  export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
 
   for (auto& it : custom_op_data_map_) {
-    {
-      std::string pad(kFbAlignment - offset % kFbAlignment, '\0');
-      size_t pad_size = pad.size();
-      result.replace(offset, pad_size, std::move(pad));
-      offset += pad_size;
-    }
+    export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
+
     if (custom_option_alignment_.has_value()) {
-      {
-        auto alignment = custom_option_alignment_.value();
-        std::string pad(alignment - offset % alignment, '\0');
-        size_t pad_size = pad.size();
-        result.replace(offset, pad_size, std::move(pad));
-        offset += pad_size;
-      }
+      auto alignment = custom_option_alignment_.value();
+      std::string pad(alignment - offset() % alignment, '\0');
+      export_stream_.get().write(pad.data(), pad.size());
     }
+
     auto buffer = std::string(it.second.begin(), it.second.end());
     int64_t size = it.second.size();
-    custom_op_idx_map_[it.first] = std::make_pair(offset, size);
-    result.replace(offset, size, std::move(buffer));
-    offset += size;
+    custom_op_idx_map_[it.first] = std::make_pair(offset(), size);
+    export_stream_.get().write(buffer.data(), buffer.size());
   }
+
   // pad to be 16 bytes aligned
-  {
-    std::string pad(kFbAlignment - offset % kFbAlignment, '\0');
-    result.replace(offset, pad.size(), std::move(pad));
-  }
+  export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
+
+  return absl::OkStatus();
 }
 
 bool Translator::UpdateBufferOffsets(tflite::Model* mutable_model) {
@@ -4658,12 +4599,17 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer,
                                        bool serialize_stablehlo_ops) {
-  auto maybe_translated = Translator::Translate(
-      module, options.converter_flags, options.saved_model_tags,
+  llvm::SmallVector<char, 32 * 1024> buffer;
+  llvm::raw_svector_ostream export_stream(buffer);
+
+  absl::Status status = Translator::Translate(
+      module, export_stream, options.converter_flags, options.saved_model_tags,
       options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
       options.custom_option_alignment, options.disable_buffer_deduping);
-  if (!maybe_translated) return false;
-  *serialized_flatbuffer = std::move(*maybe_translated);
+  if (!status.ok()) {
+    return false;
+  }
+  serialized_flatbuffer->assign(buffer.data(), buffer.size());
   return true;
 }
 
