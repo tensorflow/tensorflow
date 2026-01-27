@@ -890,13 +890,6 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
     )
 
-    tf_http_archive(
-        name = "riegeli_py",
-        sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
-        strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
-    )
-
     # Required by riegeli.
     tf_http_archive(
         name = "org_brotli",
@@ -930,6 +923,7 @@ def _tf_repositories():
         repo_mapping = {
             "@xla": "@xla",
             "@tsl": "@tsl",
+            "@com_github_nlohmann_json": "@nlohmann_json_lib",
         },
     )
 

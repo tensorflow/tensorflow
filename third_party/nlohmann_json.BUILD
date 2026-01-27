@@ -20,3 +20,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = ["nlohmann_json_lib"],
 )
+
+# For compatibility in bzlmod.
+alias(
+    name = "json",
+    actual = ":nlohmann_json",
+    visibility = ["//visibility:public"],
+)

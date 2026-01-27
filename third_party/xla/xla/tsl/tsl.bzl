@@ -73,7 +73,7 @@ def clean_dep(target):
     not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
 
     if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
-        return "@tsl//" + label.package + ":" + label.name
+        return Label("@tsl//" + label.package + ":" + label.name)
     else:
         return str(label)
 

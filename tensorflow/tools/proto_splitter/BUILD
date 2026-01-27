@@ -75,7 +75,7 @@ pytype_strict_library(
         ":versions_proto_py",
         "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl/logging",
-        "@riegeli_py//python/riegeli",
+        "@riegeli//python/riegeli",
     ],
 )
 
@@ -99,7 +99,7 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
         "@absl_py//absl/testing:parameterized",
-        "@riegeli_py//python/riegeli",
+        "@riegeli//python/riegeli",
     ],
 )
 
