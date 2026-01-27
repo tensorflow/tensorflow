@@ -5363,7 +5363,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
 
 def TFL_IfOp : Op<TFL_Dialect, "if", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface,
-                              ["getEntrySuccessorRegions"]>,
+                              ["getEntrySuccessorRegions", "getSuccessorInputs"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
     RecursiveMemoryEffects,
     NoRegionArguments,
