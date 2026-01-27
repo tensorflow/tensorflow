@@ -108,8 +108,8 @@ absl::StatusOr<IfrtArrayRef> MakeStringArrayFromHostBuffer(
   const void* data = string_host_buffer.data();
 
   return client->MakeArrayFromHostBuffer(
-      data, dtype, std::move(shape), std::move(byte_strides),
-      std::move(sharding),
+      data, dtype, std::move(shape), byte_strides, std::move(sharding),
+      /*layout=*/nullptr,
       xla::ifrt::Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
       /*on_done_with_host_buffer=*/
       [host_buffer = std::move(host_buffer),
