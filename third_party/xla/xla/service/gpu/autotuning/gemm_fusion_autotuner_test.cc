@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
