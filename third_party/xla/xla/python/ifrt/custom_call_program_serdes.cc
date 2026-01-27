@@ -84,7 +84,11 @@ class CustomCallProgramSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
-        llvm::cast<DeserializeProgramOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
+    if (deserialize_program_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeProgramOptions must be provided");
+    }
 
     CustomCallProgramProto proto;
     if (!proto.ParseFromString(serialized)) {
