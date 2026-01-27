@@ -33,8 +33,8 @@ template <typename ValueOrVec, typename Index, bool is_axis_zero>
 __global__ void GatherOpKernel(const ValueOrVec* __restrict__ params,
                                const Index* __restrict__ indices,
                                ValueOrVec* __restrict__ out,
-                               int64 gather_dim_size, int64 indices_size,
-                               int64 slice_size, int64 out_size) {
+                               int64_t gather_dim_size, int64_t indices_size,
+                               int64_t slice_size, int64_t out_size) {
   GPU_1D_KERNEL_LOOP(i, out_size) {
     Index batch_i = 0;
     Index indices_i = 0;
@@ -78,15 +78,16 @@ struct LaunchGatherKernelVectorized {
   template <int vec_size>
   struct Impl {
     template <typename T, typename Index>
-    Status operator()(const GPUDevice& d, const T* params, const Index* indices,
-                      T* out, int64 gather_dim_size, int64 indices_size,
-                      int64 slice_size, int64 out_size) {
+    absl::Status operator()(const GPUDevice& d, const T* params,
+                            const Index* indices, T* out,
+                            int64_t gather_dim_size, int64_t indices_size,
+                            int64_t slice_size, int64_t out_size) {
       DCHECK_EQ(slice_size % vec_size, 0);
       DCHECK_EQ(out_size % vec_size, 0);
       DCHECK_EQ(reinterpret_cast<std::uintptr_t>(params) % vec_size, 0);
       DCHECK_EQ(reinterpret_cast<std::uintptr_t>(out) % vec_size, 0);
-      int64 out_size_vec = out_size / vec_size;
-      int64 slice_size_vec = slice_size / vec_size;
+      int64_t out_size_vec = out_size / vec_size;
+      int64_t slice_size_vec = slice_size / vec_size;
       using Tvec = AlignedVector<T, vec_size>;
       const Tvec* params_vec = reinterpret_cast<const Tvec*>(params);
       Tvec* out_vec = reinterpret_cast<Tvec*>(out);
@@ -105,10 +106,10 @@ struct LaunchGatherKernelVectorized {
 }  // namespace detail
 
 template <bool is_axis_zero, typename T, typename Index>
-Status LaunchGatherKernel(const GPUDevice& d, const T* params,
-                          const Index* indices, T* out, int64 gather_dim_size,
-                          int64 indices_size, int64 slice_size,
-                          int64 out_size) {
+absl::Status LaunchGatherKernel(const GPUDevice& d, const T* params,
+                                const Index* indices, T* out,
+                                int64_t gather_dim_size, int64_t indices_size,
+                                int64_t slice_size, int64_t out_size) {
   // Note that the GPU memory allocator always returns aligned buffers, so the
   // alignment of data pointers is expected to be deterministic.
   // There will be performance cliffs when slice_size is not aligned, but there
@@ -123,12 +124,12 @@ Status LaunchGatherKernel(const GPUDevice& d, const T* params,
 namespace functor {
 template <typename T, typename Index>
 struct GatherFunctor<GPUDevice, T, Index> {
-  int64 operator()(OpKernelContext* ctx,
-                   typename TTypes<T, 3>::ConstTensor params,
-                   typename TTypes<Index>::ConstFlat indices,
-                   typename TTypes<T, 3>::Tensor out) {
+  int64_t operator()(OpKernelContext* ctx,
+                     typename TTypes<T, 3>::ConstTensor params,
+                     typename TTypes<Index>::ConstFlat indices,
+                     typename TTypes<T, 3>::Tensor out) {
     const GPUDevice& d = ctx->eigen_gpu_device();
-    const int64 out_size = out.size();
+    const int64_t out_size = out.size();
     if (out_size == 0) {
       // We need a check here since the CPU version does useful error checking
       // work if there are nonempty indices but empty slices, so the kernel is
@@ -137,9 +138,9 @@ struct GatherFunctor<GPUDevice, T, Index> {
       return -1;
     }
     const bool is_axis_zero = params.dimension(0) == 1;
-    const int64 gather_dim_size = params.dimension(1);
-    const int64 indices_size = indices.size();
-    const int64 slice_size = params.dimension(2);
+    const int64_t gather_dim_size = params.dimension(1);
+    const int64_t indices_size = indices.size();
+    const int64_t slice_size = params.dimension(2);
 
     if (is_axis_zero) {
       TF_CHECK_OK(LaunchGatherKernel<true>(d, params.data(), indices.data(),
