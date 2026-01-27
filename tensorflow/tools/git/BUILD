@@ -15,6 +15,6 @@ package(
 py_strict_binary(
     name = "gen_git_source",
     srcs = ["gen_git_source.py"],
-    exec_compatible_with = if_oss(["@local_execution_config_platform//:platform_constraint"]),
+    # exec_compatible_with = if_oss(["@local_config_platform//:host"]),
     tags = if_oss(["no-remote-exec"]),
 )

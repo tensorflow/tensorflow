@@ -397,6 +397,7 @@ def create_local_config_python(dst_dir: str) -> None:
   numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
   if not os.path.exists(numpy_include_dir):
     numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
+  print(numpy_include_dir)
   shutil.copytree(
       numpy_include_dir,
       os.path.join(dst_dir, "numpy_include"),
@@ -404,7 +405,8 @@ def create_local_config_python(dst_dir: str) -> None:
   if is_windows():
     path = "external/python_*/include"
   else:
-    path = "external/python_*/include/python*"
+    # path = "external/rules_python_*python_*/include/python*"
+    path = "external/rules_python~~python~python_3_11_x86_64-unknown-linux-gnu/include/python*"
   shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 

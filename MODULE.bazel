@@ -1,0 +1,716 @@
+"""WIP!!"""
+
+module(name = "org_tensorflow")
+
+bazel_dep(name = "bazel_features", version = "1.36.0")
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+single_version_override(
+    module_name = "abseil-cpp",
+    patch_strip = 1,
+    patches = [
+        "//third_party/absl:btree.patch",
+        "//third_party/absl:build_dll.patch",
+        "//third_party/absl:endian.patch",
+        "//third_party/absl:rules_cc.patch",
+    ],
+)
+
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1", repo_name = "nlohmann_json_lib")
+bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
+bazel_dep(name = "rules_python", version = "1.6.1")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.1")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_license", version = "1.0.0")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
+bazel_dep(name = "rules_java", version = "8.16.1")
+bazel_dep(name = "rules_jvm_external", version = "6.8")
+bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
+single_version_override(
+    module_name = "protobuf",
+    version = "31.1",
+)
+bazel_dep(name = "google_cloud_cpp", version = "3.0.0-rc1", repo_name = "com_github_googlecloudplatform_google_cloud_cpp")
+bazel_dep(name = "crc32c", version = "1.1.0", repo_name = "com_github_google_crc32c")
+bazel_dep(name = "brotli", version = "1.1.0", repo_name = "org_brotli")
+bazel_dep(name = "rules_cc", version = "0.2.11")
+bazel_dep(name = "curl", version = "8.11.0.bcr.4")
+bazel_dep(name = "rules_webtesting", version = "0.4.1", repo_name = "io_bazel_rules_webtesting")
+bazel_dep(name = "rules_closure", version = "0.15.0", repo_name = "io_bazel_rules_closure")
+bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+archive_override(
+    module_name = "grpc",
+    integrity = "sha256-e/l8Ec84CNZQo6Alu/nF+SLIRKWQgmKFBndl39BV0ig=",
+    patch_strip = 1,
+    patches = ["//third_party:grpc-bzlmod-fix.patch"],
+    strip_prefix = "grpc-1.74.1",
+    urls = ["https://github.com/grpc/grpc/archive/refs/tags/v1.74.1.tar.gz"],
+)
+
+bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
+bazel_dep(name = "rules_apple", version = "4.3.3", repo_name = "build_bazel_rules_apple")
+
+# bazel_dep(name = "nlohmann_json", version = "3.12.0", repo_name = "nlohmann_json_lib")
+bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+bazel_dep(name = "rules_proto", version = "7.1.0")
+bazel_dep(name = "zstd", version = "1.5.7", repo_name = "net_zstd")
+bazel_dep(name = "pybind11_bazel", version = "2.13.6")
+bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
+bazel_dep(name = "pybind11_abseil", version = "202402.0")
+bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
+bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "rules_android", version = "0.6.6", repo_name = "build_bazel_rules_android")
+bazel_dep(name = "rules_android_ndk", version = "0.1.3")
+bazel_dep(name = "apple_support", version = "1.23.1", repo_name = "build_bazel_apple_support")
+bazel_dep(name = "rules_swift", version = "2.4.0")
+bazel_dep(name = "googletest", version = "1.17.0.bcr.1", repo_name = "com_google_googletest")
+bazel_dep(name = "fuzztest", version = "20250805.0", repo_name = "com_google_fuzztest")
+bazel_dep(name = "gflags", version = "2.2.2", repo_name = "com_github_gflags_gflags")
+bazel_dep(name = "snappy", version = "1.2.1")
+bazel_dep(name = "zlib", version = "1.3.1.bcr.7")
+bazel_dep(name = "libpng", version = "1.6.50.bcr.1", repo_name = "png")
+bazel_dep(name = "boringssl", version = "0.20250818.0")
+bazel_dep(name = "libprotobuf-mutator", version = "1.3", repo_name = "libprotobuf_mutator")
+bazel_dep(name = "rules_ml_toolchain")
+archive_override(
+    module_name = "rules_ml_toolchain",
+    integrity = "sha256-VMGjV/cfYR79tIkevUvL5K6236fkc/FP1+ytUGIJZhY=",
+    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz"],
+)
+
+bazel_dep(name = "xla", repo_name = "xla")
+local_path_override(
+    module_name = "xla",
+    path = "third_party/xla",
+)
+
+tf_third_party = use_extension("//third_party/extensions:third_party.bzl", "third_party_ext")
+use_repo(
+    tf_third_party,
+    "flatbuffers",
+    "hexagon_nn",
+    "icu",
+    "kissfft",
+    "libjpeg_turbo",
+    "libwebp",
+    "opencl_headers",
+    "pasta",
+    "ruy",
+    "sobol_data",
+    "vulkan_headers",
+    "org_xprof",
+    "tf_runtime",
+)
+inject_repo(tf_third_party, com_github_nlohmann_json = "nlohmann_json_lib")
+
+tsl_extension = use_extension("@xla//third_party/extensions:tsl.bzl", "tsl_extension")
+use_repo(tsl_extension, tsl = "tsl")
+
+llvm = use_extension("@xla//third_party/extensions:llvm.bzl", "llvm_extension")
+use_repo(llvm, "llvm-project")
+
+xla_third_party = use_extension("@xla//third_party/extensions:third_party.bzl", "third_party_ext")
+use_repo(
+    xla_third_party,
+    "FP16",
+    "FXdiv",
+    "XNNPACK",
+    "cpuinfo",
+    "cudnn_frontend_archive",
+    "cutlass_archive",
+    "dlpack",
+    "ducc",
+    "eigen_archive",
+    "farmhash_archive",
+    "farmhash_gpu_archive",
+    "gemmlowp",
+    "gloo",
+    "highwayhash",
+    "hwloc",
+    "implib_so",
+    "llvm-raw",
+    "llvm_openmp",
+    "ml_dtypes_py",
+    "mpitrampoline",
+    "nanobind",
+    "nvshmem",
+    "onednn",
+    "pthreadpool",
+    "raft",
+    "rocm_device_libs",
+    "shardy",
+    "slinky",
+    "stablehlo",
+    "tensorrt_oss_archive",
+    "triton",
+)
+
+pybind11_internal_configure = use_extension(
+    "@pybind11_bazel//:internal_configure.bzl",
+    "internal_configure_extension",
+)
+use_repo(pybind11_internal_configure, "pybind11")
+
+# Compatibility layer
+compat = use_extension("@rules_java//java:rules_java_deps.bzl", "compatibility_proxy")
+use_repo(compat, "compatibility_proxy")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.defaults(
+    # The environment variable takes precedence if set.
+    python_version = "3.11",
+    python_version_env = "HERMETIC_PYTHON_VERSION",
+)
+python.toolchain(python_version = "3.11")
+# use_repo(python)
+
+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+
+# pip.whl_mods(
+#     additive_build_content = """
+# load("@rules_cc//cc:cc_library.bzl", "cc_library")
+# cc_library(
+#     name = "numpy_headers_2",
+#     hdrs = glob(["site-packages/numpy/_core/include/**/*.h"]),
+#     strip_include_prefix="site-packages/numpy/_core/include/",
+# )
+# cc_library(
+#     name = "numpy_headers_1",
+#     hdrs = glob(["site-packages/numpy/core/include/**/*.h"]),
+#     strip_include_prefix="site-packages/numpy/core/include/",
+# )
+# cc_library(
+#     name = "numpy_headers",
+#     deps = [":numpy_headers_2", ":numpy_headers_1"],
+# )
+# """,
+#     hub_name = "pypi_mods",
+#     whl_name = "numpy",
+# )
+pip.parse(
+    extra_hub_aliases = {
+        "numpy": ["numpy_headers"],
+    },
+    hub_name = "tf_pypi",
+    python_version = "3.11",
+    requirements_lock = "//:requirements_lock_3_11.txt",
+    whl_modifications = {
+        "@pypi_mods//:numpy.json": "numpy",  # @pypi_mods is defined in XLA's MODULE.bazel
+    },
+)
+use_repo(pip, "pypi_mods", pypi = "tf_pypi")
+
+python_version_ext = use_extension("@xla//third_party/extensions:python_version.bzl", "python_version_ext")
+use_repo(python_version_ext, "python_version_repo")
+
+git_configure = use_repo_rule("//third_party/git:git_configure.bzl", "git_configure")
+git_configure(name = "local_config_git")
+
+# override_repo(
+#     pip,
+#     xla_pypi = "pypi",
+# )
+# python_configure = use_repo_rule("@xla//third_party/py:python_configure.bzl", "python_configure")
+
+# python_configure(name = "local_config_python")
+
+### RBE
+rbe_config = use_extension("@xla//third_party/extensions:rbe_config.bzl", "rbe_config_ext")
+
+# inject_repo(rbe_config, "python_3_11_host")
+use_repo(rbe_config, "ml_build_config_platform")
+
+register_execution_platforms("@local_config_platform//:host")
+# register_toolchains("@local_execution_config_python//:py_toolchain")
+
+remote_execution_configure = use_extension("@xla//third_party/extensions:remote_execution_configure.bzl", "remote_execution_configure_ext")
+use_repo(remote_execution_configure, "local_config_remote_execution")
+
+syslibs_configure = use_repo_rule("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+
+syslibs_configure(name = "local_config_syslibs")
+
+# register_toolchains("@local_config_python//:py_toolchain")
+
+cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
+use_repo(cuda_configure, "local_config_cuda")
+
+nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
+use_repo(nccl_configure, "local_config_nccl")
+
+sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
+use_repo(sycl_configure, "local_config_sycl")
+
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+use_repo(
+    cuda_redist_init_ext,
+    "cuda_cccl",
+    "cuda_cublas",
+    "cuda_cudart",
+    "cuda_cudnn",
+    "cuda_cufft",
+    "cuda_cupti",
+    "cuda_curand",
+    "cuda_cusolver",
+    "cuda_cusparse",
+    "cuda_driver",
+    "cuda_nvcc",
+    "cuda_nvml",
+    "cuda_nvrtc",
+    "cuda_nvtx",
+)
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
+
+### Other local config repos
+rocm_configure = use_extension("@xla//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
+use_repo(rocm_configure, "local_config_rocm")
+
+tensorrt_configure = use_extension("@xla//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
+use_repo(tensorrt_configure, "local_config_tensorrt")
+
+nvidia_wheel_versions_repository = use_repo_rule(
+    "@xla//third_party/py:python_wheel.bzl",
+    "nvidia_wheel_versions_repository",
+)
+
+nvidia_wheel_versions_repository(
+    name = "nvidia_wheel_versions",
+    versions_source = "//ci/official/requirements_updater:nvidia-requirements.txt",
+)
+
+python_wheel_version_suffix_repository = use_repo_rule(
+    "@xla//third_party/py:python_wheel.bzl",
+    "python_wheel_version_suffix_repository",
+)
+
+python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
+
+def_file_filter_configure = use_repo_rule("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
+
+def_file_filter_configure(name = "local_config_def_file_filter")
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "inception_v1",
+    build_file = "//:models.BUILD",
+    sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
+    ],
+)
+
+http_archive(
+    name = "mobile_ssd",
+    build_file = "//:models.BUILD",
+    sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
+    ],
+)
+
+http_archive(
+    name = "mobile_multibox",
+    build_file = "//:models.BUILD",
+    sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
+    ],
+)
+
+http_archive(
+    name = "stylize",
+    build_file = "//:models.BUILD",
+    sha256 = "3d374a730aef330424a356a8d4f04d8a54277c425e274ecb7d9c83aa912c6bfa",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
+    ],
+)
+
+http_archive(
+    name = "speech_commands",
+    build_file = "//:models.BUILD",
+    sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",
+    ],
+)
+
+http_archive(
+    name = "person_detect_data",
+    sha256 = "170542270da256994ce24d1e357f6e84a54fdaf7d28ff2b74725a40b70b082cf",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2020_05_24.zip",
+    ],
+)
+
+http_archive(
+    name = "tflite_mobilenet_float",
+    build_file = "//third_party:tflite_mobilenet_float.BUILD",
+    sha256 = "2fadeabb9968ec6833bee903900dda6e61b3947200535874ce2fe42a8493abc0",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+    ],
+)
+
+http_archive(
+    name = "tflite_mobilenet_quant",
+    build_file = "//third_party:tflite_mobilenet_quant.BUILD",
+    sha256 = "d32432d28673a936b2d6281ab0600c71cf7226dfe4cdcef3012555f691744166",
+    urls = [
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
+        "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
+    ],
+)
+
+http_archive(
+    name = "tflite_mobilenet_ssd",
+    build_file = "//third_party:tflite_mobilenet.BUILD",
+    sha256 = "767057f2837a46d97882734b03428e8dd640b93236052b312b2f0e45613c1cf0",
+    urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+    ],
+)
+
+http_archive(
+    name = "tflite_mobilenet_ssd_quant",
+    build_file = "//third_party:tflite_mobilenet.BUILD",
+    sha256 = "a809cd290b4d6a2e8a9d5dad076e0bd695b8091974e0eed1052b480b2f21b6dc",
+    urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+    ],
+)
+
+http_archive(
+    name = "tflite_mobilenet_ssd_quant_protobuf",
+    build_file = "//third_party:tflite_mobilenet.BUILD",
+    sha256 = "09280972c5777f1aa775ef67cb4ac5d5ed21970acd8535aeca62450ef14f0d79",
+    strip_prefix = "ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18",
+    urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18.tar.gz",
+        "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "tflite_conv_actions_frozen",
+    build_file = "//third_party:tflite_mobilenet.BUILD",
+    sha256 = "d947b38cba389b5e2d0bfc3ea6cc49c784e187b41a071387b3742d1acac7691e",
+    urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+    ],
+)
+
+http_archive(
+    name = "tflite_ovic_testdata",
+    build_file = "//third_party:tflite_ovic_testdata.BUILD",
+    sha256 = "033c941b7829b05ca55a124a26a6a0581b1ececc154a2153cafcfdb54f80dca2",
+    strip_prefix = "ovic",
+    urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+        "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+    ],
+)
+
+# https://github.com/apple/swift-protobuf/releases
+http_archive(
+    name = "com_github_apple_swift_swift_protobuf",
+    sha256 = "f057930b9dbd17abeaaceaa45e9f8b3e87188c05211710563d2311b9edf490aa",
+    strip_prefix = "swift-protobuf-1.19.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.19.0.tar.gz"],
+)
+
+http_archive(
+    name = "xctestrunner",
+    sha256 = "e5d4c53c3965ae943fb08ccd7df0efd75590213fce5052388f23fad81a649f5a",
+    strip_prefix = "xctestrunner-4c5709da9444eae6bba2425734b8654635bed0a6",
+    urls = ["https://github.com/google/xctestrunner/archive/4c5709da9444eae6bba2425734b8654635bed0a6.tar.gz"],
+)
+
+http_archive(
+    name = "coremltools",
+    build_file = "//third_party:coremltools.BUILD",
+    sha256 = "37d4d141718c70102f763363a8b018191882a179f4ce5291168d066a84d01c9d",
+    strip_prefix = "coremltools-8.0",
+    urls = ["https://github.com/apple/coremltools/archive/8.0.tar.gz"],
+)
+
+http_archive(
+    name = "riegeli",
+    sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
+    strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
+    urls = ["https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"],
+)
+
+http_archive(
+    name = "fft2d",
+    build_file = "//third_party/fft2d:fft2d.BUILD",
+    sha256 = "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb",
+    strip_prefix = "OouraFFT-1.0",
+    urls = ["https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz"],
+)
+# LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/fft2d.cmake)
+
+http_archive(
+    name = "nccl_archive",
+    build_file = "@xla//third_party/nccl:archive.BUILD",
+    patches = ["@xla//third_party/nccl:archive.patch"],
+    sha256 = "98e6262bd55932c51e7c8ffc50cc764f019e4b94a8fd6694d839ae828ec8d128",
+    strip_prefix = "nccl-2.27.7-1",
+    urls = ["https://github.com/NVIDIA/nccl/archive/refs/tags/v2.27.7-1.tar.gz"],
+)
+
+http_archive(
+    name = "nvtx_archive",
+    build_file = "@xla//third_party:nvtx/BUILD.bazel",
+    sha256 = "5a581c3234c5a6b2fd94363e3fdd5a4f5d2a3d9c53c4b9442b0784e6cdfe722c",
+    strip_prefix = "NVTX-2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07/c/include",
+    urls = ["https://github.com/NVIDIA/NVTX/archive/2942f167cc30c5e3a44a2aecd5b0d9c07ff61a07.tar.gz"],
+)
+
+http_archive(
+    name = "com_google_pprof",
+    build_file = "//third_party:pprof.BUILD",
+    sha256 = "b844b75c25cfe7ea34b832b369ab91234009b2dfe2ae1fcea53860c57253fe2e",
+    strip_prefix = "pprof-83db2b799d1f74c40857232cb5eb4c60379fe6c2",
+    urls = ["https://github.com/google/pprof/archive/83db2b799d1f74c40857232cb5eb4c60379fe6c2.tar.gz"],
+)
+
+http_archive(
+    name = "cython",
+    build_file = "@xla//third_party:cython.BUILD",
+    sha256 = "da72f94262c8948e04784c3e6b2d14417643703af6b7bd27d6c96ae7f02835f1",
+    strip_prefix = "cython-3.1.2",
+    urls = ["https://github.com/cython/cython/archive/3.1.2.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_googlecloudplatform_tensorflow_gcp_tools",
+    sha256 = "5e9ebe17eaa2895eb7f77fefbf52deeda7c4b63f5a616916b823eb74f3a0c542",
+    strip_prefix = "tensorflow-gcp-tools-2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5",
+    urls = ["https://github.com/GoogleCloudPlatform/tensorflow-gcp-tools/archive/2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5.tar.gz"],
+)
+
+http_archive(
+    name = "com_google_googleapis",
+    build_file = "//third_party/googleapis:googleapis.BUILD",
+    sha256 = "249d83abc5d50bf372c35c49d77f900bff022b2c21eb73aa8da1458b6ac401fc",
+    strip_prefix = "googleapis-6b3fdcea8bc5398be4e7e9930c693f0ea09316a0",
+    urls = ["https://github.com/googleapis/googleapis/archive/6b3fdcea8bc5398be4e7e9930c693f0ea09316a0.tar.gz"],
+)
+
+http_archive(
+    name = "org_sqlite",
+    build_file = "//third_party:sqlite.BUILD",
+    sha256 = "9ad6d16cbc1df7cd55c8b55127c82a9bca5e9f287818de6dc87e04e73599d754",
+    strip_prefix = "sqlite-amalgamation-3500300",
+    urls = ["https://www.sqlite.org/2025/sqlite-amalgamation-3500300.zip"],
+)
+
+http_archive(
+    name = "gif",
+    build_file = "//third_party:gif.BUILD",
+    patch_args = ["-p1"],
+    patches = [
+        "//third_party:gif_fix_strtok_r.patch",
+        "//third_party:gif_fix_image_counter.patch",
+    ],
+    sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
+    strip_prefix = "giflib-5.2.1",
+    urls = ["https://pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.2.1.tar.gz"],
+)
+
+http_archive(
+    name = "six_archive",
+    build_file = "@xla//third_party:six.BUILD",
+    sha256 = "1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
+    strip_prefix = "six-1.16.0",
+    urls = ["https://pypi.python.org/packages/source/s/six/six-1.16.0.tar.gz"],
+)
+
+http_archive(
+    name = "linenoise",
+    build_file = "//third_party:linenoise.BUILD",
+    sha256 = "b35a74dbc9cd2fef9e4d56222761d61daf7e551510e6cd1a86f0789b548d074e",
+    strip_prefix = "linenoise-4ce393a66b10903a0ef52edf9775ed526a17395f",
+    urls = ["https://github.com/antirez/linenoise/archive/4ce393a66b10903a0ef52edf9775ed526a17395f.tar.gz"],
+)
+
+http_archive(
+    name = "onednn_async",
+    build_file = "@xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
+    patches = ["@xla//third_party/mkl_dnn:setting_init.patch"],
+    sha256 = "1cfa18fad65b4c3b46ef701a83c64b87411d63e79c8549cdb37f8c1fc10e2398",
+    strip_prefix = "oneDNN-dev-v3.7-thunk-preview",
+    urls = ["https://github.com/oneapi-src/oneDNN/archive/refs/heads/dev-v3.7-thunk-preview.tar.gz"],
+)
+
+http_archive(
+    name = "mkl_dnn_acl_compatible",
+    build_file = "@xla//third_party/mkl_dnn:mkldnn_acl.BUILD",
+    patches = [
+        "@xla//third_party/mkl_dnn:onednn_acl_lock_fixed_format_matmul.patch",
+        "@xla//third_party/mkl_dnn:onednn_acl_threadpool_default_max.patch",
+    ],
+    sha256 = "5792cbc07764c6e25c459ff68efb5cfcd7f4a0ba66dca6a4a2c681cd7a644596",
+    strip_prefix = "oneDNN-3.7",
+    urls = ["https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.zip"],
+)
+
+http_archive(
+    name = "compute_library",
+    patches = [
+        "@xla//third_party/compute_library:acl_gemm_scheduling_heuristic.patch",
+        "@xla//third_party/compute_library:acl_stateless_gemm_workspace.patch",
+        "@xla//third_party/compute_library:compute_library.patch",
+        "@xla//third_party/compute_library:exclude_omp_scheduler.patch",
+        "@xla//third_party/compute_library:include_string.patch",
+    ],
+    sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
+    strip_prefix = "ComputeLibrary-24.12",
+    urls = ["https://github.com/ARM-software/ComputeLibrary/archive/refs/tags/v24.12.tar.gz"],
+)
+
+http_archive(
+    name = "arm_compiler",
+    build_file = "//:arm_compiler.BUILD",
+    sha256 = "b9e7d50ffd9996ed18900d041d362c99473b382c0ae049b2fce3290632d2656f",
+    strip_prefix = "rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/",
+    urls = ["https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz"],
+)
+
+http_archive(
+    # This is the latest `aarch64-none-linux-gnu` compiler provided by ARM
+    # See https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads
+    # The archive contains GCC version 9.2.1
+    name = "aarch64_compiler",
+    build_file = "//:arm_compiler.BUILD",
+    sha256 = "8dfe681531f0bd04fb9c53cf3c0a3368c616aa85d48938eebe2b516376e06a66",
+    strip_prefix = "gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu",
+    urls = ["https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz"],
+)
+
+http_archive(
+    name = "aarch64_linux_toolchain",
+    build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD",
+    sha256 = "50cdef6c5baddaa00f60502cc8b59cc11065306ae575ad2f51e412a9b2a90364",
+    strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu",
+    urls = ["https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"],
+)
+
+http_archive(
+    name = "armhf_linux_toolchain",
+    build_file = "//tensorflow/tools/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD",
+    sha256 = "3f76650b1d048036473b16b647b8fd005ffccd1a2869c10994967e0e49f26ac2",
+    strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf",
+    urls = ["https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz"],
+)
+
+# LINT.IfChange
+http_archive(
+    name = "arm_neon_2_x86_sse",
+    build_file = "//third_party:arm_neon_2_x86_sse.BUILD",
+    sha256 = "019fbc7ec25860070a1d90e12686fc160cfb33e22aa063c80f52b363f1361e9d",
+    strip_prefix = "ARM_NEON_2_x86_SSE-a15b489e1222b2087007546b4912e21293ea86ff",
+    urls = ["https://github.com/intel/ARM_NEON_2_x86_SSE/archive/a15b489e1222b2087007546b4912e21293ea86ff.tar.gz"],
+)
+# LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/neon2sse.cmake)
+
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "294cdd859e57fcaf101d4301978c408c88683fbc46fbc1a3829da92afbea55fb",
+    strip_prefix = "bazel-toolchains-8c717f8258cd5f6c7a45b97d974292755852b658",
+    urls = [
+        "http://mirror.tensorflow.org/github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
+        "https://github.com/bazelbuild/bazel-toolchains/archive/8c717f8258cd5f6c7a45b97d974292755852b658.tar.gz",
+    ],
+)
+
+jvm_import_external = use_repo_rule("@bazel_tools//tools/build_defs/repo:jvm.bzl", "jvm_import_external")
+jvm_import_external(
+    name = "junit",
+    rule_name = "java_import",
+    artifact_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+        "https://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+        "https://maven.ibiblio.org/maven2/junit/junit/4.12/junit-4.12.jar",
+    ],
+    licenses = ["reciprocal"],  # Common Public License Version 1.0
+    testonly_ = True,
+    deps = ["@org_hamcrest_core"],
+)
+
+jvm_import_external(
+    name = "org_hamcrest_core",
+    rule_name = "java_import",
+    artifact_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+        "https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+        "https://maven.ibiblio.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+    ],
+    licenses = ["notice"],  # New BSD License
+    testonly_ = True,
+)
+
+jvm_import_external(
+    name = "com_google_testing_compile",
+    rule_name = "java_import",
+    artifact_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+        "https://repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+    ],
+    licenses = ["notice"],  # New BSD License
+    testonly_ = True,
+    deps = ["@com_google_guava", "@com_google_truth"],
+)
+
+jvm_import_external(
+    name = "com_google_truth",
+    rule_name = "java_import",
+    artifact_sha256 = "032eddc69652b0a1f8d458f999b4a9534965c646b8b5de0eba48ee69407051df",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+        "https://repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+    testonly_ = True,
+    deps = ["@com_google_guava"],
+)
+
+jvm_import_external(
+    name = "org_checkerframework_qual",
+    rule_name = "java_import",
+    artifact_sha256 = "d261fde25d590f6b69db7721d469ac1b0a19a17ccaaaa751c31f0d8b8260b894",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
+        "https://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+jvm_import_external(
+    name = "com_squareup_javapoet",
+    rule_name = "java_import",
+    artifact_sha256 = "5bb5abdfe4366c15c0da3332c57d484e238bd48260d6f9d6acf2b08fdde1efea",
+    artifact_urls = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+        "https://repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)

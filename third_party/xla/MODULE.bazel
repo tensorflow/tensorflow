@@ -17,7 +17,7 @@ bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil"
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
@@ -110,6 +110,8 @@ use_repo(
     "riegeli",
     "rocm_device_libs",
     "shardy",
+    "raft",
+    "cutlass_archive",
     "slinky",
     "stablehlo",
     "triton",
