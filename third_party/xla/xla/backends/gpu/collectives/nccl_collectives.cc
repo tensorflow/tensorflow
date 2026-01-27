@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/nccl_collectives.h"
 
-#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>

@@ -387,10 +387,6 @@ class WhileCmd : public Command {
   std::optional<int64_t> trip_count_;
   bool enable_loop_unroll_ = false;
   bool is_unrolled_loop_ = false;
-
-  // If while loop unrolling is enabled, this will be a vector or executors
-  // for each iteration executoting `cond` -> `body` commands.
-  std::vector<CommandBufferCmdExecutor> unrolled_commands_;
 };
 
 //===----------------------------------------------------------------------===//

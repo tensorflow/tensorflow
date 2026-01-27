@@ -150,6 +150,9 @@ struct SchedulerConfig {
   bool use_real_cost_model = false;
   bool aggressive_scheduling_policies = false;
   bool prioritize_async_depth_over_stall = false;
+
+  bool prioritize_compute_over_async_start = false;
+
   bool enable_release_start_policy = false;
   bool resource_sharing = false;
   bool resource_serializing = false;
