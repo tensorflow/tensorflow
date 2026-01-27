@@ -921,15 +921,16 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       std::vector<const se::CommandBuffer::Command*> dependencies;
 
       for (int64_t i = 0; i < trip_count_.value(); ++i) {
+        CommandExecutor::RecordId record_id(i);
         new_record_params.unroll_iteration = i;
-        TF_ASSIGN_OR_RETURN(
-            dependencies,
-            cond_commands_.RecordCreate(execute_params, new_record_params,
-                                        child_command_buffer, dependencies));
-        TF_ASSIGN_OR_RETURN(
-            dependencies,
-            body_commands_.RecordCreate(execute_params, new_record_params,
-                                        child_command_buffer, dependencies));
+        TF_ASSIGN_OR_RETURN(dependencies,
+                            cond_commands_.RecordCreate(
+                                execute_params, new_record_params,
+                                child_command_buffer, dependencies, record_id));
+        TF_ASSIGN_OR_RETURN(dependencies,
+                            body_commands_.RecordCreate(
+                                execute_params, new_record_params,
+                                child_command_buffer, dependencies, record_id));
       }
 
       return absl::OkStatus();
@@ -943,11 +944,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       Command::RecordParams new_record_params = record_params;
 
       for (int64_t i = 0; i < trip_count_.value(); ++i) {
+        CommandExecutor::RecordId record_id(i);
         new_record_params.unroll_iteration = i;
-        TF_RETURN_IF_ERROR(cond_commands_.RecordUpdate(
-            execute_params, new_record_params, child_command_buffer));
-        TF_RETURN_IF_ERROR(body_commands_.RecordUpdate(
-            execute_params, new_record_params, child_command_buffer));
+        TF_RETURN_IF_ERROR(
+            cond_commands_.RecordUpdate(execute_params, new_record_params,
+                                        child_command_buffer, record_id));
+        TF_RETURN_IF_ERROR(
+            body_commands_.RecordUpdate(execute_params, new_record_params,
+                                        child_command_buffer, record_id));
       }
 
       return absl::OkStatus();

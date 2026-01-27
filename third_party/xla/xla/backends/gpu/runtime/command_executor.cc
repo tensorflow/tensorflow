@@ -403,18 +403,20 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
 }
 
 absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
-                                     const RecordParams& record_params,
-                                     se::CommandBuffer* command_buffer) {
+                                     const Command::RecordParams& record_params,
+                                     se::CommandBuffer* command_buffer,
+                                     RecordId record_id) {
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
     TF_RETURN_IF_ERROR(command_buffer->Update());
   }
 
   if (command_buffer->state() == se::CommandBuffer::State::kUpdate) {
     TF_RETURN_IF_ERROR(
-        RecordUpdate(execute_params, record_params, command_buffer));
+        RecordUpdate(execute_params, record_params, command_buffer, record_id));
   } else {
     TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
-                                    command_buffer, /*dependencies=*/{})
+                                    command_buffer, /*dependencies=*/{},
+                                    record_id)
                            .status());
   }
 
@@ -424,14 +426,18 @@ absl::Status CommandExecutor::Record(const Thunk::ExecuteParams& execute_params,
 absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
 CommandExecutor::RecordCreate(
     const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, se::CommandBuffer* command_buffer,
-    absl::Span<const se::CommandBuffer::Command* const> dependencies) const {
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer,
+    absl::Span<const se::CommandBuffer::Command* const> dependencies,
+    RecordId record_id) const {
   // Command buffer must be in create state.
   TF_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kCreate));
 
-  VLOG(1) << "Record create " << commands_.size()
-          << " commands: dependencies=" << dependencies.size();
+  VLOG(1) << absl::StreamFormat(
+      "Record create %d commands into command buffer %p: dependencies=%d, "
+      "record_id=%v",
+      commands_.size(), command_buffer, dependencies.size(), record_id);
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Short-circuit if there are no commands to record.
@@ -439,9 +445,18 @@ CommandExecutor::RecordCreate(
     return std::vector<const se::CommandBuffer::Command*>{};
   }
 
-  // Keep a state associated with commands in the sequence in the state
-  // manager.
-  CommandStateManager& state = record_params.state;
+  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  RecordedCommands& recorded_commands =
+      state->recorded_commands[std::make_pair(this, record_id)];
+
+  // Check that this executor was not already recorded into the command buffer.
+  if (!recorded_commands.empty()) {
+    return Internal(
+        "Recorded commands are not empty (size %d). Command executor can be "
+        "recorded into the command buffer at most once. After it was recorded "
+        "it can be only updated",
+        recorded_commands.size());
+  }
 
   // Collect sink commands while recording the command sequence.
   std::vector<const se::CommandBuffer::Command*> sink_commands;
@@ -457,14 +472,8 @@ CommandExecutor::RecordCreate(
       continue;
     }
 
-    // Create new commands by recording them into the command buffer.
-    DCHECK(!state.GetOrNull<RecordState>(command, command_buffer))
-        << "Record state must be null for " << command->ToString();
-    auto* record_state =
-        state.GetOrCreate<RecordState>(command, command_buffer);
-
     std::vector<const se::CommandBuffer::Command*> command_dependencies =
-        Dependencies(record_params, command_buffer, id);
+        Dependencies(record_params, command_buffer, id, record_id);
 
     // Source command must depend on external dependencies passed by the
     // caller, internal commands dependencies are defined by the command
@@ -474,19 +483,21 @@ CommandExecutor::RecordCreate(
                              : Command::RecordCreate{command_dependencies};
 
     TF_ASSIGN_OR_RETURN(
-        record_state->command,
+        const se::CommandBuffer::Command* recorded_command,
         command->Record(execute_params, record_params, std::move(record_action),
                         command_buffer));
 
     // Collect sink commands as external dependencies for the next command
     // sequence recorded into the same command buffer.
     if (IsSink(id)) {
-      sink_commands.push_back(record_state->command);
+      sink_commands.push_back(recorded_command);
     }
+
+    recorded_commands.push_back(recorded_command);
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(1) << absl::StrFormat(
+  VLOG(1) << absl::StreamFormat(
       "Created %d commands in %d μs (num sink commands: %d)", commands_.size(),
       end_micros - start_micros, sink_commands.size());
 
@@ -500,9 +511,11 @@ CommandExecutor::RecordCreate(
 
 absl::Status CommandExecutor::RecordUpdate(
     const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params,
-    se::CommandBuffer* command_buffer) const {
-  VLOG(1) << "Record update " << commands_.size() << " commands";
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer, RecordId record_id) const {
+  VLOG(1) << absl::StreamFormat(
+      "Record update %d commands into command buffer %p: record_id=%v",
+      commands_.size(), command_buffer, record_id);
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Command buffer must be already prepared for recording updates.
@@ -513,10 +526,6 @@ absl::Status CommandExecutor::RecordUpdate(
   if (commands_.empty()) {
     return absl::OkStatus();
   }
-
-  // Keep a state associated with commands in the sequence in the state
-  // manager.
-  CommandStateManager& state = record_params.state;
 
   // Check if command `id` has to be updated based on the buffer allocations
   // that changed since the last call to `Record`. We keep intersection vector
@@ -555,6 +564,18 @@ absl::Status CommandExecutor::RecordUpdate(
     return alloc_intersection.empty();
   };
 
+  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  RecordedCommands& recorded_commands =
+      state->recorded_commands[std::make_pair(this, record_id)];
+
+  // Check this this executor was correctly recorded into the command buffer.
+  if (recorded_commands.size() != commands_.size()) {
+    return Internal(
+        "The number of recorded commands must match the size of command "
+        "sequence: %d vs %d",
+        recorded_commands.size(), commands_.size());
+  }
+
   size_t num_skipped_command_updates = 0;
 
   for (CommandId id = 0; id < commands_.size(); ++id) {
@@ -575,14 +596,9 @@ absl::Status CommandExecutor::RecordUpdate(
       continue;
     }
 
-    // Update existing commands in the command buffer.
-    auto* record_state = state.GetOrNull<RecordState>(command, command_buffer);
-    DCHECK(record_state) << "Record state must be not null for "
-                         << command->ToString();
-
-    Command::RecordUpdate record_action{record_state->command};
+    Command::RecordUpdate record_action{recorded_commands[id]};
     TF_ASSIGN_OR_RETURN(
-        record_state->command,
+        recorded_commands[id],
         command->Record(execute_params, record_params, std::move(record_action),
                         command_buffer));
   }
@@ -615,8 +631,8 @@ bool CommandExecutor::IsSink(CommandId id) const {
 }
 
 std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
-    const RecordParams& record_params, se::CommandBuffer* command_buffer,
-    CommandId id) const {
+    const Command::RecordParams& record_params,
+    se::CommandBuffer* command_buffer, CommandId id, RecordId record_id) const {
   // Collect commands that are dependencies of the command `id`.
   absl::InlinedVector<CommandId, 4> dependencies_ids;
 
@@ -635,24 +651,25 @@ std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
     dependencies_ids.push_back(id - 1);
   }
 
+  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  RecordedCommands& recorded_commands =
+      state->recorded_commands[std::make_pair(this, record_id)];
+
   // Collect dependencies from the recorded command state.
   std::vector<const se::CommandBuffer::Command*> dependencies;
   for (CommandId dependency_id : dependencies_ids) {
-    auto* record_state = record_params.state.GetOrNull<RecordState>(
-        commands_[dependency_id].get(), command_buffer);
-    DCHECK(record_state) << "Record state must be not null for "
-                         << commands_[dependency_id]->ToString();
-
-    if (record_state->command == nullptr) {
+    DCHECK_LT(dependency_id, recorded_commands.size());
+    if (recorded_commands[dependency_id] == nullptr) {
       // Some commands might end up not recording anything into the command
       // buffer, e.g. memcpy commands where source and destination are the
       // same. We have to follow dependencies of such commands to find the
       // real dependencies, so we don't record a command that is immediately
       // ready to execute, as it will create data races.
-      auto deps = Dependencies(record_params, command_buffer, dependency_id);
+      auto deps =
+          Dependencies(record_params, command_buffer, dependency_id, record_id);
       dependencies.insert(dependencies.end(), deps.begin(), deps.end());
     } else {
-      dependencies.push_back(record_state->command);
+      dependencies.push_back(recorded_commands[dependency_id]);
     }
   }
 

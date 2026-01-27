@@ -20,11 +20,13 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
@@ -46,7 +49,10 @@ class CommandExecutor {
   CommandExecutor(CommandExecutor&&) = default;
   CommandExecutor& operator=(CommandExecutor&&) = default;
 
-  using RecordParams = Command::RecordParams;
+  // Strongly-type integer for tagging `RecordCreate` and `RecordUpdate` with an
+  // extra id that distinguishes recording of the command executor into the
+  // same command buffer.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(RecordId, int64_t);
 
   // Synchronization mode defines how much concurrency is allowed between
   // commands in the sequence.
@@ -100,8 +106,9 @@ class CommandExecutor {
   // command buffer. For a more fine grained recording and updating of command
   // buffers see `RecordCreate` and `RecordUpdate` APIs defined below.
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
-                      const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer);
+                      const Command::RecordParams& record_params,
+                      se::CommandBuffer* command_buffer,
+                      RecordId record_id = RecordId(0));
 
   // Records command creation into the command buffer. Command buffer must be
   // in create state. The next command sequence recorded into the same command
@@ -115,16 +122,19 @@ class CommandExecutor {
   // commands will also depend on B's sink commands.
   absl::StatusOr<std::vector<const se::CommandBuffer::Command*>> RecordCreate(
       const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
-      absl::Span<const se::CommandBuffer::Command* const> dependencies) const;
+      const Command::RecordParams& record_params,
+      se::CommandBuffer* command_buffer,
+      absl::Span<const se::CommandBuffer::Command* const> dependencies,
+      RecordId record_id = RecordId(0)) const;
 
   // Records command updates into the command buffer. Command buffer must be
   // in update state. Command buffer update can't change the dependency
   // structure of the underlying command buffer and can only update attributes
   // of the individual commands.
   absl::Status RecordUpdate(const Thunk::ExecuteParams& execute_params,
-                            const RecordParams& record_params,
-                            se::CommandBuffer* command_buffer) const;
+                            const Command::RecordParams& record_params,
+                            se::CommandBuffer* command_buffer,
+                            RecordId record_id = RecordId(0)) const;
 
   // Returns buffers referenced by commands in this sequence.
   const absl::flat_hash_set<BufferUse>& buffers() const;
@@ -159,10 +169,22 @@ class CommandExecutor {
   // We use index into the `commands_` vector as a command id.
   using CommandId = int64_t;
 
-  // A state associated with commands in the sequence. We rely on this state to
-  // efficiently update command recorded into the command buffer.
-  struct RecordState : public CommandState {
-    const se::CommandBuffer::Command* command;
+  // Commands recorded into the `se::CommandBuffer` by the `commands_` command
+  // sequence: commands returned from calls to `Command::Record`. Indexed by
+  // the command index in the `commands_` (aka `CommandId`). We pass these
+  // commands back when we are recording command buffer updates.
+  using RecordedCommands = std::vector<const se::CommandBuffer::Command*>;
+
+  // A state of recording command executors into the command buffer. Note that
+  // we can record multiple executors into the same command buffer.
+  struct CommandExecutorsState : public se::CommandBuffer::Resource {
+    // We don't need to synchronize access to `recorded_commands` as command
+    // buffers are not thread safe and record at most once executor at a time.
+    // However during the command buffer recording multiple nested command
+    // executors can record into the same command buffer, and to keep references
+    // to values valid during the exectution we use a node hash map container.
+    using Key = std::pair<const CommandExecutor*, RecordId>;
+    absl::node_hash_map<Key, RecordedCommands> recorded_commands;
   };
 
   CommandExecutor(SynchronizationMode synchronization_mode,
@@ -181,8 +203,9 @@ class CommandExecutor {
 
   // Returns dependencies of the command with the given id.
   std::vector<const se::CommandBuffer::Command*> Dependencies(
-      const RecordParams& record_params, se::CommandBuffer* command_buffer,
-      CommandId id) const;
+      const Command::RecordParams& record_params,
+      se::CommandBuffer* command_buffer, CommandId id,
+      RecordId record_id) const;
 
   SynchronizationMode synchronization_mode_;
   CommandSequence commands_;
