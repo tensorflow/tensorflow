@@ -1903,8 +1903,7 @@ def MHLO_ScanOp: MHLO_Op<"scan", [
     If `is_reverse` is true, the scan is performed in reverse order.
     `is_associative` indicates whether the reduction function is associative.
 
-    See:
-    https://www.tensorflow.org/xla/operation_semantics#scan
+    See: https://www.tensorflow.org/xla/operation_semantics#scan
   }];
   let arguments = (ins
     Variadic<MHLO_Tensor>:$inputs,
