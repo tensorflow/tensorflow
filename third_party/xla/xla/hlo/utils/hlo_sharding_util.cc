@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -40,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -421,8 +423,160 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst) {
                                    /*minimum_tiles=*/dst->NumTiles() + 1, dst);
 }
 
+namespace {
+
+std::vector<AxisRef> IntersectAxes(absl::Span<const AxisRef> axes1,
+                                   absl::Span<const AxisRef> axes2) {
+  std::vector<AxisRef> result;
+  for (const AxisRef& axis : axes1) {
+    if (absl::c_linear_search(axes2, axis)) {
+      result.push_back(axis);
+    }
+  }
+  return result;
+}
+
+std::optional<std::vector<AxisRef>> TopologicalSortAxes(
+    std::initializer_list<absl::Span<const AxisRef>> axes_lists) {
+  absl::flat_hash_map<AxisRef, int> in_degree;
+  absl::flat_hash_map<AxisRef, std::vector<AxisRef>> adj;
+  absl::flat_hash_set<AxisRef> nodes;
+
+  auto add_nodes = [&](absl::Span<const AxisRef> axes) {
+    for (const AxisRef& axis : axes) {
+      nodes.insert(axis);
+      if (!in_degree.contains(axis)) {
+        in_degree[axis] = 0;
+      }
+    }
+  };
+
+  for (auto axes : axes_lists) {
+    add_nodes(axes);
+  }
+
+  auto add_edges = [&](absl::Span<const AxisRef> axes) {
+    for (size_t k = 0; k + 1 < axes.size(); ++k) {
+      adj[axes[k]].push_back(axes[k + 1]);
+      in_degree[axes[k + 1]]++;
+    }
+  };
+
+  for (auto axes : axes_lists) {
+    add_edges(axes);
+  }
+
+  std::vector<AxisRef> sorted_axes;
+  sorted_axes.reserve(nodes.size());
+
+  std::vector<AxisRef> ready_nodes;
+  ready_nodes.reserve(nodes.size());
+  absl::flat_hash_set<AxisRef> ready_nodes_set;
+
+  auto try_push = [&](AxisRef u) {
+    if (in_degree[u] == 0 && ready_nodes_set.insert(u).second) {
+      ready_nodes.push_back(u);
+    }
+  };
+
+  for (absl::Span<const AxisRef> axes : axes_lists) {
+    for (const AxisRef& axis : axes) {
+      try_push(axis);
+    }
+  }
+
+  size_t head = 0;
+  while (head < ready_nodes.size()) {
+    AxisRef u = ready_nodes[head++];
+    sorted_axes.push_back(u);
+
+    if (adj.contains(u)) {
+      for (const AxisRef& v : adj[u]) {
+        in_degree[v]--;
+        if (in_degree[v] == 0) {
+          ready_nodes.push_back(v);
+        }
+      }
+    }
+  }
+
+  if (sorted_axes.size() != nodes.size()) {
+    // Cycle detected.
+    return std::nullopt;
+  }
+  return sorted_axes;
+}
+
+bool MergeNamedShardingIfCompatible(const HloSharding& to_merge,
+                                    int64_t minimum_tiles, HloSharding* dst) {
+  const NamedSharding& merge_named = to_merge.named_sharding();
+  const NamedSharding& dst_named = dst->named_sharding();
+
+  if (to_merge.IsTileMaximal() || dst->IsTileMaximal() ||
+      !merge_named.mesh().DeviceAssignmentEquals(dst_named.mesh()) ||
+      merge_named.num_dimensions() != dst_named.num_dimensions() ||
+      merge_named.manual_axes() != dst_named.manual_axes()) {
+    return false;
+  }
+
+  std::vector<NamedSharding::DimensionSharding> new_dim_shardings;
+  new_dim_shardings.reserve(dst_named.num_dimensions());
+  int64_t new_num_tiles = 1;
+
+  for (int64_t i = 0; i < dst_named.num_dimensions(); ++i) {
+    absl::Span<const AxisRef> dst_axes = dst_named.dim_sharding(i).axes();
+    absl::Span<const AxisRef> merge_axes = merge_named.dim_sharding(i).axes();
+
+    std::optional<std::vector<AxisRef>> merged_axes =
+        TopologicalSortAxes({dst_axes, merge_axes});
+    if (!merged_axes.has_value()) {
+      return false;
+    }
+
+    for (const auto& axis : *merged_axes) {
+      new_num_tiles *= axis.size(dst_named.mesh());
+    }
+    new_dim_shardings.emplace_back(*merged_axes,
+                                   dst_named.dim_sharding(i).is_closed() &&
+                                       merge_named.dim_sharding(i).is_closed());
+  }
+
+  if (new_num_tiles < minimum_tiles) {
+    return false;
+  }
+
+  absl::flat_hash_set<AxisRef> used_axes;
+  for (const NamedSharding::DimensionSharding& dim : new_dim_shardings) {
+    for (const AxisRef& axis : dim.axes()) {
+      if (!used_axes.insert(axis).second) {
+        return false;
+      }
+    }
+  }
+  for (const AxisRef& axis : dst_named.manual_axes()) {
+    if (!used_axes.insert(axis).second) {
+      return false;
+    }
+  }
+
+  std::vector<AxisRef> new_replicated_axes =
+      IntersectAxes(dst_named.replicated_axes(), merge_named.replicated_axes());
+  std::vector<AxisRef> new_unreduced_axes =
+      IntersectAxes(dst_named.unreduced_axes(), merge_named.unreduced_axes());
+
+  *dst = HloSharding(NamedSharding(
+      dst_named.mesh(), new_dim_shardings, new_replicated_axes,
+      new_unreduced_axes, dst_named.manual_axes(), dst_named.metadata()));
+  return true;
+}
+
+}  // namespace
+
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst) {
+  if (to_merge.UseNamedShardingLeaf() && dst->UseNamedShardingLeaf()) {
+    return MergeNamedShardingIfCompatible(to_merge, minimum_tiles, dst);
+  }
   CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
         !dst->IsManual());
   if (to_merge.IsTileMaximal()) {
