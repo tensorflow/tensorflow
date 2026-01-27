@@ -173,7 +173,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing all-gather";
   RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
                                        use_symmetric_buffer));
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {

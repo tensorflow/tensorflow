@@ -20,6 +20,9 @@ service ProfilerService {
   // Starts a continuous profiling session.
   rpc StartContinuousProfiling(ProfileRequest)
       returns (ContinuousProfilingResponse) {}
+  // Stops an ongoing continuous profiling session.
+  rpc StopContinuousProfiling(StopContinuousProfilingRequest)
+      returns (StopContinuousProfilingResponse) {}
   // Gets a snapshot of an ongoing profiling session.
   rpc GetSnapshot(GetSnapshotRequest) returns (ProfileResponse) {}
 }
@@ -107,6 +110,10 @@ message TerminateResponse {}
 message GetSnapshotRequest {}
 
 message ContinuousProfilingResponse {}
+
+message StopContinuousProfilingRequest {}
+
+message StopContinuousProfilingResponse {}
 
 // Next-ID: 4
 message MonitorRequest {

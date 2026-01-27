@@ -115,7 +115,7 @@ absl::Status RunAllToAllOnIndexBuffer(
     se::Stream& stream, Communicator& comm) {
   ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [num_ranks, num_updates_per_replica, element_type, &source_buffer,
        &destination_buffer, &stream](GpuCommunicator* comm) -> absl::Status {
@@ -496,7 +496,7 @@ absl::Status RunRaggedAllToAll(
   const int64_t* output_offsets = ragged_metadata_allocs[2];
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [num_updates_per_replica, num_ranks, input_offsets, send_sizes,
        output_offsets, recv_sizes, ragged_row_element_size, &buffers,
