@@ -788,7 +788,7 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
         errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
                                 ", but got ", out_grad_backprop.shape()));
 
-    functor::MaxPoolGradBackwardNoMask<T>()(
+    absl::Status status = functor::MaxPoolGradBackwardNoMask<T>()(
         data_format_, tensor_in.flat<T>().data(), tensor_out.flat<T>().data(),
         params.tensor_in_batch, params.out_height, params.out_width,
         params.depth, params.tensor_in_rows, params.tensor_in_cols,
@@ -796,6 +796,9 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
         params.col_stride, params.pad_top, params.pad_left,
         out_grad_backprop.flat<T>().data(), output->flat<T>().data(),
         context->eigen_device<Eigen::GpuDevice>());
+    if (!status.ok()) {
+      context->SetStatus(status);
+    }
   }
 
  private:
