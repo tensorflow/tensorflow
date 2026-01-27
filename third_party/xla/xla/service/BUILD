@@ -3482,18 +3482,22 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
+    backends = ["cpu"],
     tags = [
         "no_mac_arm64",
-        "pjrt_migration_candidate",
+        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
-        ":cpu_plugin",
         ":hlo_cost_analysis",
         ":hlo_execution_profile",
-        "//xla/tests:hlo_test_base",
+        ":hlo_runner_interface",
+        ":hlo_runner_pjrt",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],

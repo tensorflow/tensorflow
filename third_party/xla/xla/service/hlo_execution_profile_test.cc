@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/hlo_execution_profile.h"
+
 #include "absl/strings/str_cat.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace xla {
 namespace {
@@ -25,7 +30,31 @@ using absl::StrCat;
 using ::testing::AllOf;
 using ::testing::ContainsRegex;
 
-class HloExecutionProfileTest : public HloTestBase {};
+float GetClockRateGHz(HloRunnerInterface& runner) {
+  auto* pjrt_runner = dynamic_cast<HloRunnerPjRt*>(&runner);
+  if (pjrt_runner == nullptr) {
+    return 1.0;
+  }
+  PjRtClient* client = pjrt_runner->client();
+  if (client == nullptr) {
+    return 1.0;
+  }
+  auto devices = client->addressable_devices();
+  if (devices.empty()) {
+    return 1.0;
+  }
+  auto* device = dynamic_cast<PjRtStreamExecutorDevice*>(devices[0]);
+  if (device == nullptr) {
+    return 1.0;
+  }
+  float clock_rate = device->local_device_state()
+                         ->executor()
+                         ->GetDeviceDescription()
+                         .clock_rate_ghz();
+  return clock_rate > 0 ? clock_rate : 1.0;
+}
+
+class HloExecutionProfileTest : public HloPjRtTestBase {};
 
 TEST_F(HloExecutionProfileTest, Basic) {
   auto hlo_module = ParseAndReturnVerifiedModule(R"(
@@ -64,10 +93,8 @@ TEST_F(HloExecutionProfileTest, Basic) {
   execution_profile.SetCyclesTakenBy(add_instruction, add_cycles);
   execution_profile.SetCyclesTakenBy(dot_instruction, dot_cycles);
 
-  float clock_rate_ghz = backend()
-                             .default_stream_executor()
-                             ->GetDeviceDescription()
-                             .clock_rate_ghz();
+  float clock_rate_ghz = GetClockRateGHz(test_runner());
+
   EXPECT_THAT(execution_profile.ToString(clock_rate_ghz),
               AllOf(ContainsRegex(StrCat(dot_cycles, " cycles.*%",
                                          dot_instruction->name())),
