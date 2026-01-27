@@ -1180,7 +1180,7 @@ TEST_F(CustomCallHloTest, CallConcurrentUpdateTwoBuffers) {
   EXPECT_THAT(results[0].data<int32_t>(), ::testing::Each(1));
 }
 
-// TODO: Enable this test once the runtime failure is fixed.
+// TODO(b/477658897): Enable this test once the runtime failure is fixed.
 TEST_F(CustomCallHloTest, DISABLED_CustomCallConcurrentUpdateTwoBuffers) {
   xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(),
                                        "xla.gpu.update_buffer1", PlatformName(),
