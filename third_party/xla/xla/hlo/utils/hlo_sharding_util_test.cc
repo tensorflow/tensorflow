@@ -117,6 +117,7 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
 TEST(HloShardingUtilTest, MoveAndMergeShardingTilesPartialTile) {
   HloSharding sharding =
       HloSharding::PartialTile(TileAssignment({2, 3, 5, 7, 11}));
+
   EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 1, 3),
             HloSharding::PartialTile(TileAssignment(
                 {2, 1, 5, 7 * 3, 11}, {2, 3, 5, 7, 11}, {0, 2, 3, 1, 4})));
@@ -124,22 +125,102 @@ TEST(HloShardingUtilTest, MoveAndMergeShardingTilesPartialTile) {
   EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 3, 1),
             HloSharding::PartialTile(TileAssignment(
                 {2, 3 * 7, 5, 1, 11}, {2, 3, 5, 7, 11}, {0, 1, 3, 2, 4})));
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    NamedSharding input =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}});
+    HloSharding sharding(input);
+
+    EXPECT_EQ(
+        MoveAndMergeShardingTiles(sharding, 1, 3).named_sharding(),
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {"c"}, {"d", "b"}, {"e"}}));
+
+    EXPECT_EQ(
+        MoveAndMergeShardingTiles(sharding, 3, 1).named_sharding(),
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b", "d"}, {"c"}, {}, {"e"}}));
+  }
 }
 
 TEST(HloShardingUtilTest, MoveAndMergeShardingTilesSubGroup) {
   HloSharding sharding =
       HloSharding::Subgroup(TileAssignment({2, 3, 5, 7, 11}),
                             {OpSharding::MANUAL, OpSharding::REPLICATED});
+
   EXPECT_EQ(
       MoveAndMergeShardingTiles(sharding, 0, 2),
       HloSharding::Subgroup(TileAssignment({1, 3, 5 * 2, 7, 11},
                                            {2, 3, 5, 7, 11}, {1, 2, 0, 3, 4}),
                             {OpSharding::MANUAL, OpSharding::REPLICATED}));
+
   EXPECT_EQ(
       MoveAndMergeShardingTiles(sharding, 2, 0),
       HloSharding::Subgroup(TileAssignment({2 * 5, 3, 1, 7, 11},
                                            {2, 3, 5, 7, 11}, {0, 2, 1, 3, 4}),
                             {OpSharding::MANUAL, OpSharding::REPLICATED}));
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    NamedSharding input = test_utils::FromAxisNames(
+        mesh, {{"a"}, {"b"}, {"c"}}, /*replicated_axes=*/{"e"},
+        /*unreduced_axes=*/{}, /*manual_axes=*/{"d"});
+    HloSharding sharding(input);
+
+    EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 0, 2).named_sharding(),
+              test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c", "a"}},
+                                        /*replicated_axes=*/{"e"},
+                                        /*unreduced_axes=*/{},
+                                        /*manual_axes=*/{"d"}));
+    EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 2, 0).named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"a", "c"}, {"b"}, {}},
+                                        /*replicated_axes=*/{"e"},
+                                        /*unreduced_axes=*/{},
+                                        /*manual_axes=*/{"d"}));
+  }
+}
+
+TEST(HloShardingUtilTest, MoveAndMergeShardingTilesNamedSharding) {
+  Mesh mesh({4, 2}, {"x", "y"});
+  NamedSharding input =
+      test_utils::FromAxisNames(mesh, {{"x:(1)2"}, {"y", "x:(2)2"}});
+  HloSharding sharding(input);
+
+  EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 1, 0).named_sharding(),
+            test_utils::FromAxisNames(mesh, {{"x:(1)2", "y", "x:(2)2"}, {}}));
+}
+
+TEST(HloShardingUtilTest, MoveAndMergeShardingTilesNamedShardingSubAxes) {
+  Mesh mesh({4}, {"x"});
+  NamedSharding input =
+      test_utils::FromAxisNames(mesh, {{"x:(1)2"}, {"x:(2)2"}});
+  HloSharding sharding(input);
+
+  EXPECT_EQ(MoveAndMergeShardingTiles(sharding, 1, 0).named_sharding(),
+            test_utils::FromAxisNames(mesh, {{"x"}, {}}));
+}
+
+TEST(HloShardingUtilTest, MoveAndMergeShardingTilesErrorCases) {
+  HloSharding sharding = HloSharding::IotaTile({2, 2});
+
+  EXPECT_DEATH(MoveAndMergeShardingTiles(sharding, 0, 0),
+               "source_dim != target_dim");
+  EXPECT_DEATH(MoveAndMergeShardingTiles(sharding, 2, 0),
+               "source_dim < sharding.TiledDataRank()");
+  EXPECT_DEATH(MoveAndMergeShardingTiles(sharding, 0, 2),
+               "target_dim < sharding.TiledDataRank()");
+  EXPECT_DEATH(MoveAndMergeShardingTiles(HloSharding::Replicate(), 0, 1),
+               "sharding.IsTiled()");
+
+  Mesh mesh({2, 2}, {"x", "y"});
+  NamedSharding input = test_utils::FromAxisNames(mesh, {{"x"}, {"y"}});
+  HloSharding named_sharding(input);
+
+  EXPECT_DEATH(MoveAndMergeShardingTiles(named_sharding, 0, 0),
+               "source_dim != target_dim");
+  EXPECT_DEATH(MoveAndMergeShardingTiles(named_sharding, 2, 0),
+               "source_dim < sharding.TiledDataRank()");
+  EXPECT_DEATH(MoveAndMergeShardingTiles(named_sharding, 0, 2),
+               "target_dim < sharding.TiledDataRank()");
 }
 
 TEST(HloShardingUtilTest, MergeShardingDimension) {

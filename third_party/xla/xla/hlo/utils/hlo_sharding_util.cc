@@ -734,12 +734,27 @@ HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings,
 HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
                                       int64_t source_dim, int64_t target_dim) {
   CHECK(sharding.IsTiled());
-
   CHECK_NE(source_dim, target_dim);
   CHECK_GE(source_dim, 0);
   CHECK_GE(target_dim, 0);
   CHECK_LT(source_dim, sharding.TiledDataRank());
   CHECK_LT(target_dim, sharding.TiledDataRank());
+
+  if (sharding.UseNamedShardingLeaf()) {
+    const NamedSharding& named_sharding = sharding.named_sharding();
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        named_sharding.dim_shardings().begin(),
+        named_sharding.dim_shardings().end());
+
+    new_dim_shardings[target_dim].Append(new_dim_shardings[source_dim],
+                                         named_sharding.mesh());
+    new_dim_shardings[source_dim] = NamedSharding::DimensionSharding();
+
+    return HloSharding(NamedSharding(
+        named_sharding.mesh(), std::move(new_dim_shardings),
+        named_sharding.replicated_axes(), named_sharding.unreduced_axes(),
+        named_sharding.manual_axes(), named_sharding.metadata()));
+  }
 
   // There are 3 steps to move and merge the sharding tiles. Given the sharding
   // with tile assignment [a, b, c, d, e], source_dim = 1, target_dim = 3, the
