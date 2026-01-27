@@ -2568,7 +2568,7 @@ absl::StatusOr<xla::cpu::CompilationResultProto> GetCpuCompilationResult(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> result,
                       client.Export(executable.get()));
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-      tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(result.get());
+      absl::down_cast<cpu::CpuAotCompilationResult*>(result.get());
   return cpu_aot_compilation_result->proto();
 }
 }  // namespace
@@ -2666,7 +2666,7 @@ GpuCompiler::CompileToBackendResult(
   compile_module_results.executable->ForAllThunksMutable([&](Thunk* thunk) {
     if (thunk->kind() == Thunk::Kind::kHostExecuteStart) {
       auto* host_execute_start_thunk =
-          tsl::down_cast<HostExecuteStartThunk*>(thunk);
+          absl::down_cast<HostExecuteStartThunk*>(thunk);
       absl::StatusOr<xla::cpu::CompilationResultProto> cpu_compilation_result =
           GetCpuCompilationResult(
               host_execute_start_thunk->executable_proto().hlo_module());
@@ -2910,7 +2910,7 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
 
 absl::StatusOr<std::unique_ptr<CompiledModule>> GpuCompiler::Export(
     Executable* executable) {
-  auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
+  auto* gpu_executable = absl::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) {
     return Internal("GpuExecutable is null");
   }

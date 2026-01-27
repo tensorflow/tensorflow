@@ -129,7 +129,7 @@ class GpuCompilerTest : public HloTestBase {
     auto compiler = backend().compiler();
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
-    GpuCompiler* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+    GpuCompiler* gpu_compiler = absl::down_cast<GpuCompiler*>(compiler);
     std::unique_ptr<GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(gpu_device_info);
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info,
@@ -2310,7 +2310,7 @@ ENTRY main {
 
   // Downcast to GPU executable
   xla::gpu::GpuExecutable* gpu_executable =
-      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+      absl::down_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
