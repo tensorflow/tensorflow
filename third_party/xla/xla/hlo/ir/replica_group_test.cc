@@ -350,13 +350,13 @@ TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
         MeshAxesReplicaGroupList index_out_of_bounds(
             mesh, /*axes=*/{AxisRef(0, {8, 2})});
       },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size");
   EXPECT_DEATH(
       {
         MeshAxesReplicaGroupList index_out_of_bounds(
             mesh, /*axes=*/{AxisRef(0, {2, 8})});
       },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size");
   EXPECT_DEATH(
       {
         MeshAxesReplicaGroupList index_out_of_bounds(

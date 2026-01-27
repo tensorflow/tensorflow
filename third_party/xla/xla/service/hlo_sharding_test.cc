@@ -165,7 +165,7 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
     tuple_shardings {
       named_sharding {
         mesh {
-          axes { name: "a" size: 2 }
+          axes { name: "a" size: 4 }
           axes { name: "b" size: 4 }
         }
         dim_shardings {
@@ -184,7 +184,7 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
     tuple_shardings {
       named_sharding {
         mesh {
-          axes { name: "a" size: 2 }
+          axes { name: "a" size: 4 }
           axes { name: "b" size: 4 }
         }
         dim_shardings {

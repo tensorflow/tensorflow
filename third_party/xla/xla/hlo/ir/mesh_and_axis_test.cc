@@ -187,12 +187,13 @@ TEST(MeshAndAxisTest, ValidatesAxisRef) {
 TEST(MeshAndAxisTest, ValidatesMesh) {
   EXPECT_DEATH(
       { Mesh mesh_dims_axes_mismatch({2, 3, 4}, {"x", "y"}); },
-      "Number of axes names must match number of dimensions");
+      "Number of axes names must match number of dimensions in the device "
+      "assignment. Number of axes names: 2, Number of dimensions: 3");
 
   Array2D<int64_t> negative_device_ids({{0, 1, 2}, {3, -4, 5}});
   EXPECT_DEATH(
       { Mesh mesh_invalid_non_iota(negative_device_ids, {"x", "y"}); },
-      "Mesh device ids must be non-negative");
+      "Mesh device ids must be non-negative. Device id: -4");
 
   Array2D<int64_t> invalid_non_iota_device_ids({{10, 11, 12}, {13, 14, 15}});
   EXPECT_DEATH(
@@ -203,7 +204,7 @@ TEST(MeshAndAxisTest, ValidatesMesh) {
       {
         Mesh mesh_with_duplicate_axis_names({1, 2, 3, 4}, {"x", "y", "z", "x"});
       },
-      "Mesh has duplicate axis names");
+      "Mesh has duplicate axis names. Duplicate axis name: x");
 
   EXPECT_DEATH(
       { Mesh mesh_with_empty_dims(TileAssignment({}), {}); },
@@ -284,18 +285,22 @@ TEST(MeshAndAxisTest, ValidateAxisForMesh) {
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(3, {1, 2}).Validate(mesh)); },
-      "Axis index must be less than number of axes");
+      "Axis index must be less than number of axes.*"
+      "Axis index: 3, Number of axes: 3");
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(0, {5, 19}).Validate(mesh)); },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size.*"
+      "Next pre-size: 95, Axis size: 14");
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(0, {2, 5}).Validate(mesh)); },
-      "Pre-size and size must divide the full axis size");
+      "Sub-axis next_pre_size must divide the full axis size.*"
+      "Next pre-size: 10, Axis size: 14");
 
   EXPECT_DEATH(
       { CHECK_OK(AxisRef(1, {1, 3 * 11}).Validate(mesh)); },
-      "Sub-axis size must be strictly less than the full axis size");
+      "Sub-axis size must be strictly less than the full axis size.*"
+      "Sub-axis size: 33, Axis size: 33");
 }
 
 TEST(MeshAndAxisTest, AxisRefCanCoexistWithoutOverlap) {

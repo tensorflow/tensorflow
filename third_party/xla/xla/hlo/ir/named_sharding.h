@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -102,21 +101,12 @@ class NamedSharding {
   NamedShardingProto ToProto() const;
   static NamedSharding FromProto(const NamedShardingProto& proto);
 
-  // TODO(b/456212087): Add validation checks
   explicit NamedSharding(Mesh mesh,
                          absl::Span<const DimensionSharding> dim_shardings = {},
                          absl::Span<const AxisRef> replicated_axes = {},
                          absl::Span<const AxisRef> unreduced_axes = {},
                          absl::Span<const AxisRef> manual_axes = {},
-                         absl::Span<const OpMetadata> metadata = {})
-      : mesh_(std::move(mesh)),
-        dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
-        replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
-        unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
-        manual_axes_(manual_axes.begin(), manual_axes.end()),
-        metadata_(metadata.begin(), metadata.end()) {
-    InitShardedSizes();
-  }
+                         absl::Span<const OpMetadata> metadata = {});
 
   const Mesh& mesh() const { return mesh_; }
   absl::Span<const DimensionSharding> dim_shardings() const {
@@ -225,6 +215,17 @@ std::ostream& operator<<(std::ostream& out,
                          const NamedSharding::DimensionSharding& sharding);
 
 std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding);
+
+// Verifies that the `NamedSharding` is valid.
+// Checks:
+// - All axis indices are within mesh bounds.
+// - All sub-axes are valid (pre-size * size divides the full axis size).
+// - For a single vector of axes, mergeable neighbors is not allowed.
+// - For the concat(all axes), we check (1) no overlap, and (2) all axes can
+//   co-exist.
+// - Replicated axes and unreduced axes are sorted by mesh axis index and
+//   sub-axis pre-size.
+absl::Status VerifyNamedSharding(const NamedSharding& named_sharding);
 
 // Contains test only helper functions.
 namespace test_utils {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -78,72 +79,74 @@ class NamedShardingEqualityTest : public ::testing::Test {
   const Mesh mesh_abcde_ = Mesh({2, 4, 3, 8, 2}, {"a", "b", "c", "d", "e"});
   const NamedSharding base_ = test_utils::FromAxisNames(
       mesh_abcde_, /*dim_shardings=*/{{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-      /*replicated_axes=*/{"b:(2)2"},
-      /*unreduced_axes=*/{"c"});
+      /*replicated_axes=*/{"e"},
+      /*unreduced_axes=*/{"b:(1)2"});
 };
 
 TEST_F(NamedShardingEqualityTest, BaseEquality) {
-  EXPECT_EQ(base_, test_utils::FromAxisNames(mesh_abcde_,
-                                             {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                                             {"b:(2)2"}, {"c"}));
+  EXPECT_EQ(base_, test_utils::FromAxisNames(
+                       mesh_abcde_,
+                       /*dim_shardings=*/{{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                       /*replicated_axes=*/{"e"},
+                       /*unreduced_axes=*/{"b:(1)2"}));
 }
 
 TEST_F(NamedShardingEqualityTest, EqualEvenWithDifferentMeshAxisNames) {
-  // Equal even with different mesh axis names
   Mesh mesh_cadbe({2, 4, 3, 8, 2}, {"c", "a", "d", "b", "e"});
-  EXPECT_EQ(base_, test_utils::FromAxisNames(mesh_cadbe,
-                                             {{"c", "a:(2)2"}, {"b:(4)2", "d"}},
-                                             {"a:(2)2"}, {"d"}));
+
+  EXPECT_EQ(base_, test_utils::FromAxisNames(
+                       mesh_cadbe,
+                       /*dim_shardings=*/{{"c", "a:(2)2"}, {"b:(4)2", "d"}},
+                       /*replicated_axes=*/{"e"},
+                       /*unreduced_axes=*/{"a:(1)2"}));
 }
 
 TEST_F(NamedShardingEqualityTest, EqualEvenWithDifferentMetadata) {
   // Equal even with different metadata.
   OpMetadata metadata;
   metadata.set_op_name("foo");
+
   EXPECT_EQ(base_, test_utils::FromAxisNames(
-                       mesh_abcde_, {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                       {"b:(2)2"}, {"c"}, {}, {metadata}));
+                       mesh_abcde_,
+                       /*dim_shardings=*/{{"a", "b:(2)2"}, {"d:(4)2", "c"}},
+                       /*replicated_axes=*/{"e"},
+                       /*unreduced_axes=*/{"b:(1)2"}, {}, {metadata}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentDimShardings) {
-  // Different dim_shardings
   EXPECT_NE(base_, test_utils::FromAxisNames(
                        mesh_abcde_, {{"a", "b:(2)2", "?"}, {"d:(4)2", "c"}},
-                       {"b:(2)2"}, {"c"}));
+                       {"e"}, {"b:(1)2"}));
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
                                              {{"d:(4)2", "c"}, {"a", "b:(2)2"}},
-                                             {"b:(2)2"}, {"c"}));
+                                             {"e"}, {"b:(1)2"}));
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_, {{"a", "b:(2)2"}},
-                                             {"b:(2)2"}, {"c"}));
+                                             {"e"}, {"b:(1)2"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentReplicatedAxes) {
-  // Different replicated_axes
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                                             {"d:(4)2"}, {"c"}));
+                                             {"d:(1)4"}, {"b:(1)2"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentUnreducedAxes) {
-  // Different unreduced_axes
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                                             {"b:(2)2"}, {"a"}));
+                                             {"e"}, {"d:(1)4"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentManualAxes) {
-  // Different manual_axes
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_abcde_,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                                             {"b:(2)2"}, {"c"}, {"e"}));
+                                             {"e"}, {"b:(1)2"}, {"d:(1)4"}));
 }
 
 TEST_F(NamedShardingEqualityTest, DifferentMeshShape) {
-  // Different mesh shape
-  Mesh mesh_diff_shape({2, 4, 3, 9, 2}, {"a", "b", "c", "d", "e"});
+  Mesh mesh_diff_shape({2, 4, 3, 16, 2}, {"a", "b", "c", "d", "e"});
   EXPECT_NE(base_, test_utils::FromAxisNames(mesh_diff_shape,
                                              {{"a", "b:(2)2"}, {"d:(4)2", "c"}},
-                                             {"b:(2)2"}, {"c"}));
+                                             {"e"}, {"b:(1)2"}));
 }
 
 TEST(NamedShardingTest, ToString) {
@@ -451,15 +454,119 @@ TEST(NamedShardingTest, NumDevices) {
   EXPECT_EQ(empty_sharding.num_devices(), 0);
 }
 
+TEST(NamedShardingTest, ValidSharding) {
+  Mesh mesh({2, 4}, {"a", "b"});
+  NamedSharding sharding = test_utils::FromAxisNames(mesh, {{"a"}}, {"b"});
+  TF_EXPECT_OK(VerifyNamedSharding(sharding));
+}
+
+TEST(NamedShardingTest, ValidShardingWithSubAxes) {
+  Mesh mesh({4}, {"a"});
+  NamedSharding sharding =
+      test_utils::FromAxisNames(mesh, {{"a:(1)2"}}, {"a:(2)2"});
+  TF_EXPECT_OK(VerifyNamedSharding(sharding));
+}
+
+TEST(NamedShardingTest, InvalidAxisIndex) {
+  Mesh mesh({2}, {"a"});
+  AxisRef b(1);  // Index 1 is out of bounds for size 1
+
+  DimensionSharding ds_b({b}, /*is_closed=*/true);
+
+  EXPECT_DEATH(NamedSharding(mesh, {ds_b}),
+               "Axis index must be less than number of axes.*"
+               "Axis index: 1, Number of axes: 1");
+}
+
+TEST(NamedShardingTest, OverlappingAxesSameDimValidation) {
+  Mesh mesh({2}, {"a"});
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a", "a"}}),
+               "Axes cannot coexist or axes overlap");
+}
+
+TEST(NamedShardingTest, OverlappingAxesDifferentDimsValidation) {
+  Mesh mesh({2}, {"a"});
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a"}, {"a"}}),
+               "Axes cannot coexist or axes overlap");
+}
+
+TEST(NamedShardingTest, OverlappingAxesDimAndReplicatedValidation) {
+  Mesh mesh({2}, {"a"});
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a"}}, {"a"}),
+               "Axes cannot coexist or axes overlap");
+}
+
+TEST(NamedShardingTest, OverlappingAxesDimAndUnreducedValidation) {
+  Mesh mesh({2}, {"a"});
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a"}}, {}, {"a"}),
+               "Axes cannot coexist or axes overlap");
+}
+
+TEST(NamedShardingTest, OverlappingAxesDimAndManualValidation) {
+  Mesh mesh({2}, {"a"});
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a"}}, {}, {}, {"a"}),
+               "Axes cannot coexist or axes overlap");
+}
+
+TEST(NamedShardingTest, OverlappingSubAxesValidation) {
+  Mesh mesh({4}, {"a"});
+
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a:(1)4"}}, {"a:(1)2"}),
+               "Sub-axis size must be strictly less than the full axis size.*"
+               "Sub-axis size: 4, Axis size: 4");
+}
+
+TEST(NamedShardingTest, MergeableAxesValidation) {
+  Mesh mesh({4}, {"a"});
+
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a:(1)2", "a:(2)2"}}),
+               "Adjacent axes in dimension sharding can be merged: "
+               "a:\\(1\\)2, a:\\(2\\)2");
+}
+
+TEST(NamedShardingTest, SplitAxesValidation) {
+  Mesh mesh({4}, {"a"});
+
+  NamedSharding sharding =
+      test_utils::FromAxisNames(mesh, {{"a:(2)2", "a:(1)2"}});
+  TF_EXPECT_OK(VerifyNamedSharding(sharding));
+}
+
+TEST(NamedShardingTest, UnsortedReplicatedAxesValidation) {
+  Mesh mesh({2, 2}, {"a", "b"});
+
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {}, {"b", "a"}),
+               "Replicated axes must be sorted by mesh axis index and "
+               "sub-axis pre-size");
+}
+
+TEST(NamedShardingTest, UnsortedUnreducedAxesValidation) {
+  Mesh mesh({2, 2}, {"a", "b"});
+
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {}, {}, {"b", "a"}),
+               "Unreduced axes must be sorted by mesh axis index and "
+               "sub-axis pre-size");
+}
+
+TEST(NamedShardingTest, InvalidSubAxisDivisibility) {
+  // 12 is divisible by 2 and 4, but not by 2*4=8.
+  Mesh mesh({12}, {"a"});
+
+  // pre_size=2, size=4.
+  EXPECT_DEATH(test_utils::FromAxisNames(mesh, {{"a:(2)4"}}),
+               "Sub-axis next_pre_size must divide the full axis size.*"
+               "Next pre-size: 8, Axis size: 12");
+}
+
 TEST(NamedShardingTest, NamedShardingProtoConversion) {
-  Mesh mesh({2, 4, 3, 5}, {"a", "b", "c", "d"});
+  Mesh mesh({4, 4, 3, 5}, {"a", "b", "c", "d"});
   AxisRef axis_a_1(0, {1, 2});
   AxisRef axis_a_2(0, {2, 2});
   AxisRef axis_b(1);
   AxisRef axis_c(2);
   AxisRef axis_d(3);
   DimensionSharding ds_a1({axis_a_1}, /*is_closed=*/true);
-  NamedSharding sharding(mesh, {ds_a1}, {axis_b}, {axis_d}, {axis_c, axis_a_2});
+  NamedSharding sharding(mesh, {ds_a1}, {axis_b}, {axis_d}, {axis_a_2, axis_c});
 
   NamedShardingProto proto = sharding.ToProto();
 
@@ -468,7 +575,7 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
       ::tsl::proto_testing::EquivToProto(
           ::tsl::proto_testing::ParseTextProtoOrDie<NamedShardingProto>(R"pb(
             mesh {
-              axes { name: "a" size: 2 }
+              axes { name: "a" size: 4 }
               axes { name: "b" size: 4 }
               axes { name: "c" size: 3 }
               axes { name: "d" size: 5 }
@@ -482,11 +589,11 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
             }
             replicated_axes { mesh_axis_index: 1 }
             unreduced_axes { mesh_axis_index: 3 }
-            manual_axes { mesh_axis_index: 2 }
             manual_axes {
               mesh_axis_index: 0
               sub_axis_info { pre_size: 2 size: 2 }
             }
+            manual_axes { mesh_axis_index: 2 }
           )pb")));
 
   NamedSharding from_proto = NamedSharding::FromProto(proto);
