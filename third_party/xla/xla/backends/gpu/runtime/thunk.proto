@@ -399,6 +399,13 @@ message AllReduceStartThunkProto {
   bool is_async = 9;
 }
 
+message ReduceScatterStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+  ReductionKindProto reduction_kind = 4;
+}
+
 message AllToAllStartThunkProto {
   optional uint64 async_events_unique_id = 1;
   CollectiveConfigProto collective_config = 2;
@@ -507,14 +514,15 @@ message ThunkProto {
     CollectiveDoneThunkProto collective_done_thunk = 37;
     AllGatherStartThunkProto all_gather_start_thunk = 38;
     AllReduceStartThunkProto all_reduce_start_thunk = 39;
-    AllToAllStartThunkProto all_to_all_start_thunk = 40;
-    RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 41;
-    CollectivePermuteStartThunkProto collective_permute_start_thunk = 42;
-    SendThunkProto send_thunk = 43;
-    RecvThunkProto recv_thunk = 44;
-    CollectiveBroadcastStartThunkProto collective_broadcast_start_thunk = 45;
-    CollectiveGroupThunkProto collective_group_thunk = 46;
-    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 47;
+    ReduceScatterStartThunkProto reduce_scatter_start_thunk = 40;
+    AllToAllStartThunkProto all_to_all_start_thunk = 41;
+    RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 42;
+    CollectivePermuteStartThunkProto collective_permute_start_thunk = 43;
+    SendThunkProto send_thunk = 44;
+    RecvThunkProto recv_thunk = 45;
+    CollectiveBroadcastStartThunkProto collective_broadcast_start_thunk = 46;
+    CollectiveGroupThunkProto collective_group_thunk = 47;
+    DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
   }
 }
 

@@ -74,7 +74,7 @@ absl::StatusOr<std::unique_ptr<HostOffloadingExecutable>> CompileFromString(
                           client.Export(executable.get()));
 
       xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-          tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+          absl::down_cast<cpu::CpuAotCompilationResult*>(
               aot_compilation_result.get());
 
       *executable_proto.mutable_aot_compilation_result() =
@@ -511,7 +511,7 @@ TEST(HostOffloadingNanortTest, DeviceAssignment) {
                         HostOffloadingExecutableProto::EXECUTABLE_TYPE_NANORT));
 
   auto host_offloading_nanort_executable =
-      tsl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
+      absl::down_cast<HostOffloadingNanoRtExecutable*>(computation.get());
   ASSERT_NE(host_offloading_nanort_executable, nullptr);
   ASSERT_NE(host_offloading_nanort_executable->device_assignment(), nullptr);
 
