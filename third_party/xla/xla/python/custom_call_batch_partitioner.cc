@@ -65,46 +65,21 @@ HloSharding GetBatchSharding(const HloSharding& sharding,
   for (int64_t i = 0; i < num_replicate_dims; ++i) {
     replicate_dims.push_back(sharding.TiledDataRank() - num_replicate_dims + i);
   }
-  const HloSharding batch_sharding =
+  HloSharding batch_sharding =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding,
                                                                replicate_dims);
-  if (!batch_sharding.IsTiled()) {
-    return batch_sharding;
-  }
-
-  std::vector<int64_t> dimensions(batch_sharding.dimensions().begin(),
-                                  batch_sharding.dimensions().end());
-  dimensions.erase(
-      dimensions.begin() + batch_sharding.TiledDataRank() - num_replicate_dims,
-      dimensions.begin() + batch_sharding.TiledDataRank());
-  auto tile_assignment = batch_sharding.tile_assignment().Reshape(dimensions);
-  return batch_sharding.ReplicateOnLastTileDim()
-             ? HloSharding::PartialTile(tile_assignment,
-                                        batch_sharding.metadata())
-             : HloSharding::Subgroup(tile_assignment,
-                                     batch_sharding.subgroup_types(),
-                                     batch_sharding.metadata());
+  return hlo_sharding_util::RemoveShapeDimensions(batch_sharding,
+                                                  replicate_dims);
 }
 
 // Append `num_replicate_dims` replicated dimensions to the given HLO sharding.
 HloSharding InsertNonBatchSharding(const HloSharding& sharding,
                                    int64_t num_replicate_dims) {
-  if (!sharding.IsTiled() || num_replicate_dims < 0) {
+  if (num_replicate_dims < 0) {
     return HloSharding::Replicate(sharding.metadata());
   }
-  if (num_replicate_dims == 0) {
-    return sharding;
-  }
-  std::vector<int64_t> dimensions(sharding.dimensions().begin(),
-                                  sharding.dimensions().end());
-  for (int64_t i = 0; i < num_replicate_dims; ++i) {
-    dimensions.insert(dimensions.begin() + sharding.TiledDataRank(), 1);
-  }
-  auto tile_assignment = sharding.tile_assignment().Reshape(dimensions);
-  return sharding.ReplicateOnLastTileDim()
-             ? HloSharding::PartialTile(tile_assignment, sharding.metadata())
-             : HloSharding::Subgroup(tile_assignment, sharding.subgroup_types(),
-                                     sharding.metadata());
+  return hlo_sharding_util::AddShapeDimensions(
+      sharding, sharding.TiledDataRank(), num_replicate_dims);
 }
 
 // Compute a common batch sharding from the leading batch dimensions of a set of

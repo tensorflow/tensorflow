@@ -920,6 +920,27 @@ TEST(HloShardingUtilTest, RemoveShapeDimensions) {
   EXPECT_EQ(target_sharding.named_sharding(), expected);
 }
 
+TEST(HloShardingUtilTest, AddShapeDimensionsTiledSharding) {
+  HloSharding source_sharding =
+      HloSharding::PartialTile(TileAssignment({2, 3, 5, 11}));
+
+  HloSharding target_sharding = AddShapeDimensions(source_sharding, 2, 2);
+
+  EXPECT_EQ(target_sharding,
+            HloSharding::PartialTile(TileAssignment({2, 3, 1, 1, 5, 11})));
+}
+TEST(HloShardingUtilTest, AddShapeDimensionsNamedSharding) {
+  Mesh mesh({2, 3, 5, 11}, {"a", "b", "c", "d"});
+  NamedSharding source_sharding =
+      test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}});
+
+  HloSharding target_sharding =
+      AddShapeDimensions(HloSharding(source_sharding), 2, 2);
+
+  EXPECT_EQ(target_sharding.named_sharding(),
+            test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {}, {}, {"c"}}));
+}
+
 TEST(HloShardingUtilTest, MergeManualSubgroupSharding) {
   TileAssignment tile_assignment({16, 4});
   std::vector<OpSharding::Type> subgroup_types = {OpSharding::MANUAL,

@@ -255,6 +255,11 @@ HloSharding ReplicateAllDataDims(const HloSharding& sharding,
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,
                                   absl::Span<const int64_t> dims_to_remove);
 
+// Returns a sharding that adds `num_dims` sharding dimensions of size 1 (i.e
+// replicated) at `insertion_index`.
+HloSharding AddShapeDimensions(const HloSharding& sharding,
+                               int64_t insertion_index, int64_t num_dims);
+
 // Similar to TransposeSharding(), but allows removing/adding non-partitioned
 // dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
 // dimension.
