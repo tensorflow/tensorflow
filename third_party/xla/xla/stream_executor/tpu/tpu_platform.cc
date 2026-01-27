@@ -34,10 +34,8 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
-#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -45,7 +43,7 @@ namespace tpu {
 const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
-TpuPlatform::TpuPlatform() : name_("TPU") {
+TpuPlatform::TpuPlatform() : name_(kId->ToName()) {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
   CHECK(platform_ != nullptr);
 }
@@ -176,7 +174,7 @@ bool RegisterTpuPlatform() {
     tpu_registered_platform = new TpuPlatform();
     std::unique_ptr<stream_executor::Platform> platform(
         tpu_registered_platform);
-    TF_CHECK_OK(stream_executor::PlatformManager::RegisterPlatform(
+    CHECK_OK(stream_executor::PlatformManager::RegisterPlatform(
         std::move(platform)));
     tpu_platform_registered = true;
   }

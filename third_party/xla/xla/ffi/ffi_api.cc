@@ -43,57 +43,20 @@ limitations under the License.
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
+#include "xla/ffi/ffi_internal_api.h"
+#include "xla/ffi/ffi_structs.h"
 #include "xla/ffi/type_registry.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
-
-//===----------------------------------------------------------------------===//
-// XLA FFI C structs definition
-//===----------------------------------------------------------------------===//
-
-struct XLA_FFI_Error {
-  absl::Status status;
-};
-
-struct XLA_FFI_Future {
-  tsl::AsyncValueRef<tsl::Chain> async_value;
-};
-
-struct XLA_FFI_ExecutionContext {
-  struct CpuContext {
-    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
-  };
-
-  struct GpuContext {
-    stream_executor::Stream* stream = nullptr;
-    stream_executor::DeviceMemoryAllocator* allocator = nullptr;
-  };
-
-  using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
-
-  xla::RunId run_id = {};
-  int32_t device_ordinal = -1;
-  BackendContext backend_context = {};
-
-  const xla::HloComputation* called_computation = nullptr;
-  const xla::ffi::ExecutionContext* execution_context = nullptr;
-  xla::ffi::ExecutionState* execution_state = nullptr;
-};
-
-//===----------------------------------------------------------------------===//
 
 namespace xla::ffi {
 
@@ -135,8 +98,14 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
     }
 
     BackendContext operator()(const CallOptions::GpuOptions& options) const {
-      return XLA_FFI_ExecutionContext::GpuContext{options.stream,
-                                                  options.allocator};
+      return XLA_FFI_ExecutionContext::GpuContext{
+          options.stream,
+          options.allocator,
+          options.collective_params,
+          options.collective_clique_requests,
+          options.collective_memory_requests,
+          options.collective_cliques,
+          options.gpu_compute_capability};
     }
   };
 
@@ -739,16 +708,8 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 
   DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
 
-  absl::Status status;
-  if (args->deleter == nullptr) {
-    status = args->ctx->execution_state->Set(
-        TypeRegistry::TypeId(args->type_id->type_id), args->state);
-  } else {
-    status = args->ctx->execution_state->Set(
-        TypeRegistry::TypeId(args->type_id->type_id), args->state,
-        args->deleter);
-  }
-
+  absl::Status status = args->ctx->execution_state->Set(
+      TypeRegistry::TypeId(args->type_id->type_id), args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -805,7 +766,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Allocate(
         InvalidArgument("Unsupported alignment: %d", args->alignment)};
   }
 
-  absl::StatusOr<stream_executor::OwningDeviceMemory> memory =
+  absl::StatusOr<stream_executor::ScopedDeviceAddress<uint8_t>> memory =
       gpu->allocator->Allocate(args->ctx->device_ordinal, args->size);
   if (!memory.ok()) {
     return new XLA_FFI_Error{std::move(memory).status()};
@@ -839,7 +800,7 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
 
   absl::Status status = gpu->allocator->Deallocate(
       args->ctx->device_ordinal,
-      stream_executor::DeviceMemoryBase(args->data, args->size));
+      stream_executor::DeviceAddressBase(args->data, args->size));
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
@@ -897,132 +858,46 @@ static XLA_FFI_Error* XLA_FFI_ThreadPool_NumThreads(
 }
 
 //===----------------------------------------------------------------------===//
-// XLA FFI Internal Api Implementation
-//===----------------------------------------------------------------------===//
-
-static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
-  auto* absl_status = reinterpret_cast<absl::Status*>(status);
-  if (ABSL_PREDICT_TRUE(absl_status->ok())) {
-    return nullptr;
-  }
-  return new XLA_FFI_Error{std::move(*absl_status)};
-}
-
-static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
-  auto* tsl_async_value = reinterpret_cast<tsl::AsyncValue*>(async_value);
-  DCHECK(tsl_async_value) << "Async value must not be null";
-
-  return new XLA_FFI_Future{
-      tsl::AsyncValueRef<tsl::Chain>(tsl::TakeRef(tsl_async_value))};
-}
-
-static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
-          &ctx->backend_context)) {
-    return gpu->stream;
-  }
-
-  return new XLA_FFI_Error{
-      InvalidArgument("XLA FFI GPU context is not available")};
-}
-
-static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return ctx->device_ordinal;
-}
-
-static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
-  return ctx->run_id.ToInt();
-}
-
-static void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
-          &ctx->backend_context)) {
-    return gpu->allocator;
-  }
-
-  return new XLA_FFI_Error{
-      InvalidArgument("XLA FFI GPU context is not available")};
-}
-
-static void* XLA_FFI_INTERNAL_CalledComputation_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<HloComputation*>(ctx->called_computation);
-}
-
-static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ffi::ExecutionContext*>(ctx->execution_context);
-}
-
-static void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ffi::ExecutionState*>(ctx->execution_state);
-}
-
-void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(XLA_FFI_ExecutionContext* ctx) {
-  if (auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
-          &ctx->backend_context)) {
-    return const_cast<Eigen::ThreadPoolDevice*>(cpu->intra_op_thread_pool);
-  }
-
-  return new XLA_FFI_Error{
-      InvalidArgument("XLA FFI CPU context is not available")};
-}
-
-//===----------------------------------------------------------------------===//
 // XLA FFI Api access
 //===----------------------------------------------------------------------===//
 
+const XLA_FFI_Api* GetXlaFfiApi() {
+  static XLA_FFI_Api api = {
+      XLA_FFI_Api_STRUCT_SIZE,
+      /*extension_start=*/nullptr,
+
+      XLA_FFI_Api_Version{
+          XLA_FFI_Api_Version_STRUCT_SIZE,
+          /*extension_start=*/nullptr,
+          XLA_FFI_API_MAJOR,
+          XLA_FFI_API_MINOR,
+      },
+
+      internal::GetInternalApi(),
+
+      XLA_FFI_Error_Create,
+      XLA_FFI_Error_GetMessage,
+      XLA_FFI_Error_Destroy,
+      XLA_FFI_Handler_Register,
+      XLA_FFI_Stream_Get,
+      XLA_FFI_Type_Register,
+      XLA_FFI_ExecutionContext_Get,
+      XLA_FFI_State_Set,
+      XLA_FFI_State_Get,
+      XLA_FFI_DeviceMemory_Allocate,
+      XLA_FFI_DeviceMemory_Free,
+      XLA_FFI_ThreadPool_Schedule,
+      XLA_FFI_ThreadPool_NumThreads,
+      XLA_FFI_Future_Create,
+      XLA_FFI_Future_SetAvailable,
+      XLA_FFI_Future_SetError,
+      XLA_FFI_RunId_Get,
+      XLA_FFI_DeviceOrdinal_Get,
+  };
+
+  return &api;
+}
+
 extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
-
-static XLA_FFI_InternalApi internal_api = {
-    XLA_FFI_INTERNAL_Error_Forward,
-    XLA_FFI_INTERNAL_Future_Forward,
-    XLA_FFI_INTERNAL_Stream_Get,
-    XLA_FFI_INTERNAL_DeviceOrdinal_Get,
-    XLA_FFI_INTERNAL_RunId_Get,
-    XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
-    XLA_FFI_INTERNAL_CalledComputation_Get,
-    XLA_FFI_INTERNAL_ExecutionContext_Get,
-    XLA_FFI_INTERNAL_ExecutionState_Get,
-    XLA_FFI_INTERNAL_IntraOpThreadPool_Get,
-};
-
-static XLA_FFI_Api api = {
-    XLA_FFI_Api_STRUCT_SIZE,
-    /*extension_start=*/nullptr,
-
-    XLA_FFI_Api_Version{
-        XLA_FFI_Api_Version_STRUCT_SIZE,
-        /*extension_start=*/nullptr,
-        XLA_FFI_API_MAJOR,
-        XLA_FFI_API_MINOR,
-    },
-
-    &internal_api,
-
-    XLA_FFI_Error_Create,
-    XLA_FFI_Error_GetMessage,
-    XLA_FFI_Error_Destroy,
-    XLA_FFI_Handler_Register,
-    XLA_FFI_Stream_Get,
-    XLA_FFI_Type_Register,
-    XLA_FFI_ExecutionContext_Get,
-    XLA_FFI_State_Set,
-    XLA_FFI_State_Get,
-    XLA_FFI_DeviceMemory_Allocate,
-    XLA_FFI_DeviceMemory_Free,
-    XLA_FFI_ThreadPool_Schedule,
-    XLA_FFI_ThreadPool_NumThreads,
-    XLA_FFI_Future_Create,
-    XLA_FFI_Future_SetAvailable,
-    XLA_FFI_Future_SetError,
-    XLA_FFI_RunId_Get,
-    XLA_FFI_DeviceOrdinal_Get,
-};
-
-const XLA_FFI_Api* GetXlaFfiApi() { return &api; }
 
 }  // namespace xla::ffi

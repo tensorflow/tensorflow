@@ -142,7 +142,7 @@ class StridedSliceOp : public XlaOpKernel {
       // Pad input to 2x to avoid OOB access.
       slice = xla::Pad(slice, xla::Zero(ctx->builder(), ctx->input_xla_type(0)),
                        padding_config);
-      for (int64 i = 0; i < result_dims_are_dynamic.size(); ++i) {
+      for (int64_t i = 0; i < result_dims_are_dynamic.size(); ++i) {
         if (result_dims_are_dynamic[i]) {
           slice = xla::RemoveDynamicDimension(slice, i);
         }
@@ -178,7 +178,7 @@ class StridedSliceOp : public XlaOpKernel {
           // Can't infer a lower bound.
           return false;
         }
-        return lower_bound->Get<int32>({}) >= 0;
+        return lower_bound->Get<int32_t>({}) >= 0;
       };
       if (begin_mask) {
         begin_index = zero;
@@ -220,7 +220,7 @@ class StridedSliceOp : public XlaOpKernel {
     // size 1 dims of a shape.
     slice = xla::Reshape(slice, final_shape.dim_sizes());
     for (int64_t i = 0; i < final_shape.dims(); ++i) {
-      int64 processing_shape_dim = shape_spec.output_to_processing_mapping[i];
+      int64_t processing_shape_dim = shape_spec.output_to_processing_mapping[i];
       // If processing_shape_dim is -1, it means the output dimension was newly
       // added by new_axis_mask_, which doesn't show up in input.
       if (processing_shape_dim != -1) {
@@ -341,9 +341,9 @@ class StridedSliceOp : public XlaOpKernel {
         int64_t sparse_index = shape_spec.output_to_sparse_mapping[i];
         bool end_is_dynamic =
             sparse_index == -1 ? false : ends_are_dynamic[sparse_index];
-        bool backward_slice = sparse_index == -1
-                                  ? false
-                                  : end_literal.Get<int32>({sparse_index}) < 0;
+        bool backward_slice =
+            sparse_index == -1 ? false
+                               : end_literal.Get<int32_t>({sparse_index}) < 0;
         if (input_is_dynamic || end_is_dynamic) {
           OP_REQUIRES(
               ctx, strides[input_index] == 1,
@@ -363,8 +363,8 @@ class StridedSliceOp : public XlaOpKernel {
                             "sized slice with dynamic negative index %lld. "));
             operand_size = xla::Add(
                 operand_size,
-                xla::ConstantR0<int32>(ctx->builder(),
-                                       end_literal.Get<int32>({sparse_index})));
+                xla::ConstantR0<int32_t>(
+                    ctx->builder(), end_literal.Get<int32_t>({sparse_index})));
           } else {
             // The end of slice with dynamic slice size is the min of operand
             // shape and slice size. E.g., t[:end_size], result size is
@@ -376,13 +376,13 @@ class StridedSliceOp : public XlaOpKernel {
                                       {});
             } else {
               end_size =
-                  xla::ConstantR0<int32>(ctx->builder(), end[input_index]);
+                  xla::ConstantR0<int32_t>(ctx->builder(), end[input_index]);
             }
             operand_size = xla::Min(operand_size, end_size);
           }
           slice = xla::SetDimensionSize(
               slice,
-              xla::Sub(operand_size, xla::ConstantR0<int32>(
+              xla::Sub(operand_size, xla::ConstantR0<int32_t>(
                                          ctx->builder(), begin[input_index])),
               i);
         }
@@ -397,8 +397,8 @@ class StridedSliceOp : public XlaOpKernel {
   }
 
  private:
-  int32 begin_mask_, end_mask_;
-  int32 ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
+  int32_t begin_mask_, end_mask_;
+  int32_t ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
   DataType index_type_;
 };
 
@@ -634,8 +634,8 @@ class StridedSliceGradOp : public XlaOpKernel {
   }
 
  private:
-  int32 begin_mask_, end_mask_;
-  int32 ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
+  int32_t begin_mask_, end_mask_;
+  int32_t ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
   DataType index_type_;
 };
 
@@ -751,8 +751,8 @@ class StridedSliceAssignOp : public XlaOpKernel {
   }
 
  private:
-  int32 begin_mask_, end_mask_;
-  int32 ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
+  int32_t begin_mask_, end_mask_;
+  int32_t ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
   DataType index_type_;
   DataType dtype_;
 };

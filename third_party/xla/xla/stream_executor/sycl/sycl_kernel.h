@@ -13,9 +13,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_
 #define XLA_STREAM_EXECUTOR_SYCL_SYCL_KERNEL_H_
 
-#include <sycl/sycl.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <sycl/sycl.hpp>  // NOLINT
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
 

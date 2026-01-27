@@ -81,10 +81,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -124,8 +124,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/framework:tensor",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:platform_port",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
     ] + if_pywrap(["//tensorflow/python/grappler:model_analyzer_lib"]),
 )
 
@@ -176,10 +176,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_not_windows(["//tensorflow/core/grappler/costs:graph_properties"]),  # b/148556093,
 )
 
@@ -283,10 +283,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_pywrap(
         if_true = [
             "//tensorflow/core/grappler/costs:measuring_cost_estimator",
@@ -382,11 +382,11 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_pywrap(
         if_true = [
             "//tensorflow/core/grappler/clusters:cluster",

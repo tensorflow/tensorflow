@@ -95,7 +95,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 #endif
 
   if (cc.feature_extension ==
-      CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures) {
+      CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures) {
     return absl::UnimplementedError(
         "Compiling forward compatible kernels is not implemented yet.");
   }

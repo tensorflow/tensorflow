@@ -38,7 +38,9 @@ class AsyncWrapper : public HloModulePass {
       : predicate_(std::move(predicate)) {}
 
   absl::string_view name() const override { return "async-wrapper"; }
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -64,10 +63,10 @@ class HloPassFix : public Pass {
     return absl::OkStatus();
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     RunState run_state(module);
     TF_RETURN_IF_ERROR(RunToFixPoint(module, &run_state, execution_threads));
     return !run_state.changed.empty();
@@ -135,8 +134,8 @@ class HloPassFix : public Pass {
     }
     // If Pass does not override the default
     // HloPassInterface::RunOnChangedComputations that calls into
-    // HloPassFix<Pass>::Run, avoid infinite recursion.
-    TF_ASSIGN_OR_RETURN(bool changed, Pass::Run(module, execution_threads));
+    // HloPassFix<Pass>::RunImpl, avoid infinite recursion.
+    TF_ASSIGN_OR_RETURN(bool changed, Pass::RunImpl(module, execution_threads));
     if (changed) {
       auto computations = module->computations(execution_threads);
       run_state->changed_this_iteration.insert(computations.begin(),

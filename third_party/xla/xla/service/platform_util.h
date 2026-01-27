@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -37,6 +38,11 @@ class PlatformUtil {
   // there are multiple implementations. For example, GPU platform may be
   // cuda(Nvidia) or rocm(AMD)
   static absl::StatusOr<std::string> CanonicalPlatformName(
+      absl::string_view platform_name);
+
+  // Returns the `se::Platform::Id` for the given canonical `platform_name`, or
+  // an error if the `platform_name` is not recognized.
+  static absl::StatusOr<se::Platform::Id> GetPlatformIdFromCanonicalName(
       absl::string_view platform_name);
 
   // Returns the platforms present on the system and supported by XLA.

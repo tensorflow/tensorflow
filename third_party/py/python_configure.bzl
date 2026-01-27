@@ -1,24 +1,18 @@
 """Repository rule for Python autoconfiguration.
 """
 
+load("@python_version_repo//:py_version.bzl", "HERMETIC_PYTHON_VERSION")
 load(
-    "@local_xla//third_party/remote_config:common.bzl",
+    "@xla//third_party/remote_config:common.bzl",
     "BAZEL_SH",
     "PYTHON_BIN_PATH",
     "PYTHON_LIB_PATH",
 )
-load("@python_version_repo//:py_version.bzl", "HERMETIC_PYTHON_VERSION")
-load("@pythons_hub//:interpreters.bzl", "INTERPRETER_LABELS")
-
-def _is_bzlmod_enabled():
-    return str(Label("@//:BUILD.bazel")).startswith("@@")
 
 def _get_python_interpreter():
     python_toolchain_name = "python_{version}_host".format(
         version = HERMETIC_PYTHON_VERSION.replace(".", "_"),
     )
-    if _is_bzlmod_enabled():
-        return str(INTERPRETER_LABELS[python_toolchain_name])
     return "@{}//:python".format(python_toolchain_name)
 
 def _create_local_python_repository(repository_ctx):

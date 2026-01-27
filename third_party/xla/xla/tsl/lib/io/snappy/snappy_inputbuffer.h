@@ -92,7 +92,7 @@ class SnappyInputBuffer : public InputStreamInterface {
 
   // Reads the length of the next *compressed* block and stores in `length`.
   // The length is stored in 4 bytes in little endian notation.
-  absl::Status ReadCompressedBlockLength(uint32* length);
+  absl::Status ReadCompressedBlockLength(uint32_t* length);
 
   RandomAccessFile* file_;         // Not owned
   int64_t file_pos_ = 0;           // Next position to read from in `file_`

@@ -49,13 +49,15 @@ def py_import(
         wheel,
         deps = [],
         wheel_deps = [],
-        zip_deps = []):
+        zip_deps = [],
+        testonly = False):
     unpacked_wheel_name = name + "_unpacked_wheel"
     _unpacked_wheel(
         name = unpacked_wheel_name,
         wheel = wheel,
         wheel_deps = wheel_deps,
         zip_deps = zip_deps,
+        testonly = testonly,
     )
     py_library(
         name = name,
@@ -63,6 +65,7 @@ def py_import(
         imports = [unpacked_wheel_name],
         deps = deps,
         visibility = ["//visibility:public"],
+        testonly = testonly,
     )
 
 """Unpacks the wheel and uses its content as a py_library.

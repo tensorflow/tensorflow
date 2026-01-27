@@ -48,10 +48,10 @@ class HloConstantFolding : public HloModulePass {
   explicit HloConstantFolding(Level level = Level::kDefault) : level_(level) {}
   absl::string_view name() const override { return "constant_folding"; }
 
+ protected:
   // Run constant folding operations on the given module. Returns whether the
   // module was changed (constant expressions folded).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

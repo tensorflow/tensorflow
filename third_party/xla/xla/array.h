@@ -22,7 +22,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
-#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -102,6 +101,14 @@ class Array {
   Array(absl::Span<const int64_t> sizes, T value)
       : Array(sizes, no_default_init_t{}) {
     Fill(value);
+  }
+
+  // Creates a new array with the specified dimensions and initialize
+  // every cell with values from the list of flattened_values.
+  Array(absl::Span<const int64_t> sizes, absl::Span<const T> flattened_values)
+      : Array(sizes, no_default_init_t{}) {
+    CHECK_EQ(flattened_values.size(), num_elements());
+    std::copy(flattened_values.begin(), flattened_values.end(), begin());
   }
 
   // Creates a 2D array from the given nested initializer list. The outer

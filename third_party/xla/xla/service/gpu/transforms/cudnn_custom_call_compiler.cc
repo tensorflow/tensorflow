@@ -378,7 +378,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
       se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
           dnn_support, q, k, p, v, d_output, dq, dk, dv, bias, dbias,
           dropout_rate, config.seed(), config.fmha_scale(), dropout_rate > 0.0,
-          bias != std::nullopt, dnn_mask_type, force_deterministic,
+          bias.has_value(), dnn_mask_type, force_deterministic,
           sliding_window_length, max_seg_per_batch, score_mod));
   return graph;
 }
@@ -572,9 +572,9 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> CuDnnCustomCallCompiler::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> CuDnnCustomCallCompiler::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_SCOPED_LOGGING_TIMER_LEVEL("cuDNN custom call compiler", 8);
   return CuDnnCustomCallVisitor(dnn_support_, compilation_results_)
       .RunOnModule(module, execution_threads);

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/gemm_rewriter_test_lib.h"
 
-#include <variant>
-
 #include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"

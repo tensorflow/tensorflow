@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/filesystem/plugins/gcs/expiring_lru_cache.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -27,7 +29,7 @@ namespace tensorflow {
 namespace {
 
 TEST(ExpiringLRUCacheTest, MaxAge) {
-  const string key = "a";
+  const std::string key = "a";
   std::unique_ptr<NowSecondsEnv> env(new NowSecondsEnv);
   tf_gcs_filesystem::ExpiringLRUCache<int> cache(
       1, 0, [&env]() { return env->NowSeconds(); });
@@ -95,9 +97,10 @@ TEST(ExpiringLRUCacheTest, MaxEntries) {
 
 TEST(ExpiringLRUCacheTest, LookupOrCompute) {
   // max_age of 0 means we should always compute.
-  uint64 num_compute_calls = 0;
+  uint64_t num_compute_calls = 0;
   tf_gcs_filesystem::ExpiringLRUCache<int>::ComputeFunc compute_func =
-      [&num_compute_calls](const string& key, int* value, TF_Status* status) {
+      [&num_compute_calls](const std::string& key, int* value,
+                           TF_Status* status) {
         *value = num_compute_calls;
         num_compute_calls++;
         return TF_SetStatus(status, TF_OK, "");

@@ -4,7 +4,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_python//python:defs.bzl", "py_binary")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -206,13 +206,7 @@ def lit_test_suite_for_gpus(
             "--param=GPU=%s" % (gpu),
         ]
         gpu_data = data + [
-            "//xla/tools/hlo_opt:gpu_specs/a100_pcie_80.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/b200.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/h100_sxm.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
-            "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
+            "//xla/backends/gpu/target_config:all_gpu_specs",
         ]
         lit_test_suite(
             "%s_%s" % (name, gpu),
@@ -228,7 +222,10 @@ def lit_test_suite_for_gpus(
             tags_override,
             hermetic_cuda_data_dir,
             exec_properties,
-            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only"],
+            # We add the tag xla_h100 to avoid that the test suite is scheduled
+            # on different GPU architectures. Technically these tests don't
+            # need a GPU, but a build with GPU configured.
+            tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only", "xla_h100"],
             "_%s" % (gpu),
             **kwargs
         )
@@ -298,7 +295,7 @@ def lit_test(
     See https://llvm.org/docs/CommandGuide/lit.html for details on lit
     """
     args = args or []
-    data = data or []
+    data = (data or []) + ["//xla:sh_test_with_runfiles.py"]
     tools = tools or []
     env = env or {}
 
@@ -329,11 +326,12 @@ def lit_test(
         srcs = tools,
         bin_dir = bin_dir,
         lib_dir = lib_dir,
-        deps = if_cuda_is_configured(
-            [
-                "//xla/stream_executor/cuda:all_runtime",
-            ],
-        ),
+        deps = if_cuda_is_configured([
+            "//xla/stream_executor/cuda:all_runtime",
+            "//xla/tsl/cuda:nvshmem_stub",
+        ]) + if_nccl([
+            "//xla/tsl/cuda:nccl",
+        ]),
         visibility = ["//visibility:private"],
         **kwargs
     )
@@ -342,7 +340,9 @@ def lit_test(
     _ = py_binary  # @unused
 
     # copybara:comment_begin(oss-only)
-    lit_name = "lit_custom_" + name
+    # Prevents creation of the files with identical names located in different
+    # directories on Windows platform.
+    lit_name = "lit_custom_" + name.replace("/", "_")
     py_binary(
         name = lit_name,
         main = "@llvm-project//llvm:utils/lit/lit.py",
@@ -462,6 +462,8 @@ def _tools_on_path_impl(ctx):
                 continue
             lib_path = paths.join(ctx.attr.lib_dir, lib.basename)
             if lib_path in runfiles_symlinks:
+                if runfiles_symlinks[lib_path] == lib:
+                    continue
                 fail("All libs used by lit tests must have unique basenames, as" +
                      " they are added to the path." +
                      " {} and {} conflict".format(runfiles_symlinks[lib_path], lib))

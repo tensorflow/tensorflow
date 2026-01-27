@@ -39,13 +39,13 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status ParseOutputArrayInfo(absl::string_view array_names,
-                                  std::vector<string>* outputs) {
+                                  std::vector<std::string>* outputs) {
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, *outputs));
   return absl::OkStatus();
 }
 
-absl::Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                                  std::vector<string>* outputs) {
+absl::Status ParseOutputArrayInfo(const std::vector<std::string>& output_names,
+                                  std::vector<std::string>* outputs) {
   for (auto& output_name : output_names) {
     if (output_name.empty()) continue;
     outputs->push_back(output_name);
@@ -57,8 +57,8 @@ absl::Status ParseInputArrayInfo(absl::string_view array_names,
                                  absl::string_view data_types,
                                  absl::string_view shapes,
                                  GraphImportConfig::InputArrays* inputs) {
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   TF_RETURN_IF_ERROR(ParseNodeNames(array_names, node_names));
   TF_RETURN_IF_ERROR(ParseNodeDataTypes(data_types, node_dtypes));
@@ -113,8 +113,8 @@ static absl::Status HandleSubtype(absl::string_view subtype,
 }
 
 absl::Status ParseInputArrayInfo(
-    const std::vector<string>& node_names,
-    const std::vector<string>& node_dtypes,
+    const std::vector<std::string>& node_names,
+    const std::vector<std::string>& node_dtypes,
     const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs) {
   std::vector<std::string> used_node_dtypes;
@@ -148,7 +148,7 @@ absl::Status ParseInputArrayInfo(
   // StringMap doesn't support reserve else reserve input map size here.
   for (int i = 0, end = node_names.size(); i < end; i++) {
     auto& name = node_names[i];
-    const string& type = used_node_dtypes[i];
+    const std::string& type = used_node_dtypes[i];
     if (name.empty()) continue;
 
     auto it_inserted_pair = inputs->insert({name, {}});
@@ -193,7 +193,7 @@ absl::Status ParseNodeShapes(
     std::vector<std::optional<std::vector<int>>>& shapes_vector) {
   shapes_vector.clear();
   if (!shapes_str.empty()) {
-    std::vector<string> node_shapes_str = absl::StrSplit(shapes_str, ':');
+    std::vector<std::string> node_shapes_str = absl::StrSplit(shapes_str, ':');
     for (int i = 0; i < node_shapes_str.size(); i++) {
       if (node_shapes_str[i] == "*") {
         shapes_vector.push_back(std::nullopt);

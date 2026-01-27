@@ -12,8 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
+#include <vector>
 
 #include "absl/base/internal/sysinfo.h"
+#include "absl/base/no_destructor.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
 #include "xla/tsl/platform/types.h"
@@ -63,22 +68,47 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
+namespace {
+absl::Time GetStartupTime() {
+  static absl::Time start_up_time = absl::Now();
+  return start_up_time;
+}
+}  // namespace
+
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+namespace {
+std::vector<std::string>& GetArgvsStorage() {
+  static absl::NoDestructor<std::vector<std::string>> g_argvs;
+  return *g_argvs;
+}
+}  // namespace
 
-string Hostname() {
+void InitMain(const char* usage, int* argc, char*** argv) {
+  GetArgvsStorage().assign(*argv, *argv + *argc);
+  GetStartupTime();
+}
+
+absl::Duration GetUptime() { return absl::Now() - GetStartupTime(); }
+
+const std::vector<std::string>& GetArgvs() { return GetArgvsStorage(); }
+
+const char* GetArgv0() {
+  return GetArgvsStorage().empty() ? "" : GetArgvsStorage().front().c_str();
+}
+
+std::string Hostname() {
   char hostname[1024];
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
-  return string(hostname);
+  return std::string(hostname);
 }
 
-string JobName() {
+std::string JobName() {
   const char* job_name_cs = std::getenv("TF_JOB_NAME");
   if (job_name_cs != nullptr) {
-    return string(job_name_cs);
+    return std::string(job_name_cs);
   }
   return "";
 }
@@ -166,7 +196,7 @@ int NumHyperthreadsPerCore() {
   return (ht_per_core > 0) ? ht_per_core : 1;
 }
 
-bool Snappy_Compress(const char* input, size_t length, string* output) {
+bool Snappy_Compress(const char* input, size_t length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
@@ -179,7 +209,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 }
 
 bool Snappy_CompressFromIOVec(const struct iovec* iov,
-                              size_t uncompressed_length, string* output) {
+                              size_t uncompressed_length, std::string* output) {
 #ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(uncompressed_length));
   size_t outlen;
@@ -219,7 +249,7 @@ bool Snappy_UncompressToIOVec(const char* compressed, size_t compressed_length,
 #endif
 }
 
-static void DemangleToString(const char* mangled, string* out) {
+static void DemangleToString(const char* mangled, std::string* out) {
   int status = 0;
   char* demangled = nullptr;
 #if TENSORFLOW_HAS_CXA_DEMANGLE
@@ -233,8 +263,8 @@ static void DemangleToString(const char* mangled, string* out) {
   }
 }
 
-string Demangle(const char* mangled) {
-  string demangled;
+std::string Demangle(const char* mangled) {
+  std::string demangled;
   DemangleToString(mangled, &demangled);
   return demangled;
 }
@@ -249,28 +279,31 @@ double NominalCPUFrequency() {
 namespace tsl {
 namespace port {
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
+void* AlignedMalloc(size_t size, std::align_val_t minimum_alignment) {
+  const size_t alignment = static_cast<size_t>(minimum_alignment);
 #if defined(__ANDROID__)
-  return memalign(minimum_alignment, size);
+  return memalign(alignment, size);
 #else  // !defined(__ANDROID__)
-  void* ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return
   // memory aligned to at least the size of a pointer.
-  const int required_alignment = sizeof(void*);
-  if (minimum_alignment < required_alignment) return Malloc(size);
-  int err = posix_memalign(&ptr, minimum_alignment, size);
+  constexpr int kRequiredAlignment = sizeof(void*);
+  if (alignment < kRequiredAlignment) {
+    return Malloc(size);
+  }
+  void* ptr = nullptr;
+  int err = posix_memalign(&ptr, alignment, size);
   if (err != 0) {
     return nullptr;
-  } else {
-    return ptr;
   }
+  return ptr;
 #endif
 }
 
 void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
 
-void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+void AlignedSizedFree(void* aligned_memory, size_t size,
+                      std::align_val_t alignment) {
   (void)alignment;
   (void)size;
 

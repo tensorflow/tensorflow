@@ -16,15 +16,27 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 #define XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
+#include "Eigen/Core"
+
 namespace xla {
 namespace codegen {
-// Float types
+// Half precision (float16)
+typedef _Float16 Vec8h __attribute__((vector_size(16)));
+typedef _Float16 Vec16h __attribute__((vector_size(32)));
+
+// Single precision (float32)
 typedef float Vec4f __attribute__((vector_size(16)));
 typedef float Vec8f __attribute__((vector_size(32)));
+typedef float Vec16f __attribute__((vector_size(64)));
+
+// Double precision (float64)
 typedef double Vec2d __attribute__((vector_size(16)));
 typedef double Vec4d __attribute__((vector_size(32)));
 typedef double Vec8d __attribute__((vector_size(64)));
@@ -76,6 +88,47 @@ struct CorrespondingIntVector {
 };
 }  // namespace internal
 
+// ===--------------------------------------------------------------------===//
+// Eigen Array type mapping
+// ===--------------------------------------------------------------------===//
+template <typename VecType>
+struct ArrayMap;
+
+template <>
+struct ArrayMap<Vec8h> {
+  using type = Eigen::Array<Eigen::half, 8, 1>;
+};
+template <>
+struct ArrayMap<Vec16h> {
+  using type = Eigen::Array<Eigen::half, 16, 1>;
+};
+
+template <>
+struct ArrayMap<Vec4f> {
+  using type = Eigen::Array<float, 4, 1>;
+};
+template <>
+struct ArrayMap<Vec8f> {
+  using type = Eigen::Array<float, 8, 1>;
+};
+template <>
+struct ArrayMap<Vec16f> {
+  using type = Eigen::Array<float, 16, 1>;
+};
+
+template <>
+struct ArrayMap<Vec2d> {
+  using type = Eigen::Array<double, 2, 1>;
+};
+template <>
+struct ArrayMap<Vec4d> {
+  using type = Eigen::Array<double, 4, 1>;
+};
+template <>
+struct ArrayMap<Vec8d> {
+  using type = Eigen::Array<double, 8, 1>;
+};
+
 // Computes the absolute value of a vector using bitwise operations.
 // FloatVec: The floating-point vector type (e.g., Vec4f).
 // x: The input vector.
@@ -119,5 +172,8 @@ Vec Clamp(Vec x, Scalar min, Scalar max) {
 }
 }  // namespace codegen
 }  // namespace xla
+
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
+        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_

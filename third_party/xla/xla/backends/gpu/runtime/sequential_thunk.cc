@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -72,10 +74,9 @@ std::string SequentialThunk::ToString(int indent) const {
   return result;
 }
 
-absl::Status SequentialThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
+absl::Status SequentialThunk::Prepare(const PrepareParams& params) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+    TF_RETURN_IF_ERROR(thunk->Prepare(params));
   }
   return absl::OkStatus();
 }
@@ -99,13 +100,13 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
       continue;
     }
 
-    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
-            << "Start SequentialThunk::ExecuteOnStream: "
-            << thunk->profile_annotation();
+    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+        << "Start SequentialThunk::ExecuteOnStream: "
+        << thunk->profile_annotation();
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
-    VLOG(1) << "[" << params.stream->parent()->device_ordinal() << "] "
-            << "End SequentialThunk::ExecuteOnStream: "
-            << thunk->profile_annotation();
+    XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+        << "End SequentialThunk::ExecuteOnStream: "
+        << thunk->profile_annotation();
   }
   return absl::OkStatus();
 }
@@ -123,6 +124,17 @@ void SequentialThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     thunk->ForAllThunksMutable(fn);
   }
+}
+
+absl::Status SequentialThunk::TransformAllNestedThunks(
+    absl::FunctionRef<
+        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
+        fn) {
+  for (std::unique_ptr<Thunk>& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
+    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
@@ -152,5 +164,19 @@ absl::StatusOr<std::unique_ptr<SequentialThunk>> SequentialThunk::FromProto(
   return std::make_unique<SequentialThunk>(std::move(thunk_info),
                                            std::move(thunk_sequence));
 }
+
+std::unique_ptr<SequentialThunk> SequentialThunk::FromThunk(
+    std::unique_ptr<Thunk> thunk) {
+  if (thunk->kind() == Thunk::kSequential) {
+    return std::unique_ptr<SequentialThunk>(
+        static_cast<SequentialThunk*>(thunk.release()));
+  }
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+  thunks.push_back(std::move(thunk));
+  return std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
+                                           std::move(thunks));
+}
+
 }  // namespace gpu
 }  // namespace xla

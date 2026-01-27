@@ -43,13 +43,13 @@ void Register(const std::string& op_name, OpRegistry* registry) {
 }  // namespace
 
 TEST(TfTextUtilsTest, TestTfTextRegistered) {
-  std::unique_ptr<OpRegistry> registry(new OpRegistry);
+  std::unique_ptr<OpRegistry> registry = std::make_unique<OpRegistry>();
   Register("WhitespaceTokenizeWithOffsets", registry.get());
   EXPECT_TRUE(IsTFTextRegistered(registry.get()));
 }
 
 TEST(TfTextUtilsTest, TestTfTextNotRegistered) {
-  std::unique_ptr<OpRegistry> registry(new OpRegistry);
+  std::unique_ptr<OpRegistry> registry = std::make_unique<OpRegistry>();
   Register("Test", registry.get());
   EXPECT_FALSE(IsTFTextRegistered(registry.get()));
 }

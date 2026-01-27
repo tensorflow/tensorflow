@@ -15,18 +15,23 @@ limitations under the License.
 
 #include "xla/service/conditional_simplifier.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
@@ -510,6 +515,101 @@ ENTRY entry {
               op::Tuple(op::AfterAll(
                   op::GetTupleElement(op::Tuple(op::AfterAll()), 0),
                   op::GetTupleElement(op::Tuple(op::AfterAll()), 0))));
+}
+
+TEST_F(ConditionalSimplifierTest,
+       RemoveUnusedConditionalOperandsWithOriginalValue) {
+  absl::string_view hlo_string =
+      R"(
+HloModule UnusedTupleOperands
+on_false {
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) parameter(0), origin={({"t" {0}}, {"t" {1}}, {"t" {2}}, {"t" {3}})}
+  lhs = f32[20,40] get-tuple-element(t), index=0
+  rhs = f32[40,40] get-tuple-element(t), index=1
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+on_true {
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) parameter(0)
+  lhs = f32[20,40] get-tuple-element(t), index=2
+  rhs = f32[40,40] get-tuple-element(t), index=3
+  dot = f32[20,40] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = (f32[20,40]) tuple(dot)
+}
+
+ENTRY main {
+  c0_0 = f32[20,40] parameter(0)
+  c0_1 = f32[40,40] parameter(1)
+  c1_0 = f32[20,40] parameter(2)
+  c1_1 = f32[40,40] parameter(3)
+  p = pred[] parameter(4)
+  t = (f32[20,40], f32[40,40], f32[20,40], f32[40,40]) tuple(c0_0, c0_1, c1_0, c1_1)
+  call = (f32[20,40]) call(t), to_apply=on_true
+  ROOT result = (f32[20,40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  EXPECT_TRUE(ConditionalSimplifier().Run(module.get()).value());
+  TF_ASSERT_OK(v.Run(module.get()).status());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), HloOpcode::kConditional);
+  EXPECT_NE(conditional, nullptr);
+  const HloComputation* false_branch = conditional->branch_computation(1);
+  EXPECT_NE(false_branch->parameter_instruction(0)->original_value(), nullptr);
+  EXPECT_EQ(
+      false_branch->parameter_instruction(0)->original_value()->ToString(),
+      R"(({"t" {0}}, {"t" {1}}))");
+}
+
+TEST_F(ConditionalSimplifierTest,
+       RemoveUnusedConditionalResultsWithOriginalValue) {
+  absl::string_view hlo_string =
+      R"(
+HloModule FirstTupleElementUnusedAndRemoved
+
+on_true {
+  arg_tuple.7 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.9 = f32[10,10]{1,0} get-tuple-element(arg_tuple.7), index=0
+  copy = f32[10,10]{1,0} copy(get-tuple-element.9)
+  ROOT tuple.6 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(copy, get-tuple-element.9), origin={({"tuple.6" {0}}, {"tuple.6" {1}})}
+}
+
+on_false {
+  constant.17 = f32[] constant(0)
+  constant.18 = f32[] constant(1)
+  rng.19 = f32[10,10]{1,0} rng(constant.17, constant.18), distribution=rng_uniform
+  arg_tuple.14 = (f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.16 = f32[10,10]{1,0} get-tuple-element(arg_tuple.14), index=0
+  ROOT tuple.7 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(rng.19, get-tuple-element.16), origin={({"tuple.7" {0}}, {"tuple.7" {1}})}
+}
+
+ENTRY main {
+  constant.38 = pred[] constant(true)
+  arg_tuple.30 = (s32[], f32[10,10]{1,0}) parameter(0)
+  get-tuple-element.21 = f32[10,10]{1,0} get-tuple-element(arg_tuple.30), index=1
+  tuple.1 = (f32[10,10]{1,0}) tuple(get-tuple-element.21)
+  conditional = (f32[10,10]{1,0}, f32[10,10]{1,0}) conditional(constant.38, tuple.1, tuple.1), true_computation=on_true, false_computation=on_false, origin={({"cond" {0}}, {"cond" {1}})}
+  get-second-index = f32[10,10]{1,0} get-tuple-element(conditional), index=1
+  ROOT result = (f32[10,10]{1,0}) tuple(get-second-index)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_OK_AND_ASSIGN(bool changed, ConditionalSimplifier().Run(module.get()));
+  EXPECT_TRUE(changed);
+  HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
+  TF_ASSERT_OK(v.Run(module.get()));
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), HloOpcode::kConditional);
+  EXPECT_NE(conditional, nullptr);
+  // The first element of "conditional" result tuple (f32[10,10], f32[10,10])
+  // should be removed since it is not referenced by any GTE instructions (see
+  // "get-second-index" instruction in hlo_string).
+  EXPECT_EQ(ShapeUtil::TupleElementCount(conditional->shape()), 1);
+  EXPECT_EQ(conditional->original_value()->ToString(), R"(({"cond" {1}}))");
 }
 
 }  // namespace

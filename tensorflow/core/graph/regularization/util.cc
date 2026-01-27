@@ -33,7 +33,7 @@ limitations under the License.
 
 namespace tensorflow::graph_regularization {
 
-uint64 ComputeHash(const GraphDef& graph_def) {
+uint64_t ComputeHash(const GraphDef& graph_def) {
   std::string graph_def_string;
   SerializeToStringDeterministic(graph_def, &graph_def_string);
   return tensorflow::Fingerprint64(graph_def_string);

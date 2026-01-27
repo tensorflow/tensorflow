@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <zlib.h>
 
+#include "absl/status/status.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
@@ -86,7 +87,7 @@ ZlibInputStream::~ZlibInputStream() {
 
 absl::Status ZlibInputStream::Reset() {
   if (init_error_) {
-    return errors::DataLoss("unable to reset stream, cannot decompress.");
+    return absl::DataLossError("unable to reset stream, cannot decompress.");
   }
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   inflateEnd(z_stream_def_->stream.get());
@@ -163,7 +164,7 @@ absl::Status ZlibInputStream::ReadFromStream() {
   // fill up the buffer in which case input_stream_->ReadNBytes would return an
   // OutOfRange error.
   if (data.empty()) {
-    return errors::OutOfRange("EOF reached");
+    return absl::OutOfRangeError("EOF reached");
   }
   if (absl::IsOutOfRange(s)) {
     return absl::OkStatus();
@@ -196,7 +197,7 @@ size_t ZlibInputStream::NumUnreadBytes() const {
 absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
                                          tstring* result) {
   if (init_error_) {
-    return errors::DataLoss("Unable to decompress Zlib file.");
+    return absl::DataLossError("Unable to decompress Zlib file.");
   }
 
   result->clear();
@@ -250,11 +251,12 @@ absl::Status ZlibInputStream::Inflate() {
   // not fatal and `inflate` can be called again with more input and output
   // space to continue inflating.
   if (error != Z_OK && error != Z_STREAM_END && error != Z_BUF_ERROR) {
-    string error_string = absl::StrCat("inflate() failed with error ", error);
+    std::string error_string =
+        absl::StrCat("inflate() failed with error ", error);
     if (z_stream_def_->stream->msg != nullptr) {
       absl::StrAppend(&error_string, ": ", z_stream_def_->stream->msg);
     }
-    return errors::DataLoss(error_string);
+    return absl::DataLossError(error_string);
   }
   if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
     inflateReset(z_stream_def_->stream.get());

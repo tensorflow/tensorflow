@@ -23,6 +23,9 @@
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +36,9 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_registry.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
@@ -95,6 +101,80 @@ class BatchedOps {
       batched_ ABSL_GUARDED_BY(mu_);
 };
 
+// Tracks user contexts referenced by the proxy server.
+class UserContextsReferencedByProxyServer {
+ public:
+  // Registers a user context referenced by the proxy server. If a user context
+  // with the same ID is already registered, increments its ref count.
+  void RegisterUserContext(TrackedUserContextRef tracked_user_context) {
+    if (tracked_user_context == nullptr) {
+      return;
+    }
+    absl::MutexLock l(mu_);
+    UserContextId user_context_id = tracked_user_context->user_context()->Id();
+    auto [it, inserted] = user_contexts_.insert(
+        {user_context_id,
+         TrackedUserContextRefWithRefCount{std::move(tracked_user_context)}});
+    ++it->second.ref_count;
+  }
+
+  // Schedules to decrement the ref count of user contexts referenced by the
+  // proxy server once all responses before/on `seq_num` have been processed.
+  // Once the ref count reaches 0, the user context is unregistered.
+  void ScheduleToUnregisterUserContexts(
+      int64_t seq_num, std::vector<UserContextId> user_context_ids) {
+    absl::MutexLock l(mu_);
+    pending_unregistration_.insert({seq_num, std::move(user_context_ids)});
+  }
+
+  // Informs that a response with the given `seq_num` has been processed. User
+  // context unregistration will happen for all responses with a range
+  // [`seq_num`, ...,  N] that is contiguous and stop at any gap indicating a
+  // response that has not been processed yet.
+  void DoneProcessingResponse(int64_t seq_num) {
+    // Collect user contexts to erase outside of the lock when we return from
+    // this method.
+    std::vector<xla::ifrt::TrackedUserContextRef> user_contexts_to_erase;
+
+    absl::MutexLock l(mu_);
+    pending_seq_nums_.insert(seq_num);
+    while (!pending_seq_nums_.empty() &&
+           *pending_seq_nums_.begin() == next_seq_num_to_process_) {
+      auto node = pending_unregistration_.extract(next_seq_num_to_process_);
+      for (UserContextId user_context_id : node.mapped()) {
+        auto it = user_contexts_.find(UserContextId(user_context_id));
+        CHECK(it != user_contexts_.end());
+        if (--it->second.ref_count == 0) {
+          user_contexts_to_erase.push_back(
+              std::move(it->second.tracked_user_context));
+          user_contexts_.erase(it);
+        }
+      }
+      pending_seq_nums_.erase(pending_seq_nums_.begin());
+      ++next_seq_num_to_process_;
+    }
+  }
+
+ private:
+  struct TrackedUserContextRefWithRefCount {
+    TrackedUserContextRef tracked_user_context;
+    // Multiple instances of UserContext may be created on the proxy server
+    // for the same `UserContextId`. To ensure that we keep the user context
+    // alive as long as any of its instances are alive on the proxy server,
+    // we keep track of the number of references to each `UserContextId` on
+    // the proxy server.
+    int ref_count = 0;
+  };
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<UserContextId, TrackedUserContextRefWithRefCount>
+      user_contexts_ ABSL_GUARDED_BY(mu_);
+  int64_t next_seq_num_to_process_ ABSL_GUARDED_BY(mu_) = 0;
+  absl::btree_set<int64_t> pending_seq_nums_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64_t, std::vector<UserContextId>>
+      pending_unregistration_ ABSL_GUARDED_BY(mu_);
+};
+
 }  // namespace
 
 // Batches any requested operations and flushes them periodically in the
@@ -104,7 +184,9 @@ class BatchedOps {
 class RpcHelper::Batcher {
  public:
   explicit Batcher(std::shared_ptr<ClientSession> session)
-      : session_(std::move(session)) {
+      : session_(std::move(session)),
+        user_contexts_referenced_by_proxy_server_(
+            std::make_shared<UserContextsReferencedByProxyServer>()) {
     thread_pool_.emplace(tsl::Env::Default(), "IfrtProxyRpcHelperBatcher",
                          /*num_threads=*/1);
     thread_pool_->Schedule(absl::bind_front(&Batcher::PeriodicFlusher, this));
@@ -151,6 +233,11 @@ class RpcHelper::Batcher {
     LOG(INFO) << "RpcHelper::Batcher::Finish(): calling session_->Finish().";
     session_->Finish(s);
     LOG(INFO) << "RpcHelper::Batcher::Finish(): done.";
+  }
+
+  std::shared_ptr<UserContextsReferencedByProxyServer>
+  user_contexts_referenced_by_proxy_server() {
+    return user_contexts_referenced_by_proxy_server_;
   }
 
  private:
@@ -226,6 +313,12 @@ class RpcHelper::Batcher {
   }
 
   const std::shared_ptr<ClientSession> session_;
+  // Tracks user contexts referenced by the proxy server. Uses a shared pointer
+  // because the reference to `UserContextsReferencedByProxyServer` is captured
+  // in OnReady callbacks and may outlive the `RpcHelper::Batcher` in a certain
+  // situation (e.g., when the proxy client is destroyed).
+  const std::shared_ptr<UserContextsReferencedByProxyServer>
+      user_contexts_referenced_by_proxy_server_;
 
   BatchedOps batched_;
 
@@ -251,9 +344,25 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
   XFlowHelper x_flow_helper(profiling_name);
   auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
-  auto [promise, future] = tsl::Future<std::shared_ptr<Resp>>::MakePromise();
-  auto on_ready = [promise = std::move(promise), has_resp, get_resp,
-                   profiling_name, x_flow_helper](
+  std::shared_ptr<UserContextsReferencedByProxyServer>
+      user_contexts_referenced_by_proxy_server =
+          batcher->user_contexts_referenced_by_proxy_server();
+
+  const UserContextRef& user_context = UserContextScope::current();
+  if (user_context != nullptr && user_context->Id() != UserContextId(0)) {
+    ifrt_req->mutable_request_metadata()->set_user_context_id(
+        user_context->Id().value());
+    TrackedUserContextRef tracked_user_context =
+        UserContextRegistry::Get().Register(user_context);
+    user_contexts_referenced_by_proxy_server->RegisterUserContext(
+        std::move(tracked_user_context));
+  }
+
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<Resp>>();
+  auto on_ready = [promise = std::move(promise),
+                   user_contexts_referenced_by_proxy_server =
+                       std::move(user_contexts_referenced_by_proxy_server),
+                   has_resp, get_resp, profiling_name, x_flow_helper](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
     if (!r.ok()) {
       VLOG(3) << profiling_name << " response: " << r.status();
@@ -274,8 +383,8 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
             "IFRT server sent a message without metadata: ", r->DebugString()));
       }
 
-      const absl::Status metadata_status =
-          tsl::StatusFromProto(r->response_metadata().status());
+      const absl::Status metadata_status = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(r->response_metadata().status()));
       const bool has_expected_response = (r.get()->*has_resp)();
       const auto has_some_response =
           r->response_case() != IfrtResponse::RESPONSE_NOT_SET;
@@ -295,11 +404,32 @@ tsl::Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
       // there may be an error _instead_ of an actual response value. So, check
       // if an actual response value exists, and if so return it irrespective of
       // what the metadata_status says.
+      absl::StatusOr<std::shared_ptr<Resp>> result;
       if (!has_some_response) {
-        return metadata_status;
+        result = std::move(metadata_status);
       } else {
-        return std::make_shared<Resp>(*std::move((r.get()->*get_resp)()));
+        const int64_t seq_num = r->response_metadata().seq_num();
+
+        std::vector<UserContextId> user_context_ids;
+        user_context_ids.reserve(
+            r->response_metadata().destroyed_user_context_ids_size());
+        for (uint64_t user_context_id :
+             r->response_metadata().destroyed_user_context_ids()) {
+          user_context_ids.push_back(UserContextId(user_context_id));
+        }
+        user_contexts_referenced_by_proxy_server
+            ->ScheduleToUnregisterUserContexts(seq_num,
+                                               std::move(user_context_ids));
+
+        result = std::shared_ptr<Resp>(
+            new Resp(*std::move((r.get()->*get_resp)())),
+            [user_contexts_referenced_by_proxy_server, seq_num](Resp* resp) {
+              delete resp;
+              user_contexts_referenced_by_proxy_server->DoneProcessingResponse(
+                  seq_num);
+            });
       }
+      return result;
     }(*std::move(r));
 
     if (!result.ok()) {
@@ -332,6 +462,7 @@ RPC(MakeErrorArrays, make_error_arrays);
 RPC(AssembleArrayFromSingleDeviceArrays,
     assemble_array_from_single_device_arrays);
 RPC(RemapArrays, remap_arrays);
+RPC(ReshardArrays, reshard_arrays);
 RPC(DisassembleIntoSingleDeviceArrays, disassemble_into_single_device_arrays);
 RPC(CopyToHostBuffer, copy_to_host_buffer);
 RPC(IsArrayDeleted, is_array_deleted);
@@ -341,10 +472,13 @@ RPC(FullyReplicatedShard, fully_replicated_shard);
 RPC(DeleteArray, delete_array);
 RPC(Compile, compile);
 RPC(LoadedExecutableMetadata, loaded_executable_metadata);
+RPC(LoadedExecutableMpmdMetadata, loaded_executable_mpmd_metadata);
 RPC(LoadedExecutableCostAnalysis, loaded_executable_cost_analysis);
+RPC(LoadedExecutableMpmdCostAnalysis, loaded_executable_mpmd_cost_analysis);
 RPC(LoadedExecutableHumanReadableProgramText,
     loaded_executable_human_readable_program_text);
 RPC(LoadedExecutableExecute, loaded_executable_execute);
+RPC(LoadedExecutableFetchExecuteResult, loaded_executable_fetch_execute_result);
 RPC(LoadedExecutableDelete, loaded_executable_delete);
 RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);
 RPC(LoadedExecutableDestruct, loaded_executable_destruct);
@@ -356,7 +490,7 @@ tsl::Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
   CheckFuture(std::move(req))
       .OnReady([promise = std::move(promise)](
                    absl::StatusOr<std::shared_ptr<CheckFutureResponse>>

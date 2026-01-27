@@ -70,6 +70,9 @@ enum class MixedPriorityBatchingPolicy {
 absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
     absl::string_view attr_value);
 
+absl::StatusOr<absl::string_view> GetMixedPriorityBatchingPolicyString(
+    MixedPriorityBatchingPolicy policy);
+
 // The abstract superclass for a unit of work to be done as part of a batch.
 //
 // An implementing subclass typically contains (or points to):
@@ -109,17 +112,17 @@ class TaskQueue {
 
   struct TaskWrapper {
     std::unique_ptr<TaskType> task;
-    uint64 start_time_micros;
+    uint64_t start_time_micros;
 
-    TaskWrapper(std::unique_ptr<TaskType> task, uint64 start_time_micros)
+    TaskWrapper(std::unique_ptr<TaskType> task, uint64_t start_time_micros)
         : task(std::move(task)), start_time_micros(start_time_micros) {}
   };
 
   // Appends a task to the end of the queue with the given start time.
-  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+  void AddTask(std::unique_ptr<TaskType> task, uint64_t start_time_micros);
 
   // Adds a task to the front of the queue with the given start time.
-  void PrependTask(std::unique_ptr<TaskType> task, uint64 start_time_micros);
+  void PrependTask(std::unique_ptr<TaskType> task, uint64_t start_time_micros);
 
   // Removes a task from the front of the queue, i.e., the oldest task in the
   // queue.
@@ -132,7 +135,7 @@ class TaskQueue {
 
   // Returns the start time of the earliest task in the queue. If the queue is
   // empty, return the null value.
-  std::optional<uint64> EarliestTaskStartTime() const;
+  std::optional<uint64_t> EarliestTaskStartTime() const;
 
   // Returns true iff the queue contains 0 tasks.
   bool empty() const;
@@ -162,7 +165,7 @@ class TaskQueue {
 
 template <typename TaskType>
 void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
-                                  uint64 start_time_micros) {
+                                  uint64_t start_time_micros) {
   {
     mutex_lock l(mu_);
     size_ += task->size();
@@ -173,7 +176,7 @@ void TaskQueue<TaskType>::AddTask(std::unique_ptr<TaskType> task,
 
 template <typename TaskType>
 void TaskQueue<TaskType>::PrependTask(std::unique_ptr<TaskType> task,
-                                      uint64 start_time_micros) {
+                                      uint64_t start_time_micros) {
   {
     mutex_lock l(mu_);
     size_ += task->size();
@@ -233,7 +236,7 @@ bool TaskQueue<TaskType>::empty() const {
 }
 
 template <typename TaskType>
-std::optional<uint64> TaskQueue<TaskType>::EarliestTaskStartTime() const {
+std::optional<uint64_t> TaskQueue<TaskType>::EarliestTaskStartTime() const {
   {
     mutex_lock l(mu_);
 
@@ -275,13 +278,13 @@ template <typename TaskType>
 class Batch {
  public:
   Batch();
-  explicit Batch(uint64 traceme_context_id);
+  explicit Batch(uint64_t traceme_context_id);
   virtual ~Batch();  // Blocks until the batch is closed.
 
   // Appends 'task' to the batch. After calling AddTask(), the newly-added task
   // can be accessed via task(num_tasks()-1) or mutable_task(num_tasks()-1).
   // Dies if the batch is closed.
-  void AddTask(std::unique_ptr<TaskType> task, uint64 start_time_micros = 0);
+  void AddTask(std::unique_ptr<TaskType> task, uint64_t start_time_micros = 0);
 
   // Removes the most recently added task. Returns nullptr if the batch is
   // empty.
@@ -318,7 +321,7 @@ class Batch {
   void Close();
 
   // Returns the TraceMe context id of this batch.
-  uint64 traceme_context_id() const;
+  uint64_t traceme_context_id() const;
 
   // Attempts to trim this batch to a new, smaller size (not to be confused with
   // the number of tasks in the batch). On success, the trimmed tasks go into
@@ -331,7 +334,7 @@ class Batch {
 
   // Returns the start time of the earliest task in the queue. If the queue is
   // empty, return the null value.
-  std::optional<uint64> EarliestTaskStartTime() const;
+  std::optional<uint64_t> EarliestTaskStartTime() const;
 
  private:
   mutable mutex mu_;
@@ -348,11 +351,11 @@ class Batch {
   absl::Notification closed_;
 
   // The TracMe context id.
-  const uint64 traceme_context_id_;
+  const uint64_t traceme_context_id_;
 
   // The minimum start time of all tasks in the batch.
   // If the batch is empty, the value is undefined.
-  uint64 earliest_task_start_time_micros_ TF_GUARDED_BY(mu_);
+  uint64_t earliest_task_start_time_micros_ TF_GUARDED_BY(mu_);
 
   Batch(const Batch&) = delete;
   void operator=(const Batch&) = delete;
@@ -421,7 +424,7 @@ template <typename TaskType>
 Batch<TaskType>::Batch() : Batch(0) {}
 
 template <typename TaskType>
-Batch<TaskType>::Batch(uint64 traceme_context_id)
+Batch<TaskType>::Batch(uint64_t traceme_context_id)
     : traceme_context_id_(traceme_context_id) {}
 
 template <typename TaskType>
@@ -431,7 +434,7 @@ Batch<TaskType>::~Batch() {
 
 template <typename TaskType>
 void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task,
-                              uint64 start_time_micros) {
+                              uint64_t start_time_micros) {
   DCHECK(!IsClosed());
   {
     mutex_lock l(mu_);
@@ -448,7 +451,7 @@ void Batch<TaskType>::AddTask(std::unique_ptr<TaskType> task,
 }
 
 template <typename TaskType>
-std::optional<uint64> Batch<TaskType>::EarliestTaskStartTime() const {
+std::optional<uint64_t> Batch<TaskType>::EarliestTaskStartTime() const {
   {
     mutex_lock l(mu_);
     if (tasks_.empty()) {
@@ -552,7 +555,7 @@ void Batch<TaskType>::Close() {
 }
 
 template <typename TaskType>
-uint64 Batch<TaskType>::traceme_context_id() const {
+uint64_t Batch<TaskType>::traceme_context_id() const {
   return traceme_context_id_;
 }
 
@@ -567,9 +570,9 @@ void Batch<TaskType>::TryTrimToNewSize(
   // Index of the first task to trim away. It is possible that it is the index
   // of a task of size larger than 1 that will have to be split in order to get
   // to the target new_size.
-  int32 first_task_to_move = 0;
+  int32_t first_task_to_move = 0;
   // The sum of sizes of tasks i, where i < first_task_to_move.
-  int32 size_of_previous_tasks = 0;
+  int32_t size_of_previous_tasks = 0;
   while (size_of_previous_tasks + tasks_[first_task_to_move]->size() <=
          new_size) {
     size_of_previous_tasks += tasks_[first_task_to_move]->size();

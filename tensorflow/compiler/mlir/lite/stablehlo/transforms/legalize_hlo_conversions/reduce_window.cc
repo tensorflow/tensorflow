@@ -126,7 +126,7 @@ Value TransposeTensor(OpBuilder& b, Value tensor,
   const int64_t perm_size = perm.size();
   auto perm_attr_type = RankedTensorType::get({perm_size}, b.getI64Type());
   auto perm_attr = DenseIntElementsAttr::get(perm_attr_type, perm);
-  return b.create<mhlo::TransposeOp>(tensor.getLoc(), tensor, perm_attr);
+  return mhlo::TransposeOp::create(b, tensor.getLoc(), tensor, perm_attr);
 }
 
 DenseIntElementsAttr BuildDenseI64(OpBuilder& b, ArrayRef<int64_t> shape,
@@ -289,9 +289,10 @@ LogicalResult RelayoutReduceWindow::matchAndRewrite(
 
   // transpose input and build new reduce_window
   auto new_input = TransposeTensor(rewriter, input, perm_for_inputs);
-  auto new_rw = rewriter.create<mhlo::ReduceWindowOp>(
-      op.getLoc(), new_out_type, new_input, init_val, new_window_dims_attr,
-      new_window_strides_attr, BuildDenseI64(rewriter, view.BaseDilations()),
+  auto new_rw = mhlo::ReduceWindowOp::create(
+      rewriter, op.getLoc(), new_out_type, new_input, init_val,
+      new_window_dims_attr, new_window_strides_attr,
+      BuildDenseI64(rewriter, view.BaseDilations()),
       BuildDenseI64(rewriter, view.WindowDilations()), new_paddings_attr);
   IRMapping ir_map;
   op.getBody().cloneInto(&new_rw.getBody(), ir_map);
@@ -412,7 +413,7 @@ LogicalResult LegalizeCumSum::matchAndRewrite(
       RankedTensorType::get({}, rewriter.getI32Type()),
       static_cast<int32_t>(axis));
   auto axis_cst =
-      rewriter.create<arith::ConstantOp>(op->getLoc(), axis_cst_attr);
+      arith::ConstantOp::create(rewriter, op->getLoc(), axis_cst_attr);
 
   auto tfl_exclusive_attr = rewriter.getBoolAttr(false);
   auto tfl_reverse_attr = rewriter.getBoolAttr(false);
@@ -476,7 +477,7 @@ TFL::PadV2Op LegalizeMaxPool::BuildExplicitPadOp(
       llvm::ArrayRef<int64_t>(padding_values));
 
   auto padding_values_op =
-      rewriter.create<arith::ConstantOp>(op.getLoc(), padding_dense_attr);
+      arith::ConstantOp::create(rewriter, op.getLoc(), padding_dense_attr);
 
   llvm::SmallVector<int64_t, 4> pad_output_shape_vector;
   pad_output_shape_vector.push_back(input_type.getDimSize(0));
@@ -489,8 +490,8 @@ TFL::PadV2Op LegalizeMaxPool::BuildExplicitPadOp(
   pad_output_shape_vector.push_back(input_type.getDimSize(3));
   auto pad_output_type = mlir::RankedTensorType::get(
       pad_output_shape_vector, output_type.getElementType());
-  return rewriter.create<TFL::PadV2Op>(op.getLoc(), pad_output_type, input,
-                                       padding_values_op, init);
+  return TFL::PadV2Op::create(rewriter, op.getLoc(), pad_output_type, input,
+                              padding_values_op, init);
 }
 
 LogicalResult LegalizeMaxPool::matchAndRewrite(
@@ -575,13 +576,12 @@ void ReplaceWithAvgPool(mhlo::DivOp op, Value rw_lhs_input,
 
   auto [fh, fw, sh, sw, p, faf] =
       BuildTFLPoolAttrs(rewriter, lhs_view, padding);
-  Value final_op = rewriter.create<TFL::AveragePool2DOp>(
-      op->getLoc(), out_type, rw_lhs_input, fh, fw, p, sh, sw, faf);
+  Value final_op = TFL::AveragePool2DOp::create(
+      rewriter, op->getLoc(), out_type, rw_lhs_input, fh, fw, p, sh, sw, faf);
 
   if (opt_final_tpose) {
-    final_op = rewriter
-                   .create<mhlo::TransposeOp>(final_op.getLoc(), final_op,
-                                              opt_final_tpose.getPermutation())
+    final_op = mhlo::TransposeOp::create(rewriter, final_op.getLoc(), final_op,
+                                         opt_final_tpose.getPermutation())
                    .getResult();
   }
 

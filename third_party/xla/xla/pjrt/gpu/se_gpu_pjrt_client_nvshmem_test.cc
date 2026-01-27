@@ -39,13 +39,13 @@ limitations under the License.
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/service.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -155,6 +155,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
       executable->Execute({{input.get()}}, ExecuteOptions()));
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   Shape result_shape = result_buffers[0]->on_device_shape();
   int64_t memory_space = result_shape.layout().memory_space();
@@ -272,7 +273,7 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
       executable->Execute(/*argument_handles=*/{{}}, /*options=*/{}));
   EXPECT_EQ(results.size(), 1);
   EXPECT_EQ(results[0].size(), 1);
-  TF_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteral().Await());
   if (node_id == 0) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, *literal);
   } else if (node_id == 1) {

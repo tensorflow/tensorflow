@@ -107,7 +107,7 @@ absl::Status DeviceCompilationProfiler::RegisterCompilation(
       cluster_compile_stats_.emplace(function.name(), ClusterCompileStats{})
           .first;
 
-  const uint64 compile_time_s = compile_time_us / 1.0e6;
+  const uint64_t compile_time_s = compile_time_us / 1.0e6;
   it->second.compile_count++;
   it->second.cumulative_compile_time_us += compile_time_us;
   VLOG(1) << "Compiled " << function_name << " " << it->second.compile_count

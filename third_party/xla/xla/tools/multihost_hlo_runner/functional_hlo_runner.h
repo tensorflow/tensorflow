@@ -234,6 +234,9 @@ struct RawCompileOptions {
   std::optional<int> num_slices = std::nullopt;
   // A directory to dump xla debug data to.
   std::string xla_dump_to = "";
+  // When user runs HLO runner with hlo_config provided and
+  // XLA_FLAGS=--xla_dump_to=dir we want to respect the xla_dump_to field.
+  bool preserve_xla_dump_to = false;
   XlaTextDumpMode xla_text_dump_mode = XlaTextDumpMode::kNotDumpAsText;
   XlaProtoDumpMode xla_proto_dump_mode = XlaProtoDumpMode::kNotDumpAsProto;
   // A directory to dump xspace data to (GPU profiler only).

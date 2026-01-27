@@ -242,7 +242,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
   // callback instead of GPU environment variables: TF_GPU_THREAD_MODE,
   // TF_GPU_THREAD_COUNT, TF_FORCE_GPU_ALLOC_GROWTH,
   // TF_ENABLE_GPU_GARBAGE_COLLECTION, and TF_GPU_HOST_MEM_LIMIT_IN_MB.
-  string device_thread_mode;
+  std::string device_thread_mode;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar("TF_GPU_THREAD_MODE", "global",
                                           &device_thread_mode));
   device_thread_mode = absl::AsciiStrToLower(device_thread_mode);
@@ -256,19 +256,19 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
       thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
           absl::StrCat("gpu_private_", tf_device_id_.value()),
-          static_cast<int32>(device_thread_count),
+          static_cast<int32_t>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (device_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
           options.env, ThreadOptions(), "gpu_shared",
-          static_cast<int32>(device_thread_count),
+          static_cast<int32_t>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
-      string error_message =
+      std::string error_message =
           absl::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
@@ -293,8 +293,8 @@ Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
   }
 }
 
-string PluggableDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                                   const int stream_id) {
+std::string PluggableDevice::ComputeOpKernelDebugString(
+    const OpKernel& op_kernel, const int stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
                          " on ", platform_name_, tf_device_id_.value(),
                          " stream[", stream_id, "]");

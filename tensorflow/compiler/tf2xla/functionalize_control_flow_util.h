@@ -47,7 +47,7 @@ struct WhileLoopArg {
 
 // Information about a loop frame.
 struct WhileLoopFrame {
-  string name;
+  std::string name;
 
   // Pointer to the parent frame. The root frame has a pointer to itself.
   WhileLoopFrame* parent = nullptr;
@@ -76,7 +76,7 @@ struct WhileLoopFrame {
 // `FunctionalizeControlFlow` for more details about node filters).
 absl::Status ExtractWhileLoopFrames(
     const std::vector<ControlFlowInfo>& cf_info, const Graph* graph,
-    std::unordered_map<string, WhileLoopFrame>* frames,
+    std::unordered_map<std::string, WhileLoopFrame>* frames,
     const NodeFilter& node_filter = {});
 
 // Check that the graph has no cycle containing the given node.
@@ -97,10 +97,10 @@ absl::StatusOr<Node*> BuildRetvalNode(Graph* graph, DataType type, int index);
 
 // Returns a textual representation of the names of the nodes in the input.
 template <typename T>
-string NodesToString(const T& nodes) {
+std::string NodesToString(const T& nodes) {
   return absl::StrCat("{",
                       absl::StrJoin(nodes, ",",
-                                    [](string* output, const Node* node) {
+                                    [](std::string* output, const Node* node) {
                                       absl::StrAppend(output, node->name());
                                     }),
                       "}");

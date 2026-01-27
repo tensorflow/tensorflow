@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -39,10 +40,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/hlo_test_base_with_symbolic_expr_context.h"
+#include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -74,7 +74,7 @@ absl::Status CreateTritonIrAndFileCheck(
 // `filecheck_pattern`.
 absl::StatusOr<
     std::pair<mlir::OwningOpRef<mlir::ModuleOp>, std::unique_ptr<HloModule>>>
-CreateXTileIrAndFileCheck(HloTestBaseWithSymbolicExprContext* test,
+CreateXTileIrAndFileCheck(HloTestBaseWithMLIRContext* test,
                           absl::string_view hlo_text,
                           absl::string_view triton_fusion_name,
                           absl::string_view filecheck_pattern);
@@ -83,16 +83,15 @@ CreateXTileIrAndFileCheck(HloTestBaseWithSymbolicExprContext* test,
 // This function also checks the generated shared dialect IR against the
 // `filecheck_pattern`.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
-    HloTestBaseWithSymbolicExprContext* test, const HloComputation& computation,
+    HloTestBaseWithMLIRContext* test, const HloComputation& computation,
     const BlockLevelParameters& block_level_parameters,
     absl::string_view filecheck_pattern);
 
 // Lowers the given shared dialect IR to Triton IR and checks the result against
 // the `filecheck_pattern`.
 absl::Status LowerXTileIrToTritonAndFileCheck(
-    HloTestBaseWithSymbolicExprContext* test,
-    mlir::ModuleOp xtile_dialect_module, absl::string_view filecheck_pattern,
-    const HloFusionInstruction& fusion);
+    HloTestBaseWithMLIRContext* test, mlir::ModuleOp xtile_dialect_module,
+    absl::string_view filecheck_pattern, const HloFusionInstruction& fusion);
 
 absl::Status CreateTritonIrAndFileCheckForDot(
     HloTestBase* test, absl::string_view hlo_text,
@@ -158,17 +157,14 @@ class TritonSupportTestBase : public HloTestBase {
   // `triton_computation` with the generic Triton emitter. Tests that need
   // the `__triton_gemm` backend kind should provide their own ENTRY
   // computation.
-  //
-  // TODO(b/393299275): remove `use_nested_gemm_fusions` once the migration is
-  // complete.
   absl::StatusOr<TestedInstruction> ParseTemplateAndGetInstruction(
       absl::string_view hlo_template, xla::PrimitiveType data_type,
-      xla::HloOpcode opcode, bool use_nested_gemm_fusions = false);
+      xla::HloOpcode opcode);
 
   llvm::LLVMContext llvm_ctx_;
-  llvm::Module llvm_module_{"module", llvm_ctx_};
+  llvm::Triple target_triple_;
+  std::string data_layout_;
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   TritonGemmConfig config_{16, 32, 512, 1, 4, 8};
 };
 

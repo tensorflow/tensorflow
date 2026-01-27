@@ -106,7 +106,8 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   bool use_gpu_ TF_GUARDED_BY(mutex_) = false;
   std::unique_ptr<ThreadPoolManager> thread_pool_manager_ TF_GUARDED_BY(mutex_);
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
-  tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_);
+  tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_) =
+      nullptr;
   std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 

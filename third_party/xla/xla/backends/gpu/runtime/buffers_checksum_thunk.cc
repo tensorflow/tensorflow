@@ -16,15 +16,20 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffers_checksum_thunk.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -53,42 +58,75 @@ absl::Status BuffersDebugChecksumThunk::Initialize(
     return absl::OkStatus();
   }
 
-  se::gpu::GpuKernelRegistry registry =
-      se::gpu::GpuKernelRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(
-      kernel_, registry.LoadKernel<se::gpu::BufferDebugXorChecksumKernel>(
-                   params.executor));
-
-  VLOG(1) << "Checksum kernel loaded";
+  {
+    absl::MutexLock lock(kernels_mutex_);
+    if (!kernels_.contains(params.executor)) {
+      se::gpu::GpuKernelRegistry registry =
+          se::gpu::GpuKernelRegistry::GetGlobalRegistry();
+      TF_ASSIGN_OR_RETURN(
+          auto kernel,
+          registry.LoadKernel<se::gpu::BufferDebugXorChecksumKernel>(
+              params.executor));
+      kernels_[params.executor] =
+          std::make_unique<se::gpu::BufferDebugXorChecksumKernel::KernelType>(
+              std::move(kernel));
+      VLOG(1) << "Checksum kernel loaded on device "
+              << params.executor->device_ordinal()
+              << " (stream_executor: " << params.executor
+              << "), kernel: " << kernels_[params.executor].get();
+    }
+  }
   return absl::OkStatus();
 }
 
 absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
-  if (!kernel_.has_value()) {
-    // Initialize didn't load the kernel. This can happen when we're running on
-    // an unsupported platform.
-    VLOG(1) << "Checksum kernel not loaded, skipping";
-    return absl::OkStatus();
+
+  se::gpu::BufferDebugXorChecksumKernel::KernelType* kernel = nullptr;
+  {
+    absl::MutexLock lock(kernels_mutex_);
+    auto kernel_it = kernels_.find(executor);
+    if (kernel_it == kernels_.end()) {
+      // Initialize didn't load the kernel. This can happen when we're running
+      // on an unsupported platform.
+      VLOG(1) << "Checksum kernel not loaded on device "
+              << executor->device_ordinal() << ", skipping";
+      return absl::OkStatus();
+    }
+    kernel = kernel_it->second.get();
   }
 
-  VLOG(1) << "BuffersDebugChecksumThunk::ExecuteOnStream";
+  VLOG(1) << "BuffersDebugChecksumThunk::ExecuteOnStream, device "
+          << executor->device_ordinal() << " (stream_executor: " << executor
+          << "), kernel: " << kernel;
+  const uint32_t execution_id = execution_count_.fetch_add(1);
 
   const se::ThreadDim thread_dim(
       executor->GetDeviceDescription().threads_per_block_limit(), 1, 1);
 
-  se::DeviceMemory<uint8_t> log_ptr(
+  se::DeviceAddress<uint8_t> log_ptr(
       params.buffer_allocations->GetDeviceAddress(log_slice_));
-  se::gpu::BufferDebugLog buffer_debug_log =
-      se::gpu::BufferDebugLog::FromDeviceMemoryUnchecked(log_ptr);
+  auto buffer_debug_log =
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::FromDeviceAddressUnchecked(
+          log_ptr);
 
-  for (const auto& [entry_id, buffer] : buffers_) {
-    se::DeviceMemory<uint8_t> device_buffer(
+  for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
+    BufferDebugLogEntryMetadataStore::Metadata metadata{
+        /*thunk_id*/ checked_thunk_id_,
+        /*buffer_idx*/ buffer_idx,
+        /*execution_id*/ execution_id,
+        /*is_input*/ runs_before_checked_thunk_,
+        /*check_type*/ BufferDebugLogEntryProto::CHECK_TYPE_CHECKSUM,
+    };
+    const BufferDebugLogEntryId log_entry_id =
+        metadata_store_->AssignId(metadata);
+
+    se::DeviceAddress<uint8_t> device_buffer(
         params.buffer_allocations->GetDeviceAddress(buffer));
 
-    TF_RETURN_IF_ERROR(kernel_->Launch(
-        thread_dim, se::BlockDim(1, 1, 1), params.stream, entry_id,
+    TF_RETURN_IF_ERROR(kernel->Launch(
+        thread_dim, se::BlockDim(1, 1, 1), params.stream, log_entry_id,
         device_buffer, device_buffer.size(), buffer_debug_log.GetDeviceHeader(),
         buffer_debug_log.GetDeviceEntries()));
   }
@@ -98,10 +136,11 @@ absl::Status BuffersDebugChecksumThunk::ExecuteOnStream(
 
 std::string BuffersDebugChecksumThunk::ToString(int indent) const {
   std::string result;
-  absl::StrAppend(&result, ", buffers = ", buffers_.size());
-  for (const auto& [buffer_id, buffer] : buffers_) {
+  absl::StrAppend(&result, ", buffers = ", checked_thunk_buffers_.size());
+  for (const auto& [buffer_idx, buffer] : checked_thunk_buffers_) {
     absl::StrAppend(&result, "\n", std::string(indent + 2, ' '),
-                    "buffer_id: ", buffer_id, ", buffer: ", buffer.ToString());
+                    "buffer_idx: ", buffer_idx,
+                    ", buffer: ", buffer.ToString());
   }
   return result;
 }

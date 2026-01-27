@@ -14,6 +14,7 @@ cuda_py_strict_test(
     srcs = ["array_ops_test.py"],
     shard_count = 10,
     tags = [
+        "noasan",  # TODO: b/478339567
         "optonly",  # times out
     ],
     deps = [
@@ -282,6 +283,7 @@ cuda_py_strict_test(
     shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -481,7 +483,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:manip_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 

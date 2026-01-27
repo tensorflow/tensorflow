@@ -25,7 +25,8 @@ limitations under the License.
 
 namespace mlir::tosa {
 
-#define GEN_PASS_DEF_STRIPM
+#define GEN_PASS_DEF_STRIPFUNCTIONMETADATA
+#define GEN_PASS_DEF_STRIPMODULEMETADATA
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 namespace {
@@ -45,7 +46,7 @@ static bool isTFLAttr(NamedAttribute &namedAttr) {
 }
 
 class StripModuleMetadataPass
-    : public StripModuleMetadataBase<StripModuleMetadataPass> {
+    : public impl::StripModuleMetadataBase<StripModuleMetadataPass> {
  public:
   void runOnOperation() override {
     auto moduleOp = getOperation();
@@ -59,7 +60,7 @@ class StripModuleMetadataPass
 };
 
 class StripFunctionMetadataPass
-    : public StripFunctionMetadataBase<StripFunctionMetadataPass> {
+    : public impl::StripFunctionMetadataBase<StripFunctionMetadataPass> {
  public:
   void runOnOperation() override {
     auto funcOp = getOperation();

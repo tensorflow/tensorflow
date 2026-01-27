@@ -1,5 +1,6 @@
 ncclAllGather
 ncclAllReduce
+ncclAlltoAll
 ncclBcast
 ncclBroadcast
 ncclCommAbort
@@ -19,6 +20,8 @@ ncclCommSplit
 ncclCommUserRank
 ncclCommWindowDeregister
 ncclCommWindowRegister
+ncclDevCommCreate
+ncclDevCommDestroy
 ncclGetErrorString
 ncclGetLastError
 ncclGetUniqueId

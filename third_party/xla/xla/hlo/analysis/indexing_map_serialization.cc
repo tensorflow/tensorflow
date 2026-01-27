@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -26,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -39,15 +39,14 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace {
 
-using gpu::SymbolicExprContext;
 using llvm::SmallVector;
 using llvm::SmallVectorImpl;
 using llvm::StringRef;
@@ -170,7 +169,7 @@ class Parser {
 
  private:
   void ConsumeWhitespace() {
-    while (it_ != input_.end() && std::isspace(*it_)) {
+    while (it_ != input_.end() && absl::ascii_isspace(*it_)) {
       ++it_;
     }
   }
@@ -303,10 +302,10 @@ Token Parser::GetNextTokenImpl() {
     return Token{"", Token::Kind::kEOF};
   }
   auto start = it_;
-  if (std::isalpha(*it_)) {
+  if (absl::ascii_isalpha(*it_)) {
     // Variable name.
-    while (it_ != input_.end() &&
-           (std::isalpha(*it_) || std::isdigit(*it_) || *it_ == '_')) {
+    while (it_ != input_.end() && (absl::ascii_isalpha(*it_) ||
+                                   absl::ascii_isdigit(*it_) || *it_ == '_')) {
       ++it_;
     }
     StringRef spelling = input_.substr(start - input_.data(), it_ - start);
@@ -327,9 +326,9 @@ Token Parser::GetNextTokenImpl() {
     }
     return Token{spelling, Token::Kind::kVarName};
   }
-  if (std::isdigit(*it_)) {
+  if (absl::ascii_isdigit(*it_)) {
     auto start = it_;
-    while (it_ != input_.end() && std::isdigit(*it_)) {
+    while (it_ != input_.end() && absl::ascii_isdigit(*it_)) {
       ++it_;
     }
 
@@ -343,9 +342,9 @@ Token Parser::GetNextTokenImpl() {
         ++it_;
         return Token{"->", Token::Kind::kArrow};
       }
-      if (std::isdigit(*it_)) {
+      if (absl::ascii_isdigit(*it_)) {
         auto start = it_ - 1;
-        while (it_ != input_.end() && std::isdigit(*it_)) {
+        while (it_ != input_.end() && absl::ascii_isdigit(*it_)) {
           ++it_;
         }
         StringRef spelling = input_.substr(start - input_.data(), it_ - start);
@@ -394,7 +393,7 @@ bool ParseAffineMapResults(Parser& parser,
 bool ParseAffineExprsWithMLIR(ArrayRef<std::string> dim_var_names,
                               ArrayRef<std::string> symbol_var_names,
                               ArrayRef<std::string> affine_expr_strings,
-                              SymbolicExprContext* context,
+                              mlir::MLIRContext* context,
                               SmallVectorImpl<AffineExpr>& affine_exprs) {
   std::stringstream ss;
   ss << "affine_map<(" << absl::StrJoin(dim_var_names, ", ") << ") ";
@@ -402,8 +401,7 @@ bool ParseAffineExprsWithMLIR(ArrayRef<std::string> dim_var_names,
     ss << '[' << absl::StrJoin(symbol_var_names, ", ") << "] ";
   }
   ss << " -> (" << absl::StrJoin(affine_expr_strings, ", ") << ")>";
-  auto affine_map_attr =
-      mlir::parseAttribute(ss.str(), context->GetMLIRContext());
+  auto affine_map_attr = mlir::parseAttribute(ss.str(), context);
   if (!affine_map_attr) {
     llvm::errs() << "Failed to parse affine map: " << ss.str() << "\n";
     return false;
@@ -599,8 +597,8 @@ void PrintAffineExprImpl(const AffineExpr affine_expr,
 
 }  // namespace
 
-std::optional<IndexingMap> ParseIndexingMap(
-    llvm::StringRef input, gpu::SymbolicExprContext* symbolic_expr_context) {
+std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
+                                            mlir::MLIRContext* mlir_context) {
   Parser parser(input);
 
   // Parse variable names.
@@ -633,7 +631,7 @@ std::optional<IndexingMap> ParseIndexingMap(
       llvm::errs() << "Expected an empty indexing map\n";
       return std::nullopt;
     }
-    return IndexingMap{AffineMap::get(symbolic_expr_context->GetMLIRContext()),
+    return IndexingMap{AffineMap::get(mlir_context),
                        /*dimensions=*/{}, /*range_vars=*/{}, /*rt_vars=*/{}};
   }
 
@@ -735,8 +733,7 @@ std::optional<IndexingMap> ParseIndexingMap(
   symbol_var_names.append(rt_var_names.begin(), rt_var_names.end());
   SmallVector<AffineExpr> affine_exprs;
   if (!ParseAffineExprsWithMLIR(dim_var_names, symbol_var_names,
-                                affine_expr_strs, symbolic_expr_context,
-                                affine_exprs)) {
+                                affine_expr_strs, mlir_context, affine_exprs)) {
     llvm::errs() << "Failed to parse affine expressions\n";
     return std::nullopt;
   }
@@ -753,8 +750,7 @@ std::optional<IndexingMap> ParseIndexingMap(
     constraints.push_back(std::make_pair(expr, bounds));
   }
   auto map = AffineMap::get(dim_vars.size(), range_vars.size() + rt_vars.size(),
-                            affine_map_results,
-                            symbolic_expr_context->GetMLIRContext());
+                            affine_map_results, mlir_context);
   return IndexingMap{map, std::move(dim_vars), std::move(range_vars),
                      std::move(rt_vars), constraints};
 }

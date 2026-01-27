@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/ops_util.h"
+
 #include <algorithm>
 #include <cmath>
 
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/padding.h"
@@ -62,12 +64,11 @@ absl::Status GetBroadcastSize(const int index, const int in_size,
   return absl::OkStatus();
 }
 
-string SanitizeThreadSuffix(string suffix) {
-  string clean;
+std::string SanitizeThreadSuffix(std::string suffix) {
+  std::string clean;
   for (int i = 0; i < suffix.size(); ++i) {
     const char ch = suffix[i];
-    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-        (ch >= '0' && ch <= '9') || ch == '_' || ch == '-') {
+    if (absl::ascii_isalnum(ch) || ch == '_' || ch == '-') {
       clean += ch;
     } else {
       clean += '_';

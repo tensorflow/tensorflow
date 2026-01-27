@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -35,10 +35,13 @@ namespace ifrt {
 // Loaded executable and unique name for a compiled atom program.
 struct AtomProgramCompileResult {
   std::string name;
-  LoadedExecutableRef executable;
+  tsl::Future<LoadedExecutableRef> executable;
 };
 
 using AtomExecutableMap = absl::flat_hash_map<std::string, LoadedExecutableRef>;
+
+using AtomExecutableFutureMap =
+    absl::flat_hash_map<std::string, tsl::Future<LoadedExecutableRef>>;
 
 class AtomProgramCompiler {
  public:
@@ -46,11 +49,11 @@ class AtomProgramCompiler {
 
   // Delegates the compilation of an atom XLA program.
   // `options` uses logical device id in the main mlir module.
-  virtual absl::StatusOr<AtomProgramCompileResult> CompileXla(
+  virtual tsl::Future<LoadedExecutableRef> CompileXla(
       std::unique_ptr<HloProgram> computation, xla::CompileOptions options) = 0;
 
   // Delegates the compilation of an MPMD reshard program.
-  virtual absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
+  virtual tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) = 0;

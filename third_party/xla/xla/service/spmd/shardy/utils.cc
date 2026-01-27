@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/utils.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -260,12 +259,12 @@ void adjustOutputSharding(
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,
                                                mlir::TypeRange resultTypes,
                                                mlir::IRRewriter& rewriter) {
-  auto customCallOp = rewriter.create<CustomCallOp>(
-      op.getLoc(), resultTypes, op.getOperands(), op.getCallTargetNameAttr(),
-      op.getHasSideEffectAttr(), op.getBackendConfigAttr(),
-      op.getApiVersionAttr(), op.getCalledComputations(),
-      op.getOperandLayoutsAttr(), op.getResultLayoutsAttr(),
-      op.getOutputOperandAliases());
+  auto customCallOp = CustomCallOp::create(
+      rewriter, op.getLoc(), resultTypes, op.getOperands(),
+      op.getCallTargetNameAttr(), op.getHasSideEffectAttr(),
+      op.getBackendConfigAttr(), op.getApiVersionAttr(),
+      op.getCalledComputations(), op.getOperandLayoutsAttr(),
+      op.getResultLayoutsAttr(), op.getOutputOperandAliases());
   customCallOp->setDiscardableAttrs(mlir::DictionaryAttr::get(
       op->getContext(), llvm::to_vector(op->getDiscardableAttrs())));
   return customCallOp;
@@ -342,8 +341,7 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
       continue;
     }
     llvm::sort(preSizes);
-    preSizes.erase(std::unique(preSizes.begin(), preSizes.end()),
-                   preSizes.end());
+    preSizes.erase(llvm::unique(preSizes), preSizes.end());
     for (int64_t i = 0; i < preSizes.size() - 1; ++i) {
       int64_t preSize = preSizes[i];
       int64_t size = preSizes[i + 1] / preSize;

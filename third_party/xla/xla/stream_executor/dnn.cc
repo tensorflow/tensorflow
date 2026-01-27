@@ -39,8 +39,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/data_type.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
@@ -137,14 +137,14 @@ absl::Status DnnSupport::GetConvolveRunners(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*input_type*/,
     dnn::DataType /*output_type*/, Stream* /*stream*/,
     const dnn::BatchDescriptor& /*input_descriptor*/,
-    DeviceMemoryBase /*input_data*/,
+    DeviceAddressBase /*input_data*/,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
-    DeviceMemoryBase /*filter_data*/,
+    DeviceAddressBase /*filter_data*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
-    DeviceMemoryBase /*output_data*/,
+    DeviceAddressBase /*output_data*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
-    const NumericOptions& /*numeric_options*/,
+    const EngineOptions& /*engine_options*/,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/) {
   return absl::UnimplementedError("GetConvolveRunners not implemented.");
 }
@@ -167,7 +167,7 @@ absl::Status DnnSupport::GetGraphConvolveRunners(
     const dnn::FilterDescriptor& /*filter_descriptor*/,
     const dnn::BatchDescriptor& /*output_descriptor*/,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
-    bool /*use_fallback*/, const NumericOptions& /*numeric_options*/,
+    bool /*use_fallback*/, const EngineOptions& /*engine_options*/,
     std::vector<std::unique_ptr<const dnn::GraphConvRunner>>* /*exec_plans*/,
     std::string /*serialized_graph*/) {
   return absl::UnimplementedError("GetGraphConvolveRunners not implemented.");
@@ -195,7 +195,7 @@ absl::Status DnnSupport::GetFusedConvolveRunners(
     const dnn::BatchDescriptor& bias_descriptor,
     const dnn::BatchDescriptor& output_descriptor,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    dnn::ActivationMode activation_mode, const NumericOptions& numeric_options,
+    dnn::ActivationMode activation_mode, const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans) {
   return absl::UnimplementedError("GetFusedConvolveRunners not implemented.");
 }
@@ -205,7 +205,7 @@ absl::Status DnnSupport::GetFusedMatmulRunners(
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
-    const NumericOptions& numeric_options,
+    const EngineOptions& engine_options,
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   return absl::UnimplementedError("GetFusedMatmulRunners not implemented.");
@@ -247,11 +247,11 @@ bool DnnSupport::GetMIOpenConvolveAlgorithms(
     dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
     dnn::DataType /*output_type*/, Stream* /*stream*/,
     const dnn::BatchDescriptor& /*input_descriptor*/,
-    DeviceMemoryBase input_data,
+    DeviceAddressBase input_data,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
-    DeviceMemoryBase filter_data,
+    DeviceAddressBase filter_data,
     const dnn::BatchDescriptor& /*output_descriptor*/,
-    DeviceMemoryBase output_data,
+    DeviceAddressBase output_data,
     const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
     ScratchAllocator* scratch_allocator,
     std::vector<ProfileResult>* /*out_algorithms*/) {
@@ -265,10 +265,10 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 absl::Status DnnSupport::DoPoolForward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
-    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
-    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
-    ScratchAllocator* workspace_allocator) {
+    const EngineOptions& engine_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceAddressBase output_data, ScratchAllocator* workspace_allocator) {
   // Ignore numeric options. Subclasses can override this method to use it.
   return DoPoolForward(element_type, stream, pooling_dimensions,
                        input_dimensions, input_data, output_dimensions,
@@ -278,11 +278,11 @@ absl::Status DnnSupport::DoPoolForward(
 absl::Status DnnSupport::DoPoolBackward(
     DataType element_type, Stream* stream,
     const dnn::PoolingDescriptor& pooling_dimensions,
-    const NumericOptions& numeric_options,
-    const dnn::BatchDescriptor& input_dimensions, DeviceMemoryBase input_data,
-    const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
-    DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
-    ScratchAllocator* workspace_allocator) {
+    const EngineOptions& engine_options,
+    const dnn::BatchDescriptor& input_dimensions, DeviceAddressBase input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceAddressBase output_data, DeviceAddressBase input_diff_data,
+    DeviceAddressBase output_diff_data, ScratchAllocator* workspace_allocator) {
   // Ignore numeric options. Subclasses can override this method to use it.
   return DoPoolBackward(element_type, stream, pooling_dimensions,
                         input_dimensions, input_data, output_dimensions,
@@ -691,8 +691,7 @@ std::vector<int64_t> BatchDescriptor::full_dims(
   std::vector<int64_t> bdyx_dims(ndims() + 2);
   bdyx_dims[0] = count();
   bdyx_dims[1] = feature_map_count();
-  std::copy(spatial_size().begin(), spatial_size().end(),
-            bdyx_dims.begin() + 2);
+  absl::c_copy(spatial_size(), bdyx_dims.begin() + 2);
   return ReorderDims(bdyx_dims, DataLayout::kBatchDepthYX, layout);
 }
 
@@ -831,8 +830,7 @@ std::vector<int64_t> FilterDescriptor::full_dims(
   std::vector<int64_t> oiyx_dims(ndims() + 2);
   oiyx_dims[0] = output_feature_map_count();
   oiyx_dims[1] = input_feature_map_count();
-  std::copy(input_filter_dims().begin(), input_filter_dims().end(),
-            oiyx_dims.begin() + 2);
+  absl::c_copy(input_filter_dims(), oiyx_dims.begin() + 2);
   return ReorderDims(oiyx_dims, FilterLayout::kOutputInputYX, layout);
 }
 
@@ -940,11 +938,11 @@ bool DnnSupport::IsStatusOk(const absl::Status& status, bool report_error) {
 absl::Status DnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const RnnStateTensorDescriptor& probs_desc,
-    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+    const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
-    absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
-    const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
-    DeviceMemory<uint8_t> scratch_memory, int ctc_loss_algo_id) {
+    absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
+    const RnnStateTensorDescriptor& grads_desc, DeviceAddressBase grads_data,
+    DeviceAddress<uint8_t> scratch_memory, int ctc_loss_algo_id) {
   return absl::UnimplementedError("CtcLoss not implemented");
 }
 

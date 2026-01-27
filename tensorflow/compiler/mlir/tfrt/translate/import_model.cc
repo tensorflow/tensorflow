@@ -204,11 +204,18 @@ absl::Status ConvertTfMlirToRuntimeExecutable(
         tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
             module, /*is_supported_by_replicated_brige*/ true,
             /*is_in_fallback_enabled_mode=*/VLOG_IS_ON(1)));
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("after_tf2xla_clustering_bridge", module);
+    }
 
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
             module, tsl::DeviceType(DEVICE_TPU_XLA_JIT)));
 
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("after_lower_cluster_to_runtime_ops",
+                                   module);
+    }
     TF_RETURN_IF_ERROR(
         tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
@@ -354,6 +361,7 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       options.batch_options.max_enqueued_batches();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
+  pipeline_options->allow_xla_cpu = options.allow_xla_cpu;
 
   return pipeline_options;
 }

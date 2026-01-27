@@ -36,6 +36,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )
@@ -58,6 +59,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )

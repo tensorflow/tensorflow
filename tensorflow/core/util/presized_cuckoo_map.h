@@ -50,15 +50,15 @@ template <class value>
 class PresizedCuckooMap {
  public:
   // The key type is fixed as a pre-hashed key for this specialized use.
-  typedef uint64 key_type;
+  typedef uint64_t key_type;
 
-  explicit PresizedCuckooMap(uint64 num_entries) { Clear(num_entries); }
+  explicit PresizedCuckooMap(uint64_t num_entries) { Clear(num_entries); }
 
-  void Clear(uint64 num_entries) {
+  void Clear(uint64_t num_entries) {
     cpq_.reset(new CuckooPathQueue());
     double n(num_entries);
     n /= kLoadFactor;
-    num_buckets_ = (static_cast<uint64>(n) / kSlotsPerBucket);
+    num_buckets_ = (static_cast<uint64_t>(n) / kSlotsPerBucket);
     // Very small cuckoo tables don't work, because the probability
     // of having same-bucket hashes is large.  We compromise for those
     // uses by having a larger static starting size.
@@ -74,12 +74,12 @@ class PresizedCuckooMap {
   // Returns false if k is already in table or if the table
   // is full; true otherwise.
   bool InsertUnique(const key_type k, const value& v) {
-    uint64 tk = key_transform(k);
-    uint64 b1 = fast_map_to_buckets(tk);
-    uint64 b2 = fast_map_to_buckets(h2(tk));
+    uint64_t tk = key_transform(k);
+    uint64_t b1 = fast_map_to_buckets(tk);
+    uint64_t b2 = fast_map_to_buckets(h2(tk));
 
     // Merged find and duplicate checking.
-    uint64 target_bucket = 0;
+    uint64_t target_bucket = 0;
     int target_slot = kNoSpace;
 
     for (auto bucket : {b1, b2}) {
@@ -104,14 +104,14 @@ class PresizedCuckooMap {
 
   // Returns true if found.  Sets *out = value.
   bool Find(const key_type k, value* out) const {
-    uint64 tk = key_transform(k);
+    uint64_t tk = key_transform(k);
     return FindInBucket(k, fast_map_to_buckets(tk), out) ||
            FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
   }
 
   // Prefetch memory associated with the key k into cache.
   void PrefetchKey(const key_type k) const {
-    const uint64 tk = key_transform(k);
+    const uint64_t tk = key_transform(k);
     absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(tk)].keys);
     absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(h2(tk))].keys);
   }
@@ -138,7 +138,7 @@ class PresizedCuckooMap {
   // around the full point.  For (2,4) a max BFS path len of 5 results in ~682
   // nodes to visit, calculated below, and is a good value.
 
-  static constexpr uint8 kMaxBFSPathLen = 5;
+  static constexpr uint8_t kMaxBFSPathLen = 5;
 
   // Constants for BFS cuckoo path search:
   // The visited list must be maintained for all but the last level of search
@@ -151,7 +151,7 @@ class PresizedCuckooMap {
   static constexpr int kVisitedListSize = 170;
 
   static constexpr int kNoSpace = -1;  // SpaceAvailable return
-  static constexpr uint64 kUnusedSlot = ~(0ULL);
+  static constexpr uint64_t kUnusedSlot = ~(0ULL);
 
   // Buckets are organized with key_types clustered for access speed
   // and for compactness while remaining aligned.
@@ -164,7 +164,7 @@ class PresizedCuckooMap {
   // the number of cache lines dirtied during search.
 
   struct CuckooPathEntry {
-    uint64 bucket;
+    uint64_t bucket;
     int depth;
     int parent;       // To index in the visited array.
     int parent_slot;  // Which slot in our parent did we come from?  -1 == root.
@@ -208,27 +208,27 @@ class PresizedCuckooMap {
   // collisions, OR must ensure that their keys are always in
   // the range 0 - (uint64max - 1).  This transforms 'not found flag'
   // keys into something else.
-  inline uint64 key_transform(const key_type k) const {
+  inline uint64_t key_transform(const key_type k) const {
     return k + (k == kUnusedSlot);
   }
 
   // h2 performs a very quick mix of h to generate the second bucket hash.
   // Assumes there is plenty of remaining entropy in the initial h.
-  inline uint64 h2(uint64 h) const {
-    const uint64 m = 0xc6a4a7935bd1e995;
+  inline uint64_t h2(uint64_t h) const {
+    const uint64_t m = 0xc6a4a7935bd1e995;
     return m * ((h >> 32) | (h << 32));
   }
 
   // alt_bucket identifies the "other" bucket for key k, where
   // other is "the one that isn't bucket b"
-  inline uint64 alt_bucket(key_type k, uint64 b) const {
+  inline uint64_t alt_bucket(key_type k, uint64_t b) const {
     if (fast_map_to_buckets(k) != b) {
       return fast_map_to_buckets(k);
     }
     return fast_map_to_buckets(h2(k));
   }
 
-  inline void InsertInternal(key_type k, const value& v, uint64 b, int slot) {
+  inline void InsertInternal(key_type k, const value& v, uint64_t b, int slot) {
     Bucket* bptr = &buckets_[b];
     bptr->keys[slot] = k;
     bptr->values[slot] = v;
@@ -236,7 +236,7 @@ class PresizedCuckooMap {
 
   // For the associative cuckoo table, check all of the slots in
   // the bucket to see if the key is present.
-  bool FindInBucket(key_type k, uint64 b, value* out) const {
+  bool FindInBucket(key_type k, uint64_t b, value* out) const {
     const Bucket& bref = buckets_[b];
     for (int i = 0; i < kSlotsPerBucket; i++) {
       if (bref.keys[i] == k) {
@@ -249,7 +249,7 @@ class PresizedCuckooMap {
 
   //  returns either kNoSpace or the index of an
   //  available slot (0 <= slot < kSlotsPerBucket)
-  inline int SpaceAvailable(uint64 bucket) const {
+  inline int SpaceAvailable(uint64_t bucket) const {
     const Bucket& bref = buckets_[bucket];
     for (int i = 0; i < kSlotsPerBucket; i++) {
       if (bref.keys[i] == kUnusedSlot) {
@@ -259,7 +259,7 @@ class PresizedCuckooMap {
     return kNoSpace;
   }
 
-  inline void CopyItem(uint64 src_bucket, int src_slot, uint64 dst_bucket,
+  inline void CopyItem(uint64_t src_bucket, int src_slot, uint64_t dst_bucket,
                        int dst_slot) {
     Bucket& src_ref = buckets_[src_bucket];
     Bucket& dst_ref = buckets_[dst_bucket];
@@ -267,7 +267,7 @@ class PresizedCuckooMap {
     dst_ref.values[dst_slot] = src_ref.values[src_slot];
   }
 
-  bool CuckooInsert(key_type k, const value& v, uint64 b1, uint64 b2) {
+  bool CuckooInsert(key_type k, const value& v, uint64_t b1, uint64_t b2) {
     int visited_end = 0;
     cpq_->reset();
 
@@ -299,10 +299,10 @@ class PresizedCuckooMap {
           const Bucket& bref = buckets_[e.bucket];
           for (int i = 0; i < kSlotsPerBucket; i++) {
             int slot = (start_slot + i) % kSlotsPerBucket;
-            uint64 next_bucket = alt_bucket(bref.keys[slot], e.bucket);
+            uint64_t next_bucket = alt_bucket(bref.keys[slot], e.bucket);
             // Optimization:  Avoid single-step cycles (from e, don't
             // add a child node that is actually e's parent).
-            uint64 e_parent_bucket = visited_[e.parent].bucket;
+            uint64_t e_parent_bucket = visited_[e.parent].bucket;
             if (next_bucket != e_parent_bucket) {
               cpq_->push_back({next_bucket, e.depth + 1, parent_index, slot});
             }
@@ -315,7 +315,7 @@ class PresizedCuckooMap {
     return false;
   }
 
-  inline uint64 fast_map_to_buckets(uint64 x) const {
+  inline uint64_t fast_map_to_buckets(uint64_t x) const {
     // Map x (uniform in 2^64) to the range [0, num_buckets_ -1]
     // using Lemire's alternative to modulo reduction:
     // http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/
@@ -324,7 +324,7 @@ class PresizedCuckooMap {
   }
 
   // Set upon initialization: num_entries / kLoadFactor / kSlotsPerBucket.
-  uint64 num_buckets_;
+  uint64_t num_buckets_;
   std::vector<Bucket> buckets_;
 
   std::unique_ptr<CuckooPathQueue> cpq_;

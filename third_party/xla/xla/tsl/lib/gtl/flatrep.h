@@ -47,8 +47,8 @@ template <typename Key, typename Bucket, class Hash, class Eq>
 class FlatRep {
  public:
   // kWidth is the number of entries stored in a bucket.
-  static constexpr uint32 kBase = 3;
-  static constexpr uint32 kWidth = (1 << kBase);
+  static constexpr uint32_t kBase = 3;
+  static constexpr uint32_t kWidth = (1 << kBase);
 
   FlatRep(size_t N, const Hash& hf, const Eq& eq) : hash_(hf), equal_(eq) {
     Init(N);
@@ -102,7 +102,7 @@ class FlatRep {
 
   void clear_no_resize() {
     for (Bucket* b = array_; b != end_; b++) {
-      for (uint32 i = 0; i < kWidth; i++) {
+      for (uint32_t i = 0; i < kWidth; i++) {
         if (b->marker[i] >= 2) {
           b->Destroy(i);
           b->marker[i] = kEmpty;
@@ -134,7 +134,7 @@ class FlatRep {
   struct SearchResult {
     bool found;
     Bucket* b;
-    uint32 index;
+    uint32_t index;
   };
 
   // Hash value is partitioned as follows:
@@ -145,13 +145,13 @@ class FlatRep {
   // Find bucket/index for key k.
   SearchResult Find(const Key& k) const {
     size_t h = hash_(k);
-    const uint32 marker = Marker(h & 0xff);
+    const uint32_t marker = Marker(h & 0xff);
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
-    uint32 num_probes = 1;            // Needed for quadratic probing
+    uint32_t num_probes = 1;          // Needed for quadratic probing
     while (true) {
-      uint32 bi = index & (kWidth - 1);
+      uint32_t bi = index & (kWidth - 1);
       Bucket* b = &array_[index >> kBase];
-      const uint32 x = b->marker[bi];
+      const uint32_t x = b->marker[bi];
       if (x == marker && equal_(b->key(bi), k)) {
         return {true, b, bi};
       } else if (x == kEmpty) {
@@ -170,15 +170,15 @@ class FlatRep {
   template <typename KeyType>
   SearchResult FindOrInsert(KeyType&& k) {
     size_t h = hash_(k);
-    const uint32 marker = Marker(h & 0xff);
+    const uint32_t marker = Marker(h & 0xff);
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
-    uint32 num_probes = 1;            // Needed for quadratic probing
+    uint32_t num_probes = 1;          // Needed for quadratic probing
     Bucket* del = nullptr;            // First encountered deletion for kInsert
-    uint32 di = 0;
+    uint32_t di = 0;
     while (true) {
-      uint32 bi = index & (kWidth - 1);
+      uint32_t bi = index & (kWidth - 1);
       Bucket* b = &array_[index >> kBase];
-      const uint32 x = b->marker[bi];
+      const uint32_t x = b->marker[bi];
       if (x == marker && equal_(b->key(bi), k)) {
         return {true, b, bi};
       } else if (!del && x == kDeleted) {
@@ -203,7 +203,7 @@ class FlatRep {
     }
   }
 
-  void Erase(Bucket* b, uint32 i) {
+  void Erase(Bucket* b, uint32_t i) {
     b->Destroy(i);
     b->marker[i] = kDeleted;
     deleted_++;
@@ -213,7 +213,7 @@ class FlatRep {
   void Prefetch(const Key& k) const {
     size_t h = hash_(k);
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
-    uint32 bi = index & (kWidth - 1);
+    uint32_t bi = index & (kWidth - 1);
     Bucket* b = &array_[index >> kBase];
     absl::PrefetchToLocalCache(&b->marker[bi]);
     absl::PrefetchToLocalCache(&b->storage.key[bi]);
@@ -247,7 +247,7 @@ class FlatRep {
 
   Hash hash_;         // User-supplied hasher
   Eq equal_;          // User-supplied comparator
-  uint8 lglen_;       // lg(#buckets)
+  uint8_t lglen_;     // lg(#buckets)
   Bucket* array_;     // array of length (1 << lglen_)
   Bucket* end_;       // Points just past last bucket in array_
   size_t mask_;       // (# of entries in table) - 1
@@ -258,7 +258,7 @@ class FlatRep {
 
   // Avoid kEmpty and kDeleted markers when computing hash values to
   // store in Bucket::marker[].
-  static uint32 Marker(uint32 hb) { return hb + (hb < 2 ? 2 : 0); }
+  static uint32_t Marker(uint32_t hb) { return hb + (hb < 2 ? 2 : 0); }
 
   void Init(size_t N) {
     // Make enough room for N elements.
@@ -290,14 +290,16 @@ class FlatRep {
 
   // Used by FreshInsert when we should copy from source.
   struct CopyEntry {
-    inline void operator()(Bucket* dst, uint32 dsti, Bucket* src, uint32 srci) {
+    inline void operator()(Bucket* dst, uint32_t dsti, Bucket* src,
+                           uint32_t srci) {
       dst->CopyFrom(dsti, src, srci);
     }
   };
 
   // Used by FreshInsert when we should move from source.
   struct MoveEntry {
-    inline void operator()(Bucket* dst, uint32 dsti, Bucket* src, uint32 srci) {
+    inline void operator()(Bucket* dst, uint32_t dsti, Bucket* src,
+                           uint32_t srci) {
       dst->MoveFrom(dsti, src, srci);
       src->Destroy(srci);
       src->marker[srci] = kDeleted;
@@ -307,7 +309,7 @@ class FlatRep {
   template <typename Copier>
   void CopyEntries(Bucket* start, Bucket* end, Copier copier) {
     for (Bucket* b = start; b != end; b++) {
-      for (uint32 i = 0; i < kWidth; i++) {
+      for (uint32_t i = 0; i < kWidth; i++) {
         if (b->marker[i] >= 2) {
           FreshInsert(b, i, copier);
         }
@@ -320,15 +322,15 @@ class FlatRep {
   // assume that there are no deletions, and k does not already exist
   // in the table.
   template <typename Copier>
-  void FreshInsert(Bucket* src, uint32 src_index, Copier copier) {
+  void FreshInsert(Bucket* src, uint32_t src_index, Copier copier) {
     size_t h = hash_(src->key(src_index));
-    const uint32 marker = Marker(h & 0xff);
+    const uint32_t marker = Marker(h & 0xff);
     size_t index = (h >> 8) & mask_;  // Holds bucket num and index-in-bucket
-    uint32 num_probes = 1;            // Needed for quadratic probing
+    uint32_t num_probes = 1;          // Needed for quadratic probing
     while (true) {
-      uint32 bi = index & (kWidth - 1);
+      uint32_t bi = index & (kWidth - 1);
       Bucket* b = &array_[index >> kBase];
-      const uint32 x = b->marker[bi];
+      const uint32_t x = b->marker[bi];
       if (x == 0) {
         b->marker[bi] = marker;
         not_empty_++;
@@ -340,7 +342,7 @@ class FlatRep {
     }
   }
 
-  inline size_t NextIndex(size_t i, uint32 num_probes) const {
+  inline size_t NextIndex(size_t i, uint32_t num_probes) const {
     // Quadratic probing.
     return (i + num_probes) & mask_;
   }

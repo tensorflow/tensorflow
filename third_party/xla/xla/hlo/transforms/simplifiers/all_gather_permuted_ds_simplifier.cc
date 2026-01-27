@@ -88,7 +88,7 @@ AllGatherDynamicSlicePermutedOffsetSimplifierVisitor::HandleDynamicSlice(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> AllGatherDynamicSlicePermutedOffsetSimplifier::Run(
+absl::StatusOr<bool> AllGatherDynamicSlicePermutedOffsetSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

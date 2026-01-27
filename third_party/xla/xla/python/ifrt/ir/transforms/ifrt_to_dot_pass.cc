@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -112,10 +111,11 @@ class IfrtToDotPass : public impl::IfrtToDotPassBase<IfrtToDotPass> {
  public:
   using impl::IfrtToDotPassBase<IfrtToDotPass>::IfrtToDotPassBase;
 
-  explicit IfrtToDotPass(IfrtToDotPassOptions options,
-                         std::shared_ptr<AtomExecutableMap> atom_executable_map)
+  explicit IfrtToDotPass(
+      IfrtToDotPassOptions options,
+      std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map)
       : IfrtToDotPassBase(std::move(options)),
-        atom_executable_map_(std::move(atom_executable_map)) {}
+        atom_executable_future_map_(std::move(atom_executable_future_map)) {}
 
   void runOnOperation() override;
 
@@ -246,12 +246,9 @@ class IfrtToDotPass : public impl::IfrtToDotPassBase<IfrtToDotPass> {
     // Get flops from the cost analysis.
     if (auto cost_analysis = executable->GetCostAnalysis();
         cost_analysis.ok()) {
-      if (auto it = cost_analysis->map().find("flops");
-          it != cost_analysis->map().end()) {
-        if (auto flops_ptr =
-                std::get_if<xla::ifrt::AttributeMap::FloatValue>(&it->second)) {
-          stats.flops = flops_ptr->value;
-        }
+      auto flops = cost_analysis->Get<float>("flops");
+      if (flops.ok()) {
+        stats.flops = *flops;
       } else {
         LOG(WARNING) << "Cost analysis of executable " << executable->name()
                      << " does not contain flops";
@@ -265,7 +262,7 @@ class IfrtToDotPass : public impl::IfrtToDotPassBase<IfrtToDotPass> {
 
   // Map from atom program name to the executable. It is used to get stats
   // about the executables.
-  std::shared_ptr<AtomExecutableMap> atom_executable_map_;
+  std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map_;
 
   // Counter for generating unique node/subgraph identifiers.
   int last_node_id_ = 0;
@@ -320,14 +317,23 @@ void IfrtToDotPass::runOnOperation() {
               std::string atom_program_name = loaded_exec_op.getSymName().str();
 
               // Get memory and flops stats from the executable.
-              auto exec_it = atom_executable_map_->find(atom_program_name);
-              if (exec_it == atom_executable_map_->end()) {
+              auto exec_it =
+                  atom_executable_future_map_->find(atom_program_name);
+              if (exec_it == atom_executable_future_map_->end()) {
                 op.emitOpError(
                     absl::StrCat("No executable found for atom program ",
                                  atom_program_name));
                 return mlir::failure();
               }
-              auto stats = getStatsFromExecutable(exec_it->second);
+              absl::StatusOr<LoadedExecutableRef> exec =
+                  exec_it->second.Await();
+              if (!exec.ok()) {
+                op.emitOpError(absl::StrCat("Failed to compile atom program '",
+                                            atom_program_name,
+                                            "': ", exec.status()));
+                return mlir::failure();
+              }
+              auto stats = getStatsFromExecutable(*std::move(exec));
               auto devices = loaded_exec_op.getDevices();
 
               // Add a DOT node for the executable only if its flops and peak
@@ -469,19 +475,19 @@ void IfrtToDotPass::runOnOperation() {
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
     IfrtToDotPassOptions options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   return std::make_unique<IfrtToDotPass>(std::move(options),
-                                         std::move(atom_executable_map));
+                                         std::move(atom_executable_future_map));
 }
 
 void registerIfrtToDotPass(
     IfrtToDotPassOptions options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   mlir::registerPass(
-      [atom_executable_map = std::move(atom_executable_map),
+      [atom_executable_future_map = std::move(atom_executable_future_map),
        options = std::move(options)]() -> std::unique_ptr<mlir::Pass> {
         return createIfrtToDotPass(std::move(options),
-                                   std::move(atom_executable_map));
+                                   std::move(atom_executable_future_map));
       });
 }
 

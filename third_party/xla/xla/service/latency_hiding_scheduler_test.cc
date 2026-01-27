@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -63,7 +63,7 @@ constexpr int kMaxConcurrentAsyncCollectivePermutes = 5;
 
 int PositionInVector(absl::Span<HloInstruction* const> vec,
                      const HloInstruction* element) {
-  return std::distance(vec.begin(), std::find(vec.begin(), vec.end(), element));
+  return std::distance(vec.begin(), absl::c_find(vec, element));
 }
 
 bool MaxConcurrentCollectivePermutesBelowThreshold(
@@ -791,6 +791,85 @@ ENTRY entry {
   EXPECT_EQ(cp_start->opcode(), HloOpcode::kCollectivePermuteStart);
   EXPECT_LT(GetIndex(new_instruction_sequence, "add0"),
             GetIndex(new_instruction_sequence, cp_start->name()));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ForceDelayCustomCall) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %p0 = f32[100] parameter(0)
+  %custom-call = f32[100] custom-call(%p0), custom_call_target="foo", frontend_attributes={scheduler_hint="force_delay"}
+  ROOT %copy = f32[100] copy(%custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  // We expect RunScheduler to return true because of the force_delay attribute,
+  // even though there are no async collectives.
+  auto result = RunScheduler(hlo_module.get());
+  TF_ASSERT_OK(result);
+  EXPECT_TRUE(result.value());
+}
+
+TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncAllGather) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %constant.19 = u32[] constant(1)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %add.1 = u32[]{:T(128)} add(replica_id, constant.19)
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %convert.1 = f32[]{:T(128)} convert(u32[]{:T(128)} %add.1)
+  %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
+  %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert.1), dimensions={}
+  %ag-start.2 = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.2), replica_groups={{0,1}}, dimensions={0},
+    metadata={op_type="AllGather" op_name="ag1"}
+  %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+    frontend_attributes={scheduler_hint="force_delay_async"},
+    metadata={op_type="AllGather" op_name="ag0"}
+  %ag-done = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start),
+    metadata={op_type="AllGather" op_name="ag0"}
+  %ag-done.2 = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start.2),
+    metadata={op_type="AllGather" op_name="ag1"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, %ag-done.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // The all-gather with force_delay_async (ag0) should be scheduled earlier
+  // than ag1 because force_delay_async affects the scheduling priority.
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kAllGatherStart,
+                                        new_instruction_sequence, "ag0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllGatherStart,
+                                        new_instruction_sequence, "ag1"));
+
+  // Check the order stays the same for the dones.
+  EXPECT_LT(GetOpcodeIndexUsingMetaData(HloOpcode::kAllGatherDone,
+                                        new_instruction_sequence, "ag0"),
+            GetOpcodeIndexUsingMetaData(HloOpcode::kAllGatherDone,
+                                        new_instruction_sequence, "ag1"));
 }
 
 TEST_F(LatencyHidingSchedulerTest, WhileLoopAliasingBug2) {
@@ -4920,6 +4999,74 @@ ENTRY entry {
       GetIndex(new_instruction_sequence, "all-gather-done.1");
   EXPECT_TRUE(sync_ag_index > async_ag_start_index &&
               sync_ag_index < async_ag_done_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, HostOffloadComputationsWithoutSchedule) {
+  // Test that the scheduler handles host computations that don't have
+  // schedules. This can happen with compute offload where host computations
+  // execute separately on the host CPU and don't need device scheduling.
+  absl::string_view hlo_string = R"(
+HloModule test_module, is_scheduled=true, entry_computation_layout={(f32[61,163]{1,0})->f32[61,163]{1,0}}
+
+%host_computation (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  %c2 = f32[] constant(2)
+  %broadcast = f32[61,163]{1,0} broadcast(%c2), dimensions={}
+  ROOT %mul = f32[61,163]{1,0} multiply(%param, %broadcast)
+}, execution_thread="host"
+
+%host_async (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  ROOT %host_execute = f32[61,163]{1,0} custom-call(%param), custom_call_target="HostExecute", called_computations={%host_computation}
+}, execution_thread="host"
+
+%device_mul (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  %c3 = f32[] constant(3)
+  %broadcast = f32[61,163]{1,0} broadcast(%c3), dimensions={}
+  ROOT %mul = f32[61,163]{1,0} multiply(%param, %broadcast)
+}
+
+ENTRY %main (x: f32[61,163]) -> f32[61,163] {
+  %x = f32[61,163]{1,0} parameter(0)
+  %async_start = ((f32[61,163]{1,0}), f32[61,163]{1,0}, u32[]) async-start(%x), async_execution_thread="host", calls=%host_async
+  %async_done = f32[61,163]{1,0} async-done(%async_start)
+  ROOT %mul_fusion = f32[61,163]{1,0} fusion(%async_done), kind=kLoop, calls=%device_mul
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  // Verify the entry computation has a schedule (precondition).
+  EXPECT_TRUE(hlo_module->has_schedule());
+  EXPECT_TRUE(hlo_module->schedule().is_computation_scheduled(
+      hlo_module->entry_computation()));
+
+  // Remove schedules from host computations to simulate compute offload
+  // scenario. When parsing HLO with is_scheduled=true, all computations get
+  // schedules, but host computations execute separately and don't have device
+  // schedules.
+  for (HloComputation* computation : hlo_module->computations()) {
+    if (computation->execution_thread() == "host" &&
+        computation != hlo_module->entry_computation()) {
+      if (hlo_module->schedule().is_computation_scheduled(computation)) {
+        hlo_module->schedule().remove_computation(computation);
+      }
+      EXPECT_FALSE(
+          hlo_module->schedule().is_computation_scheduled(computation));
+    }
+  }
+
+  // Run the scheduler - it should not crash when encountering unscheduled host
+  // computations. This tests the fix for BufferInfoTracker and
+  // ModulePressureState accessing schedules for unscheduled host computations.
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+
+  // Verify the module still has a valid schedule after scheduling
+  // (postcondition).
+  EXPECT_TRUE(hlo_module->has_schedule());
+  EXPECT_TRUE(hlo_module->schedule().is_computation_scheduled(
+      hlo_module->entry_computation()));
 }
 
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {

@@ -73,15 +73,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromProto(proto, debug_options));
-  return HloModule::CreateFromProto(proto, config);
+  return HloModule::CreateFromProto(proto, config,
+                                    /*buffer_assignment_proto=*/nullptr,
+                                    /*preserve_instruction_ids=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
     bool is_module_post_optimizations) {
   VLOG(4) << proto.ShortDebugString();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProto(proto, module_config));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(proto, module_config,
+                                 /*buffer_assignment_proto=*/nullptr,
+                                 /*preserve_instruction_ids=*/false));
   TF_RETURN_IF_ERROR(
       HloVerifier(/*layout_sensitive=*/false,
                   /*allow_mixed_precision=*/is_module_post_optimizations)
@@ -133,7 +138,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleBinaryProtofile(
       HloModuleConfig module_config,
       HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
 
-  return HloModule::CreateFromProto(module_proto, module_config);
+  return HloModule::CreateFromProto(module_proto, module_config,
+                                    /*buffer_assignment_proto=*/nullptr,
+                                    /*preserve_instruction_ids=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
@@ -146,7 +153,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
       HloModuleConfig module_config,
       HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
 
-  return HloModule::CreateFromProto(module_proto, module_config);
+  return HloModule::CreateFromProto(module_proto, module_config,
+                                    /*buffer_assignment_proto=*/nullptr,
+                                    /*preserve_instruction_ids=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
@@ -194,6 +203,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   }
 
   if (execution_options != nullptr) {
+    // LINT.IfChange
     if (execution_options->num_replicas() > 0) {
       config->set_replica_count(execution_options->num_replicas());
     } else {
@@ -244,6 +254,9 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_device_memory_size(execution_options->device_memory_size());
     config->set_use_shardy_partitioner(
         execution_options->use_shardy_partitioner());
+    // LINT.ThenChange(
+    //   //xla/service/hlo_runner_pjrt.cc
+    // )
   } else {
     config->set_replica_count(default_num_replicas);
     config->set_debug_options(GetDebugOptionsFromFlags());

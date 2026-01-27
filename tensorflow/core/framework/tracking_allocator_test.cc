@@ -26,7 +26,7 @@ namespace tensorflow {
 
 class TestableSizeTrackingAllocator : public Allocator {
  public:
-  string Name() override { return "test"; }
+  std::string Name() override { return "test"; }
   void* AllocateRaw(size_t /*alignment*/, size_t num_bytes) override {
     void* ptr = port::Malloc(num_bytes);
     size_map_[ptr] = num_bytes;
@@ -52,7 +52,7 @@ class TestableSizeTrackingAllocator : public Allocator {
 
 class NoMemoryAllocator : public Allocator {
  public:
-  string Name() override { return "test"; }
+  std::string Name() override { return "test"; }
   void* AllocateRaw(size_t /*alignment*/, size_t num_bytes) override {
     return nullptr;
   }

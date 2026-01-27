@@ -22,7 +22,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -34,22 +36,18 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::testing::Property;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::StatusIs;
 
 int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
                    absl::string_view hlo_name) {
@@ -79,8 +77,8 @@ class GpuLatencyHidingSchedulerBaseTest
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
-                                         gpu_device_info,
-                                         &symbolic_expr_context_, &alias_info)
+                                         gpu_device_info, &mlir_context_,
+                                         &alias_info)
                            .status());
     return module;
   }
@@ -100,7 +98,6 @@ class GpuLatencyHidingSchedulerBaseTest
   }
 
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -408,6 +405,52 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                   GetIndexByName(instruction_sequence, "ar_1") &&
               GetIndexByName(instruction_sequence, "add_0") <
                   GetIndexByName(instruction_sequence, "rs_1"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       AllToAllAndGemmOverlapWithSolCostModel) {
+  // Verify SoL cost model successfully enables all-to-all overlap with compute.
+  absl::string_view kHloModule = R"(
+    HloModule m, replica_count=16
+
+    async_a2a {
+      param = f32[2048,2048] parameter(0)
+      ROOT a2a_inner = f32[2048,2048] all-to-all(param), dimensions={0},
+        replica_groups={{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}}
+    }
+
+    ENTRY main {
+      lhs = f32[8192,8192] parameter(0)
+      rhs = f32[8192,8192] parameter(1)
+      comm = f32[2048,2048] parameter(2)
+      compute = f32[8192,8192] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      a2a = ((f32[2048,2048]), f32[2048,2048]) async-start(comm), calls=async_a2a
+      a2a_done = f32[2048,2048] async-done(a2a)
+      ROOT tuple = (f32[2048,2048], f32[8192,8192]) tuple(a2a_done, compute)
+    }
+  )";
+
+  auto config = GetModuleConfig("");
+  DebugOptions& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
+  debug_options.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+  auto scheduled = ScheduleModule(module.get(), /*num_parallel_resources=*/1);
+  TF_ASSERT_OK(scheduled.status());
+
+  const auto& sequence = scheduled.value()
+                             ->schedule()
+                             .sequence(module->entry_computation())
+                             .instructions();
+  int64_t a2a_idx = GetIndexByName(sequence, "a2a");
+  int64_t compute_idx = GetIndexByName(sequence, "compute");
+  int64_t a2a_done_idx = GetIndexByName(sequence, "a2a_done");
+
+  // Check that overlap occurs: a2a < compute < a2a_done
+  EXPECT_LT(a2a_idx, compute_idx);
+  EXPECT_LT(compute_idx, a2a_done_idx);
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,

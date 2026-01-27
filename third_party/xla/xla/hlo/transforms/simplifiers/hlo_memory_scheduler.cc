@@ -657,7 +657,7 @@ absl::StatusOr<HloSchedule> ScheduleModule(
       execution_threads, peak_memory);
 }
 
-absl::StatusOr<bool> HloMemoryScheduler::Run(
+absl::StatusOr<bool> HloMemoryScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
@@ -666,7 +666,7 @@ absl::StatusOr<bool> HloMemoryScheduler::Run(
   return true;
 }
 
-absl::StatusOr<bool> HloTrivialScheduler::Run(
+absl::StatusOr<bool> HloTrivialScheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HloSchedule schedule(module);
@@ -688,7 +688,7 @@ absl::StatusOr<bool> HloTrivialScheduler::Run(
   return true;
 }
 
-absl::StatusOr<bool> HloDescheduler::Run(
+absl::StatusOr<bool> HloDescheduler::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = module->has_schedule();

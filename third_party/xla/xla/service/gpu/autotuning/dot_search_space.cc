@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/STLExtras.h"
 #include "google/protobuf/repeated_field.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/util.h"
 #include "tsl/platform/protobuf.h"
@@ -123,7 +125,8 @@ TritonDotFusionSearchSpace::TritonDotFusionSearchSpace(
 }
 
 std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
-    std::optional<int64_t> force_contracting_split, bool autotune_tma) const {
+    std::optional<int64_t> force_contracting_split,
+    bool autotune_warp_specialization) const {
   std::vector<ConfigWithNotes> configs;
   if (force_contracting_split.has_value()) {
     ConfigWithNotes config;
@@ -151,8 +154,12 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddCtaSizeParameter);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddContractingTiling);
   ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddPipeliningParameter);
-  if (autotune_tma) {
+  if (stream_executor::gpu::IsTmaAvailableForDevice(device_description_)) {
     ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddTmaParameter);
+  }
+  if (autotune_warp_specialization) {
+    ExtendConfigs(configs,
+                  &TritonDotFusionSearchSpace::AddWarpSpecializationParameter);
   }
 
   std::vector<TritonGemmConfig> result;
@@ -629,13 +636,35 @@ void TritonDotFusionSearchSpace::AddTmaParameter(
     std::vector<ConfigWithNotes>& updated_configs) const {
   ConfigWithNotes new_config = config;
   new_config.config.is_tma_allowed = false;
-  VLOG(10) << "Adding TMA (disabled) parameter: config = "
-           << new_config.ToString();
   updated_configs.push_back(new_config);
-  new_config.config.is_tma_allowed = true;
-  VLOG(10) << "Adding TMA (enabled) parameter: config = "
-           << new_config.ToString();
+
+  if (exhaustive_tiling_search_ || IsTmaRecommended(config.config)) {
+    new_config.config.is_tma_allowed = true;
+    updated_configs.push_back(new_config);
+  }
+}
+
+void TritonDotFusionSearchSpace::AddWarpSpecializationParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  ConfigWithNotes new_config = config;
+  new_config.config.is_warp_specialization_allowed = false;
   updated_configs.push_back(new_config);
+
+  // Warp specialization probably only makes sense if TMA is enabled. Other
+  // restrictions are required for compatibility with Triton, including:
+  // - num_warps must be a multiple of 4.
+  // - num_warps must be <= 16. This is because the next step for num_warps is
+  // 32, which would break with auto warp specialization, because the feature
+  // will employ `worker warps` that will mean we exceed the maximum block size
+  // of 1024 threads.
+  if (config.config.is_tma_allowed && config.config.num_warps <= 16 &&
+      config.config.num_warps % 4 == 0) {
+    new_config.config.is_warp_specialization_allowed = true;
+    VLOG(10) << "Adding warp specialization parameter: config = "
+             << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
 }
 
 void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(

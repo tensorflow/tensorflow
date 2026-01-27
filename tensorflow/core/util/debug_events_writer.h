@@ -49,7 +49,7 @@ enum DebugEventFileType {
 // TFRecord files, and hence utilizes multiple objects of this helper class.
 class SingleDebugEventFileWriter {
  public:
-  explicit SingleDebugEventFileWriter(const string& file_path);
+  explicit SingleDebugEventFileWriter(const std::string& file_path);
 
   absl::Status Init();
 
@@ -58,11 +58,11 @@ class SingleDebugEventFileWriter {
   absl::Status Flush();
   absl::Status Close();
 
-  const string FileName();
+  const std::string FileName();
 
  private:
   Env* env_;
-  const string file_path_;
+  const std::string file_path_;
   std::atomic_int_fast32_t num_outstanding_events_;
 
   std::unique_ptr<WritableFile> writable_file_;
@@ -108,15 +108,15 @@ class DebugEventsWriter {
   //     behavior.
   // Returns:
   //   A pointer to a DebugEventsWriter object: a per-dump_root singleton.
-  static DebugEventsWriter* GetDebugEventsWriter(const string& dump_root,
-                                                 const string& tfdbg_run_id,
-                                                 int64_t circular_buffer_size);
+  static DebugEventsWriter* GetDebugEventsWriter(
+      const std::string& dump_root, const std::string& tfdbg_run_id,
+      int64_t circular_buffer_size);
   // Look up existing events writer by dump_root.
   // If no DebugEventsWriter has been created at the dump_root, a non-OK
   // Status will be returned. Else an OK status will be returned, with
   // the pointer to the existing instance provided by reference.
   static absl::Status LookUpDebugEventsWriter(
-      const string& dump_root, DebugEventsWriter** debug_events_writer);
+      const std::string& dump_root, DebugEventsWriter** debug_events_writer);
   ~DebugEventsWriter();
 
   // Sets the debug event filenames and opens file for writing.
@@ -168,9 +168,9 @@ class DebugEventsWriter {
   //   tensor(s)
   //     that this trace is concerned with. The semantics of this tensor value
   //     depends on the value of `tensor_debug_mode`.
-  absl::Status WriteGraphExecutionTrace(const string& tfdbg_context_id,
-                                        const string& device_name,
-                                        const string& op_name,
+  absl::Status WriteGraphExecutionTrace(const std::string& tfdbg_context_id,
+                                        const std::string& device_name,
+                                        const std::string& op_name,
                                         int32_t output_slot,
                                         int32_t tensor_debug_mode,
                                         const Tensor& tensor_value);
@@ -180,7 +180,7 @@ class DebugEventsWriter {
   // and GRAPHS files.
   // NOTE: Actually used in the Python binding, to avoid overhead of
   // serializing and parsing protos at the language interface.
-  void WriteSerializedNonExecutionDebugEvent(const string& debug_event_str,
+  void WriteSerializedNonExecutionDebugEvent(const std::string& debug_event_str,
                                              DebugEventFileType type);
 
   // Writes a serialized DebugEvent to one of the debug-events files
@@ -189,13 +189,13 @@ class DebugEventsWriter {
   // circular_buffer_size is configured to be >0.
   // NOTE: Actually used in the Python binding, to avoid overhead of
   // serializing and parsing protos at the language interface.
-  void WriteSerializedExecutionDebugEvent(const string& debug_event_str,
+  void WriteSerializedExecutionDebugEvent(const std::string& debug_event_str,
                                           DebugEventFileType type);
 
   // Given name of the device, retrieve a unique integer ID. As a side effect,
   // if this is the first time this object encounters the device name,
   // writes a DebuggedDevice proto to the .graphs file in the file set.
-  int RegisterDeviceAndGetId(const string& device_name);
+  int RegisterDeviceAndGetId(const std::string& device_name);
 
   // EventWriter automatically flushes and closes on destruction, but
   // this method is provided for users who want to write to disk sooner
@@ -213,7 +213,7 @@ class DebugEventsWriter {
   absl::Status Close();
 
  private:
-  static std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>*
+  static std::unordered_map<std::string, std::unique_ptr<DebugEventsWriter>>*
 
   // Get a static map from dump-root path to DebugEventsWriter objects.
   // This helps the per-dump-root singletone pattern.
@@ -222,12 +222,13 @@ class DebugEventsWriter {
   // Guards calls to the GetDebugEventsWriter() method.
   static mutex factory_mu_;
 
-  DebugEventsWriter(const string& dump_root, const string& tfdbg_run_id,
+  DebugEventsWriter(const std::string& dump_root,
+                    const std::string& tfdbg_run_id,
                     int64_t circular_buffer_size);
 
   // Get the path prefix. The same for all files, which differ only in the
   // suffix.
-  string FileName(DebugEventFileType type);
+  std::string FileName(DebugEventFileType type);
 
   // Initialize the TFRecord writer for non-metadata file type.
   absl::Status InitNonMetadataFile(DebugEventFileType type);
@@ -237,25 +238,26 @@ class DebugEventsWriter {
 
   void SelectWriter(DebugEventFileType type,
                     std::unique_ptr<SingleDebugEventFileWriter>** writer);
-  const string GetSuffix(DebugEventFileType type);
-  string GetFileNameInternal(DebugEventFileType type);
+  const std::string GetSuffix(DebugEventFileType type);
+  std::string GetFileNameInternal(DebugEventFileType type);
 
   Env* env_;
-  const string dump_root_;
-  const string tfdbg_run_id_;
+  const std::string dump_root_;
+  const std::string tfdbg_run_id_;
 
-  string file_prefix_;
+  std::string file_prefix_;
   bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
   const int64_t circular_buffer_size_;
-  std::deque<string> execution_buffer_ TF_GUARDED_BY(execution_buffer_mu_);
+  std::deque<std::string> execution_buffer_ TF_GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
-  std::deque<string> graph_execution_trace_buffer_
+  std::deque<std::string> graph_execution_trace_buffer_
       TF_GUARDED_BY(graph_execution_trace_buffer_mu_);
   mutex graph_execution_trace_buffer_mu_;
 
-  absl::flat_hash_map<string, int> device_name_to_id_ TF_GUARDED_BY(device_mu_);
+  absl::flat_hash_map<std::string, int> device_name_to_id_
+      TF_GUARDED_BY(device_mu_);
   mutex device_mu_;
 
   std::unique_ptr<SingleDebugEventFileWriter> metadata_writer_;

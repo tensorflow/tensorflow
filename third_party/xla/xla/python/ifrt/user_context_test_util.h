@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_USER_CONTEXT_TEST_UTIL_H_
 
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -29,21 +30,26 @@ namespace ifrt {
 class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
   static UserContextRef Create(UserContextId id) {
-    return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
+    return Create(id, absl::StrCat("TestUserContext(", id.value(), ")"));
+  }
+
+  static UserContextRef Create(UserContextId id, std::string debug_string) {
+    return tsl::TakeRef<TestUserContext>(
+        new TestUserContext(id, std::move(debug_string)));
   }
 
   UserContextId Id() const override { return id_; }
 
-  std::string DebugString() const override {
-    return absl::StrCat("TestUserContext(", id_.value(), ")");
-  }
+  std::string DebugString() const override { return debug_string_; }
 
   // No new `ID` is not defined because tests below do not exercise RTTI.
 
  private:
-  explicit TestUserContext(UserContextId id) : id_(id) {}
+  explicit TestUserContext(UserContextId id, std::string debug_string)
+      : id_(id), debug_string_(std::move(debug_string)) {}
 
   UserContextId id_;
+  std::string debug_string_;
 };
 
 }  // namespace ifrt

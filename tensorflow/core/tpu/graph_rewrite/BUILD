@@ -55,8 +55,8 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_options",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla:status_macros",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -77,8 +77,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla:status_macros",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -98,7 +98,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -135,10 +135,10 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:logging",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/util:env_var",
+        "@xla//xla:status_macros",
+        "@xla//xla/tsl/platform:logging",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/util:env_var",
     ] + if_static(
         [
             "//tensorflow/core/common_runtime:function",
@@ -224,21 +224,21 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:array2d",
-        "@local_xla//xla:array3d",
-        "@local_xla//xla:array4d",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/hlo/builder:sharding_builder",
-        "@local_xla//xla/service:computation_placer",
-        "@local_xla//xla/stream_executor/tpu:c_api_decl",
-        "@local_xla//xla/stream_executor/tpu:tpu_api",
-        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
-        "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla:array2d",
+        "@xla//xla:array3d",
+        "@xla//xla:array4d",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/service:computation_placer",
+        "@xla//xla/stream_executor/tpu:c_api_decl",
+        "@xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/stream_executor/tpu:tpu_platform_interface",
+        "@xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@xla//xla/tsl/platform:logging",
     ] + if_static(
         [
             "//tensorflow/core/common_runtime:function",
@@ -282,7 +282,7 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -314,9 +314,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:tstring",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/tsl/platform:logging",
+        "@tsl//tsl/platform:tstring",
+        "@xla//xla:status_macros",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -361,9 +361,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "@local_xla//xla/tsl/platform:logging",
+        "@xla//xla:status_macros",
+        "@xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 
@@ -388,7 +388,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -424,7 +424,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -451,6 +451,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )

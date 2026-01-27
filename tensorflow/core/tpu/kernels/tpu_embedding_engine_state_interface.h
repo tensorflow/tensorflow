@@ -61,7 +61,7 @@ class TpuEmbeddingEngineStateInterface : public ResourceBase {
     return new TpuEmbeddingEngineStateInterface(state);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "TpuEmbeddingEngineStateInterface";
   }
 

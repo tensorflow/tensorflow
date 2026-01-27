@@ -25,13 +25,15 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
+#include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/lib/math/math_util.h"
 
-#ifdef __AMDGCN_WAVEFRONT_SIZE
-#define WAVEFRONT_SIZE __AMDGCN_WAVEFRONT_SIZE
-#else
+// https://rocm.docs.amd.com/en/latest/about/release-notes.html#amdgpu-wavefront-size-compiler-macro-deprecation
+#if defined(__GFX9__)
 #define WAVEFRONT_SIZE 64
+#else
+#define WAVEFRONT_SIZE 32
 #endif
 
 namespace stream_executor::rocm {
@@ -289,10 +291,15 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelRocm_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {             \
-        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
-            absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                     \
-            "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                        \
-      }));
+        return stream_executor::KernelLoaderSpec::                            \
+            CreateSerializableInProcessSymbolSpec(                            \
+                /*persistent_kernel_name=*/"topk_k" #K_VAL "_" #TYPE "_" #VT, \
+                absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                 \
+                "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                    \
+      }));                                                                    \
+  KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                          \
+      topk_k##K_VAL##_##TYPE##_##VT, stream_executor::rocm::kROCmPlatformId,  \
+      (&Run<K_VAL, TYPE, VT>));
 
 }  // namespace stream_executor::rocm
 

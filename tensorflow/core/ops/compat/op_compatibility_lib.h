@@ -33,27 +33,30 @@ class OpCompatibilityLib {
   //   If stable_ops == nullptr, we use all registered ops.
   //   Otherwise ValidateCompatible() ignores ops not in *stable_ops
   //   and require all ops in *stable_ops to exist.
-  OpCompatibilityLib(const string& ops_prefix, const string& history_version,
-                     const std::set<string>* stable_ops);
+  OpCompatibilityLib(const std::string& ops_prefix,
+                     const std::string& history_version,
+                     const std::set<std::string>* stable_ops);
 
   // Name of the file that contains the checked-in versions of *all*
   // ops, with docs.
-  const string& ops_file() const { return ops_file_; }
+  const std::string& ops_file() const { return ops_file_; }
 
   // Name of the file that contains all versions of *stable* ops,
   // without docs.  Op history is in (alphabetical, oldest-first)
   // order.
-  const string& op_history_file() const { return op_history_file_; }
+  const std::string& op_history_file() const { return op_history_file_; }
 
   // Name of the directory that contains all versions of *stable* ops,
   // without docs.  Op history is one file per op, in oldest-first
   // order within the file.
-  const string& op_history_directory() const { return op_history_directory_; }
+  const std::string& op_history_directory() const {
+    return op_history_directory_;
+  }
 
   // Should match the contents of ops_file().  Run before calling
   // ValidateCompatible().
-  string OpsString() const {
-    string result;
+  std::string OpsString() const {
+    std::string result;
     google::protobuf::TextFormat::PrintToString(op_list_, &result);
     return result;
   }
@@ -63,7 +66,7 @@ class OpCompatibilityLib {
   int num_all_ops() const { return op_list_.op_size(); }
 
   // <file name, file contents> pairs representing op history.
-  typedef std::vector<std::pair<string, OpList>> OpHistory;
+  typedef std::vector<std::pair<std::string, OpList>> OpHistory;
 
   // Make sure the current version of the *stable* ops are compatible
   // with the historical versions, and if out_op_history != nullptr,
@@ -74,10 +77,10 @@ class OpCompatibilityLib {
                                   OpHistory* out_op_history);
 
  private:
-  const string ops_file_;
-  const string op_history_file_;
-  const string op_history_directory_;
-  const std::set<string>* stable_ops_;
+  const std::string ops_file_;
+  const std::string op_history_file_;
+  const std::string op_history_directory_;
+  const std::set<std::string>* stable_ops_;
   OpList op_list_;
 };
 

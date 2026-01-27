@@ -58,7 +58,7 @@ class WeightedPicker {
 
   // Get the weight associated with an element
   // REQUIRES 0 <= index < N
-  int32 get_weight(int index) const;
+  int32_t get_weight(int index) const;
 
   // Set the weight associated with an element
   // REQUIRES weight >= 0.0f
@@ -66,7 +66,7 @@ class WeightedPicker {
   void set_weight(int index, int32_t weight);
 
   // Get the total combined weight of all elements
-  int32 total_weight() const;
+  int32_t total_weight() const;
 
   // Get the number of elements in the picker
   int num_elements() const;
@@ -78,7 +78,7 @@ class WeightedPicker {
   // sets the weight of each element i to weight[i].
   // The sum of the weights should not exceed 2^31 - 2
   // Complexity O(N).
-  void SetWeightsFromArray(int N, const int32* weights);
+  void SetWeightsFromArray(int N, const int32_t* weights);
 
   // REQUIRES   N >= 0
   //
@@ -106,7 +106,7 @@ class WeightedPicker {
   // the sum of the weights of its children.
   int N_;           // Number of elements
   int num_levels_;  // Number of levels in tree (level-0 is root)
-  int32** level_;   // Array that holds nodes per level
+  int32_t** level_;  // Array that holds nodes per level
 
   // Size of each level
   static int LevelSize(int level) { return 1 << level; }
@@ -118,13 +118,13 @@ class WeightedPicker {
   void operator=(const WeightedPicker&) = delete;
 };
 
-inline int32 WeightedPicker::get_weight(int index) const {
+inline int32_t WeightedPicker::get_weight(int index) const {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, N_);
   return level_[num_levels_ - 1][index];
 }
 
-inline int32 WeightedPicker::total_weight() const { return level_[0][0]; }
+inline int32_t WeightedPicker::total_weight() const { return level_[0][0]; }
 
 inline int WeightedPicker::num_elements() const { return N_; }
 

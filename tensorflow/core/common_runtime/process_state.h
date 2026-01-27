@@ -51,7 +51,7 @@ class ProcessState : public ProcessStateInterface {
           dev_index(0),
           gpu_registered(false),
           nic_registered(false) {}
-    string DebugString();
+    std::string DebugString();
   };
 
   // If NUMA Allocators are desired, call this before calling any
@@ -122,7 +122,7 @@ class RecordingAllocator : public Allocator {
                      ProcessState::MemDesc md, mutex* mu)
       : mm_(mm), a_(a), md_(md), mu_(mu) {}
 
-  string Name() override { return a_->Name(); }
+  std::string Name() override { return a_->Name(); }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     void* p = a_->AllocateRaw(alignment, num_bytes);
     mutex_lock l(*mu_);

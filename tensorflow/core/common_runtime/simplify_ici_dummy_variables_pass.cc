@@ -109,12 +109,12 @@ void RedirectEdge(Graph* graph, Node* old_src_node, Node* dst_node,
 }
 
 // Find the corresponding host device name from the TPU device name.
-string GetHostDeviceName(Node* tpu_node) {
+std::string GetHostDeviceName(Node* tpu_node) {
   auto device_name = tpu_node->requested_device();
   if (device_name.empty()) device_name = tpu_node->assigned_device_name();
   DeviceNameUtils::ParsedName parsed_device_name;
   DeviceNameUtils::ParseFullName(device_name, &parsed_device_name);
-  string host_device_name = DeviceNameUtils::FullName(
+  std::string host_device_name = DeviceNameUtils::FullName(
       parsed_device_name.job, parsed_device_name.replica,
       parsed_device_name.task, /*type=*/"CPU", /*id=*/0);
   return host_device_name;
@@ -143,7 +143,8 @@ int GetTPUTaskId(Node* tpu_node) {
 // Build the fill op. Its value is 0 and the fill op is put on the host device
 // with the same task id as the TPUExecute node.
 Node* BuildFillOp(GraphDefBuilder::Options& bopts, Node* tpu_node,
-                  Node* in_node, int input_index, string host_device_name) {
+                  Node* in_node, int input_index,
+                  std::string host_device_name) {
   // Find the output_shape vector
   auto output_shape_vec = GetOutputShapeVec(in_node);
   if (!output_shape_vec.has_value()) return nullptr;
@@ -191,7 +192,7 @@ absl::Status ReplaceIciDummyVariables(Graph* graph, int input_index,
       continue;
     }
 
-    string host_device_name = GetHostDeviceName(tpu_node);
+    std::string host_device_name = GetHostDeviceName(tpu_node);
 
     // If the node corresponding to host_device_name is already in the graph,
     // replace the edge from in_node to tpu_node with the edge from

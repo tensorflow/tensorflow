@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -43,7 +42,7 @@ template <class T>
 absl::Status OutputSparse(const BatchedMap<T>& per_batch_counts,
                           int64_t num_values, bool is_1d,
                           OpKernelContext* context) {
-  int total_values = 0;
+  int64_t total_values = 0;
   int num_batches = per_batch_counts.size();
   for (const auto& per_batch_count : per_batch_counts) {
     total_values += per_batch_count.size();
@@ -149,15 +148,16 @@ class DenseCount : public OpKernel {
                       "Invalid input: Shapes dimension cannot be 0."));
       num_batch_elements *= data.shape().dim_size(i);
     }
-    int num_value_elements = data.shape().num_elements() / num_batch_elements;
+    int64_t num_value_elements =
+        data.shape().num_elements() / num_batch_elements;
     auto per_batch_counts = BatchedMap<W>(num_batch_elements);
 
     T max_value = 0;
 
     const auto weight_values = weights.flat<W>();
-    int i = 0;
+    int64_t i = 0;
     for (int b = 0; b < num_batch_elements; ++b) {
-      for (int v = 0; v < num_value_elements; ++v) {
+      for (int64_t v = 0; v < num_value_elements; ++v) {
         const auto& value = data_values(i);
         if (maxlength_ < 0 || value < maxlength_) {
           if (binary_output_) {

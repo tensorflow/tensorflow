@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
@@ -46,11 +47,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 using absl::StrCat;
@@ -439,7 +439,7 @@ absl::StatusOr<HloInstruction*> MakeMapHlo(
                  static_cast<int64_t>(operand->shape().dimensions().size()));
   }
   std::vector<int64_t> map_dims(max_operand_rank);
-  std::iota(map_dims.begin(), map_dims.end(), 0);
+  absl::c_iota(map_dims, 0);
   TF_ASSIGN_OR_RETURN(
       Shape map_shape,
       ShapeInference::InferMapShape(
@@ -537,7 +537,7 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
     const FrontendAttributes* frontend_attributes) {
   DCHECK_NE(nullptr, module);
   std::vector<int64_t> all_dims(operand->shape().dimensions().size());
-  std::iota(all_dims.begin(), all_dims.end(), 0);
+  absl::c_iota(all_dims, 0);
 
   HloComputation* reduce_computation = MakeBinaryScalarComputation(
       binary_opcode, operand->shape().element_type(), operand, module);
@@ -947,6 +947,63 @@ HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
   }
   return base->AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
+}
+
+std::unique_ptr<HloModule> NewModuleWithFusion(
+    const HloInstruction* instruction, HloInstruction::FusionKind fusion_kind) {
+  auto hlo_module = std::make_unique<HloModule>(
+      absl::StrCat("wrapped_module_", instruction->name()),
+      instruction->GetModule()->config());
+
+  // New computation  with a single instruction as given by the instruction
+  // parameter.
+  HloComputation::Builder fusion_builder(
+      absl::StrCat("wrapped_", instruction->name()));
+
+  const auto build_parameter_instructions =
+      [instruction](HloComputation::Builder& builder) {
+        std::vector<HloInstruction*> parameters;
+        parameters.reserve(instruction->operand_count());
+        for (int i = 0; i < instruction->operand_count(); ++i) {
+          const HloInstruction* operand = instruction->operand(i);
+          parameters.push_back(
+              builder.AddInstruction(HloInstruction::CreateParameter(
+                  i, operand->shape(), absl::StrCat("param_", i))));
+        }
+        return parameters;
+      };
+  std::vector<HloInstruction*> fusion_parameters =
+      build_parameter_instructions(fusion_builder);
+  HloInstruction* fused_root =
+      fusion_builder.AddInstruction(instruction->CloneWithNewOperands(
+          instruction->shape(), fusion_parameters));
+
+  // If the original instruction had any sub-computations (like to_apply), clone
+  // them.
+  if (!instruction->called_computations().empty()) {
+    HloCloneContext context(hlo_module.get());
+    fused_root->ReplaceCalledComputations([&](HloComputation* callee) {
+      if (callee->parent() != hlo_module.get()) {
+        return hlo_module->DeepCloneComputation(callee, &context);
+      }
+      return callee;
+    });
+  }
+
+  HloComputation* fused_computation =
+      hlo_module->AddEmbeddedComputation(fusion_builder.Build(fused_root));
+
+  // Entry computation for the new module.
+  HloComputation::Builder entry_builder("entry");
+  std::vector<HloInstruction*> entry_parameters =
+      build_parameter_instructions(entry_builder);
+  HloInstruction* fusion_instruction = entry_builder.AddInstruction(
+      HloInstruction::CreateFusion(instruction->shape(), fusion_kind,
+                                   entry_parameters, fused_computation));
+
+  hlo_module->AddEntryComputation(entry_builder.Build(fusion_instruction));
+
+  return hlo_module;
 }
 
 }  // namespace xla

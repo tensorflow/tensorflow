@@ -70,7 +70,7 @@ TEST(ExecuteTest, SimpleFunction) {
       false, &device_mgr, false, nullptr, nullptr);
 
   const Tensor kTwo = test::AsScalar<int64_t>(2);
-  const string function_name = "XTimesTwo";
+  const std::string function_name = "XTimesTwo";
   const FunctionDef x_times_two = FunctionDefHelper::Define(
       // Name
       function_name,
@@ -125,7 +125,7 @@ TEST(ExecuteTest, SimpleFunctionInt32BadFullType) {
       /*run_eager_op_as_function=*/true);
 
   const Tensor kTwo = test::AsScalar<int32_t>(2);
-  const string function_name = "XTimesTwo";
+  const std::string function_name = "XTimesTwo";
   const FunctionDef x_times_two = FunctionDefHelper::Define(
       // Name
       function_name,
@@ -188,7 +188,7 @@ TEST(ExecuteTest, CompiledFunction) {
       false, &device_mgr, false, nullptr, nullptr);
 
   const Tensor kTwo = test::AsScalar<int64_t>(2);
-  const string function_name = "XTimesTwo";
+  const std::string function_name = "XTimesTwo";
   const FunctionDef x_times_two = FunctionDefHelper::Define(
       // Name
       function_name,
@@ -245,7 +245,7 @@ TEST(ExecuteTest, NestedCompiledFunction) {
       false, &device_mgr, false, nullptr, nullptr);
 
   const Tensor kTwo = test::AsScalar<int64_t>(2);
-  const string function_name = "XTimesTwo";
+  const std::string function_name = "XTimesTwo";
   const FunctionDef x_times_two = FunctionDefHelper::Define(
       // Name
       function_name,
@@ -266,7 +266,7 @@ TEST(ExecuteTest, NestedCompiledFunction) {
       });
   TF_ASSERT_OK(ctx->AddFunctionDef(x_times_two));
 
-  const string call_function_name = "FunctionCall";
+  const std::string call_function_name = "FunctionCall";
   const FunctionDef function_call = FunctionDefHelper::Define(
       // Name
       call_function_name,
@@ -325,7 +325,7 @@ TEST(ExecuteTest, MultipleNestedCompiledFunction) {
       false, &device_mgr, false, nullptr, nullptr);
 
   const Tensor kTwo = test::AsScalar<int64_t>(2);
-  const string function_name = "XTimesTwo";
+  const std::string function_name = "XTimesTwo";
   const FunctionDef x_times_two = FunctionDefHelper::Define(
       // Name
       function_name,
@@ -346,7 +346,7 @@ TEST(ExecuteTest, MultipleNestedCompiledFunction) {
       });
   TF_ASSERT_OK(ctx->AddFunctionDef(x_times_two));
 
-  const string call_function_name = "FunctionCall";
+  const std::string call_function_name = "FunctionCall";
   FunctionDef function_call = FunctionDefHelper::Define(
       // Name
       call_function_name,
@@ -379,7 +379,7 @@ TEST(ExecuteTest, MultipleNestedCompiledFunction) {
 
   TF_ASSERT_OK(ctx->AddFunctionDef(function_call));
 
-  const string call_function_name2 = "FunctionCall2";
+  const std::string call_function_name2 = "FunctionCall2";
   const FunctionDef function_call2 = FunctionDefHelper::Define(
       // Name
       call_function_name2,

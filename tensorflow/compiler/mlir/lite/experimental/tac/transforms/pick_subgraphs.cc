@@ -430,8 +430,8 @@ void PickSubgraphsPass::RewireSubgraphs(
         if (call.getCallee() != impl.getName()) {
           // We need to rebuild the call op. :(
           builder->setInsertionPoint(call);
-          auto new_call = builder->create<func::CallOp>(call.getLoc(), impl,
-                                                        call.getOperands());
+          auto new_call = func::CallOp::create(*builder, call.getLoc(), impl,
+                                               call.getOperands());
 
           // Set interface_name & target to the call_op as well.
           new_call->setAttr(kInterfaceNameAttr,

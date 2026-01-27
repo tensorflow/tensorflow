@@ -35,7 +35,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/nccl/nccl.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/nccl_communicator.h"
@@ -48,9 +51,11 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -60,18 +65,94 @@ limitations under the License.
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif  // TF_ROCM_VERSION >= 50200
-#else
-#include "third_party/nccl/nccl.h"
-#endif  // TENSORFLOW_USE_ROCM
-
 namespace xla::gpu {
+
+//===----------------------------------------------------------------------===//
+// NcclIdStore
+//===----------------------------------------------------------------------===//
+
+namespace {
+// NcclIdStore generates clique unique ids for GPU cliques using NCCL APIs. NCCL
+// unique id is a mechanism that used by NCCL to find all processes
+// participating in the collective clique.
+class NcclIdStore {
+ public:
+  NcclIdStore(ProcessId process_id,
+              absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process,
+              std::shared_ptr<KeyValueStoreInterface> kv_store)
+      : process_id_(process_id),
+        device_to_process_(std::move(device_to_process)),
+        kv_store_(std::move(kv_store)) {}
+
+  absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
+                                       NcclCollectives& nccl_collectives) {
+    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    if (gpu_key == nullptr) {
+      return InvalidArgument("Expected GPU clique key");
+    }
+
+    // The caller must ensure that threads calling this method concurrently have
+    // unique keys, otherwise the global key-value store may hold the wrong
+    // value.
+    {
+      absl::MutexLock lock(mu_);
+      auto it = cache_.find(*gpu_key);
+      if (it != cache_.end()) {
+        return it->second;
+      }
+    }
+
+    CliqueId clique_id;
+    if (process_id_ == device_to_process_.at(gpu_key->root_device())) {
+      TF_ASSIGN_OR_RETURN(clique_id, nccl_collectives.CreateUniqueCliqueId());
+      TF_RETURN_IF_ERROR(
+          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
+    } else {
+      TF_ASSIGN_OR_RETURN(
+          std::string id_str,
+          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
+      clique_id = CliqueId(id_str);
+    }
+
+    absl::MutexLock lock(mu_);
+    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
+    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
+    return result.first->second;
+  }
+
+ private:
+  ProcessId process_id_;
+  const absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
+  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
+};
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// NcclCollectives
+//===----------------------------------------------------------------------===//
+
+static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
+  auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+  return device->stream_executor()->device_ordinal();
+}
+
+static auto DeviceOrdinalsToString(
+    absl::Span<const Collectives::DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+    absl::StrAppend(str, device->stream_executor()->device_ordinal());
+  });
+}
+
+static auto DeviceRanksToString(
+    absl::Span<const Collectives::DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    absl::StrAppend(str, rank.rank.value());
+  });
+}
 
 static ncclComm_t Cast(const Communicator* comm) {
   auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
@@ -86,34 +167,30 @@ absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
 }
 
-bool NcclCollectives::IsGlobalConfig() const {
-  static const char* const nccl_comm_id = std::getenv("NCCL_COMM_ID");
-  return nccl_comm_id != nullptr;
+bool NcclCollectives::SupportsDeviceComm() const {
+  return NCCL_VERSION_CODE >= 22800;
 }
 
-absl::StatusOr<const NcclCollectives::CliqueIdCallback*>
-NcclCollectives::GetCliqueIdCallback(const CliqueIdCallback* clique_id_callback,
-                                     bool is_local) {
-  if (clique_id_callback != nullptr) return clique_id_callback;
-
-  TF_RET_CHECK(is_local || IsGlobalConfig())
-      << "If non-local devices are taking part of a collective API on "
-         "GPU, the clique_id_callback must be provided by the client.";
-
-  static auto* const local_callback = new CliqueIdCallback(
-      [this](const CliqueKey&) { return CreateUniqueCliqueId(); });
-  return local_callback;
-}
-
-static ncclConfig_t AsNcclConfig(const GpuCollectives::Config& config) {
+static absl::StatusOr<ncclConfig_t> AsNcclConfig(
+    const GpuCollectives::Config& config,
+    const se::StreamExecutor* stream_executor) {
   ncclConfig_t comm_config = NCCL_CONFIG_INITIALIZER;
   comm_config.blocking = config.blocking_communicators ? 1 : 0;
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION > 50700
   comm_config.splitShare = config.split_share;
-#endif
+  int nccl_version;
+  XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
+  } else if (stream_executor->GetDeviceDescription()
+                 .cuda_compute_capability()
+                 .IsBlackwell() &&
+             nccl_version >= NCCL_VERSION(2, 28, 0)) {
+    // Future NCCL versions will reduce the default max number of channels on
+    // Blackwell to 16. We need to manually set it to 32 here to avoid surprise
+    // perf regressions.
+    VLOG(1) << "Setting max number of channels to 32 on Blackwell.";
+    comm_config.maxCTAs = 32;
   }
   return comm_config;
 }
@@ -129,11 +206,24 @@ static absl::StatusOr<ncclUniqueId> AsNcclUniqueId(const CliqueId& clique_id) {
   return id;
 }
 
+// Collect stream executors from all Device ranks. Returns an error if the
+// device is not a `GpuCollectives` device.
+static absl::StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
+    absl::Span<const NcclCollectives::DeviceRank> ranks) {
+  std::vector<se::StreamExecutor*> stream_executors(ranks.size());
+  for (size_t i = 0; i < ranks.size(); ++i) {
+    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    TF_RET_CHECK(device) << "Device must be GpuCollectives::Device";
+    stream_executors[i] = device->stream_executor();
+  }
+  return stream_executors;
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
-                                     const std::optional<CliqueIds>& clique_ids,
-                                     absl::Span<const DeviceRank> ranks,
-                                     const Collectives::Config& config) {
+NcclCollectives::CreateCommunicatorsWithCancel(
+    const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+    absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+    std::shared_ptr<CancellationToken> cancel) {
   // Validate clique ids. With the NCCL backend, we rely on the host to exchange
   // unique clique ids.
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
@@ -143,8 +233,13 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
     return InvalidArgument(
         "CliqueIds size must be 1 for NCCL communicator initialization");
   }
-  VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
-          << "; fingerprint(id)=" << clique_ids->fingerprint();
+  VLOG(1) << absl::StreamFormat(
+      "[%s] ranks=[%s] Initialize NCCL (version %d.%d.%d) "
+      "communicators for %d local devices (out of %d global devices); "
+      "fingerprint(id)=%v",
+      DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), NCCL_MAJOR,
+      NCCL_MINOR, NCCL_PATCH, ranks.size(), clique_key.num_devices(),
+      clique_ids->fingerprint());
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
@@ -154,17 +249,25 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
         "async_execution is false. Non-blocking communicators require "
         "asynchronous execution.");
   }
-  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
+
+  TF_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    VLOG(1) << "Initialize NCCL communicator for rank #" << ranks[i].rank
-            << " of " << clique_key.num_devices()
-            << "; fingerprint(id)=" << clique_ids->fingerprint()
-            << "; size(id)=" << clique_ids->data().size();
+    VLOG(1) << absl::StreamFormat(
+        "[%d] [rank=%v] Initialize NCCL communicator for rank %v of %d; "
+        "fingerprint(id)=%v; size(id)=%zu",
+        DeviceOrdinal(ranks[i]), ranks[i].rank, ranks[i].rank,
+        clique_key.num_devices(), clique_ids->fingerprint(),
+        clique_ids->data().size());
+
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
+
+    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                        AsNcclConfig(gpu_config, stream_executors[i]));
+
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
     XLA_NCCL_RETURN_IF_ERROR(
@@ -183,7 +286,8 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
     for (size_t i = 0; i < ranks.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(std::bind(make_comm, i),
+            NcclCommunicator::Create(stream_executors[i],
+                                     std::bind(make_comm, i), cancel,
                                      gpu_config.async_execution);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
@@ -198,32 +302,41 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
-NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
-                                    int32_t color,
-                                    absl::Span<const RankId> keys,
-                                    const Collectives::Config& config) {
+NcclCollectives::SplitCommunicatorsWithCancel(
+    absl::Span<const Communicator* const> comms, int32_t color,
+    absl::Span<const RankId> keys, const Collectives::Config& config,
+    absl::Span<const DeviceRank> ranks,
+    std::shared_ptr<CancellationToken> cancel) {
   auto rank_formatter = [](std::string* str, RankId rank) {
     absl::StrAppend(str, rank.value());
   };
 
   VLOG(1) << absl::StreamFormat(
-      "Split %d NCCL communicators using color %d and keys: [%s]", comms.size(),
+      "[%s] ranks=[%s] Split %d NCCL communicators using color %d and "
+      "keys [%s]",
+      DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), comms.size(),
       color, absl::StrJoin(keys, ",", rank_formatter));
 
   if (keys.size() != comms.size()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Comms and keys must have the same size, but %d != %d",
-                        comms.size(), keys.size()));
+    return InvalidArgument(
+        "Comms and keys must have the same size, but %d != %d", comms.size(),
+        keys.size());
   }
+
+  TF_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
-  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
 
-#if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    VLOG(1) << "Split NCCL communicator " << comms[i] << " with color " << color
-            << " and key " << keys[i];
+    TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
+                        AsNcclConfig(gpu_config, stream_executors[i]));
+
+    VLOG(1) << absl::StreamFormat(
+        "[%d] [rank=%v] Split NCCL communicator %p with color %d and "
+        "key %v",
+        DeviceOrdinal(ranks[i]), ranks[i].rank,
+        static_cast<const void*>(comms[i]), color, keys[i]);
     ncclComm_t split_comm;
     XLA_NCCL_RETURN_IF_ERROR(ncclCommSplit(
         Cast(comms[i]), color, keys[i].value(), &split_comm, &comm_config));
@@ -239,7 +352,8 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
     for (size_t i = 0; i < comms.size(); ++i) {
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(std::bind(make_comm, i),
+            NcclCommunicator::Create(stream_executors[i],
+                                     std::bind(make_comm, i), cancel,
                                      gpu_config.async_execution);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
@@ -251,11 +365,6 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
   }  // pool's destructor blocks until all scheduled work is done.
   TF_RETURN_IF_ERROR(status);
   return split_comms;
-#else
-  return absl::UnimplementedError(
-      absl::StrFormat("%s:%d: NCCL operation ncclCommSplit not implemented",
-                      __FILE__, __LINE__));
-#endif  // !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
 }
 
 static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
@@ -264,7 +373,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   xla::gpu::GpuCollectives* nvshmem_collectives =
       tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
-    return absl::InternalError("Failed to get NVSHMEM collectives");
+    return Internal("Failed to get NVSHMEM collectives");
   }
 
   return nvshmem_collectives;
@@ -279,11 +388,11 @@ absl::StatusOr<void*> NcclCollectives::Allocate(uint64_t bytes) {
   void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to allocate %s (%llu bytes) from device collective memory: %s, "
+    return Internal(
+        "Failed to allocate %s (%llu bytes) from device collective memory: %s, "
         "Last NCCL warning(error) log entry (may be unrelated): %s",
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
-        ncclGetErrorString(res), ncclGetLastError(nullptr)));
+        ncclGetErrorString(res), ncclGetLastError(nullptr));
   }
   VLOG(2) << "Allocated collective memory " << ptr << " of " << bytes
           << " bytes";
@@ -298,88 +407,37 @@ absl::Status NcclCollectives::Deallocate(void* location) {
 
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to free device collective memory at %p; result: %s, Last NCCL "
+    return Internal(
+        "Failed to free device collective memory at %p; result: %s, Last NCCL "
         "warning(error) log entry (may be unrelated): %s",
-        location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
+        location, ncclGetErrorString(res), ncclGetLastError(nullptr));
   }
 
   VLOG(2) << "Deallocated collective memory " << location;
   return absl::OkStatus();
 }
 
-class NcclIdStore {
- public:
-  NcclIdStore(int node_id,
-              absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              std::shared_ptr<KeyValueStoreInterface> kv_store)
-      : node_id_(node_id),
-        device_to_node_(std::move(device_to_node)),
-        kv_store_(std::move(kv_store)) {}
-
-  absl::StatusOr<CliqueId> GetNcclUniqueId(const CliqueKey& key) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
-    if (gpu_key == nullptr) {
-      return InvalidArgument("Expected GPU clique key");
-    }
-
-    // The caller must ensure that threads calling this method concurrently have
-    // unique keys, otherwise the global key-value store may hold the wrong
-    // value.
-    {
-      absl::MutexLock lock(mu_);
-      auto it = cache_.find(*gpu_key);
-      if (it != cache_.end()) {
-        return it->second;
-      }
-    }
-    CliqueId clique_id;
-    int primary_node_id = device_to_node_.at(gpu_key->root_device());
-    if (node_id_ == primary_node_id) {
-      TF_ASSIGN_OR_RETURN(
-          clique_id, gpu::GpuCollectives::Default()->CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
-    }
-    absl::MutexLock lock(mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return result.first->second;
-  }
-
- private:
-  const int node_id_;
-  const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
-
-  absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
-};
-
-absl::Status NcclCollectives::InitializeTopology(
-    NcclCollectives::Topology topology) {
+absl::StatusOr<GpuCollectives::CliqueIdCallback>
+NcclCollectives::InitializeTopology(const Topology& topology) {
   if (xla::GetDebugOptionsFromFlags().xla_gpu_experimental_enable_nvshmem()) {
     TF_ASSIGN_OR_RETURN(auto* nvshmem_collectives, GetNvshmemCollectives());
-    TF_RETURN_IF_ERROR(nvshmem_collectives->InitializeTopology(topology));
+    TF_RETURN_IF_ERROR(
+        nvshmem_collectives->InitializeTopology(topology).status());
   }
 
-  if (topology.num_nodes > 1) {
+  if (topology.num_processes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(
-        topology.node_id, topology.device_id_to_node_id,
+        topology.process_id, topology.device_to_process,
         std::move(topology.kv_store));
-    topology.gpu_executable_run_options->set_clique_id_callback(
-        [nccl_id_store](const CliqueKey& key) {
-          return nccl_id_store->GetNcclUniqueId(key);
-        });
+    return [nccl_id_store, this](const CliqueKey& key) {
+      return nccl_id_store->GetCliqueId(key, *this);
+    };
   }
-  return absl::OkStatus();
+
+  return nullptr;
 }
+
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("gpu", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,
                          std::make_unique<xla::gpu::NcclCollectives>());

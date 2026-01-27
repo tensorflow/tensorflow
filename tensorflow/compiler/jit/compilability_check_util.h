@@ -262,7 +262,7 @@ class RecursiveCompilabilityChecker {
   }
 
   bool HasXLAKernel(const Node& node,
-                    string* uncompilable_reason = nullptr) const;
+                    std::string* uncompilable_reason = nullptr) const;
 
   static void MaybeMarkUncompilableNode(
       const absl::string_view reason,

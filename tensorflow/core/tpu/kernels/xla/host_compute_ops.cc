@@ -180,7 +180,7 @@ class HostComputeOp : public XlaOpKernel {
     // Send values to the host.
     std::vector<xla::XlaOp> send_to_host_tokens;
     for (int i = 0; i < input_handles.size(); ++i) {
-      const string channel_name = GetDeviceToHostChannelName(send_key_, i);
+      const std::string channel_name = GetDeviceToHostChannelName(send_key_, i);
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(input_dtypes_[i],
                                                 input_shapes[i], &xla_shape));
@@ -242,7 +242,7 @@ class HostComputeOp : public XlaOpKernel {
     // Copy results to the device.
     std::vector<xla::XlaOp> recv_from_host_tokens;
     for (int i = 0; i < output_shapes->size(); ++i) {
-      const string channel_name = GetHostToDeviceChannelName(recv_key_, i);
+      const std::string channel_name = GetHostToDeviceChannelName(recv_key_, i);
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
       (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
@@ -403,21 +403,21 @@ class HostComputeOp : public XlaOpKernel {
 
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;
-  std::vector<string> ancestors_;
+  std::vector<std::string> ancestors_;
   std::vector<TensorShape> static_output_shapes_;
   std::vector<xla::Shape> static_xla_output_shapes_;
-  string original_node_name_;
+  std::string original_node_name_;
   // If static_xla_output_shapes_.size() == 1 then xla_output_shape_ is the
   // unique output shape, otherwise it is a tuple of all the xla_output_shapes_.
   xla::Shape static_xla_output_shape_;
-  string send_key_;
-  string recv_key_;
+  std::string send_key_;
+  std::string recv_key_;
   // If shape inference is performed at runtime, the graph needed to perform
   // shape inference is stored in this function.
   std::unique_ptr<FunctionBody> shape_inference_graph_function_;
   int64_t cost_estimate_;
   int64_t tpu_core_;
-  std::vector<string> token_input_nodes_;
+  std::vector<std::string> token_input_nodes_;
 
   HostComputeOp(const HostComputeOp&) = delete;
   void operator=(const HostComputeOp&) = delete;
@@ -470,9 +470,9 @@ class SendToHostOp : public XlaOpKernel {
 
  private:
   DataType input_dtype_;
-  string key_;
-  std::vector<string> token_input_nodes_;
-  string original_node_name_;
+  std::string key_;
+  std::vector<std::string> token_input_nodes_;
+  std::string original_node_name_;
   SendToHostOp(const SendToHostOp&) = delete;
   void operator=(const SendToHostOp&) = delete;
 };
@@ -529,9 +529,9 @@ class RecvFromHostOp : public XlaOpKernel {
  private:
   DataType output_dtype_;
   TensorShape output_shape_;
-  string key_;
-  std::vector<string> token_input_nodes_;
-  string original_node_name_;
+  std::string key_;
+  std::vector<std::string> token_input_nodes_;
+  std::string original_node_name_;
   RecvFromHostOp(const RecvFromHostOp&) = delete;
   void operator=(const RecvFromHostOp&) = delete;
 };

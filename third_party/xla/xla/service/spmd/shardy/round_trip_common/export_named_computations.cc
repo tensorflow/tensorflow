@@ -54,12 +54,14 @@ namespace {
 using ::mlir::ArrayAttr;
 using ::mlir::ModuleOp;
 using ::mlir::NamedAttribute;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
+using ::mlir::SymbolTableCollection;
+using ::mlir::SymbolUserMap;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
-using ::mlir::StringAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
@@ -149,18 +151,23 @@ class ExportNamedComputationsPass
     this->dedupFunctionsFully = other.dedupFunctionsFully;
   }
 
-  llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
-
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
-    SymbolTable symbolTable(moduleOp);
+    SymbolTableCollection symbolTableCollection;
+    SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
+    llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
     if (dedupFunctionsFully) {
+      using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
       llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
-      llvm::SmallDenseMap<std::pair<StringRef, ManualAxesAttr>,
-                          std::pair<NamedComputationOp, int64_t>>
+      llvm::SmallDenseMap<FuncNameKey, std::pair<NamedComputationOp, int64_t>>
           funcToNamedComputations;
+      // TODO(enver): Instead of a SmallDenseMap and a separate SmallVector to
+      // guarantee a deterministic iteration order, consider using
+      // llvm::MapVector.
+      // Required to iterate on functions in a deterministic order.
+      llvm::SmallVector<FuncNameKey> funcNames;
       moduleOp.walk([&](NamedComputationOp namedComputationOp) {
         ManualAxesAttr manualAxesAttr =
             namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
@@ -172,20 +179,24 @@ class ExportNamedComputationsPass
                                 TensorShardingPerValueAttr()),
                             manualAxesAttr);
         const int64_t callSiteCount = funcCallSiteCounts[key]++;
+        FuncNameKey funcNameKey =
+            std::pair(namedComputationOp.getName(), manualAxesAttr);
         if (auto [it, inserted] = funcToNamedComputations.try_emplace(
-                std::pair(namedComputationOp.getName(), manualAxesAttr),
-                namedComputationOp, callSiteCount);
+                funcNameKey, namedComputationOp, callSiteCount);
             !inserted) {
           auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
           if (callSiteCount > cachedCallSiteCount) {
             cachedNamedComputationOp = namedComputationOp;
             cachedCallSiteCount = callSiteCount;
           }
+        } else {  // inserted is true.
+          funcNames.push_back(funcNameKey);
         }
       });
 
-      for (auto& [_, namedComputationCountPair] : funcToNamedComputations) {
-        auto& [namedComputationOp, callSiteCount] = namedComputationCountPair;
+      for (FuncNameKey funcNameKey : funcNames) {
+        auto& [namedComputationOp, callSiteCount] =
+            funcToNamedComputations.find(funcNameKey)->second;
         mlir::IRRewriter rewriter(namedComputationOp);
         rewriter.setInsertionPointToEnd(&moduleBlock);
         ManualAxesAttr manualAxesAttr =
@@ -256,6 +267,22 @@ class ExportNamedComputationsPass
         }
       }
     });
+
+    // Drop uncalled inlineable manual computation funcs.
+    // TODO(enver): Drop generically, not just inlined manual computation funcs.
+    llvm::SmallVector<FuncOp> uncalledInlineableManualComputationFuncs;
+    SymbolUserMap symbolUserMap(symbolTableCollection, moduleOp);
+    for (FuncOp funcOp : moduleOp.getOps<FuncOp>()) {
+      if (StringRef funcSymName = funcOp.getName();
+          funcSymName.contains(kInlineableManualComputationFuncName) &&
+          symbolUserMap.useEmpty(funcOp)) {
+        uncalledInlineableManualComputationFuncs.push_back(funcOp);
+      }
+    }
+    // TODO(enver): Erase directly without collecting on a vector.
+    for (FuncOp funcOp : uncalledInlineableManualComputationFuncs) {
+      symbolTable.erase(funcOp);
+    }
   }
 
   StringRef getArgument() const override {

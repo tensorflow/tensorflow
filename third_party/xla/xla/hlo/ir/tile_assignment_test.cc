@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -146,22 +145,24 @@ TEST(IotaTileAssignmentTest, ValueAt) {
 
 TEST(IotaTileAssignmentTest, ToString) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
+  EXPECT_EQ(iota.ArrayToString(), "[6]");
   EXPECT_EQ(iota.ToString(), "[2,3]<=[6]");
 
   IotaTileAssignment iota2 = IotaTileAssignment::Create({2, 6}, {3, 4}, {0, 1});
+  EXPECT_EQ(iota2.ArrayToString(), "[12]");
   EXPECT_EQ(iota2.ToString(), "[2,6]<=[12]");
 
   IotaTileAssignment iota3 =
       IotaTileAssignment::Create({3, 4, 5}, {3, 4, 5}, {2, 0, 1});
+  EXPECT_EQ(iota3.ArrayToString(), "[12,5]T(1,0)");
   EXPECT_EQ(iota3.ToString(), "[3,4,5]<=[12,5]T(1,0)");
 }
 
 TEST(TileAssignmentTest, FromIota) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
   TileAssignment tile_assignment(iota);
-  std::string prefix("devices=");
 
-  EXPECT_EQ(tile_assignment.ToString().compare(0, prefix.size(), prefix), 0);
+  EXPECT_EQ(tile_assignment.ToString(), "devices=[2,3]<=[6]");
   EXPECT_EQ(tile_assignment.dimensions(),
             absl::MakeConstSpan(std::vector<int64_t>{2, 3}));
   EXPECT_EQ(tile_assignment.num_elements(), 6);
@@ -171,9 +172,9 @@ TEST(TileAssignmentTest, FromIota) {
 TEST(TileAssignmentTest, FromArray) {
   Array2D<int64_t> array({{0, 1}, {2, 3}});
   TileAssignment tile_assignment(std::make_shared<Array<int64_t>>(array));
-  std::string prefix("devices=");
 
-  EXPECT_EQ(tile_assignment.ToString().compare(0, prefix.size(), prefix), 0);
+  EXPECT_EQ(tile_assignment.ToString(), "devices=[2,2]0,1,2,3");
+  EXPECT_EQ(tile_assignment.ArrayToString(), "0,1,2,3");
   EXPECT_EQ(tile_assignment.dimensions(),
             absl::MakeConstSpan(std::vector<int64_t>{2, 2}));
   EXPECT_EQ(tile_assignment.num_elements(), 4);

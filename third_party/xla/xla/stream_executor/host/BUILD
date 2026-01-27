@@ -25,9 +25,7 @@ cc_library(
     hdrs = [
         "host_platform_id.h",
     ],
-    deps = [
-        "//xla/stream_executor:platform",
-    ],
+    deps = ["//xla/stream_executor:platform"],
 )
 
 cc_library(
@@ -48,10 +46,10 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:status",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
@@ -75,24 +73,15 @@ cc_library(
     ],
     deps = [
         ":host_event",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:event",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_common",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:env",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:context",
-        "@local_tsl//tsl/platform:denormal",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:setround",
-        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -123,8 +112,8 @@ cc_library(
         ":host_event",
         ":host_stream",
         ":host_stream_factory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:generic_memory_allocation",
         "//xla/stream_executor:generic_memory_allocator",
@@ -144,7 +133,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -160,10 +149,7 @@ xla_cc_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:test",
     ],
 )

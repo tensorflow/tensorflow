@@ -398,6 +398,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
@@ -410,6 +411,7 @@ cc_test(
     deps = [
         ":utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/types:half",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

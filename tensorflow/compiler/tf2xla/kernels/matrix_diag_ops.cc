@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -57,7 +58,7 @@ static inline bool IsLeftAligned(int diag_index, bool left_align_superdiagonal,
 void ReadAlignment(OpKernelConstruction* context,
                    bool* left_align_superdiagonal,
                    bool* left_align_subdiagonal) {
-  string align;
+  std::string align;
   OP_REQUIRES_OK(context, context->GetAttr("align", &align));
 
   *left_align_superdiagonal = align == "LEFT_LEFT" || align == "LEFT_RIGHT";

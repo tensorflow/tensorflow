@@ -36,10 +36,8 @@ class DotDimensionSorter : public HloModulePass {
  public:
   absl::string_view name() const override { return "dot_dimension_sorter"; }
 
-  // Run the pass on computations in 'module'.
-  // Returns whether the 'module' was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

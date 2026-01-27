@@ -27,7 +27,7 @@ tf_proto_library(
     srcs = [
         "optimization_parameters.proto",
     ],
-    protodeps = ["@local_xla//xla/service:hlo_proto"],
+    protodeps = ["@xla//xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -53,8 +53,8 @@ tf_proto_library(
         "compilation_result.proto",
     ],
     protodeps = tf_additional_all_protos() + [
-        "@local_xla//xla:xla_data_proto",
-        "@local_xla//xla/service:hlo_proto",
+        "@xla//xla:xla_data_proto",
+        "@xla//xla/service:hlo_proto",
     ],
     visibility = ["//visibility:public"],
 )
@@ -66,8 +66,8 @@ tf_proto_library(
     ],
     protodeps = [
         ":dynamic_padding_proto",
-        "@local_xla//xla:xla_data_proto",
-        "@local_xla//xla:xla_proto",
+        "@xla//xla:xla_data_proto",
+        "@xla//xla:xla_proto",
         "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],

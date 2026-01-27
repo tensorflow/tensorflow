@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_graph.hpp"  // NOLINT
 #include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/onednn_support.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -100,7 +102,7 @@ static dnnl::graph::logical_tensor::dims OneDnnDimensions(const Shape& shape) {
 }
 
 static dnnl::graph::logical_tensor::dims OneDnnStrides(const Shape& shape) {
-  dnnl::graph::logical_tensor::dims strides(shape.dimensions_size());
+  dnnl::graph::logical_tensor::dims strides(shape.dimensions().size());
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;

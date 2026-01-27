@@ -64,7 +64,7 @@ absl::StatusOr<HloInstruction*> TupleSimplifier::RemoveWholeTuple(
   return nullptr;
 }
 
-absl::StatusOr<bool> TupleSimplifier::Run(
+absl::StatusOr<bool> TupleSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.
@@ -132,9 +132,11 @@ absl::StatusOr<bool> TupleSimplifier::Run(
     if (module->has_schedule()) {
       for (HloInstruction* instr : replaced_instrs) {
         // Remove the replaced instructions from the schedule since we did not
-        // create new insructions for them, but their properties such as their
+        // create new instructions for them, but their properties such as their
         // control predecessors may have changed, so we want to reschedule them.
-        module->schedule().remove_instruction(computation, instr);
+        if (instr->HasControlDependencies()) {
+          module->schedule().remove_instruction(computation, instr);
+        }
       }
     }
   }

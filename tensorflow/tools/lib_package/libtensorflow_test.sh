@@ -40,8 +40,8 @@ ${TAR} -xzf ${TARFILE} -Ctensorflow
 
 # Compile the test .c file. Assumes with_framework_lib=True.
 ${CC} ${CFILE} -Itensorflow/include \
-  -Itensorflow/include/external/local_tsl \
-  -Itensorflow/include/external/local_xla \
+  -Itensorflow/include/external/tsl \
+  -Itensorflow/include/external/xla \
   -Ltensorflow/lib \
   -ltensorflow_framework \
   -ltensorflow \

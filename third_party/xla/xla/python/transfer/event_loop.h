@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/socket.h>
 
 #include <deque>
 #include <memory>
+#include <string>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -89,26 +92,38 @@ class SocketAddress {
   SocketAddress();
   explicit SocketAddress(const sockaddr_in& saddr);
   explicit SocketAddress(const sockaddr_in6& saddr);
+  explicit SocketAddress(const sockaddr_storage& saddr);
 
   // Fetch address.
-  const sockaddr& address() const { return saddr_; }
-  const sockaddr_in6& address_ipv6() const { return saddr6_; }
-  const sockaddr_in& address_ipv4() const { return saddr4_; }
+  const sockaddr& address() const {
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr*>(&storage_);
+  }
+  sockaddr& mutable_address() {
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<sockaddr*>(&storage_);
+  }
+  const sockaddr_in6& address_ipv6() const {
+    CHECK_EQ(storage_.ss_family, AF_INET6);
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr_in6*>(&storage_);
+  }
+  const sockaddr_in& address_ipv4() const {
+    CHECK_EQ(storage_.ss_family, AF_INET);
+    // NOLINTNEXTLINE
+    return *reinterpret_cast<const sockaddr_in*>(&storage_);
+  }
+
+  socklen_t len() const;
 
   // To String (parsable with Parse).
   std::string ToString() const;
 
   // Inverse of ToString().
-  static absl::StatusOr<SocketAddress> Parse(const std::string& addr);
+  static absl::StatusOr<SocketAddress> Parse(absl::string_view addr);
 
  private:
-  static int Parse(const std::string& addr, SocketAddress& out);
-
-  union {
-    sockaddr saddr_;
-    sockaddr_in saddr4_;
-    sockaddr_in6 saddr6_;
-  };
+  sockaddr_storage storage_;
 };
 
 // Calls accept() on sockets.

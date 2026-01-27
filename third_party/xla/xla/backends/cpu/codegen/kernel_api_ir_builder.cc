@@ -329,7 +329,7 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, const HloInstruction* instr,
     const BufferAssignment* buffer_assignment,
-    const std::string& generating_emitter_name, absl::string_view suffix)
+    absl::string_view generating_emitter_name, absl::string_view suffix)
     -> absl::StatusOr<KernelPrototype> {
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
                       GetKernelArgumentsParameters(instr, buffer_assignment));
@@ -347,7 +347,7 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
     absl::Span<const KernelParameter> results,
-    const std::string& module_memory_region_name)
+    absl::string_view module_memory_region_name)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
 

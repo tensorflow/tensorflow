@@ -106,11 +106,6 @@ class AdjacencyList {
   std::vector<std::vector<NodeId>> adj_;
 };
 
-struct HloAndDimOrder {
-  const HloInstruction* original_hlo = nullptr;
-  DimensionOrder dim_order;
-};
-
 struct HloAndIterSpec {
   const HloInstruction* original_hlo;
   TensorIterationSpec iter_spec;
@@ -159,16 +154,18 @@ struct HlosAndRequirements {
 };
 
 // Clones the hero kDot operation into the fusion.
-HloInstruction& FuseDot(const HloDotInstruction& dot,
-                        const HloInstruction& fused_lhs,
-                        const HloInstruction& fused_rhs,
+HloInstruction& FuseDot(const HloInstruction& dot,
+                        const std::vector<HlosAndRequirements>& hlos_and_reqs,
                         HloComputation::Builder& builder  // append
 ) {
   VLOG(3) << "Fusing " << dot.ToString();
 
-  std::vector<HloInstruction*> hlo_new_operands = {
-      const_cast<HloInstruction*>(&fused_lhs),
-      const_cast<HloInstruction*>(&fused_rhs)};
+  std::vector<HloInstruction*> hlo_new_operands;
+  hlo_new_operands.reserve(dot.operand_count());
+  for (int i = 0; i < hlos_and_reqs.size(); ++i) {
+    hlo_new_operands.push_back(
+        const_cast<HloInstruction*>(hlos_and_reqs[i].fused_hlo));
+  }
   return *builder.AddInstruction(
       dot.CloneWithNewOperands(dot.shape(), hlo_new_operands));
 }
@@ -276,6 +273,87 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       std::get<DotRequirements>(combined_reqs)};
 }
 
+class FusionPlanBuilder {
+ public:
+  // Builds and returns the FusionPlan. Clears internal state.
+  FusionPlan BuildPlan() {
+    FusionPlan fusion_plan;
+    for (auto& [node_id, node] : node_map_) {
+      CHECK(node.should_fuse.has_value());
+      fusion_plan.map[node_id] =
+          NodeFusionPlan{node.original_hlo, *node.should_fuse};
+    }
+
+    node_map_.clear();
+    node_reuse_map_.clear();
+    fusion_plan.graph = std::move(graph_);
+    return fusion_plan;
+  }
+
+  void ReserveSpaceForOutNeighbors(AdjacencyList::NodeId node_id,
+                                   size_t count) {
+    graph_.ReserveSpaceForOutNeighbors(node_id, count);
+  }
+
+  void AddArc(AdjacencyList::NodeId from, AdjacencyList::NodeId to) {
+    graph_.AddArc(from, to);
+  }
+
+  const HloInstruction* GetOriginalHlo(AdjacencyList::NodeId node_id) const {
+    return node_map_.at(node_id).original_hlo;
+  }
+
+  const DimensionOrder& GetDimOrder(AdjacencyList::NodeId node_id) const {
+    return node_map_.at(node_id).dim_order;
+  }
+
+  // Inserts a node for the given HLO and `dim_order` unless already exists.
+  // Returns the node id and a bool indicating if a new node was inserted.
+  std::pair<AdjacencyList::NodeId, bool> InsertNode(
+      const HloInstruction& hlo, const DimensionOrder& dim_order) {
+    HloAndIterSpec reuse_key{&hlo, dim_order.ToTensorIterationSpec()};
+
+    // Attempt to insert a placeholder. If the key already exists, inserted is
+    // false.
+    auto [it, inserted] = node_reuse_map_.insert({reuse_key, -1});
+    if (!inserted) {
+      return {it->second, false};
+    }
+
+    // Key was not present. Create the node and update the map.
+    AdjacencyList::NodeId node_id = graph_.AddNode();
+    it->second = node_id;
+    CHECK(node_map_
+              .insert({node_id,
+                       Node{&hlo, dim_order, /*should_fuse=*/std::nullopt}})
+              .second);
+    return {node_id, true};
+  }
+
+  // Assigns fusion decision for the specified node.
+  // The node must not have an already assigned decision.
+  void SetShouldFuseNode(AdjacencyList::NodeId node_id, bool should_fuse) {
+    Node& node = node_map_.at(node_id);
+    CHECK(!node.should_fuse.has_value());
+    node.should_fuse = should_fuse;
+  }
+
+ private:
+  AdjacencyList graph_;
+
+  struct Node {
+    const HloInstruction* original_hlo;
+    DimensionOrder dim_order;
+    std::optional<bool> should_fuse;
+  };
+  absl::flat_hash_map<AdjacencyList::NodeId, Node> node_map_;
+
+  // Allows reusing nodes when multiple instructions iterate over the same HLO
+  // using the same iteration spec. In that case we don't duplicate the
+  // instruction in the fusion.
+  absl::flat_hash_map<HloAndIterSpec, AdjacencyList::NodeId> node_reuse_map_;
+};
+
 // Builds the fusion map and the requirements which can later be used to
 // actually fuse that subgraph.
 FusionPlanAndRequirements BuildFusionPlanTowardOperands(
@@ -286,61 +364,32 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     const DotRequirements& requirements_so_far) {
   CHECK(!max_params.has_value() || max_params.value() >= 1);
 
-  // The graph describing the structure of the fusion that we build - nodes
-  // corresponding to the instructions and arcs pointing from users to operands.
-  // We can build and modify this graph easily without the need to create
-  // HloInstructions at this point.
-  AdjacencyList graph;
-  // Stores the original HLO and the dimension order for each node. This is a
-  // temporary map which is used when processing the nodes in this function.
-  absl::flat_hash_map<AdjacencyList::NodeId, HloAndDimOrder>
-      hlo_and_dim_order_map;
-  // Stores the information needed to build the fused HLO for each node (what
-  // was the original HLO and whether we should fuse it or create a parameter).
-  // This is one of the outputs of this function.
-  absl::flat_hash_map<AdjacencyList::NodeId, NodeFusionPlan> fusion_plan_map;
-  // Allows reusing nodes when multiple instructions iterate over the same HLO
-  // using the same iteration spec. In that case we don't duplicate the
-  // instruction in the fusion.
-  absl::flat_hash_map<HloAndIterSpec, AdjacencyList::NodeId> node_reuse_map;
+  FusionPlanBuilder fusion_builder;
+
   // The requirements imposed by the fusion choices made in this function,
-  // combined with the existing requirements. This is one of the outputs of this
-  // function.
+  // combined with the existing requirements. This is one of the outputs of
+  // this function.
   DotRequirements combined_reqs = requirements_so_far;
 
-  auto get_or_create_fusion_node =
-      [&](const HloInstruction& hlo, const DimensionOrder& dim_order,
-          bool* is_new_node = nullptr) -> AdjacencyList::NodeId {
-    HloAndIterSpec reuse_key = {&hlo, dim_order.ToTensorIterationSpec()};
-    if (auto it = node_reuse_map.find(reuse_key); it != node_reuse_map.end()) {
-      if (is_new_node != nullptr) {
-        *is_new_node = false;
-      }
-      return it->second;
-    }
-    AdjacencyList::NodeId node_id = graph.AddNode();
-    CHECK(hlo_and_dim_order_map.insert({node_id, {&hlo, dim_order}}).second);
-    CHECK(node_reuse_map.insert({reuse_key, node_id}).second);
-    if (is_new_node != nullptr) {
-      *is_new_node = true;
-    }
-    return node_id;
-  };
   AdjacencyList::NodeId root =
-      get_or_create_fusion_node(root_hlo, root_dim_order);
+      fusion_builder.InsertNode(root_hlo, root_dim_order).first;
 
   // Nodes at the fusion edge that can either get fused too or become parameters
   // of the fusion. Used to track the number of parameters.
   absl::flat_hash_set<AdjacencyList::NodeId> inputs({root});
+
   std::queue<AdjacencyList::NodeId> queue({root});
   int64_t num_requeued = 0;
+
   // BFS
+  // If all queued instructions are re-queued, they all exceed the parameter
+  // limit, so stop fusing.
   while (queue.size() > num_requeued) {
     AdjacencyList::NodeId node_id = queue.front();
     queue.pop();
-    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
-    const HloInstruction& original_hlo = *hlo_and_dim_order.original_hlo;
-    const DimensionOrder& dim_order = hlo_and_dim_order.dim_order;
+    const HloInstruction& original_hlo =
+        *fusion_builder.GetOriginalHlo(node_id);
+    const DimensionOrder& dim_order = fusion_builder.GetDimOrder(node_id);
 
     // Watch the total number of fusion parameters.
     if (max_params.has_value() &&
@@ -353,55 +402,57 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
       continue;
     }
     num_requeued = 0;
+
     if (original_hlo.opcode() == HloOpcode::kParameter) {
-      CHECK(fusion_plan_map
-                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
-                .second);
+      fusion_builder.SetShouldFuseNode(node_id, false);
       continue;
     }
+
+    // TODO(b/393299275): this check cannot be replaced by a
+    // `IsTritonSupportedComputation` because we will do some rewrites
+    // later that might change the decision. For example 'scaled-dot-rewriter'
+    // replaces unsupported F8E8M0FNU with u8. We should have a more principled
+    // way check if we will be able to emit the triton code for the fusion.
+    if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
+      // TODO(b/417172838): support dynamic slice op.
+      fusion_builder.SetShouldFuseNode(node_id, false);
+      VLOG(5) << "Not fusing dynamic slice: " << original_hlo.ToString();
+      continue;
+    }
+
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
         original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
-      CHECK(fusion_plan_map
-                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
-                .second);
+      fusion_builder.SetShouldFuseNode(node_id, false);
       continue;
     }
+
     const DimOrderMap operand_dim_orders = std::move(opt_result->dim_orders);
     combined_reqs = std::move(opt_result->requirements);
+
     inputs.erase(node_id);
-    graph.ReserveSpaceForOutNeighbors(node_id, original_hlo.operand_count());
-    for (int64_t i = 0; i < original_hlo.operand_count(); ++i) {
-      const HloInstruction& operand = *original_hlo.operand(i);
-      const DimensionOrder& operand_dim_order = operand_dim_orders.at(&operand);
-      bool is_new_node = false;
-      AdjacencyList::NodeId operand_node_id =
-          get_or_create_fusion_node(operand, operand_dim_order, &is_new_node);
-      graph.AddArc(node_id, operand_node_id);
+    fusion_builder.ReserveSpaceForOutNeighbors(node_id,
+                                               original_hlo.operand_count());
+    for (const HloInstruction* operand : original_hlo.operands()) {
+      const DimensionOrder& operand_dim_order = operand_dim_orders.at(operand);
+      auto [operand_node_id, is_new_node] =
+          fusion_builder.InsertNode(*operand, operand_dim_order);
+      fusion_builder.AddArc(node_id, operand_node_id);
       if (is_new_node) {
-        VLOG(6) << "Enqueueing " << operand.ToString() << ":"
+        VLOG(6) << "Enqueueing " << operand->ToString() << ":"
                 << operand_dim_order.ToString();
         inputs.insert(operand_node_id);
         queue.push(operand_node_id);
       }
     }
-    CHECK(
-        fusion_plan_map.insert({node_id, {&original_hlo, /*should_fuse=*/true}})
-            .second);
+    fusion_builder.SetShouldFuseNode(node_id, true);
   }
   // Handle the remaining requeued items.
-  while (!queue.empty()) {
+  for (; !queue.empty(); queue.pop()) {
     AdjacencyList::NodeId node_id = queue.front();
-    queue.pop();
-
-    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
-    CHECK(fusion_plan_map
-              .insert({node_id,
-                       {hlo_and_dim_order.original_hlo, /*should_fuse=*/false}})
-              .second);
+    fusion_builder.SetShouldFuseNode(node_id, false);
   }
-  return {{std::move(graph), std::move(fusion_plan_map)},
-          std::move(combined_reqs)};
+  return {fusion_builder.BuildPlan(), std::move(combined_reqs)};
 }
 
 // Builds the HLO instructions for the fusion represented by `fusion_plan`,
@@ -672,14 +723,17 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
+  std::vector<HlosAndRequirements> hlos_and_reqs;
+  hlos_and_reqs.reserve(dot.operand_count());
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
                                      builder, fusion_inputs));
+  hlos_and_reqs.push_back(lhs_hlos_and_reqs);
   TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/1, gpu_version,
                                      builder, fusion_inputs));
-  HloInstruction& fused_dot = FuseDot(dot, *lhs_hlos_and_reqs.fused_hlo,
-                                      *rhs_hlos_and_reqs.fused_hlo, builder);
+  hlos_and_reqs.push_back(rhs_hlos_and_reqs);
+  HloInstruction& fused_dot = FuseDot(dot, hlos_and_reqs, builder);
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
   HlosAndRequirements fused_output_and_reqs =
@@ -739,7 +793,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     return absl::OkStatus();
   });
 
-  if (is_pure_matmul) return Decision::NotProfitable("Pure Matmul");
+  if (is_pure_matmul) {
+    return Decision::NotProfitable("Pure Matmul");
+  }
 
   return Decision::Allow();
 }
@@ -804,7 +860,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                         dot_fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(std::string(kTritonGemmFusionKind));
+    backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
@@ -860,35 +916,44 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     HloComputation::Builder builder(
         absl::StrCat("fusion_", scaled_dot->name()));
 
-    auto create_parameter = [&](int64_t parameter_number,
-                                absl::string_view name) {
-      return builder.AddInstruction(HloInstruction::CreateParameter(
-          parameter_number, scaled_dot->operand(parameter_number)->shape(),
-          name));
-    };
-    std::vector<HloInstruction*> new_operands{
-        create_parameter(0, "lhs"),
-        create_parameter(1, "rhs"),
-        create_parameter(2, "lhs_scale"),
-        create_parameter(3, "rhs_scale"),
-    };
-    builder.AddInstruction(
-        scaled_dot->CloneWithNewOperands(scaled_dot->shape(), new_operands));
+    std::vector<HloInstruction*> fusion_inputs;
+
+    std::vector<HlosAndRequirements> hlos_and_reqs;
+    hlos_and_reqs.reserve(scaled_dot->operand_count());
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/0,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(lhs_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/1,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(rhs_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_scale_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/2,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(lhs_scale_hlos_and_reqs);
+    TF_ASSIGN_OR_RETURN(HlosAndRequirements rhs_scale_hlos_and_reqs,
+                        FuseDotOperand(*scaled_dot, /*operand_index=*/3,
+                                       gpu_version_, builder, fusion_inputs));
+    hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
+
+    FuseDot(*scaled_dot, hlos_and_reqs, builder);
 
     HloComputation* computation =
         scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
             builder.Build(),
             /*is_entry=*/false);
-    HloInstruction* fusion = scaled_dot->parent()->AddInstruction(
-        HloInstruction::CreateFusion(computation->root_instruction()->shape(),
-                                     HloInstruction::FusionKind::kCustom,
-                                     scaled_dot->operands(), computation));
+
+    HloInstruction* fusion =
+        scaled_dot->parent()->AddInstruction(HloInstruction::CreateFusion(
+            computation->root_instruction()->shape(),
+            HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
 
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind(kTritonScaledDotFusionKind);
+    backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
@@ -917,7 +982,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->WantToFuse();
 }
 
-absl::StatusOr<bool> GemmFusion::Run(
+absl::StatusOr<bool> GemmFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(

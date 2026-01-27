@@ -39,13 +39,13 @@ class ExpiringLRUCache {
   /// A `max_age` of 0 means that nothing is cached. A `max_entries` of 0 means
   /// that there is no limit on the number of entries in the cache (however, if
   /// `max_age` is also 0, the cache will not be populated).
-  ExpiringLRUCache(uint64 max_age, size_t max_entries,
+  ExpiringLRUCache(uint64_t max_age, size_t max_entries,
                    Env* env = Env::Default())
       : max_age_(max_age), max_entries_(max_entries), env_(env) {}
 
   /// Insert `value` with key `key`. This will replace any previous entry with
   /// the same key.
-  void Insert(const string& key, const T& value) {
+  void Insert(const std::string& key, const T& value) {
     if (max_age_ == 0) {
       return;
     }
@@ -56,7 +56,7 @@ class ExpiringLRUCache {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const string& key) {
+  bool Delete(const std::string& key) {
     absl::MutexLock lock(mu_);
     return DeleteLocked(key);
   }
@@ -64,7 +64,7 @@ class ExpiringLRUCache {
   /// Look up the entry with key `key` and copy it to `value` if found. Returns
   /// true if an entry was found for `key`, and its timestamp is not more than
   /// max_age_ seconds in the past.
-  bool Lookup(const string& key, T* value) {
+  bool Lookup(const std::string& key, T* value) {
     if (max_age_ == 0) {
       return false;
     }
@@ -72,12 +72,12 @@ class ExpiringLRUCache {
     return LookupLocked(key, value);
   }
 
-  typedef std::function<absl::Status(const string&, T*)> ComputeFunc;
+  typedef std::function<absl::Status(const std::string&, T*)> ComputeFunc;
 
   /// Look up the entry with key `key` and copy it to `value` if found. If not
   /// found, call `compute_func`. If `compute_func` returns successfully, store
   /// a copy of the output parameter in the cache, and another copy in `value`.
-  absl::Status LookupOrCompute(const string& key, T* value,
+  absl::Status LookupOrCompute(const std::string& key, T* value,
                                const ComputeFunc& compute_func) {
     if (max_age_ == 0) {
       return compute_func(key, value);
@@ -105,22 +105,22 @@ class ExpiringLRUCache {
   }
 
   /// Accessors for cache parameters.
-  uint64 max_age() const { return max_age_; }
+  uint64_t max_age() const { return max_age_; }
   size_t max_entries() const { return max_entries_; }
 
  private:
   struct Entry {
     /// The timestamp (seconds) at which the entry was added to the cache.
-    uint64 timestamp;
+    uint64_t timestamp;
 
     /// The entry's value.
     T value;
 
     /// A list iterator pointing to the entry's position in the LRU list.
-    std::list<string>::iterator lru_iterator;
+    std::list<std::string>::iterator lru_iterator;
   };
 
-  bool LookupLocked(const string& key, T* value)
+  bool LookupLocked(const std::string& key, T* value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
@@ -137,7 +137,7 @@ class ExpiringLRUCache {
     return true;
   }
 
-  void InsertLocked(const string& key, const T& value)
+  void InsertLocked(const std::string& key, const T& value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     lru_list_.push_front(key);
     Entry entry{env_->NowSeconds(), value, lru_list_.begin()};
@@ -151,7 +151,7 @@ class ExpiringLRUCache {
     }
   }
 
-  bool DeleteLocked(const string& key) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool DeleteLocked(const std::string& key) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -163,7 +163,7 @@ class ExpiringLRUCache {
 
   /// The maximum age of entries in the cache, in seconds. A value of 0 means
   /// that no entry is ever placed in the cache.
-  const uint64 max_age_;
+  const uint64_t max_age_;
 
   /// The maximum number of entries in the cache. A value of 0 means there is no
   /// limit on entry count.
@@ -176,11 +176,11 @@ class ExpiringLRUCache {
   absl::Mutex mu_;
 
   /// The cache (a map from string key to Entry).
-  std::map<string, Entry> cache_ TF_GUARDED_BY(mu_);
+  std::map<std::string, Entry> cache_ TF_GUARDED_BY(mu_);
 
   /// The LRU list of entries. The front of the list identifies the most
   /// recently accessed entry.
-  std::list<string> lru_list_ TF_GUARDED_BY(mu_);
+  std::list<std::string> lru_list_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tsl

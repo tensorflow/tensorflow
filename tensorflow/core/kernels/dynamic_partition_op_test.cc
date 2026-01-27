@@ -56,7 +56,7 @@ TEST_F(DynamicPartitionOpTest, Simple_OneD) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({6}), {0, 13, 2, 39, 4, 17});
-  AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
+  AddInputFromArray<int32_t>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output sizes
@@ -89,7 +89,7 @@ TEST_F(DynamicPartitionOpTest, Simple_TwoD) {
   AddInputFromArray<float>(
       TensorShape({6, 3}),
       {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17});
-  AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
+  AddInputFromArray<int32_t>(TensorShape({6}), {0, 0, 2, 3, 2, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output sizes
@@ -120,7 +120,7 @@ TEST_F(DynamicPartitionOpTest, SomeOutputsEmpty) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({6}), {0, 13, 2, 39, 4, 17});
-  AddInputFromArray<int32>(TensorShape({6}), {0, 0, 2, 2, 0, 2});
+  AddInputFromArray<int32_t>(TensorShape({6}), {0, 0, 2, 2, 0, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   TensorShape empty_one_dim;
@@ -152,7 +152,7 @@ TEST_F(DynamicPartitionOpTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14});
-  AddInputFromArray<int32>(TensorShape({5}), {0, 2, 99, 2, 2});
+  AddInputFromArray<int32_t>(TensorShape({5}), {0, 2, 99, 2, 2});
   absl::Status s = RunOpKernel();
   EXPECT_TRUE(
       absl::StrContains(s.ToString(), "partitions[2] = 99 is not in [0, 4)"))
@@ -181,7 +181,7 @@ static Graph* DynamicPartition(int num_partitions, int dim) {
   random::SimplePhilox rnd(&philox);
   Tensor partitions(DT_INT32, TensorShape({kRows}));
   for (int i = 0; i < kRows; i++) {
-    partitions.flat<int32>()(i) = rnd.Uniform(num_partitions);
+    partitions.flat<int32_t>()(i) = rnd.Uniform(num_partitions);
   }
   DynamicPartitionNode(g, test::graph::Constant(g, data),
                        test::graph::Constant(g, partitions), num_partitions);
@@ -209,10 +209,10 @@ BM_DYNAMIC_PARTITION(cpu, double, 100);
 BM_DYNAMIC_PARTITION(cpu, complex64, 2);
 BM_DYNAMIC_PARTITION(cpu, complex64, 100);
 
-BM_DYNAMIC_PARTITION(gpu, int32, 2);
-BM_DYNAMIC_PARTITION(gpu, int32, 100);
-BM_DYNAMIC_PARTITION(gpu, int64, 2);
-BM_DYNAMIC_PARTITION(gpu, int64, 100);
+BM_DYNAMIC_PARTITION(gpu, int32_t, 2);
+BM_DYNAMIC_PARTITION(gpu, int32_t, 100);
+BM_DYNAMIC_PARTITION(gpu, int64_t, 2);
+BM_DYNAMIC_PARTITION(gpu, int64_t, 100);
 BM_DYNAMIC_PARTITION(gpu, float, 2);
 BM_DYNAMIC_PARTITION(gpu, float, 100);
 BM_DYNAMIC_PARTITION(gpu, double, 2);

@@ -24,13 +24,14 @@ namespace tensorflow {
 namespace grappler {
 namespace function_utils {
 
-FunctionDefTensorDesc::FunctionDefTensorDesc(const string& node_name,
-                                             const string& output, int position)
+FunctionDefTensorDesc::FunctionDefTensorDesc(const std::string& node_name,
+                                             const std::string& output,
+                                             int position)
     : node_name(node_name), node_output(output), position(position) {
   full_str = strings::StrCat(node_name, ":", node_output, ":", position);
 }
 
-FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
+FunctionDefTensorDesc::FunctionDefTensorDesc(const std::string& input) {
   // Parses node_name:node_output:position string into its components.
   full_str = input;
   absl::string_view capture;
@@ -41,7 +42,7 @@ FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
           .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
           .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
           .GetResult(&remaining, &capture)) {
-    node_name = string(capture.data(), capture.size());
+    node_name = std::string(capture.data(), capture.size());
   }
 
   // Parse "node_output" if it exists
@@ -51,7 +52,7 @@ FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
           .One(strings::Scanner::LETTER)
           .Any(strings::Scanner::LETTER_DIGIT_UNDERSCORE)
           .GetResult(&remaining, &capture)) {
-    node_output = string(capture.data(), capture.size());
+    node_output = std::string(capture.data(), capture.size());
   }
 
   // Parse "position" if it exists
@@ -71,7 +72,7 @@ FunctionDefTensorDesc::FunctionDefTensorDesc(const string& input) {
 // Note that we're not using GrapplerFunctionItem because it doesn't cover
 // some of our desired uses (eg changing the outputs of a function), and the
 // FunctionDef -> GraphDef conversion isn't really necessary in this case.
-void ReplaceReferences(const string& from, const string& to,
+void ReplaceReferences(const std::string& from, const std::string& to,
                        FunctionDef* func) {
   for (NodeDef& n : *func->mutable_node_def()) {
     std::replace(n.mutable_input()->begin(), n.mutable_input()->end(), from,
@@ -88,7 +89,7 @@ void ReplaceReferences(const string& from, const string& to,
 void AddFunctionOutputWithUniqueName(absl::string_view prefix,
                                      absl::string_view output_tensor_name,
                                      FunctionDef* fdef, DataType dtype) {
-  string name = string(prefix);
+  std::string name = std::string(prefix);
   int id = fdef->signature().output_arg_size();
   while (ContainsFunctionOutputWithName(name, *fdef)) {
     name = absl::StrCat(prefix, "/_", id);
@@ -98,10 +99,10 @@ void AddFunctionOutputWithUniqueName(absl::string_view prefix,
   output->set_name(name);
   output->set_type(dtype);
 
-  (*fdef->mutable_ret())[name] = string(output_tensor_name);
+  (*fdef->mutable_ret())[name] = std::string(output_tensor_name);
 }
 
-OpDef_ArgDef* AddFunctionInput(const string& name, FunctionDef* fdef,
+OpDef_ArgDef* AddFunctionInput(const std::string& name, FunctionDef* fdef,
                                DataType dtype) {
   auto* input_arg = fdef->mutable_signature()->mutable_input_arg()->Add();
   input_arg->set_type(dtype);
@@ -110,18 +111,19 @@ OpDef_ArgDef* AddFunctionInput(const string& name, FunctionDef* fdef,
   return input_arg;
 }
 
-NodeDef* AddNode(absl::string_view name, absl::string_view op,
-                 const std::vector<string>& inputs,
-                 const std::vector<std::pair<string, AttrValue>>& attributes,
-                 FunctionDef* fd) {
+NodeDef* AddNode(
+    absl::string_view name, absl::string_view op,
+    const std::vector<std::string>& inputs,
+    const std::vector<std::pair<std::string, AttrValue>>& attributes,
+    FunctionDef* fd) {
   NodeDef* node = fd->add_node_def();
   if (!name.empty()) {
-    node->set_name(string(name));
+    node->set_name(name);
   } else {
     SetUniqueFunctionNodeName(op, fd, node);
   }
-  node->set_op(string(op));
-  for (const string& input : inputs) {
+  node->set_op(op);
+  for (const std::string& input : inputs) {
     node->add_input(input);
   }
   for (const auto& attr : attributes) {
@@ -174,7 +176,7 @@ int FindFunctionNodeWithOp(absl::string_view op, const FunctionDef& function) {
 
 void SetUniqueFunctionNodeName(absl::string_view prefix, FunctionDef* function,
                                NodeDef* node) {
-  string name = string(prefix);
+  std::string name = std::string(prefix);
   int id = function->node_def_size();
   while (ContainsFunctionNodeWithName(name, *function)) {
     name = absl::StrCat(prefix, "/_", id);

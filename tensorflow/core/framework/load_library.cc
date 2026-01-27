@@ -46,10 +46,10 @@ struct Library {
 absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
                                 const void** buf, size_t* len) {
   static mutex mu(LINKER_INITIALIZED);
-  static std::unordered_map<string, Library> loaded_libs;
+  static std::unordered_map<std::string, Library> loaded_libs;
   Env* env = Env::Default();
   Library library;
-  std::unordered_set<string> seen_op_names;
+  std::unordered_set<std::string> seen_op_names;
   {
     mutex_lock lock(mu);
     if (loaded_libs.find(library_filename) != loaded_libs.end()) {
@@ -90,7 +90,7 @@ absl::Status LoadDynamicLibrary(const char* library_filename, void** result,
       loaded_libs[library_filename] = library;
     }
   }
-  string str;
+  std::string str;
   library.op_list.SerializeToString(&str);
   char* str_buf = reinterpret_cast<char*>(port::Malloc(str.length()));
   memcpy(str_buf, str.data(), str.length());

@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_UTILS_XPLANE_TEST_UTILS_H_
 #define XLA_TSL_PROFILER_UTILS_XPLANE_TEST_UTILS_H_
 
+#include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <utility>
 #include <variant>
 
@@ -28,16 +30,16 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-using XStatValue = std::variant<int64_t, uint64, absl::string_view>;
+using XStatValue = std::variant<int64_t, uint64_t, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 
 XPlane* GetOrCreateGpuXPlane(XSpace* space, int32_t device_ordinal);
 
-XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
-                             absl::string_view device_type,
-                             double peak_tera_flops_per_second,
-                             double peak_hbm_bw_gigabytes_per_second);
+XPlane* GetOrCreateTpuXPlane(
+    XSpace* space, int32_t device_ordinal, absl::string_view device_type,
+    double peak_tera_flops_per_second, double peak_hbm_bw_gigabytes_per_second,
+    std::optional<int32_t> sparsecore_core_id = std::nullopt);
 
 void CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,

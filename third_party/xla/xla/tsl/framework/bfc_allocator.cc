@@ -25,6 +25,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -264,7 +265,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
     r = retry_helper_.AllocateRaw(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
-          uint64 freed_by_count = 0;
+          uint64_t freed_by_count = 0;
           if (allocation_attr.freed_by_func != nullptr) {
             freed_by_count = (*allocation_attr.freed_by_func)();
           }
@@ -999,10 +1000,9 @@ void RenderRegion(char* rendered, const size_t resolution,
 
 }  // namespace
 
-string BFCAllocator::RenderOccupancy() {
+std::string BFCAllocator::RenderOccupancy() {
   // Make a buffer for the ASCII-art representation.
   const size_t resolution = 100;
-  char rendered[resolution];
 
   // Compute the total region size to render over
   size_t total_region_size = 0;
@@ -1015,8 +1015,7 @@ string BFCAllocator::RenderOccupancy() {
   }
 
   // Start out with everything empty
-  RenderRegion(rendered, resolution, total_region_size, 0, nullptr, nullptr,
-               total_region_size, '_');
+  std::string rendered(resolution, '_');
 
   size_t region_offset = 0;
   for (const auto& region : region_manager_.regions()) {
@@ -1028,20 +1027,21 @@ string BFCAllocator::RenderOccupancy() {
         // Render the wasted space
         size_t wasted = c->size - c->requested_size;
         if (wasted > 0) {
-          RenderRegion(rendered, resolution, total_region_size,
+          RenderRegion(rendered.data(), resolution, total_region_size,
                        region_offset + c->requested_size, region.ptr(), c->ptr,
                        wasted, 'x');
         }
         // Then the occupied space
-        RenderRegion(rendered, resolution, total_region_size, region_offset,
-                     region.ptr(), c->ptr, c->requested_size, '*');
+        RenderRegion(rendered.data(), resolution, total_region_size,
+                     region_offset, region.ptr(), c->ptr, c->requested_size,
+                     '*');
       }
       h = c->next;
     }
     region_offset += region.memory_size();
   }
 
-  return string(rendered, resolution);
+  return rendered;
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
@@ -1116,11 +1116,15 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
-  LOG(INFO) << "Total bytes in pool: " << *stats_.pool_bytes
-            << " memory_limit_: " << memory_limit_
-            << " available bytes: " << (memory_limit_ - *stats_.pool_bytes)
+  LOG(INFO) << "Total size in pool: "
+            << strings::HumanReadableNumBytes(*stats_.pool_bytes)
+            << " memory_limit_: "
+            << strings::HumanReadableNumBytes(memory_limit_)
+            << " available size: "
+            << strings::HumanReadableNumBytes(memory_limit_ -
+                                              *stats_.pool_bytes)
             << " curr_region_allocation_bytes_: "
-            << curr_region_allocation_bytes_;
+            << strings::HumanReadableNumBytes(curr_region_allocation_bytes_);
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 

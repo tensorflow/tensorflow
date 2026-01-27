@@ -32,7 +32,8 @@ class Controller {
  public:
   explicit Controller(PathConfig path_config, Env* env = Env::Default());
   virtual ~Controller();
-  const void WriteFile(const string& file_path, const SourceCode& code) const;
+  const void WriteFile(const std::string& file_path,
+                       const SourceCode& code) const;
   const std::vector<OpSpec>& GetModelOps() const;
 
  private:

@@ -35,7 +35,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -47,7 +48,8 @@ namespace xla {
 namespace {
 
 class ReshapeTest : public ::testing::WithParamInterface<PrimitiveType>,
-                    public ClientLibraryTestRunnerMixin<HloTestBase> {
+                    public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   ReshapeTest() { set_float_type(GetParam()); }
 
@@ -957,7 +959,7 @@ TEST_P(ReshapeTest, R4TwoMinorTransposeTrivialR2) {
 INSTANTIATE_TEST_CASE_P(ReshapeTestInstance, ReshapeTest,
                         ::testing::ValuesIn({F32, BF16, F8E5M2, F8E4M3FN}));
 
-using ReshapeHloTest = HloTestBase;
+using ReshapeHloTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(ReshapeHloTest, NoHloPasses) {
   const std::string hlo_string = R"(

@@ -51,7 +51,7 @@ class ComputeEngineMetadataClient {
   /// To get the zone of an instance:
   ///   compute_engine_metadata_client.GetMetadata(
   ///       "instance/zone", response_buffer);
-  virtual absl::Status GetMetadata(const string& path,
+  virtual absl::Status GetMetadata(const std::string& path,
                                    std::vector<char>* response_buffer);
 
  private:

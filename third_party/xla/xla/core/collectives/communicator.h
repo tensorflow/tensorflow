@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -65,7 +65,7 @@ class Communicator {
   // Register `buffer_range` once for efficient collective operations (i.e. on
   // NCCL backend it registers the buffer for zero-copy collective operations).
   //
-  virtual absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
+  virtual absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
                                           int device_ordinal,
                                           bool use_symmetric_buffer) {
     return Unimplemented("User-managed buffer registration is not supported");
@@ -91,40 +91,40 @@ class Communicator {
 
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
-  virtual Future<> AllReduce(stream_executor::DeviceMemoryBase send_buffer,
-                             stream_executor::DeviceMemoryBase recv_buffer,
+  virtual Future<> AllReduce(stream_executor::DeviceAddressBase send_buffer,
+                             stream_executor::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              ReductionKind reduction_kind,
                              const Executor& executor) = 0;
 
   // Copy data in `send_buff` from the root device to the `recv_buff` on
   // all other devices.
-  virtual Future<> Broadcast(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  virtual Future<> Broadcast(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count, RankId root,
                              const Executor& executor) = 0;
 
   // Reduce data in `send_buff` from all devices using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.
-  virtual Future<> ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
+  virtual Future<> ReduceScatter(se::DeviceAddressBase send_buffer,
+                                 se::DeviceAddressBase recv_buffer,
                                  PrimitiveType dtype, size_t count,
                                  ReductionKind reduction_kind,
                                  const Executor& executor) = 0;
 
   // Gather `count` values from all devices into `recv_buffer`, receiving data
   // from rank `i` at offset `i * sendcount`.
-  virtual Future<> AllGather(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
+  virtual Future<> AllGather(se::DeviceAddressBase send_buffer,
+                             se::DeviceAddressBase recv_buffer,
                              PrimitiveType dtype, size_t count,
                              const Executor& executor) = 0;
 
   // Sends data from `send_buffer` to `target_ranks` and receives data from
   // `source_rank` into `recv_buffer`. If `source_rank` is not specified, the
   // output is filled with zeros.
-  virtual Future<> CollectivePermute(se::DeviceMemoryBase send_buffer,
-                                     se::DeviceMemoryBase recv_buffer,
+  virtual Future<> CollectivePermute(se::DeviceAddressBase send_buffer,
+                                     se::DeviceAddressBase recv_buffer,
                                      PrimitiveType dtype, size_t count,
                                      std::optional<RankId> source_rank,
                                      absl::Span<const RankId> target_ranks,
@@ -133,30 +133,30 @@ class Communicator {
   // Sends `count` values from `send_buffers` to other ranks and receives data
   // from other ranks into `recv_buffers`.
   virtual Future<> AllToAll(
-      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
       PrimitiveType dtype, size_t count, const Executor& executor) = 0;
 
   // Send data from `send_buff` to rank `peer`.
-  virtual Future<> Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Send(se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer,
                         const Executor& executor) = 0;
 
   // Receive data from rank `peer` into `recv_buff`.
-  virtual Future<> Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+  virtual Future<> Recv(se::DeviceAddressBase recv_buffer, PrimitiveType dtype,
                         size_t count, RankId peer,
                         const Executor& executor) = 0;
 
   // Send data from `send_buff` to rank `recv_buff` (one-way send).
-  virtual Future<> Send(se::DeviceMemoryBase recv_buffer,
-                        se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Send(se::DeviceAddressBase recv_buffer,
+                        se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer, const Executor& executor) {
     return Unimplemented("One-way send is not implemented");
   }
 
   // Receive data from rank `peer` into `recv_buff` (one-way recv).
-  virtual Future<> Recv(se::DeviceMemoryBase recv_buffer,
-                        se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+  virtual Future<> Recv(se::DeviceAddressBase recv_buffer,
+                        se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer, const Executor& executor) {
     return Unimplemented("One-way recv is not implemented");
   }

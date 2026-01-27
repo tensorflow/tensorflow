@@ -120,10 +120,11 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
         auto start = getI64ElementsAttr({i}, &rewriter);
         auto limit = getI64ElementsAttr({i + 1}, &rewriter);
         auto stride = getI64ElementsAttr({1}, &rewriter);
-        auto indicesSlice = rewriter.create<SliceOp>(
-            gather.getLoc(), gatherStartIndices, start, limit, stride);
-        auto reshaped = rewriter.create<ReshapeOp>(
-            gather.getLoc(),
+        auto indicesSlice =
+            SliceOp::create(rewriter, gather.getLoc(), gatherStartIndices,
+                            start, limit, stride);
+        auto reshaped = ReshapeOp::create(
+            rewriter, gather.getLoc(),
             RankedTensorType::get({},
                                   mlir::cast<ShapedType>(indicesSlice.getType())
                                       .getElementType()),
@@ -139,9 +140,10 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     // Start indices have implicit zeros when not specified. This is because
     // Gather occurs similar to slicing where full slices are inferred. Add any
     // missing zeros as necessary.
-    auto zero = rewriter.create<ConstantOp>(
-        gather.getLoc(), rewriter.getZeroAttr(RankedTensorType::get(
-                             {}, gatherStartIndicesTy.getElementType())));
+    auto zero =
+        ConstantOp::create(rewriter, gather.getLoc(),
+                           rewriter.getZeroAttr(RankedTensorType::get(
+                               {}, gatherStartIndicesTy.getElementType())));
     while (static_cast<int64_t>(sliceStartIndices.size()) <
            sliceSizesTy.getDimSize(0)) {
       sliceStartIndices.push_back(zero);
@@ -153,9 +155,9 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     }
 
     auto sliceTy = RankedTensorType::get(sliceShape, resultTy.getElementType());
-    auto slice = rewriter.create<DynamicSliceOp>(
-        gather.getLoc(), sliceTy, gather.getOperand(), sliceStartIndices,
-        gather.getSliceSizes());
+    auto slice = DynamicSliceOp::create(rewriter, gather.getLoc(), sliceTy,
+                                        gather.getOperand(), sliceStartIndices,
+                                        gather.getSliceSizes());
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(gather, gather.getType(), slice);
 

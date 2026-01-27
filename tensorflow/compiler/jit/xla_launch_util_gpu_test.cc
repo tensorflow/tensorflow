@@ -112,7 +112,7 @@ class PjRtExecutionUtilGpuTest : public OpsTestBase {
 
     // Create the DeviceCompiler to help with compiling executables.
     auto pjrt_client_or = GetOrCreatePjRtClient(device_type_);
-    TF_CHECK_OK(pjrt_client_or.status());
+    CHECK_OK(pjrt_client_or.status());
     pjrt_client_ = pjrt_client_or.value();
     device_compiler_ = new PjRtDeviceCompiler(
         std::make_unique<PjRtDeviceExecutablePersistor>(

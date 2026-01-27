@@ -26,7 +26,7 @@ namespace swig {
 // Returns the kernel class name required to execute <node_def> on the device
 // type of <node_def.device>, or an empty string if the kernel class is not
 // found or the device name is invalid.
-string TryFindKernelClass(const string& serialized_node_def);
+std::string TryFindKernelClass(const std::string& serialized_node_def);
 
 }  // namespace swig
 }  // namespace tensorflow

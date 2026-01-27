@@ -146,9 +146,10 @@ void GatherFusionInstructions(
 
 /* static */ absl::StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
 TuplePointsToAnalysis::Run(const HloModule* module) {
-  auto logical_buffer_analysis = LogicalBufferAnalysis::Run(module);
-  std::unique_ptr<TuplePointsToAnalysis> analysis(new TuplePointsToAnalysis(
-      module, std::move(logical_buffer_analysis).value()));
+  TF_ASSIGN_OR_RETURN(auto logical_buffer_analysis,
+                      LogicalBufferAnalysis::Run(module));
+  std::unique_ptr<TuplePointsToAnalysis> analysis(
+      new TuplePointsToAnalysis(module, std::move(logical_buffer_analysis)));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return analysis;
 }
@@ -331,10 +332,19 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
     HloInstruction* async_start) {
   // AsyncStart forwards its aliased operands to {0}.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(async_start);
-
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
   points_to_set.ForEachMutableElement(
       [&](const ShapeIndex& target_index, PointsToSet::BufferList* buffers) {
-        if (target_index.size() >= 2 && target_index.front() == 0) {
+        auto it = aliased_outputs.find(target_index);
+        bool has_implicit_alias =
+            (target_index.size() >= 2 && target_index.front() == 0);
+        bool has_explicit_alias = it != aliased_outputs.end();
+        if (has_implicit_alias) {
           const PointsToSet& operand_points_to_set =
               GetPointsToSet(async_start->operand(target_index[1]));
           ShapeIndex source_index(target_index.begin() + 2, target_index.end());
@@ -343,12 +353,25 @@ absl::Status TuplePointsToAnalysis::HandleAsyncStart(
                operand_points_to_set.tuple_sources(source_index)) {
             points_to_set.add_tuple_source(target_index, tuple);
           }
-        } else {
+        }
+        if (has_explicit_alias) {
+          const PointsToSet& input_set =
+              GetPointsToSet(async_start->operand(it->second.first));
+          for (const LogicalBuffer* input_buffer :
+               input_set.element(it->second.second)) {
+            points_to_set.AddPointedToBuffer(*input_buffer, target_index);
+          }
+          for (HloInstruction* tuple :
+               input_set.tuple_sources(it->second.second)) {
+            points_to_set.add_tuple_source(target_index, tuple);
+          }
+        }
+        if (!has_implicit_alias && !has_explicit_alias) {
           buffers->push_back(
               &logical_buffer_analysis_->GetBuffer(async_start, target_index));
         }
       });
-
+  points_to_set.add_tuple_source({}, async_start);
   return absl::OkStatus();
 }
 
@@ -795,6 +818,20 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     return true;
   }
   return false;
+}
+
+std::string PointsToSet::ToString() const {
+  std::string output;
+  ForEachElement([&output](const ShapeIndex& index,
+                           const BufferList& points_to) {
+    absl::StrAppend(&output, "{", absl::StrJoin(index, ","), "}: ",
+                    absl::StrJoin(points_to, ", ",
+                                  [](std::string* out, const LogicalBuffer* b) {
+                                    out->append(b->ToString());
+                                  }),
+                    "\n");
+  });
+  return output;
 }
 
 }  // namespace xla

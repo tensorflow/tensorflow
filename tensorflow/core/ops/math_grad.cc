@@ -630,7 +630,7 @@ absl::Status SquaredDifferenceGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("SquaredDifference", SquaredDifferenceGrad);
 
-absl::Status MaximumMinimumGradHelper(const string& comparator,
+absl::Status MaximumMinimumGradHelper(const std::string& comparator,
                                       const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
@@ -770,7 +770,7 @@ REGISTER_OP_GRADIENT("Mean", MeanGrad);
 // REGISTER_OP_GRADIENT("UnsortedSegmentSum", UnsortedSegmentSumGrad);
 // REGISTER_OP_GRADIENT("UnsortedSegmentMax", UnsortedSegmentMaxGrad);
 
-absl::Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
+absl::Status MinMaxGradHelper(const std::string& op, const AttrSlice& attrs,
                               FunctionDef* g) {
   // clang-format off
   *g = FDH::Define(
@@ -807,13 +807,11 @@ absl::Status MinGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Min", MinGrad);
 
-static absl::Status MatMulGradHelper(FunctionDef* g, const string& opname,
-                                     const string& attr_adj_x,
-                                     const string& attr_adj_y, const string& x0,
-                                     bool ax0, const string& x1, bool ax1,
-                                     const string& y0, bool ay0,
-                                     const string& y1, bool ay1,
-                                     bool enable_broadcasting) {
+static absl::Status MatMulGradHelper(
+    FunctionDef* g, const std::string& opname, const std::string& attr_adj_x,
+    const std::string& attr_adj_y, const std::string& x0, bool ax0,
+    const std::string& x1, bool ax1, const std::string& y0, bool ay0,
+    const std::string& y1, bool ay1, bool enable_broadcasting) {
   // The final outputs are "dx" and "dy". If we're broadcasting compute
   // intermediate nodes for now.
   std::vector<FDH::Node> nodes = {
@@ -831,9 +829,9 @@ static absl::Status MatMulGradHelper(FunctionDef* g, const string& opname,
   // broadcasting-specific ops.
   if (enable_broadcasting) {
     std::vector<FDH::Node> unbroadcast_gradients = {
-        FDH::Const<int32>("zero", absl::Span<const int32>{0}),
-        FDH::Const<int32>("one", absl::Span<const int32>{1}),
-        FDH::Const<int32>("minustwo", absl::Span<const int32>{-2}),
+        FDH::Const<int32_t>("zero", absl::Span<const int32_t>{0}),
+        FDH::Const<int32_t>("one", absl::Span<const int32_t>{1}),
+        FDH::Const<int32_t>("minustwo", absl::Span<const int32_t>{-2}),
         // Compute the batch shapes of the inputs (all but last two dims).
         {{"sx"}, "Shape", {"x"}, {{"T", "$T"}}},
         {{"sy"}, "Shape", {"y"}, {{"T", "$T"}}},
@@ -866,9 +864,11 @@ static absl::Status MatMulGradHelper(FunctionDef* g, const string& opname,
   return absl::OkStatus();
 }
 
-absl::Status MatMulGradCommon(const string& opname, const string& attr_adj_x,
-                              const string& attr_adj_y, const AttrSlice& attrs,
-                              FunctionDef* g, bool enable_broadcasting) {
+absl::Status MatMulGradCommon(const std::string& opname,
+                              const std::string& attr_adj_x,
+                              const std::string& attr_adj_y,
+                              const AttrSlice& attrs, FunctionDef* g,
+                              bool enable_broadcasting) {
   DataType T;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &T));
   if (T == DT_COMPLEX64 || T == DT_COMPLEX128) {

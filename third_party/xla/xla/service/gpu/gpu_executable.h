@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -50,9 +51,11 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/kernel_stats.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -70,6 +73,11 @@ class GpuExecutable : public Executable {
     std::string symbol_name;
     DenseDataIntermediate content;
     int allocation_index = -1;
+
+    GpuExecutableProto::ConstantInfoProto ToProto() const;
+
+    static ConstantInfo FromProto(
+        const GpuExecutableProto::ConstantInfoProto& proto);
   };
 
   struct OutputInfo {
@@ -83,8 +91,9 @@ class GpuExecutable : public Executable {
     // would indicate the aliased parameter), and what kind of alias it is.
     std::optional<HloInputOutputAliasConfig::Alias> alias_config;
 
-    OutputInfoProto ToProto() const;
-    static absl::StatusOr<OutputInfo> FromProto(const OutputInfoProto& proto);
+    GpuExecutableProto::OutputInfoProto ToProto() const;
+    static absl::StatusOr<OutputInfo> FromProto(
+        const GpuExecutableProto::OutputInfoProto& proto);
 
     friend bool operator==(const OutputInfo& lhs, const OutputInfo& rhs) {
       return std::tie(lhs.allocation_index, lhs.passthrough,
@@ -113,6 +122,7 @@ class GpuExecutable : public Executable {
     se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
+    ModuleStats module_stats;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -187,13 +197,13 @@ class GpuExecutable : public Executable {
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
-  const SequentialThunk& GetThunk() { return *thunks_; }
+  const SequentialThunk& GetThunk() const { return *thunks_; }
 
   absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
                              const ServiceExecutableRunOptions* run_options);
 
   using BufferAllocToDeviceMemoryMap =
-      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceAddressBase>;
 
   // Loads the PTX or CUBIN for this executable and initializes all
   // constants that haven't already been initialized by the CUDA driver. Loaded
@@ -210,10 +220,35 @@ class GpuExecutable : public Executable {
 
   absl::Status VerboseAllocationError(absl::Status s);
 
+  static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
+      const GpuExecutableProto&,
+      const se::DeviceDescription& device_description,
+      absl::string_view platform, DebugOptions debug_options,
+      const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+          symbol_resolver = std::nullopt);
+
+  absl::StatusOr<GpuExecutableProto> ToProto() const;
+
+  absl::Status DumpExecutableIfEnabled(
+      const ExecutableBuildOptions& options,
+      const DebugOptions& debug_options) const final;
+
  private:
   // Use GpuExecutable::Create() to create an instance.
-  explicit GpuExecutable(Params params,
-                         std::deque<BufferAllocation> thunk_pass_allocations);
+  explicit GpuExecutable(
+      std::unique_ptr<HloModule> debug_module, std::string asm_text,
+      std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
+      se::DeviceDescription device_description,
+      std::unique_ptr<SequentialThunk> executable, std::string module_name,
+      ProgramShape program_shape,
+      std::optional<std::vector<BufferAllocation>> mlir_allocations,
+      std::unique_ptr<const BufferAssignment> buffer_assignment,
+      std::deque<BufferAllocation> thunk_pass_allocations,
+      std::unique_ptr<GpuAliasInfo> alias_info, DebugOptions debug_options,
+      std::vector<ConstantInfo> constants,
+      absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
+      bool enable_debug_info_manager, ModuleStats module_stats,
+      absl::StatusOr<ThunkProto> thunk_proto);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -223,13 +258,13 @@ class GpuExecutable : public Executable {
   absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal);
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal);
 
-  absl::StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+  absl::StatusOr<se::DeviceAddressBase> BufferForAllocation(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
       int64_t arg_idx);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
@@ -323,18 +358,22 @@ class GpuExecutable : public Executable {
   // Cache previous memory allocations for current module, this is used to help
   // identify if user's model have unstable pointers by turning on VLOG(5).
   absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      std::vector<se::DeviceMemoryBase>>
+                      std::vector<se::DeviceAddressBase>>
       module_allocations_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   // Retains shared ownership of on-device constants that are managed by XLA and
   // potentially shared with other executables.
-  std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
+  std::vector<std::shared_ptr<se::DeviceAddressBase>> shared_constants_;
   bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
+
+  // Stores the thunk graph as a proto from before running the thunk pass.
+  // Might contain an error if the given thunk graph is not serializable.
+  absl::StatusOr<ThunkProto> thunk_proto_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

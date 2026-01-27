@@ -61,8 +61,8 @@ namespace {
 // RingAlg instances.  Note that the exec_key will differentiate between
 // different instances consequently we don't need to further differentiate
 // between subclasses of RingAlg.
-string RingAlgBufKey(const string& name, const string& exec_key, int pass,
-                     int section, int source_rank) {
+std::string RingAlgBufKey(const std::string& name, const std::string& exec_key,
+                          int pass, int section, int source_rank) {
   if (READABLE_KEYS) {
     return strings::StrCat(name, "(", exec_key, "):pass(", pass, "):section(",
                            section, "):srcrank(", source_rank, ")");
@@ -97,7 +97,7 @@ RingAlg::RingField* RingAlg::PCQueue::Dequeue() {
   return rf;
 }
 
-RingAlg::RingAlg(CollectiveType type, const string& name)
+RingAlg::RingAlg(CollectiveType type, const std::string& name)
     : type_(type),
       name_(name),
       col_ctx_(nullptr),
@@ -163,10 +163,10 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
   }
 
   if (VLOG_IS_ON(2)) {
-    string subdiv_buf;
+    std::string subdiv_buf;
     for (const int subdiv_offset :
          col_params->instance.impl_details.subdiv_offsets) {
-      strings::StrAppend(&subdiv_buf, " ", subdiv_offset);
+      absl::StrAppend(&subdiv_buf, " ", subdiv_offset);
     }
     VLOG(2) << "Dynamically generated " << num_subdivs
             << " subdiv_offsets:" << subdiv_buf << " tensor_size "
@@ -178,7 +178,7 @@ absl::Status GenerateSubdivsInCollectiveParams(CollectiveParams* col_params) {
 }  // namespace
 
 absl::Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
-  const string& device_name =
+  const std::string& device_name =
       col_params->group.members[col_params->default_rank].device.name();
   // Each subdiv permutation is a ring formed by rotating each
   // single-task subsequence of devices by an offset.  This makes most
@@ -190,7 +190,7 @@ absl::Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   // Precondition: device_names must be sorted so that all devices in
   // the same task are adjacent.
   std::vector<int> dev_per_task;
-  const string* prior_task_name = &col_params->group.members[0].task;
+  const std::string* prior_task_name = &col_params->group.members[0].task;
   int dev_count = 1;
   for (int di = 1; di < col_params->group.group_size; ++di) {
     if (col_params->group.members[di].task != *prior_task_name) {
@@ -265,7 +265,7 @@ absl::Status RingAlg::InitializeCollectiveContext(
       &col_ctx->device_locality);
 }
 
-string RingAlg::TensorDebugString(const Tensor& tensor) {
+std::string RingAlg::TensorDebugString(const Tensor& tensor) {
   const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
       col_ctx_->op_ctx->device()->tensorflow_accelerator_device_info();
   if (accelerator_device_info) {
@@ -383,11 +383,11 @@ void RingAlg::AdvanceToSecondPass(RingField* rf) {
   VLOG(3) << "IncrRingField new value " << rf->DebugString();
 }
 
-string RingAlg::RingField::DebugString() const {
-  string rv = strings::StrCat("RingField rank=", rank, " chunk_idx=", chunk_idx,
-                              " subdiv=", subdiv_idx, " sc_idx=", sc_idx,
-                              " action=", action);
-  strings::StrAppend(&rv, " pass=", second_pass);
+std::string RingAlg::RingField::DebugString() const {
+  std::string rv = strings::StrCat(
+      "RingField rank=", rank, " chunk_idx=", chunk_idx, " subdiv=", subdiv_idx,
+      " sc_idx=", sc_idx, " action=", action);
+  absl::StrAppend(&rv, " pass=", second_pass);
   strings::StrAppend(&rv, " do_send=", do_send, " do_recv=", do_recv,
                      " is_final=", is_final, " recv_is_remote=", recv_is_remote,
                      " recv_dev_idx=", recv_dev_idx, " sc_idx=", sc_idx);
@@ -396,8 +396,8 @@ string RingAlg::RingField::DebugString() const {
 
 void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   DCHECK(rf->do_send);
-  string send_buf_key = RingAlgBufKey(name_, col_ctx_->exec_key,
-                                      rf->second_pass, rf->sc_idx, rf->rank);
+  std::string send_buf_key = RingAlgBufKey(
+      name_, col_ctx_->exec_key, rf->second_pass, rf->sc_idx, rf->rank);
   VLOG(3) << "DispatchSend rank=" << col_params_->default_rank << " send key "
           << send_buf_key << " chunk " << ca_->TBounds(rf->chunk) << " sc_idx "
           << rf->sc_idx;
@@ -415,7 +415,7 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
 
 void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
   DCHECK(rf->do_recv);
-  string recv_buf_key =
+  std::string recv_buf_key =
       RingAlgBufKey(name_, col_ctx_->exec_key, rf->second_pass, rf->sc_idx,
                     (rf->rank + (group_size_ - 1)) % group_size_);
   VLOG(3) << "DispatchRecv rank=" << col_params_->default_rank << " recv key "
@@ -434,9 +434,9 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
       col_ctx_->op_ctx->cancellation_manager(), done);
 }
 
-string RingAlg::FieldState() {
-  string s = strings::StrCat(
-      "Ring", name_, " ", strings::Hex(reinterpret_cast<uint64>(this)),
+std::string RingAlg::FieldState() {
+  std::string s = strings::StrCat(
+      "Ring", name_, " ", strings::Hex(reinterpret_cast<uint64_t>(this)),
       " exec ", col_ctx_->exec_key, " step_id=", col_ctx_->step_id,
       " state of all ", rfv_.size(), " fields:");
   for (int i = 0; i < rfv_.size(); ++i) {

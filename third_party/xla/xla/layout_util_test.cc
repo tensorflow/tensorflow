@@ -26,9 +26,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,8 +34,6 @@ namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:
@@ -512,6 +508,26 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
                                 .add_split_configs(SplitConfig(1, {40, 130}));
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
+
+struct IsUntiledLayoutTestCase {
+  std::vector<int64_t> shape;
+  std::vector<Tile> tiles;
+  bool expected_result;
+};
+
+using IsUntiledLayoutTest = ::testing::TestWithParam<IsUntiledLayoutTestCase>;
+
+TEST_P(IsUntiledLayoutTest, IsUntiledLayout) {
+  IsUntiledLayoutTestCase params = GetParam();
+  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape),
+            params.expected_result);
+}
+
+INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
+                         ::testing::ValuesIn<IsUntiledLayoutTestCase>(
+                             {{{24, 128}, {Tile({8, 128})}, true},
+                              {{4, 256}, {Tile({1, 128})}, true},
+                              {{2, 3, 4}, {Tile({8, 128})}, false}}));
 
 }  // namespace
 }  // namespace xla

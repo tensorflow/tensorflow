@@ -98,7 +98,7 @@ template <typename T, typename Index, scatter_nd_op::UpdateOp op, int IXDIM>
 __global__ void ScatterNdOpKernel(
     const Index* indices, const T* updates, T* out,
     const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix,
-    const Eigen::array<int64, IXDIM> batch_strides, const int64 num_indices,
+    const Eigen::array<int64_t, IXDIM> batch_strides, const int64_t num_indices,
     const Index slice_size) {
   auto update = LeftUpdate<T, op>();
 
@@ -141,7 +141,7 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 
     // Index batch_strides[IXDIM];
-    Eigen::array<int64, IXDIM> batch_strides;
+    Eigen::array<int64_t, IXDIM> batch_strides;
     if (IXDIM > 0) {
       batch_strides[IXDIM - 1] = 1;
     }

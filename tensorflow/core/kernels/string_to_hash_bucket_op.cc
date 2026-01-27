@@ -42,8 +42,8 @@ class LegacyStringToHashBucketOp : public OpKernel {
 
     typedef decltype(input_flat.size()) Index;
     for (Index i = 0; i < input_flat.size(); ++i) {
-      const uint64 input_hash = Hash64(input_flat(i));
-      const uint64 bucket_id = input_hash % num_buckets_;
+      const uint64_t input_hash = Hash64(input_flat(i));
+      const uint64_t bucket_id = input_hash % num_buckets_;
       // The number of buckets is always in the positive range of int64 so is
       // the resulting bucket_id. Casting the bucket_id from uint64 to int64 is
       // safe.

@@ -114,7 +114,7 @@ cc_library(
         "//tensorflow/core/profiler:tfprof_options",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/profiler/protobuf:profile_proto_cc",
+        "@tsl//tsl/profiler/protobuf:profile_proto_cc",
     ],
 )
 

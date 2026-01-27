@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -51,6 +52,20 @@ class CuDnnThunk : public Thunk {
   std::shared_ptr<se::dnn::LazyDnnGraph> graph() const { return graph_; }
   const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
+  }
+
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(args_.size());
+
+    for (int i = 0; i < args_.size(); i++) {
+      if (output_args_[i]) {
+        res.push_back(BufferUse::Write(args_[i]));
+        continue;
+      }
+      res.push_back(BufferUse::Read(args_[i]));
+    }
+    return res;
   }
 
   absl::StatusOr<ThunkProto> ToProto() const override;

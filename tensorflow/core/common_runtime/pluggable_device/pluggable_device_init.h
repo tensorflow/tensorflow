@@ -30,7 +30,8 @@ namespace tensorflow {
 
 // Initializes the PluggableDevice platform and returns OK if the
 // PluggableDevice platform could be initialized.
-absl::Status ValidatePluggableDeviceMachineManager(const string& platform_name);
+absl::Status ValidatePluggableDeviceMachineManager(
+    const std::string& platform_name);
 
 // Returns the PluggableDevice machine manager singleton, creating it and
 // initializing the PluggableDevices on the machine if needed the first time it
@@ -38,7 +39,7 @@ absl::Status ValidatePluggableDeviceMachineManager(const string& platform_name);
 // environment in the process (e.g., ValidatePluggableDeviceMachineManager()
 // returns OK).
 stream_executor::Platform* PluggableDeviceMachineManager(
-    const string& platform_name);
+    const std::string& platform_name);
 
 }  // namespace tensorflow
 

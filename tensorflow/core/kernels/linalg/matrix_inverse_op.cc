@@ -199,10 +199,10 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                                        TensorShape{batch_size, n}, &pivots),
         done);
     auto pivots_mat = pivots.template matrix<int>();
-    auto input_copy_ptr_array = solver->GetScratchSpace<uint8>(
+    auto input_copy_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "input_copy_ptr_array",
         /* on_host */ true);
-    auto output_ptr_array = solver->GetScratchSpace<uint8>(
+    auto output_ptr_array = solver->GetScratchSpace<uint8_t>(
         sizeof(Scalar*) * batch_size, "output_copy_ptr_array",
         /* on_host */ true);
     auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
@@ -290,7 +290,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
     }
     // Callback for checking info after kernels finish.
     auto info_checker = [context, done](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status)) {
         for (const auto& host_info : host_infos) {

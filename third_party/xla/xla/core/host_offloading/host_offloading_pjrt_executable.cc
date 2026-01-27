@@ -258,8 +258,6 @@ HostOffloadingPjRtExecutable::Execute(
 
   // TODO(b/340666998) Add additional context needed to support megascale ops
   ::xla::ExecuteOptions pjrt_execute_options{
-      // By default untuple results.
-      .untuple_result = true,
       // Forward launch id to the host offloading executable because logically
       // it executes as a part of parent device execution.
       .launch_id = execute_options.launch_id,

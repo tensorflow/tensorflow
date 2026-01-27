@@ -71,6 +71,11 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
                      " for IfrtIRCompileOptions deserialization"));
   }
 
+  if (proto.propagate_shardings()) {
+    return absl::InvalidArgumentError(
+        "IfrtIrCompileOptionsProto.propagate_shardings is deprecated");
+  }
+
   auto compile_options_overrides = std::make_unique<absl::flat_hash_map<
       std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>();
   compile_options_overrides->reserve(proto.compile_option_overrides_size());
@@ -94,24 +99,23 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
   return std::make_unique<IfrtIRCompileOptions>(
       std::move(device_ids),
       absl::flat_hash_map<std::string, LoadedExecutableRef>(),
-      std::move(compile_options_overrides), proto.propagate_shardings(),
-      proto.mlir_dump_to(), proto.mlir_dump_pass_re(),
-      proto.mlir_dump_func_re(), proto.mlir_enable_timing(),
-      proto.dot_graph_dump_to(),
+      std::move(compile_options_overrides), proto.mlir_dump_to(),
+      proto.mlir_dump_pass_re(), proto.mlir_dump_func_re(),
+      proto.mlir_enable_timing(), proto.dot_graph_dump_to(),
       proto.dot_graph_min_executable_peak_memory_bytes(),
       proto.dot_graph_min_executable_flops(),
       proto.dot_graph_min_per_device_transfer_size_bytes());
 }
 
-absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
-    SerDesVersion version) const {
+absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
+                                           SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for IfrtIRCompileOptions serialization"));
   }
 
-  IfrtIrCompileOptionsProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
   proto.mutable_device_ids()->Reserve(device_assignments.size());
   for (const DeviceId& device_id : device_assignments) {
@@ -132,7 +136,6 @@ absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
           {id, compile_options_proto});
     }
   }
-  proto.set_propagate_shardings(propagate_shardings);
   proto.set_mlir_dump_to(mlir_dump_to);
   proto.set_mlir_dump_pass_re(mlir_dump_pass_re);
   proto.set_mlir_dump_func_re(mlir_dump_func_re);
@@ -143,7 +146,7 @@ absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
   proto.set_dot_graph_min_executable_flops(dot_graph_min_executable_flops);
   proto.set_dot_graph_min_per_device_transfer_size_bytes(
       dot_graph_min_per_device_transfer_size_bytes);
-  return proto;
+  return absl::OkStatus();
 }
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

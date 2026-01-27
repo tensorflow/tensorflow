@@ -70,8 +70,8 @@ bool HasCpuDevice(const Node* node) {
 // Convert the CPU device name to the corresponding CPU device name. If
 // multiple local CPU devices are enabled, the CPU device name will also
 // contain the device id.
-absl::Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
-                                                   string* host_device_name) {
+absl::Status DeviceNameToCpuDeviceNameWithDeviceId(
+    const std::string& device_name, std::string* host_device_name) {
   DeviceNameUtils::ParsedName device;
   if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
     return absl::InternalError(

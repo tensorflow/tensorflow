@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/blas.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 
 namespace stream_executor {
 namespace blas {
@@ -32,19 +32,21 @@ namespace blas {
 // TODO(ezhulenev): We need a scoped thread local map-like container to make
 // sure that we can have multiple BlasSupport instances that do not overwrite
 // each others workspaces. For not it's ok as we know that this can't happen.
-static thread_local DeviceMemoryBase* workspace_thread_local = nullptr;
+static thread_local DeviceAddressBase* workspace_thread_local = nullptr;
 
 BlasSupport::ScopedWorkspace::ScopedWorkspace(BlasSupport* blas,
-                                              DeviceMemoryBase* workspace)
+                                              DeviceAddressBase* workspace)
     : blas_(blas) {
   blas->SetWorkspace(workspace);
 }
 
 BlasSupport::ScopedWorkspace::~ScopedWorkspace() { blas_->ResetWorkspace(); }
 
-DeviceMemoryBase* BlasSupport::GetWorkspace() { return workspace_thread_local; }
+DeviceAddressBase* BlasSupport::GetWorkspace() {
+  return workspace_thread_local;
+}
 
-void BlasSupport::SetWorkspace(DeviceMemoryBase* workspace) {
+void BlasSupport::SetWorkspace(DeviceAddressBase* workspace) {
   workspace_thread_local = workspace;
 }
 

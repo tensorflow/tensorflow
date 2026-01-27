@@ -33,19 +33,19 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -121,8 +121,8 @@ absl::Status NvshmemSendThunk::RunNvshmemCollective(const ExecuteParams& params,
   if (recv_buffer_status.ok()) {
     void* recv_buffer_ptr = recv_buffer_status.value();
     VLOG(3) << "Using existing receive buffer for send: " << recv_buffer_ptr;
-    buffer.destination_buffer =
-        se::DeviceMemoryBase(recv_buffer_ptr, buffer.destination_buffer.size());
+    buffer.destination_buffer = se::DeviceAddressBase(
+        recv_buffer_ptr, buffer.destination_buffer.size());
   } else {
     VLOG(3) << "No receive buffer found";
   }

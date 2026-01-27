@@ -37,7 +37,7 @@ struct ExecStats {
 
 class AcceleratorUtilizationChecker : public Checker {
  public:
-  string name() const override { return kCheckers[0]; }
+  std::string name() const override { return kCheckers[0]; }
 
  private:
   AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,
@@ -84,8 +84,8 @@ class AcceleratorUtilizationChecker : public Checker {
 
     if (accelerator_exec_stats_.find(node->canonical_device()) ==
         accelerator_exec_stats_.end()) {
-      accelerator_exec_stats_.insert(
-          std::pair<string, ExecStats>(node->canonical_device(), ExecStats()));
+      accelerator_exec_stats_.insert(std::pair<std::string, ExecStats>(
+          node->canonical_device(), ExecStats()));
     }
     ExecStats& stats = accelerator_exec_stats_.at(node->canonical_device());
 
@@ -102,8 +102,8 @@ class AcceleratorUtilizationChecker : public Checker {
     stats.exec_micros += exec.accelerator_exec_micros();
   }
 
-  std::map<string, ExecStats> accelerator_exec_stats_;
-  std::map<string, int64_t> ps_placement_;
+  std::map<std::string, ExecStats> accelerator_exec_stats_;
+  std::map<std::string, int64_t> ps_placement_;
   AdviceProto::Checker reports_;
 };
 

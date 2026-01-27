@@ -831,18 +831,21 @@ TEST_F(DotMergerTest, NoMergeWithFalseCompatibility) {
     lhs1 = f32[2,4,300,200] parameter(1)
     rhs  = f32[2,4,200, 50] parameter(2)
     dot0 = f32[2,4,100, 50] dot(lhs0, rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
-                                            lhs_contracting_dims={3}, rhs_contracting_dims={2}
+        lhs_contracting_dims={3}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"0"}
     dot1 = f32[2,4,300, 50] dot(lhs1, rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
-                                            lhs_contracting_dims={3}, rhs_contracting_dims={2}
+        lhs_contracting_dims={3}, rhs_contracting_dims={2}, backend_config={"operation_queue_id":"1"}
     ROOT tuple = (f32[2,4,100,50], f32[2,4,300,50]) tuple(dot0, dot1)
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  std::function<bool(const HloInstruction* dot_a, const HloInstruction* dot_b)>
-      can_merge = [&](const HloInstruction* dot_a,
-                      const HloInstruction* dot_b) -> bool { return false; };
+  std::function<int64_t(const HloInstruction* dot)> queue_id =
+      [&](const HloInstruction* dot) -> int64_t {
+    // The queue_id will typically be taken from the backend_config, but deps on
+    // backend-specific protos is avoided for testing.
+    return dot->name() == "dot1" ? 1 : 0;
+  };
   DotMerger pass(/*max_size_to_merge=*/std::numeric_limits<int64_t>::max(),
-                 can_merge);
+                 queue_id);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 }

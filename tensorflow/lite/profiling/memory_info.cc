@@ -92,7 +92,9 @@ MemoryUsage GetMemoryUsage() {
       result.private_footprint_bytes = (vm_swap_kb + res.ru_maxrss) * 1024;
     }
   }
-#if defined(__NO_MALLINFO__) || !defined(__GLIBC__)
+#if defined(__NO_MALLINFO__) || !defined(__GLIBC__) ||         \
+    defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) || \
+    defined(THREAD_SANITIZER)
   result.total_allocated_bytes = -1;
   result.in_use_allocated_bytes = -1;
 #elif __GLIBC_MINOR__ >= 33
@@ -103,7 +105,9 @@ MemoryUsage GetMemoryUsage() {
   const auto mem = mallinfo();
   result.total_allocated_bytes = mem.arena;
   result.in_use_allocated_bytes = mem.uordblks;
-#endif  // defined(__NO_MALLINFO__)
+#endif  // defined(__NO_MALLINFO__) || !defined(__GLIBC__) || \
+        // defined(ADDRESS_SANITIZER) || defined(MEMORY_SANITIZER) ||
+        // defined(THREAD_SANITIZER)
 #elif defined(__APPLE__)
   struct task_vm_info vm_info;
   mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
@@ -132,19 +136,19 @@ MemoryUsage GetMemoryUsage() {
     result.private_footprint_bytes = -1;
   }
   CloseHandle(process_handle);
+  result.total_allocated_bytes = -1;
+  result.in_use_allocated_bytes = -1;
+#ifdef USE_WIN32_HEAP_SUMMARY
   HANDLE process_heap = GetProcessHeap();
-  if (process_heap != nullptr && HeapLock(process_heap)) {
+  if (process_heap != nullptr) {
     HEAP_SUMMARY heap_summary;
     heap_summary.cb = sizeof(heap_summary);
     if (HeapSummary(process_heap, 0, &heap_summary)) {
       result.total_allocated_bytes = heap_summary.cbCommitted;
       result.in_use_allocated_bytes = heap_summary.cbAllocated;
-    } else {
-      result.total_allocated_bytes = -1;
-      result.in_use_allocated_bytes = -1;
     }
-    HeapUnlock(process_heap);
   }
+#endif  // USE_WIN32_HEAP_SUMMARY
 #endif  // __linux__
   return result;
 }

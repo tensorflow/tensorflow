@@ -38,13 +38,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+
+// TODO(ezhulenev): Remove this once transitive dependencies are fixed.
+#include "xla/stream_executor/device_memory.h"
 
 namespace stream_executor {
 
@@ -143,20 +146,20 @@ class Stream {
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+  virtual absl::Status Memcpy(void* host_dst, const DeviceAddressBase& gpu_src,
                               uint64_t size) = 0;
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+  virtual absl::Status Memcpy(DeviceAddressBase* gpu_dst, const void* host_src,
                               uint64_t size) = 0;
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  absl::Status MemcpyD2H(const DeviceMemory<T>& gpu_src,
+  absl::Status MemcpyD2H(const DeviceAddress<T>& gpu_src,
                          absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     if (gpu_src.size() == 0 || host_size >= gpu_src.size()) {
@@ -170,7 +173,7 @@ class Stream {
   // slice size.
   template <typename T>
   absl::Status MemcpyH2D(absl::Span<const T> host_src,
-                         DeviceMemory<T>* gpu_dst) {
+                         DeviceAddress<T>* gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
     if (gpu_dst->size() == 0 || gpu_dst->size() >= host_size) {
       return Memcpy(gpu_dst, host_src.begin(), host_size);
@@ -181,28 +184,28 @@ class Stream {
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
-                              const DeviceMemoryBase& gpu_src, uint64_t size) {
+  virtual absl::Status Memcpy(DeviceAddressBase* gpu_dst,
+                              const DeviceAddressBase& gpu_src, uint64_t size) {
     return absl::UnimplementedError(
         "Memcpy from device to device is not implemented for this "
         "stream.");
   }
 
-  absl::Status MemcpyD2D(DeviceMemoryBase* gpu_dst,
-                         const DeviceMemoryBase& gpu_src, uint64_t size) {
+  absl::Status MemcpyD2D(DeviceAddressBase* gpu_dst,
+                         const DeviceAddressBase& gpu_src, uint64_t size) {
     return Memcpy(gpu_dst, gpu_src, size);
   }
 
   // Entrain onto the stream: a memset of zero at a device location of size
   // bytes. The location must not be null.
-  virtual absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) {
+  virtual absl::Status MemZero(DeviceAddressBase* location, uint64_t size) {
     return absl::UnimplementedError("MemZero is not supported on this stream.");
   }
 
   // Entrain onto the stream: a memset of a 32-bit pattern at device location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  virtual absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
+  virtual absl::Status Memset32(DeviceAddressBase* location, uint32_t pattern,
                                 uint64_t size) {
     return absl::UnimplementedError(
         "Memset32 is not supported on this stream.");
@@ -249,6 +252,9 @@ class Stream {
 
   // Returns the RocmComputeCapability for this stream.
   virtual RocmComputeCapability GetRocmComputeCapability() const = 0;
+
+  // Returns the OneAPIComputeCapability for this stream.
+  virtual OneAPIComputeCapability GetOneAPIComputeCapability() const = 0;
 
   // Gets priority for a stream.
   virtual std::variant<StreamPriority, int> priority() const = 0;

@@ -42,19 +42,19 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest) {
   Output var =
       ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
   Output filename_node =
-      ops::Const(s.WithOpName("filename"), string("model"), TensorShape());
+      ops::Const(s.WithOpName("filename"), std::string("model"), TensorShape());
   Output tensor_name =
-      ops::Const(s.WithOpName("tensorname"), string("var"), TensorShape());
+      ops::Const(s.WithOpName("tensorname"), std::string("var"), TensorShape());
   Output restore = ops::Restore(s.WithOpName("restore"), filename_node,
                                 tensor_name, DataType::DT_FLOAT);
   Output assign = ops::Assign(s.WithOpName("assign"), var, restore);
 
   TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
 
-  string temp_dir = testing::TmpDir();
+  std::string temp_dir = testing::TmpDir();
 
   Env *env = Env::Default();
-  string filename =
+  std::string filename =
       io::JoinPath(temp_dir, "grappler_item_builder_test_filename");
   env->DeleteFile(filename).IgnoreError();
   std::unique_ptr<WritableFile> file_to_write;
@@ -88,7 +88,7 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest) {
       ASSERT_TRUE(iter->second.has_tensor());
       ASSERT_EQ(1, iter->second.tensor().string_val_size());
 
-      string tensor_string_val = iter->second.tensor().string_val(0);
+      std::string tensor_string_val = iter->second.tensor().string_val(0);
       EXPECT_EQ(tensor_string_val, filename);
     }
   }
@@ -100,12 +100,12 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest_FileNotAccessible) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output var =
       ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
-  Output filename_node1 =
-      ops::Const(s.WithOpName("filename1"), string("model1"), TensorShape());
-  Output filename_node2 =
-      ops::Const(s.WithOpName("filename2"), string("model2"), TensorShape());
+  Output filename_node1 = ops::Const(s.WithOpName("filename1"),
+                                     std::string("model1"), TensorShape());
+  Output filename_node2 = ops::Const(s.WithOpName("filename2"),
+                                     std::string("model2"), TensorShape());
   Output tensor_name =
-      ops::Const(s.WithOpName("tensorname"), string("var"), TensorShape());
+      ops::Const(s.WithOpName("tensorname"), std::string("var"), TensorShape());
   Output restore1 = ops::Restore(s.WithOpName("restore1"), filename_node1,
                                  tensor_name, DataType::DT_FLOAT);
   Output restore2 = ops::Restore(s.WithOpName("restore2"), filename_node1,
@@ -115,11 +115,11 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest_FileNotAccessible) {
 
   TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
 
-  string temp_dir = testing::TmpDir();
+  std::string temp_dir = testing::TmpDir();
 
   // Create the first AssetFileDef that has a valid file.
   Env *env = Env::Default();
-  string filename1 =
+  std::string filename1 =
       io::JoinPath(temp_dir, "grappler_item_builder_test_filename1");
   env->DeleteFile(filename1).IgnoreError();
   std::unique_ptr<WritableFile> file_to_write;
@@ -132,7 +132,7 @@ TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest_FileNotAccessible) {
   *asset_file_def1.mutable_filename() = "grappler_item_builder_test_filename1";
 
   // Create the second AssetFileDef that has not a valid file.
-  string filename2 =
+  std::string filename2 =
       io::JoinPath(temp_dir, "grappler_item_builder_test_filename1");
   env->DeleteFile(filename2).IgnoreError();
   EXPECT_FALSE(env->FileExists(filename2).ok());

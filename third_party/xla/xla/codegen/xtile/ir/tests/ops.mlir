@@ -30,6 +30,23 @@ xtile.entry_func @too_many_tile_ids(%input: memref<1024xf32>, %id0: index, %id1:
 
 // -----
 
+xtile.entry_func @correct_opaque_args(
+  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
+  attributes {num_opaque_args = 2 : i32}  {
+  xtile.return
+}
+
+// -----
+
+// expected-error@+1 {{entry function arguments should be of the form (arg: memref..., tile_id: index)}}
+xtile.entry_func @wrong_opaque_args(
+  %input: memref<1024xf32>, %opaque0: index, %opaque1: index, %id1: index)
+  attributes {num_opaque_args = 1 : i32}  {
+  xtile.return
+}
+
+// -----
+
 func.func @incorrect_full_shape_extract(%arg: memref<1024xf32>) -> tensor<10xf32> {
   %offset = arith.constant 0 : index
   // expected-error@+1 {{full tile shape size: 2 does not match rank of buffer: 1}}
@@ -97,5 +114,51 @@ func.func @type_mismatch_insert(%src: tensor<24xf64>, %dst: memref<1024xf32>) {
   %offset = arith.constant 0 : index
   // expected-error@+1 {{buffer element type: 'f32' does not match element type of tile: 'f64'}}
   xtile.insert %src into %dst[%offset][24][1] : tensor<24xf64> -> memref<1024xf32>
+  return
+}
+
+// -----
+
+func.func @dot_scaled(%lhs: tensor<128x128xf32>, %lhs_scale: tensor<128x4xi8>, %rhs: tensor<128x256xf32>, %rhs_scale: tensor<256x4xi8>, %acc: tensor<128x256xf32>) -> tensor<128x256xf32> {
+  %0 = xtile.dot_scaled %lhs scale %lhs_scale, %rhs scale %rhs_scale {fastMath = true} : tensor<128x128xf32>, tensor<128x4xi8> * tensor<128x256xf32>, tensor<256x4xi8> -> tensor<128x256xf32>
+  return %0 : tensor<128x256xf32>
+}
+
+
+// -----
+
+func.func @legal_mask_op(%src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  %masked = xtile.mask %src bounds [10], %mask : tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
+// -----
+
+func.func @illegal_mask_bound_rank_mismatch(
+    %src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  // expected-error@+1 {{tensor rank: 1 does not match mask bounds rank: 2}}
+  %masked = xtile.mask %src bounds [10, 1], %mask : tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
+// -----
+
+func.func @illegal_mask_out_of_bounds(%src: tensor<32xf64>, %mask: f64) -> tensor<32xf64> {
+  // expected-error@+1 {{mask bound not less than or equal to the tensor size}}
+  %masked = xtile.mask %src bounds [33], %mask : tensor<32xf64>
+  return %masked : tensor<32xf64>
+}
+
+// -----
+
+// expected-error @+1 {{layout has 0 dimensions, but shape has 1}}
+func.func @memref_layout_shape_size_mismatch(%arg0: memref<1024xf32, #xtile.layout<[]>>) {
+  return
+}
+
+// -----
+
+// expected-error @+1 {{layout is not a permutation}}
+func.func @memref_layout_is_not_a_permutation(%arg0: memref<1024xf32, #xtile.layout<[1]>>) {
   return
 }

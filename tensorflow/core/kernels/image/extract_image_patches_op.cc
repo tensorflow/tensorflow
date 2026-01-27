@@ -41,8 +41,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 static inline void ParseAttributeVec4(OpKernelConstruction* context,
-                                      const string& attr_name,
-                                      std::vector<int32>* attr) {
+                                      const std::string& attr_name,
+                                      std::vector<int32_t>* attr) {
   OP_REQUIRES_OK(context, context->GetAttr(attr_name, attr));
   OP_REQUIRES(
       context, (*attr)[0] == 1 && (*attr)[3] == 1,
@@ -115,9 +115,9 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksizes_;
-  std::vector<int32> strides_;
-  std::vector<int32> rates_;
+  std::vector<int32_t> ksizes_;
+  std::vector<int32_t> strides_;
+  std::vector<int32_t> rates_;
 
   Padding padding_;
 

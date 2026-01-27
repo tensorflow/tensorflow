@@ -101,7 +101,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -119,7 +119,7 @@ TEST_P(ResizeNearestNeighborOpAlignCornersTest,
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -136,7 +136,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -157,7 +157,7 @@ TEST_P(ResizeNearestNeighborOpAlignCornersTest,
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -179,7 +179,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest3x3To2x2) {
   //  7, 8, 9
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
@@ -201,7 +201,7 @@ TEST_P(ResizeNearestNeighborOpAlignCornersTest,
   //  7, 8, 9
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
@@ -220,7 +220,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 5});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 5});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 5, 1}));
@@ -243,7 +243,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearestNeighbor4x4To3x3) {
   AddInputFromArray<float>(
       TensorShape({1, 4, 4, 1}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -268,7 +268,7 @@ TEST_P(ResizeNearestNeighborOpAlignCornersTest,
   AddInputFromArray<float>(
       TensorShape({1, 4, 4, 1}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -288,7 +288,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To5x2) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {5, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 5, 2, 1}));
@@ -310,7 +310,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To4x4) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  AddInputFromArray<int32_t>(TensorShape({2}), {4, 4});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
@@ -334,7 +334,7 @@ TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2x2x2To2x3x3x2) {
   //    [ 7, 7 ], [ 8, 8] ]
   AddInputFromArray<float>(TensorShape({2, 2, 2, 2}),
                            {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 3, 2}));
@@ -364,7 +364,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest5x2To2x2) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 5, 1}),
                            {1, 2, 3, 4, 5, 1, 2, 3, 4, 5});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
@@ -381,7 +381,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To1x1) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -398,7 +398,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To3x3) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -420,7 +420,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest3x3To2x2) {
   //  7, 8, 9
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 2, 1}));
@@ -439,7 +439,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To2x5) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 5});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 5});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 2, 5, 1}));
@@ -463,7 +463,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest,
   AddInputFromArray<float>(
       TensorShape({1, 4, 4, 1}),
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -483,7 +483,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To5x2) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {5, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 5, 2, 1}));
@@ -505,7 +505,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To4x4) {
   //  1, 2
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
-  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  AddInputFromArray<int32_t>(TensorShape({2}), {4, 4});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 4, 4, 1}));
@@ -530,7 +530,7 @@ TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest,
   //    [ 7, 7 ], [ 8, 8] ]
   AddInputFromArray<float>(TensorShape({2, 2, 2, 2}),
                            {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3, 3, 2}));

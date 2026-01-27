@@ -29,23 +29,33 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
 bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  return stream_kind != AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
+  switch (stream_kind) {
+    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P0:
+    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P1:
+      return true;
+    default:
+      return false;
+  }
 }
 
 CollectiveStreamId GetCollectiveStreamId(bool is_async,
                                          CollectiveStreamId stream_id,
                                          AsyncStreamKind stream_kind) {
-  if (!is_async) return CollectiveStreamId(0);
+  if (!is_async) {
+    return CollectiveStreamId(0);
+  }
   // TODO: Remove this fallback once AsyncStreamId is used everywhere.
-  if (stream_id.value() == 0)
+  if (stream_id.value() == 0) {
     return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
+  }
   return stream_id;
 }
 
@@ -75,6 +85,11 @@ GpuCliqueKey::GpuCliqueKey(
 bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
 
 GlobalDeviceId GpuCliqueKey::root_device() const { return root_device_; }
+
+std::vector<std::vector<GlobalDeviceId>> GpuCliqueKey::ParticipantGroups()
+    const {
+  return participant_groups_;
+};
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
@@ -114,14 +129,14 @@ std::string GpuCliqueKey::ToString() const {
     std::vector<std::string> values;
     values.reserve(participant_groups_.size());
     for (const auto& group : participant_groups_) {
-      values.push_back("[" + GlobalDeviceIdsToString(group) + "]");
+      values.push_back(absl::StrFormat("[%s]", absl::StrJoin(group, ",")));
     }
     group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
   }
   return absl::StrFormat(
-      "devices=[%s]; is_p2p=%d%s; root_device=%lld; "
-      "num_local_participants=%lld; incarnations=[%s]",
-      GlobalDeviceIdsToString(devices()), is_p2p_, group_string,
+      "devices=[%s]; is_p2p=%d%s; root=%lld; local_participants=%lld; "
+      "incarnations=[%s]",
+      absl::StrJoin(devices(), ","), is_p2p_, group_string,
       root_device_.value(), num_local_participants_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {

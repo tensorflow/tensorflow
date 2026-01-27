@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/kernel_stats.h"
 
 namespace stream_executor::cuda {
 
@@ -48,6 +49,9 @@ struct RelocatableModule {
   // An optional error/informational log of the compilation process that
   // produced this CUBIN.
   std::optional<std::string> compilation_log;
+
+  // Stats about each of the kernels from the compiler.
+  ModuleStats module_stats;
 };
 
 // A compiled and linked CUDA program in CUBIN format.
@@ -65,6 +69,9 @@ struct Assembly {
   // An optional error/informational log of the compilation process that
   // produced this CUBIN.
   std::optional<std::string> compilation_log;
+
+  // Stats about each of the kernels from the compiler.
+  ModuleStats module_stats;
 };
 
 // A PTX module in textual assembly format.

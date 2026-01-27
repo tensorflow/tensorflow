@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -61,7 +61,7 @@ namespace {
 ConstOp createI32ConstOp(int32_t value, Location loc,
                          PatternRewriter* rewriter) {
   auto int_attr = IntegerAttr::get(rewriter->getIntegerType(32), value);
-  return rewriter->create<ConstOp>(loc, int_attr);
+  return ConstOp::create(*rewriter, loc, int_attr);
 }
 
 // Creates ConstantOp for array of int32_t.
@@ -70,7 +70,7 @@ arith::ConstantOp createI32ConstantOp(llvm::ArrayRef<int32_t> values,
   auto values_type = RankedTensorType::get(
       {static_cast<int32_t>(values.size())}, rewriter->getIntegerType(32));
   auto constant_attr = rewriter->getI32TensorAttr(values);
-  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+  return arith::ConstantOp::create(*rewriter, loc, values_type, constant_attr);
 }
 
 // Creates ConstantOp for array of int64_t.
@@ -79,7 +79,7 @@ arith::ConstantOp createI64ConstantOp(llvm::ArrayRef<int64_t> values,
   auto values_type = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, rewriter->getIntegerType(64));
   auto constant_attr = rewriter->getI64TensorAttr(values);
-  return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
+  return arith::ConstantOp::create(*rewriter, loc, values_type, constant_attr);
 }
 
 // Function to create a tf.SumOp to sum the element in 'value' reduced along the
@@ -98,8 +98,9 @@ TF::SumOp createSumOp(Value value, Location loc,
       sum_shape.push_back(shape[i]);
     }
   }
-  return rewriter->create<TF::SumOp>(
-      loc, RankedTensorType::get(sum_shape, value_type.getElementType()), value,
+  return TF::SumOp::create(
+      *rewriter, loc,
+      RankedTensorType::get(sum_shape, value_type.getElementType()), value,
       redux_op);
 }
 
@@ -115,8 +116,8 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
   }
   auto transposed_type =
       RankedTensorType::get(transposed_shape, value_type.getElementType());
-  return rewriter->create<TF::TransposeOp>(loc, transposed_type, value,
-                                           perm_op);
+  return TF::TransposeOp::create(*rewriter, loc, transposed_type, value,
+                                 perm_op);
 }
 
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
@@ -125,8 +126,8 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
   auto shape_tensor = createI64ConstantOp(
       tensorflow::ConvertMlirShapeToTF(shape), loc, rewriter);
   Type resultType = RankedTensorType::get(shape, element_type);
-  return rewriter->create<TF::ReshapeOp>(loc, resultType, /*tensor=*/value,
-                                         /*shape=*/shape_tensor);
+  return TF::ReshapeOp::create(*rewriter, loc, resultType, /*tensor=*/value,
+                               /*shape=*/shape_tensor);
 }
 
 // Creates ReshapeOp with runtime calcuation of required shape to support
@@ -140,7 +141,7 @@ TF::ReshapeOp createReshapeOpForDynamic(Value value, ArrayRef<int64_t> shape,
                                         PatternRewriter* rewriter) {
   // Build ShapeOp
   auto input_shape =
-      rewriter->create<TF::ShapeOp>(loc, value, rewriter->getBoolAttr(true));
+      TF::ShapeOp::create(*rewriter, loc, value, rewriter->getBoolAttr(true));
 
   // Build UnsortedSegmentProdOp
   Type segProdresultType =
@@ -148,16 +149,16 @@ TF::ReshapeOp createReshapeOpForDynamic(Value value, ArrayRef<int64_t> shape,
   auto segids_tensor = createI32ConstantOp(reshape_segids, loc, rewriter);
   auto num_reshape_segids_tensor =
       createI32ConstOp(num_reshape_segids, loc, rewriter);
-  auto segprod = rewriter->create<TF::UnsortedSegmentProdOp>(
-      loc, segProdresultType, input_shape->getResults()[0], segids_tensor,
-      num_reshape_segids_tensor);
+  auto segprod = TF::UnsortedSegmentProdOp::create(
+      *rewriter, loc, segProdresultType, input_shape->getResults()[0],
+      segids_tensor, num_reshape_segids_tensor);
 
   // Build ReshapeOp with the result of UnsortedSegmentProdOp.
   Type out_tensor_type =
       RankedTensorType::get(shape, getElementTypeOrSelf(value.getType()));
-  return rewriter->create<TF::ReshapeOp>(loc, out_tensor_type,
-                                         /*tensor=*/value,
-                                         /*shape=*/segprod->getResults()[0]);
+  return TF::ReshapeOp::create(*rewriter, loc, out_tensor_type,
+                               /*tensor=*/value,
+                               /*shape=*/segprod->getResults()[0]);
 }
 
 struct EinsumDimensionNumbers {
@@ -178,8 +179,8 @@ TF::ReshapeOp createOutputReshapeOpForDynamic(
     EinsumDimensionNumbers& dnums, Location loc, PatternRewriter* rewriter) {
   BoolAttr true_attr = rewriter->getBoolAttr(true);
   // Build ShapeOp
-  auto shape_lhs = rewriter->create<TF::ShapeOp>(loc, org_lhs, true_attr);
-  auto shape_rhs = rewriter->create<TF::ShapeOp>(loc, org_rhs, true_attr);
+  auto shape_lhs = TF::ShapeOp::create(*rewriter, loc, org_lhs, true_attr);
+  auto shape_rhs = TF::ShapeOp::create(*rewriter, loc, org_rhs, true_attr);
 
   std::vector<int32_t> bl_index;  // Indexes of B0,...,Bn and L0,...,Ln
   bl_index.reserve(dnums.lhs_rhs_out.size() + dnums.lhs_out.size());
@@ -196,20 +197,20 @@ TF::ReshapeOp createOutputReshapeOpForDynamic(
   }
 
   auto lhs_index_tensor = createI32ConstantOp(bl_index, loc, rewriter);
-  auto gather_lhs = rewriter->create<TF::GatherOp>(
-      loc,
+  auto gather_lhs = TF::GatherOp::create(
+      *rewriter, loc,
       RankedTensorType::get({static_cast<int>(bl_index.size())},
                             rewriter->getIntegerType(32)),
       shape_lhs->getResults()[0], lhs_index_tensor->getResults()[0], true_attr);
   auto rhs_index_tensor = createI32ConstantOp(r_index, loc, rewriter);
-  auto gather_rhs = rewriter->create<TF::GatherOp>(
-      loc,
+  auto gather_rhs = TF::GatherOp::create(
+      *rewriter, loc,
       RankedTensorType::get({static_cast<int>(r_index.size())},
                             rewriter->getIntegerType(32)),
       shape_rhs->getResults()[0], rhs_index_tensor->getResults()[0], true_attr);
   Value zero_value = createI32ConstOp(0, loc, rewriter);
-  auto concat_out_shape = rewriter->create<TF::ConcatOp>(
-      loc,
+  auto concat_out_shape = TF::ConcatOp::create(
+      *rewriter, loc,
       RankedTensorType::get({static_cast<int>(bl_index.size()) +
                              static_cast<int>(r_index.size())},
                             rewriter->getIntegerType(32)),
@@ -220,17 +221,16 @@ TF::ReshapeOp createOutputReshapeOpForDynamic(
   // Build ReshapeOp with the calculated output shape.
   Type out_type =
       RankedTensorType::get(shape, getElementTypeOrSelf(value.getType()));
-  return rewriter->create<TF::ReshapeOp>(
-      loc, out_type,
-      /*tensor=*/value,
-      /*shape=*/concat_out_shape->getResults()[0]);
+  return TF::ReshapeOp::create(*rewriter, loc, out_type,
+                               /*tensor=*/value,
+                               /*shape=*/concat_out_shape->getResults()[0]);
 }
 
 std::optional<llvm::SmallDenseMap<char, int64_t>> EquationToMap(
     llvm::StringRef equation) {
   llvm::SmallDenseMap<char, int64_t> map;
   for (int64_t i = 0; i < equation.size(); ++i) {
-    if (!std::isalpha(equation[i])) {
+    if (!llvm::isAlpha(equation[i])) {
       // Unsupported character in the equation.
       return std::nullopt;
     }
@@ -263,7 +263,7 @@ std::optional<llvm::SetVector<char>> GetAvailableLabels(
   const int lhs_size = lhs.size();
   for (int i = 0; i < lhs_size; ++i) {
     const char label = lhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       labels.remove(label);
       ++lhs_count;
     } else if (label == '.') {
@@ -280,7 +280,7 @@ std::optional<llvm::SetVector<char>> GetAvailableLabels(
   const int rhs_size = rhs.size();
   for (int i = 0; i < rhs_size; ++i) {
     const char label = rhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       labels.remove(label);
       ++rhs_count;
     } else if (label == '.') {
@@ -318,7 +318,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_lhs;
   for (int i = 0; i < lhs.size(); ++i) {
     const char label = lhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_lhs.push_back(label);
     } else {
       // Encounter ellipsis: generate unnamed labels then insert to the new
@@ -333,7 +333,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_rhs, new_rhs_labels;
   for (int i = 0; i < rhs.size(); ++i) {
     const char label = rhs[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_rhs.push_back(label);
     } else {
       // Encounter ellipsis: generate unnamed labels then insert to the new
@@ -352,7 +352,7 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   std::string new_output;
   for (int i = 0; i < out.size(); ++i) {
     const char label = out[i];
-    if (std::isalpha(label)) {
+    if (llvm::isAlpha(label)) {
       new_output.push_back(label);
     } else {
       // Encounter ellipsis: we will just insert the generated labels to the new
@@ -793,9 +793,9 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());
-  Value out = rewriter.create<TF::BatchMatMulV2Op>(
-      op.getLoc(), matmul_type, lhs, rhs, rewriter.getBoolAttr(false),
-      rewriter.getBoolAttr(false));
+  Value out = TF::BatchMatMulV2Op::create(rewriter, op.getLoc(), matmul_type,
+                                          lhs, rhs, rewriter.getBoolAttr(false),
+                                          rewriter.getBoolAttr(false));
 
   bool out_reshape_need = (reshape_shape.size() != matmul_shape.size() ||
                            original_type.getRank() != matmul_shape.size());

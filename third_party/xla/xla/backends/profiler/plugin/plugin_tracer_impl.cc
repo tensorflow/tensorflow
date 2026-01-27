@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "xla/backends/profiler/plugin/plugin_metadata.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/tsl/platform/logging.h"
@@ -37,7 +39,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Create(
   auto profiler = std::make_unique<PLUGIN_Profiler>();
   profiler->stopped = true;
   tensorflow::ProfileOptions options;
-  options.ParseFromArray(args->options, args->options_size);
+  options.ParseFromString(absl::string_view(args->options, args->options_size));
   profiler->impl = std::make_unique<tsl::profiler::ProfilerCollection>(
       tsl::profiler::CreateProfilers(options));
 
@@ -84,6 +86,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   if (!args->profiler->space) {
     VLOG(1) << "TpuProfiler CollectData";
     PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->CollectData(&space));
+    AddPluginMetadata(&space);
     args->profiler->byte_size = space.ByteSizeLong();
     VLOG(2) << "TpuProfiler CollectData: Number of XPlanes: "
             << space.planes_size();

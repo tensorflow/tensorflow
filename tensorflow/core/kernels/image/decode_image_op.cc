@@ -129,7 +129,7 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->GetAttr("acceptable_fraction",
                                       &flags_.min_acceptable_fraction));
-      string dct_method;
+      std::string dct_method;
       OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
       OP_REQUIRES(
           context,
@@ -189,7 +189,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int32 ByteSwapInt32ForBigEndian(int32_t x) {
+  inline int32_t ByteSwapInt32ForBigEndian(int32_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_32(x);
     } else {
@@ -198,7 +198,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int16 ByteSwapInt16ForBigEndian(int16_t x) {
+  inline int16_t ByteSwapInt16ForBigEndian(int16_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_16(x);
     } else {
@@ -264,7 +264,7 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES(context, crop_window.dim_size(0) == 4,
                   errors::InvalidArgument("crop_size must have four elements ",
                                           crop_window.shape().DebugString()));
-      auto crop_window_vec = crop_window.vec<int32>();
+      auto crop_window_vec = crop_window.vec<int32_t>();
       flags.crop_y = crop_window_vec(0);
       flags.crop_x = crop_window_vec(1);
       flags.crop_height = crop_window_vec(2);
@@ -288,9 +288,9 @@ class DecodeImageV2Op : public OpKernel {
     // Decode JPEG. Directly allocate to the output buffer if data type is
     // uint8 (to save extra copying). Otherwise, allocate a new uint8 buffer
     // with buffer size. `jpeg::Uncompress` supports unit8 only.
-    uint8* buffer = jpeg::Uncompress(
+    uint8_t* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
-        [&](int width, int height, int channels) -> uint8* {
+        [&](int width, int height, int channels) -> uint8_t* {
           buffer_size = height * width * channels;
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
@@ -310,9 +310,9 @@ class DecodeImageV2Op : public OpKernel {
           }
 
           if (data_type_ == DataType::DT_UINT8) {
-            return output->flat<uint8>().data();
+            return output->flat<uint8_t>().data();
           } else {
-            return new uint8[buffer_size];
+            return new uint8_t[buffer_size];
           }
         });
 
@@ -327,20 +327,20 @@ class DecodeImageV2Op : public OpKernel {
       return;
     }
     // Make sure we don't forget to deallocate `buffer`.
-    std::unique_ptr<uint8[]> buffer_unique_ptr(buffer);
+    std::unique_ptr<uint8_t[]> buffer_unique_ptr(buffer);
 
     // Convert uint8 image data to desired data type.
     // Use eigen threadpooling to speed up the copy operation.
     const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
-    TTypes<uint8>::UnalignedConstFlat buffer_view(buffer, buffer_size);
+    TTypes<uint8_t>::UnalignedConstFlat buffer_view(buffer, buffer_size);
     if (data_type_ == DataType::DT_UINT16) {
-      uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                           (std::numeric_limits<uint8>::max() + 1));
+      uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                             (std::numeric_limits<uint8_t>::max() + 1));
       // Fill output tensor with desired dtype.
-      output->flat<uint16>().device(device) =
-          buffer_view.cast<uint16>() * scale;
+      output->flat<uint16_t>().device(device) =
+          buffer_view.cast<uint16_t>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
-      float scale = 1. / std::numeric_limits<uint8>::max();
+      float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
       output->flat<float>().device(device) = buffer_view.cast<float>() * scale;
     }
@@ -415,35 +415,35 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES(
           context,
           png::CommonFinishDecode(
-              reinterpret_cast<png_bytep>(output->flat<uint8>().data()),
-              decode.channels * width * sizeof(uint8), &decode),
+              reinterpret_cast<png_bytep>(output->flat<uint8_t>().data()),
+              decode.channels * width * sizeof(uint8_t), &decode),
           errors::InvalidArgument("Invalid PNG data, size ", input.size()));
     } else if (data_type_ == DataType::DT_UINT16) {
       OP_REQUIRES(
           context,
           png::CommonFinishDecode(
-              reinterpret_cast<png_bytep>(output->flat<uint16>().data()),
-              decode.channels * width * sizeof(uint16), &decode),
+              reinterpret_cast<png_bytep>(output->flat<uint16_t>().data()),
+              decode.channels * width * sizeof(uint16_t), &decode),
           errors::InvalidArgument("Invalid PNG data, size ", input.size()));
     } else if (data_type_ == DataType::DT_FLOAT) {
       // `png::CommonFinishDecode` does not support `float`. First allocate
       // uint16 buffer for the image and decode in uint16 (lossless). Wrap the
       // buffer in `unique_ptr` so that we don't forget to delete the buffer.
-      std::unique_ptr<uint16[]> buffer(
-          new uint16[height * width * decode.channels]);
+      std::unique_ptr<uint16_t[]> buffer(
+          new uint16_t[height * width * decode.channels]);
       OP_REQUIRES(
           context,
           png::CommonFinishDecode(reinterpret_cast<png_bytep>(buffer.get()),
-                                  decode.channels * width * sizeof(uint16),
+                                  decode.channels * width * sizeof(uint16_t),
                                   &decode),
           errors::InvalidArgument("Invalid PNG data, size ", input.size()));
 
       // Convert uint16 image data to desired data type.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
-      TTypes<uint16, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                  decode.channels);
-      float scale = 1. / std::numeric_limits<uint16>::max();
+      TTypes<uint16_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
+                                                    decode.channels);
+      float scale = 1. / std::numeric_limits<uint16_t>::max();
       // Fill output tensor with desired dtype.
       output->tensor<float, 3>().device(device) = buf.cast<float>() * scale;
     }
@@ -477,10 +477,10 @@ class DecodeImageV2Op : public OpKernel {
     // uint8 only.
     Tensor* output = nullptr;
     int64_t buffer_size = 0;
-    string error_string;
-    uint8* buffer = gif::Decode(
+    std::string error_string;
+    uint8_t* buffer = gif::Decode(
         input.data(), input.size(),
-        [&](int num_frames, int width, int height, int channels) -> uint8* {
+        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
@@ -515,9 +515,9 @@ class DecodeImageV2Op : public OpKernel {
           }
 
           if (data_type_ == DataType::DT_UINT8) {
-            return output->flat<uint8>().data();
+            return output->flat<uint8_t>().data();
           } else {
-            return new uint8[buffer_size];
+            return new uint8_t[buffer_size];
           }
         },
         &error_string, expand_animations_);
@@ -532,20 +532,20 @@ class DecodeImageV2Op : public OpKernel {
       return;
     }
     // Make sure we don't forget to deallocate `buffer`.
-    std::unique_ptr<uint8[]> buffer_unique_ptr(buffer);
+    std::unique_ptr<uint8_t[]> buffer_unique_ptr(buffer);
 
     // Convert the raw uint8 buffer to desired dtype.
     // Use eigen threadpooling to speed up the copy operation.
-    TTypes<uint8>::UnalignedConstFlat buffer_view(buffer, buffer_size);
+    TTypes<uint8_t>::UnalignedConstFlat buffer_view(buffer, buffer_size);
     const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
     if (data_type_ == DataType::DT_UINT16) {
-      uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                           (std::numeric_limits<uint8>::max() + 1));
+      uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                             (std::numeric_limits<uint8_t>::max() + 1));
       // Fill output tensor with desired dtype.
-      output->flat<uint16>().device(device) =
-          buffer_view.cast<uint16>() * scale;
+      output->flat<uint16_t>().device(device) =
+          buffer_view.cast<uint16_t>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
-      float scale = 1. / std::numeric_limits<uint8>::max();
+      float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
       output->flat<float>().device(device) = buffer_view.cast<float>() * scale;
     }
@@ -578,18 +578,18 @@ class DecodeImageV2Op : public OpKernel {
                                         "size, width, height, and bpp, got ",
                                         input.size(), " bytes"));
 
-    const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
+    const uint8_t* img_bytes = reinterpret_cast<const uint8_t*>(input.data());
     int32_t header_size_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 10)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 10)));
     const int32_t header_size = ByteSwapInt32ForBigEndian(header_size_);
     int32_t width_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 18)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 18)));
     const int32_t width = ByteSwapInt32ForBigEndian(width_);
     int32_t height_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 22)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 22)));
     const int32_t height = ByteSwapInt32ForBigEndian(height_);
     int16_t bpp_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int16*>(img_bytes + 28)));
+        *(reinterpret_cast<const int16_t*>(img_bytes + 28)));
     const int16_t bpp = ByteSwapInt16ForBigEndian(bpp_);
 
     // `channels_` is desired number of channels. `img_channels` is number of
@@ -657,28 +657,29 @@ class DecodeImageV2Op : public OpKernel {
         context->allocate_output(
             0, TensorShape({abs_height, width, requested_channels}), &output));
 
-    const uint8* bmp_pixels = &img_bytes[header_size];
+    const uint8_t* bmp_pixels = &img_bytes[header_size];
 
     if (data_type_ == DataType::DT_UINT8) {
-      DecodeBMP(bmp_pixels, row_size, output->flat<uint8>().data(), width,
+      DecodeBMP(bmp_pixels, row_size, output->flat<uint8_t>().data(), width,
                 abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8[]> buffer(
-          new uint8[height * width * requested_channels]);
+      std::unique_ptr<uint8_t[]> buffer(
+          new uint8_t[height * width * requested_channels]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
                 requested_channels, img_channels, top_down);
-      TTypes<uint8, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                 requested_channels);
+      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
+                                                   requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
       if (data_type_ == DataType::DT_UINT16) {
-        uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                             (std::numeric_limits<uint8>::max() + 1));
+        uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                               (std::numeric_limits<uint8_t>::max() + 1));
         // Fill output tensor with desired dtype.
-        output->tensor<uint16, 3>().device(device) = buf.cast<uint16>() * scale;
+        output->tensor<uint16_t, 3>().device(device) =
+            buf.cast<uint16_t>() * scale;
       } else if (data_type_ == DataType::DT_FLOAT) {
-        float scale = 1. / std::numeric_limits<uint8>::max();
+        float scale = 1. / std::numeric_limits<uint8_t>::max();
         // Fill output tensor with desired dtype.
         output->tensor<float, 3>().device(device) = buf.cast<float>() * scale;
       }
@@ -724,7 +725,7 @@ class DecodeImageV2Op : public OpKernel {
 
       // Actually decode the image into the output buffer.
       OP_REQUIRES(context,
-                  webp::DecodeWebPImage(input, output->flat<uint8>().data(),
+                  webp::DecodeWebPImage(input, output->flat<uint8_t>().data(),
                                         width, height, channels),
                   errors::InvalidArgument("Failed to decode WebP image."));
       // Note: Here we could also perform casting to other dtypes, but users can
@@ -762,7 +763,7 @@ class DecodeImageV2Op : public OpKernel {
             return nullptr;
           }
 
-          return output->flat<uint8>().data();
+          return output->flat<uint8_t>().data();
         },
         &error_string, expand_animations_);
 
@@ -773,15 +774,16 @@ class DecodeImageV2Op : public OpKernel {
   }
 
  private:
-  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
-                 const int width, const int height, const int output_channels,
-                 const int input_channels, bool top_down);
+  void DecodeBMP(const uint8_t* input, const int row_size,
+                 uint8_t* const output, const int width, const int height,
+                 const int output_channels, const int input_channels,
+                 bool top_down);
 
   int channels_ = 0;
   DataType data_type_ = DataType::DT_UINT8;
   bool expand_animations_ = true;
   jpeg::UncompressFlags flags_;
-  string op_type_;
+  std::string op_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeJpeg").Device(DEVICE_CPU), DecodeImageV2Op);
@@ -794,8 +796,8 @@ REGISTER_KERNEL_BUILDER(Name("DecodeImage").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeWebP").Device(DEVICE_CPU), DecodeImageV2Op);
 
-void DecodeImageV2Op::DecodeBMP(const uint8* input, const int row_size,
-                                uint8* const output, const int width,
+void DecodeImageV2Op::DecodeBMP(const uint8_t* input, const int row_size,
+                                uint8_t* const output, const int width,
                                 const int height, const int output_channels,
                                 const int input_channels, bool top_down) {
   for (int i = 0; i < height; i++) {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <limits>
+#include <string>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -42,7 +43,7 @@ float get_fullrange() {
 class DequantizeOp : public XlaOpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    string mode_string;
+    std::string mode_string;
     int axis;
     bool narrow_range;
 

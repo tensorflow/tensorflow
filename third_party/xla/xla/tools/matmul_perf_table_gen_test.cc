@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tools/matmul_perf_table_gen.h"
 
 #include <cstdint>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,18 +34,13 @@ namespace {
 
 class MatmulPerfTableGenTest : public HloTestBase {
   void SetUp() override {
-    if (!IsCuda()) {
+    if (!backend()
+             .default_stream_executor()
+             ->GetDeviceDescription()
+             .gpu_compute_capability()
+             .IsCuda()) {
       GTEST_SKIP() << "Not built with --config=cuda";
     }
-  }
-
- protected:
-  bool IsCuda() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsCuda();
   }
 };
 

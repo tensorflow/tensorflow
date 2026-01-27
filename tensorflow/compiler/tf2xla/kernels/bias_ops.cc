@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -28,7 +30,7 @@ namespace {
 class BiasOp : public XlaOpKernel {
  public:
   explicit BiasOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    string data_format;
+    std::string data_format;
     if (ctx->GetAttr("data_format", &data_format).ok()) {
       OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));

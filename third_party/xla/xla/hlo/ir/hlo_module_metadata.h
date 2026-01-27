@@ -22,9 +22,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -34,12 +37,49 @@ limitations under the License.
 
 namespace xla {
 
+// Describes a stack frame.
+struct HloStackFrame {
+  absl::string_view file_name;
+  absl::string_view function_name;
+  int line = 0;
+  int column = 0;
+
+  // 1-based index of the parent frame.
+  // 0 value indicates that the current frame is the root.
+  int parent_frame_id = 0;
+
+  bool empty() const {
+    return line == 0 && column == 0 && file_name.empty() &&
+           function_name.empty();
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const HloStackFrame& frame) {
+    absl::Format(&sink, "%s:%d", frame.file_name, frame.line);
+    if (frame.column != 0) {
+      absl::Format(&sink, ":%d", frame.column);
+    }
+    if (!frame.function_name.empty()) {
+      absl::Format(&sink, " [%s]", frame.function_name);
+    }
+  }
+};
+
 // Wrapper class for HloModuleMetadataProto to avoid allowing callers to mutate
 // arbitrary fields. Specifically, callers cannot set timestamps or ids or
 // set the fields of any pass not currently running.
 class HloModuleMetadata {
  public:
   explicit HloModuleMetadata(tsl::Env* env) : env_(env) {}
+
+  HloModuleMetadata(const HloModuleMetadata& other) { CopyFrom(other); }
+
+  HloModuleMetadata& operator=(const HloModuleMetadata& other) {
+    if (this != &other) {
+      CopyFrom(other);
+    }
+    return *this;
+  }
 
   const HloModuleMetadataProto& proto() const { return module_metadata_; }
 
@@ -127,6 +167,23 @@ class HloModuleMetadata {
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
+
+  void CopyFrom(const HloModuleMetadata& other) {
+    module_metadata_ = other.module_metadata_;
+    env_ = other.env_;
+    next_pass_id_ = other.next_pass_id_;
+    absl::flat_hash_map<const HloPassMetadata*, int64_t> ptr_to_index;
+    for (int64_t i = 0; i < other.module_metadata_.pass_metadata().size();
+         ++i) {
+      ptr_to_index[&other.module_metadata_.pass_metadata(i)] = i;
+    }
+    running_passes_.reserve(other.running_passes_.size());
+    for (HloPassMetadata* pass_metadata : other.running_passes_) {
+      running_passes_.push_back(
+          module_metadata_.mutable_pass_metadata(ptr_to_index[pass_metadata]));
+    }
+    prepartitioning_metadata_ = other.prepartitioning_metadata_;
+  }
 
   absl::Status MutateCurrentHloPassMetadata(
       absl::FunctionRef<void(HloPassMetadata*)> mutator);

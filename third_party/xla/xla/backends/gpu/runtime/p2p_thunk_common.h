@@ -27,10 +27,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -74,7 +78,9 @@ struct P2PConfig {
   static SourceTargetMapEntry GetSourceTarget(
       const IdToSourceTargetMap& id_to_source_target, int64_t id) {
     auto it = id_to_source_target.find(id);
-    if (it != id_to_source_target.end()) return it->second;
+    if (it != id_to_source_target.end()) {
+      return it->second;
+    }
     return SourceTargetMapEntry{};
   }
 
@@ -99,6 +105,9 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 // Send or Recv instruction, by inspecting the frontend attributes of the
 // instruction.
 AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr);
+
+absl::StatusOr<const int64_t> GetCollectiveCurrentId(
+    CollectiveParams* collective_params, const P2PConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

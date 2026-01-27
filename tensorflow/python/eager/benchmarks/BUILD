@@ -15,6 +15,7 @@ cuda_py_benchmark_test(
     srcs = ["kpi_benchmark_test.py"],
     tags = [
         "no_windows",  #  b/141617449
+        "notap",  # b/456542868
         "optonly",
     ],
     deps = [

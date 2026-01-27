@@ -135,6 +135,8 @@ absl::Status createFromProtoAndReplaceComputations(
   // Remove the old computations, which are currently dead.
   CHECK_OK(HloDCE().Run(module));
 
+  module->set_stack_frame_index(proto.stack_frame_index());
+
   return absl::OkStatus();
 }
 
@@ -171,10 +173,10 @@ OriginalParamIndexToFlattenedNum getOriginalParamIndexToFlattenedNum(
 // Flattens the given `shape`.
 Shape getFlattenedShape(const Shape& shape) {
   std::vector<Shape> flattenedShapes;
-  ShapeUtil::ForEachLeafShape(
-      shape, [&](const Shape& subShape, const ShapeIndex& index) {
-        flattenedShapes.push_back(subShape);
-      });
+  ShapeUtil::ForEachLeafShape(shape,
+                              [&](const Shape& subShape, const ShapeIndex&) {
+                                flattenedShapes.push_back(subShape);
+                              });
   return ShapeUtil::MakeValidatedMaybeTupleShape(flattenedShapes).value();
 }
 
@@ -197,7 +199,7 @@ ComputationLayout getFlattenedComputationLayout(
   for (int64_t i = 0; i != computationLayout.parameter_count(); ++i) {
     ShapeUtil::ForEachLeafShape(
         computationLayout.parameter_shape(i),
-        [&](const Shape& subShape, const ShapeIndex& index) {
+        [&](const Shape& subShape, const ShapeIndex&) {
           if (useTupleArgs) {
             *tupleShape.add_tuple_shapes() = subShape;
           } else {
@@ -299,10 +301,10 @@ std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
                                      absl::string_view passName,
                                      bool isShardyVerbose) {
   std::string shardyDir = debugOptions.xla_dump_to();
-  absl::string_view regex = debugOptions.xla_dump_hlo_pass_re();
   if (shardyDir.empty() || isShardyVerbose) {
     return shardyDir;
   }
+  absl::string_view regex = debugOptions.xla_dump_hlo_pass_re();
   if (regex.empty() || !RE2::PartialMatch(passName, regex)) {
     return "";
   }
@@ -372,8 +374,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         spanToArrayRef(hloModule->config()
                            .allow_spmd_sharding_propagation_to_parameters()),
         spanToArrayRef(
-            hloModule->config().allow_spmd_sharding_propagation_to_output()),
-        /*importFuncCalls=*/true);
+            hloModule->config().allow_spmd_sharding_propagation_to_output()));
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
@@ -402,12 +403,10 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
   bool changed = false;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kCall ||
-          !instruction->frontend_attributes().map().contains(
-              kXlaInlineableAttr)) {
-        continue;
-      }
-      if (absl::StrContains(instruction->to_apply()->name(),
+      if (instruction->opcode() == HloOpcode::kCall &&
+          instruction->frontend_attributes().map().contains(
+              kXlaInlineableAttr) &&
+          absl::StrContains(instruction->to_apply()->name(),
                             sdy::kManualComputationFuncName.str())) {
         instruction->erase_frontend_attribute(kXlaInlineableAttr);
         // TODO(b/436603025). CallInliner do not inline the Shardy related
@@ -425,7 +424,7 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
 
 }  // namespace
 
-absl::StatusOr<bool> ShardyXLA::Run(
+absl::StatusOr<bool> ShardyXLA::RunImpl(
     HloModule* hloModule,
     const absl::flat_hash_set<absl::string_view>& executionThreads) {
   auto moduleFrontendAttrs = hloModule->frontend_attributes().map();
@@ -505,13 +504,11 @@ absl::StatusOr<bool> ShardyXLA::Run(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
-  // Shardy currently propagates shardings to parameters and root
-  // instructions. Hence, we specify `true` for update_output_layout and
-  // update_parameters_layout.
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
-          hloModule, /*update_output_layout=*/{true},
-          /*update_parameters_layout=*/{true}));
+          hloModule,
+          hloModule->config().allow_spmd_sharding_propagation_to_output(),
+          hloModule->config().allow_spmd_sharding_propagation_to_parameters()));
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.

@@ -36,7 +36,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -68,7 +67,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
-#include "xla/hlo/transforms/expanders/real_imag_expander.h"
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
@@ -247,9 +245,10 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<AsyncCollectiveCreator>(
       AsyncCollectiveCreator::CollectiveCreatorConfig());
   RegisterPass<BFloat16ConversionFolding>(
-      /*bfloat16_support=*/bfloat16_support);
+      /*bfloat16_support=*/bfloat16_support, alias_info_.get());
   RegisterPass<BFloat16MixedPrecisionRemoval>();
-  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support);
+  RegisterPass<BFloat16Propagation>(/*bfloat16_support=*/bfloat16_support,
+                                    alias_info_.get());
   RegisterPass<BatchDotSimplification>();
   RegisterPass<BroadcastCanonicalizer>();
   RegisterPass<CholeskyExpander>();
@@ -295,7 +294,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HostOffloadLegalize>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
-  RegisterPass<IndexedArrayAnalysisPrinterPass>();
   RegisterPass<InfeedTokenPropagation>();
   RegisterPass<InstructionHoister>();
   RegisterPass<LiteralCanonicalizer>(
@@ -306,7 +304,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<OptimizationBarrierExpander>();
   RegisterPass<OptimizeInputOutputBufferAlias>(true);
   RegisterPass<QrExpander>();
-  RegisterPass<RealImagExpander>();
   RegisterPass<ReduceDecomposer>();
   RegisterPass<ReduceWindowRewriter>(/*base_length=*/16);
   RegisterPass<ReorderConvertReduceAdd>();

@@ -24,9 +24,14 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -168,7 +173,7 @@ class LocalDeviceState {
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
   virtual absl::Status ThenMemcpyDeviceToDevice(
       se::Stream* transfer_stream, se::Stream* dst_stream,
-      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
+      se::DeviceAddressBase src_buffer, se::DeviceAddressBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
@@ -209,7 +214,8 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
-  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
+  absl::Status AllocateAndRecordEvent(AsyncWorkRunner* async_work_runner,
+                                      BufferSequencingEventRef event,
                                       se::Stream* stream);
 
   size_t GetNextComputeStreamSyncPoint() {
@@ -220,7 +226,7 @@ class LocalDeviceState {
   // which only incur the expense of constructing a cuda event if they're really
   // needed. This allows constructing a definition event per buffer.
   absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
-      size_t sync_point, tsl::thread::ThreadPool* thread_pool,
+      size_t sync_point, AsyncWorkRunner* async_work_runner,
       bool nullptr_if_past = false);
 
  private:

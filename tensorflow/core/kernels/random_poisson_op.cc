@@ -351,7 +351,7 @@ TF_CALL_double(REGISTER);
 REGISTER_ALL(Eigen::half);
 REGISTER_ALL(float);
 REGISTER_ALL(double);
-REGISTER_ALL(int32);
+REGISTER_ALL(int32_t);
 REGISTER_ALL(int64_t);
 
 #undef REGISTER_ALL

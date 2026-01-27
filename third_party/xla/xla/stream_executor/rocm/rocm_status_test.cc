@@ -18,17 +18,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(RocmStatusTest, ToStatusReturnsExpectedStatusCodes) {
   // We only promise hipSuccess to map to Ok, hipErrorOutOfMemory to

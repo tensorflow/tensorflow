@@ -29,8 +29,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -53,11 +52,11 @@ LlvmTestKernelEmitter::LlvmTestKernelEmitter(absl::string_view llvm_ir,
   }
 }
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<LlvmTestKernelEmitter::KernelDefinition>
 LlvmTestKernelEmitter::EmitKernelDefinition() {
   auto context = std::make_unique<llvm::LLVMContext>();
 
-  // Parse LLVM IR into a module and create a LlvmIrKernelSource.
+  // Parse LLVM IR into a module and create a LlvmKernelSource.
   llvm::SMDiagnostic diagnostic;
   std::unique_ptr<llvm::Module> module = llvm::parseAssembly(
       llvm::MemoryBufferRef(llvm_ir_, kernel_name_), diagnostic, *context);
@@ -67,7 +66,7 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
                     diagnostic.getMessage().str());
   }
 
-  LlvmIrKernelSource source(std::move(context), std::move(module));
+  LlvmKernelSource source(std::move(context), std::move(module));
 
   // Convert kernel arguments to fake allocations and buffer uses.
   KernelSpec::Buffers argument_buffers;
@@ -85,7 +84,7 @@ LlvmTestKernelEmitter::EmitKernelDefinition() {
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return LlvmKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 
 }  // namespace xla::cpu

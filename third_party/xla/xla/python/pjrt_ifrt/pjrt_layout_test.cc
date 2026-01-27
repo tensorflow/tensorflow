@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -42,7 +41,6 @@ namespace {
 
 using ::testing::Optional;
 using ::testing::Return;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST(PjRtLayoutTest, Create) {
   EXPECT_EQ(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(

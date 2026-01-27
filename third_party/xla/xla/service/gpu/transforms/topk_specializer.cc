@@ -20,7 +20,6 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -151,7 +150,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return SpecializeTopkVisitor(compute_capability_)

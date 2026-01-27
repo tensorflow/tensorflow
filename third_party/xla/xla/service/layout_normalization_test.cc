@@ -18,12 +18,15 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/scatter_simplifier.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -875,16 +878,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={2,0}, inserted_window_dims={0,1,3}, scatter_dims_to_operand_dims={2,4}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, SimplifiedScatter) {
@@ -905,16 +907,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, VariadicScatter) {
@@ -941,16 +942,15 @@ ENTRY main.17 {
 }
 )";
 
-  CheckLayoutNormalization(
-      hlo, R"(
+  CheckLayoutNormalization(hlo, R"(
 // CHECK: scatter({{.*}}),
 // CHECK-SAME: update_window_dims={4,0,1,2,5}, inserted_window_dims={}, scatter_dims_to_operand_dims={4,0}, index_vector_dim=1, to_apply=%region_0.10
 )",
-      // Run the ScatterSimplifier afterwards, otherwise the verifier will
-      // complain!
-      [](HloModule* module) {
-        TF_CHECK_OK(ScatterSimplifier().Run(module).status());
-      });
+                           // Run the ScatterSimplifier afterwards, otherwise
+                           // the verifier will complain!
+                           [](HloModule* module) {
+                             CHECK_OK(ScatterSimplifier().Run(module).status());
+                           });
 }
 
 TEST_F(LayoutNormalizationTest, CompareInt4) {
@@ -984,6 +984,52 @@ ENTRY main {
 // CHECK: %[[TRANSPOSE:.*]] = f32[2,2,3,2]{3,2,1,0} transpose
 // CHECK: multiply({{.*}}, %[[TRANSPOSE]])
 )");
+}
+
+TEST_F(LayoutNormalizationTest,
+       CustomCallTransformerModifiesInPlaceAndReturnsNullopt) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,2]{1,0} parameter(0)
+  ROOT custom-call = (f32[2,2]{1,0}) custom-call(p0), custom_call_target="foo"
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  CustomCallTransformer transformer = [](HloCustomCallInstruction* instruction)
+      -> absl::StatusOr<std::optional<HloInstruction*>> {
+    instruction->set_custom_call_target("bar");
+    return std::nullopt;
+  };
+
+  LayoutNormalization layout_normalization(transformer);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  // Verify the change actually happened
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->custom_call_target(), "bar");
+}
+
+TEST_F(LayoutNormalizationTest, GetTupleElementDoesNotTriggerChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[2,2]{1,0} parameter(0)
+  tuple = (f32[2,2]{1,0}) tuple(p0)
+  ROOT gte = f32[2,2]{1,0} get-tuple-element(tuple), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+
+  LayoutNormalization layout_normalization;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, layout_normalization.Run(module.get()));
+
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

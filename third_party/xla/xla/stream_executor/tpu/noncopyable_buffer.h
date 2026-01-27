@@ -141,9 +141,9 @@ class NoncopyableBuffer {
   }
 
   static OwnedDataPtr AlignedAlloc(size_t size, size_t alignment) {
-    return OwnedDataPtr(
-        static_cast<uint8_t*>(tsl::port::AlignedMalloc(size, alignment)),
-        tsl::port::AlignedFree);
+    return OwnedDataPtr(static_cast<uint8_t*>(tsl::port::AlignedMalloc(
+                            size, static_cast<std::align_val_t>(alignment))),
+                        tsl::port::AlignedFree);
   }
 
  private:

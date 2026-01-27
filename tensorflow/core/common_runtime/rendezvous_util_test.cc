@@ -32,20 +32,20 @@ class RendezvousUtilTest : public ::testing::Test {
 };
 
 // string -> Tensor<string>
-Tensor V(const string& content) {
+Tensor V(const std::string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
   tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
 // Tensor<string> -> string
-string V(const Tensor& tensor) {
+std::string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
   return tensor.scalar<tstring>()();
 }
 
-string MakeStringKey(const string& name) {
+std::string MakeStringKey(const std::string& name) {
   return Rendezvous::CreateKey(
       "/job:localhost/replica:0/task:0/device:CPU:0", 0,
       "/job:localhost/replica:0/task:0/device:GPU:0", name, FrameAndIter(0, 0));

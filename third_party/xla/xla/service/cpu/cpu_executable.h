@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,9 +43,9 @@ limitations under the License.
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 
 namespace xla {
 namespace cpu {
@@ -61,8 +62,7 @@ class CpuExecutable : public Executable {
       std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
-      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+      TargetMachineOptions target_machine_options);
 
   ~CpuExecutable() override;
 
@@ -72,8 +72,9 @@ class CpuExecutable : public Executable {
 
   // Calls emitted thunk sequence with the given arguments using the supplied
   // buffers.
-  absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
-                             absl::Span<MaybeOwningDeviceMemory const> buffers);
+  absl::Status ExecuteThunks(
+      const ExecutableRunOptions* run_options,
+      absl::Span<MaybeOwningDeviceAddress const> buffers);
 
   absl::Span<const ObjFileProto> obj_files() const { return obj_files_; }
 
@@ -150,6 +151,10 @@ class CpuExecutable : public Executable {
   // structures that might have been used at compile time.
   void Finalize();
 
+  const TargetMachineOptions& target_machine_options() const {
+    return target_machine_options_;
+  }
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -168,8 +173,8 @@ class CpuExecutable : public Executable {
   //
   //  - buffers_to_free: buffers whose ownership was donated by the caller that
   //    are to be freed by the caller.
-  absl::StatusOr<std::vector<MaybeOwningDeviceMemory>> CreateBufferTable(
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
+  absl::StatusOr<std::vector<MaybeOwningDeviceAddress>> CreateBufferTable(
+      se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
       absl::Span<ExecutionInput const> arguments);
 
   // Creates an Execution output holding ScopedShapedBuffer for holding the
@@ -178,7 +183,7 @@ class CpuExecutable : public Executable {
   // assignment.
   absl::StatusOr<ExecutionOutput> CreateResultShapedBuffer(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<MaybeOwningDeviceMemory> buffers,
+      absl::Span<MaybeOwningDeviceAddress> buffers,
       absl::Span<ExecutionInput> arguments);
 
   // Returns the instruction value set of the root instruction of the entry
@@ -234,13 +239,14 @@ class CpuExecutable : public Executable {
   // Whether the thunk executor contains any YNN fusion thunks.
   bool has_ynn_fusions_ = false;
 
+  TargetMachineOptions target_machine_options_;
+
   // Entry function name for the computation.
   std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                std::unique_ptr<BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment,
+                TargetMachineOptions target_machine_options);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };

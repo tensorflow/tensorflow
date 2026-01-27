@@ -27,6 +27,8 @@ toc:
     path: /xla/copybara
   - title: Determinism
     path: /xla/determinism
+  - title: Effort Levels
+    path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
   - title: Hermetic CUDA overview
@@ -47,21 +49,25 @@ toc:
     path: /xla/test_hlo_passes
   - title: Tiled layout
     path: /xla/tiled_layout
-  - title: Using LSP autocompletion
-    path: /xla/lsp
+  - title: Setting Up Developer Environment
+    path: /xla/developer_environment
   - title: Writing custom calls
     path: /xla/custom_call
   - title: XLA Flags guidance
     path: /xla/flags_guidance
   - title: XLA Tooling
     path: /xla/tools
-  - title: XLA:GPU optimization levels
-    path: /xla/gpu_optimization_levels
 - title: Debugging
   section:
   # This is the default tab for the Debugging section.
   - title: Dump HLO Computations
     path: /xla/hlo_dumps
+  - title: Errors Overview
+    path: /xla/errors_overview
+  - title: Error Codes
+    path: /xla/error_codes
+  - title: Debug OOM errors with XProf
+    path: /xla/oom_debugging
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:

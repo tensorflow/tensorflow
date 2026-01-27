@@ -24,13 +24,17 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 
@@ -48,6 +52,12 @@ class AllToAllStartThunk : public CollectiveThunk {
   AllToAllStartThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
                      std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
 
+  AllToAllStartThunk(ThunkInfo thunk_info,
+                     std::shared_ptr<AsyncEvents> async_events,
+                     const AllToAllConfig& config,
+                     std::vector<CollectiveThunk::Buffer> buffers,
+                     bool p2p_memcpy_enabled);
+
   // Returns whether the given instruction can be lowered to an all-to-all
   // call.
   static absl::Status CheckImplementable(const HloAllToAllInstruction* instr,
@@ -56,21 +66,39 @@ class AllToAllStartThunk : public CollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
-  static const char* GetHloOpName() { return "all-to-all-start"; }
+  static absl::string_view GetHloOpName() { return "all-to-all-start"; }
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
+
+  static absl::StatusOr<std::unique_ptr<AllToAllStartThunk>> FromProto(
+      ThunkInfo thunk_info, const AllToAllStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
   const CollectiveConfig& config() const override { return config_.config; }
   bool has_split_dimension() const { return config_.has_split_dimension; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
+
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
-                                     CommunicatorHandle comm) override;
-
-  AsyncStreamKind GetAsyncStreamKind() const override;
+                                     Communicator& comm) override;
 
   bool is_local() const;
 
@@ -98,12 +126,12 @@ class AllToAllStartThunk : public CollectiveThunk {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, Communicator* comm,
+                         se::Stream& stream, Communicator& comm,
                          bool use_symmetric_buffer = false);
 
 absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
-                               se::Stream& stream, Communicator* comm,
+                               se::Stream& stream, Communicator& comm,
                                uint64_t receive_pointer_map[],
                                const GpuCliqueKey& clique_key, RankId rank,
                                se::Event* event,

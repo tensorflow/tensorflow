@@ -5,7 +5,7 @@ import configparser
 import os
 import string
 
-from bazel_tools.tools.python.runfiles import runfiles
+from python.runfiles import runfiles
 
 r = runfiles.Create()
 

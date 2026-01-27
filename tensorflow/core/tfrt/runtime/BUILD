@@ -19,7 +19,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
-        # copybara:uncomment "//learning/pathways/serving/...",
+        # copybara:uncomment "//third_party/pathways/google/serving/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//smartass/brain/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
@@ -141,10 +141,10 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/utility",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:threadpool_interface",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:random",
+        "@tsl//tsl/platform:threadpool_interface",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -177,8 +177,8 @@ tf_cc_shared_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 

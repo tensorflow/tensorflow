@@ -27,6 +27,7 @@ License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -34,7 +35,6 @@ License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,6 +58,11 @@ bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
 }
 
 class FusionBlockLevelRewriterTest : public HloHardwareIndependentTestBase {
+ public:
+  FusionBlockLevelRewriterTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::CudaComputeCapability::Ampere())};
@@ -70,7 +75,6 @@ class FusionBlockLevelRewriterTest : public HloHardwareIndependentTestBase {
     return debug_options;
   }
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(FusionBlockLevelRewriterTest,
@@ -91,7 +95,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_text));
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
-                               &symbolic_expr_context_)
+                               &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
 }
@@ -113,7 +117,7 @@ ENTRY entry {
 
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
-                               &symbolic_expr_context_)
+                               &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(true));
   const HloInstruction* root = module->entry_computation()->root_instruction();
@@ -141,10 +145,10 @@ ENTRY entry {
   ASSERT_FALSE(std::holds_alternative<SymbolicTileAnalysis>(
       SymbolicTileAnalysis::AnalyzeComputation(
           *module->GetComputationWithName("fusion_computation"),
-          &symbolic_expr_context_)));
+          &mlir_context_)));
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
-                               &symbolic_expr_context_)
+                               &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
 }
@@ -169,7 +173,7 @@ ENTRY entry {
       device_info_.gpu_compute_capability()));
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
-                               &symbolic_expr_context_)
+                               &mlir_context_)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
 }
@@ -205,8 +209,40 @@ ENTRY entry  {
   se::DeviceDescription device_info{TestGpuDeviceInfo::RTXA6000DeviceInfo(
       se::CudaComputeCapability::Ampere())};
   FusionBlockLevelRewriter rewriter(
-      device_info, HloCostAnalysis::DefaultShapeSize, &symbolic_expr_context_);
+      device_info, HloCostAnalysis::DefaultShapeSize, &mlir_context_);
   EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
+}
+
+TEST_F(FusionBlockLevelRewriterTest,
+       RewritesLoopTransposeFusionWithSplitDimensions) {
+  // This test checks if the rewriter can handle a transpose where dimensions
+  // are split in the HLO but logically contiguous.
+  // Logical shape: [100, 200, 300] -> [300, 200, 100] (Swap dim 0 and 2).
+  // Physical shape: [100, 200, 10, 30] -> [10, 30, 200, 100].
+  // The normalized logical transpose shape should recover the logical swap.
+  const absl::string_view hlo_text = R"(
+fusion_computation {
+  p0 = f32[100,200,10,30] parameter(0)
+  ROOT transpose = f32[10,30,200,100] transpose(p0), dimensions={2,3,1,0}
+}
+
+ENTRY entry {
+  p0 = f32[100,200,10,30] parameter(0)
+  ROOT fusion = f32[10,30,200,100] fusion(p0), kind=kLoop,
+    calls=fusion_computation
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize,
+                               &mlir_context_)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(true));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);

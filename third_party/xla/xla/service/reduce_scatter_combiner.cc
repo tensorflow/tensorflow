@@ -256,7 +256,7 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
       combine_by_dim_(combine_by_dim),
       combine_while_loops_(combine_while_loops) {}
 
-absl::StatusOr<bool> ReduceScatterCombiner::Run(
+absl::StatusOr<bool> ReduceScatterCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(

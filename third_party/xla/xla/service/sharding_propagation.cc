@@ -268,6 +268,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
     case HloOpcode::kTopK:
+    case HloOpcode::kScan:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -409,6 +410,7 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kScan:
       return true;
     case HloOpcode::kParameter:
       return allow_spmd_sharding_propagation_to_parameters ||
@@ -778,9 +780,8 @@ bool RefineManualAutoShardingFromAuto(
   // We are also merging the non-manual sharding into the manual sharding. To
   // leverage existing merging implementation, we treat the manual dim as a
   // data dim, and add it right before the replication dim.
-  std::vector<int64_t> partial_manual_shape(
-      partial_rep.tile_assignment().dimensions().begin(),
-      partial_rep.tile_assignment().dimensions().end());
+  std::vector<int64_t> partial_manual_shape(partial_rep.dimensions().begin(),
+                                            partial_rep.dimensions().end());
   partial_manual_shape.insert(partial_manual_shape.begin() + data_rank, 1);
   auto partial_tiling_for_manual =
       partial_rep.tile_assignment().Reshape(partial_manual_shape);
@@ -1215,10 +1216,10 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
         }
         for (const auto& dim : dims) {
           if (lhs_or_rhs == 0) {
-            partitions *= sharding.tile_assignment().dim(dim.lhs);
+            partitions *= sharding.dimension(dim.lhs);
           } else {
             CHECK_EQ(lhs_or_rhs, 1);
-            partitions *= sharding.tile_assignment().dim(dim.rhs);
+            partitions *= sharding.dimension(dim.rhs);
           }
         }
         return partitions;
@@ -1292,7 +1293,7 @@ std::optional<HloSharding> InferBroadcastOperandSharding(
   for (int64_t i = 0; i < instruction.shape().dimensions().size(); ++i) {
     if (absl::c_count(instruction.dimensions(), i) == 0) {
       dims_to_replicate.push_back(i);
-      if (instruction.sharding().tile_assignment().dim(i) > 1) {
+      if (instruction.sharding().dimension(i) > 1) {
         needs_replication = true;
       }
     }
@@ -1336,7 +1337,7 @@ bool InferReduceShardingFromOperand(HloInstruction* instruction,
     if (operand->sharding().IsReplicated() ||
         (!is_spmd &&
          absl::c_any_of(instruction->dimensions(), [operand](int64_t dim) {
-           return operand->sharding().tile_assignment().dim(dim) > 1;
+           return operand->sharding().dimension(dim) > 1;
          }))) {
       // We are reducing along one of the sharded dimensions. We only
       // support this in SPMD.
@@ -1393,8 +1394,7 @@ absl::StatusOr<bool> ProcessShardingInstruction(
         shard_group_id_to_shard_as_group,
     absl::flat_hash_map<int64_t, std::vector<HloInstruction*>>*
         shard_group_id_to_shard_like_group,
-    const std::vector<bool>*
-        allow_spmd_sharding_propagation_to_parameters_vector,
+    absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters_vector,
     bool remove_unknown_shardings) {
   bool changed = false;
 
@@ -1412,11 +1412,10 @@ absl::StatusOr<bool> ProcessShardingInstruction(
           instruction->sharding().IsShardGroup()) {
         if (instruction->IsCustomCall("Sharding")) {
           CHECK(instruction->operand(0)->opcode() != HloOpcode::kParameter ||
-                (allow_spmd_sharding_propagation_to_parameters_vector &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->size() ==
+                (allow_spmd_sharding_propagation_to_parameters_vector.size() ==
                      module->entry_computation()->num_parameters() &&
-                 allow_spmd_sharding_propagation_to_parameters_vector->at(
-                     instruction->operand(0)->parameter_number())));
+                 allow_spmd_sharding_propagation_to_parameters_vector
+                     [instruction->operand(0)->parameter_number()]));
         }
         if (instruction->IsCustomCall("Sharding") && !replaced_with_copy) {
           // Pass shard group to operand sharding custom-call if it's not
@@ -1836,7 +1835,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
         for (int64_t i = 0; i < target_tile_assignment_dimensions.size(); ++i) {
           if (absl::c_find(dimensions, i) == dimensions.end()) {
             target_tile_assignment_dimensions[i] =
-                user_sharding.tile_assignment().dim(next_output_dim++);
+                user_sharding.dimension(next_output_dim++);
           } else {
             target_tile_assignment_dimensions[i] = 1;
           }
@@ -1863,6 +1862,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       return user_sharding;
     }
+    case HloOpcode::kScan:
     case HloOpcode::kSort: {
       HloSharding user_sharding = user.sharding();
       if (user_sharding.IsTuple()) {
@@ -2292,13 +2292,13 @@ bool ShardingPropagation::InferShardingFromOperands(
         } else {
           const int64_t source_dim = std::distance(dimensions.begin(), it);
           target_tile_assignment_dimensions.push_back(
-              op->sharding().tile_assignment().dim(source_dim));
+              op->sharding().dimension(source_dim));
         }
       }
       for (int64_t i = op->sharding().TiledDataRank();
-           i < op->sharding().tile_assignment().num_dimensions(); ++i) {
+           i < op->sharding().num_dimensions(); ++i) {
         target_tile_assignment_dimensions.push_back(
-            op->sharding().tile_assignment().dim(i));
+            op->sharding().dimension(i));
       }
       auto new_tile_assignment = op->sharding().tile_assignment().Reshape(
           target_tile_assignment_dimensions);
@@ -2478,7 +2478,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       CHECK(sort);
       const int64_t sort_dim = sort->sort_dimension();
       if (!operand->sharding().IsTileMaximal() &&
-          operand->sharding().tile_assignment().dim(sort_dim) != 1 &&
+          operand->sharding().dimension(sort_dim) != 1 &&
           !hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                operand->shape(), operand->sharding(), sort_dim)
                .has_value()) {
@@ -3121,7 +3121,7 @@ std::vector<HloInstruction*> ShardingPropagation::GetRelatedInstructions(
   }
 };
 
-absl::StatusOr<bool> ShardingPropagation::Run(
+absl::StatusOr<bool> ShardingPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   LOG(WARNING) << "GSPMD sharding propagation is going to be deprecated and "
@@ -3190,7 +3190,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               : nullptr,
           &instruction_to_shard_group_id, &shard_group_id_to_shard_as_group,
           &shard_group_id_to_shard_like_group,
-          &allow_spmd_sharding_propagation_to_parameters_vector_));
+          allow_spmd_sharding_propagation_to_parameters_vector_));
   any_changed |= changed;
 
   for (const auto& [shard_group_id, shard_as_group] :
@@ -3559,7 +3559,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
       }
     }
     for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
-      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+      if (shape.dimensions(i) % sharding.dimension(i) != 0) {
         return false;
       }
     }

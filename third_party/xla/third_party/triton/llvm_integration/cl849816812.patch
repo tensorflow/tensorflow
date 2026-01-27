@@ -1,0 +1,24 @@
+
+--- a/python/BUILD	2025-12-11 07:03:23.000000000 -0800
++++ b/python/BUILD	2025-12-28 14:18:51.000000000 -0800
+@@ -55,6 +55,7 @@
+         "@llvm-project//llvm:Linker",
+         "@llvm-project//llvm:MC",
+         "@llvm-project//llvm:Passes",
++        "@llvm-project//llvm:Plugins",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//llvm:Target",
+         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+
+--- a/python/src/llvm.cc	2025-11-12 02:33:41.000000000 -0800
++++ b/python/src/llvm.cc	2025-12-28 14:18:51.000000000 -0800
+@@ -14,8 +14,8 @@
+ #include "llvm/Pass.h"
+ #include "llvm/Passes/OptimizationLevel.h"
+ #include "llvm/Passes/PassBuilder.h"
+-#include "llvm/Passes/PassPlugin.h"
+ #include "llvm/Passes/StandardInstrumentations.h"
++#include "llvm/Plugins/PassPlugin.h"
+ #include "llvm/Support/CodeGen.h"
+ #include "llvm/Support/Signals.h"
+ #include "llvm/Support/SourceMgr.h"

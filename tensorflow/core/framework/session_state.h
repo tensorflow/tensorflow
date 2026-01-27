@@ -50,7 +50,7 @@ class SessionState {
   int64_t tensor_id_ = 0;
 
   // The live tensors in the session. A map from tensor handle to tensor.
-  std::unordered_map<string, Tensor> tensors_;
+  std::unordered_map<std::string, Tensor> tensors_;
 };
 
 // The tensor store remembers the tensors we choose to keep for the
@@ -71,7 +71,7 @@ class TensorStore {
   absl::Status AddTensor(const std::string& name, const TensorAndKey& tk);
 
   // Save the tensors in the tensor store of this run to the session.
-  absl::Status SaveTensors(const std::vector<string>& output_names,
+  absl::Status SaveTensors(const std::vector<std::string>& output_names,
                            SessionState* session_state);
 
   // Returns true if no tensors have been added to this store.
@@ -83,7 +83,7 @@ class TensorStore {
 
   // The tensors that will be saved to session state when this run completes.
   // A map from tensor string name to tensor.
-  std::unordered_map<string, TensorAndKey> tensors_ TF_GUARDED_BY(lock_);
+  std::unordered_map<std::string, TensorAndKey> tensors_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

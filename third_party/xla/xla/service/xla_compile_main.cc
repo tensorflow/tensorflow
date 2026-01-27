@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -97,9 +98,15 @@ int main(int argc, char* argv[]) {
       tsl::Flag("result_output_file", &options.result_output_file,
                 "File to write a serialized xla.CompilationResult proto to. "
                 "Required if --output_file is not set."),
+      tsl::Flag("target_cpu", &options.cpu_options.target_cpu,
+                "The target cpu."),
+      tsl::Flag("target_features", &options.cpu_options.target_features,
+                "The target features."),
+      tsl::Flag("target_triple", &options.cpu_options.target_triple,
+                "The target triple."),
   };
 
-  tsl::string usage = xla::xla_compile::kUsageHeader;
+  std::string usage = xla::xla_compile::kUsageHeader;
   usage += tsl::Flags::Usage(argv[0], flag_list);
   if (argc > 1 && absl::string_view(argv[1]) == "--help") {
     std::cerr << usage << "\n";

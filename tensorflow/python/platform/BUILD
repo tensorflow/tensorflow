@@ -35,6 +35,11 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "windows_lib_diagnostics",
+    srcs = ["windows_lib_diagnostics.py"],
+)
+
+py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
     deps = if_oss(
@@ -186,16 +191,16 @@ tf_python_pybind_extension(
     srcs = ["stacktrace_handler_wrapper.cc"],
     hdrs = [
         "//tensorflow/core/platform:stacktrace_handler_hdrs",
-        "@local_tsl//tsl/platform:stacktrace_handler_hdrs",
+        "@tsl//tsl/platform:stacktrace_handler_hdrs",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
-        "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@tsl//tsl/platform:stacktrace_handler_hdrs_lib",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -208,8 +213,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -219,7 +224,6 @@ py_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-    # "//third_party/mlperf:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:internal",
     # "//tensorflow_models:__subpackages__",

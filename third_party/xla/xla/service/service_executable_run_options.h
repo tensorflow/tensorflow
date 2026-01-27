@@ -55,7 +55,7 @@ class ServiceExecutableRunOptions {
 
   // Delegate to `ExecutableRunOptions` member.
   se::Stream* stream() const { return run_options_.stream(); }
-  se::DeviceMemoryAllocator* allocator() const {
+  se::DeviceAddressAllocator* allocator() const {
     return run_options_.allocator();
   }
   int device_ordinal() const { return run_options_.device_ordinal(); }

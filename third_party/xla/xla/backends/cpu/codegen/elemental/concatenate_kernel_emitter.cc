@@ -33,8 +33,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
@@ -44,7 +43,6 @@ limitations under the License.
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -68,7 +66,7 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ConcatenateKernelEmitter::KernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
   if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
     VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
@@ -112,7 +110,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                           llvm_module.get(), ir_builder,
                           kernel_prototype.workgroup_id.x, total_workgroups));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
   NumWorkGroups num_workgroups;
   if (is_parallel) {
     num_workgroups.x = total_workgroups;
@@ -123,7 +121,7 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

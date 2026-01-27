@@ -121,8 +121,9 @@ static inline int GetFirstGlobbingEntry(const std::vector<std::string>& dirs) {
 
 }  // namespace
 
-absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
-                              std::vector<string>* results) {
+absl::Status GetMatchingPaths(FileSystem* fs, Env* env,
+                              const std::string& pattern,
+                              std::vector<std::string>* results) {
   // Check that `fs`, `env` and `results` are non-null.
   if (fs == nullptr || env == nullptr || results == nullptr) {
     return absl::Status(
@@ -181,8 +182,8 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   // INVARIANT: If `{d, _}` is in queue, then `d` is a real directory.
   // INVARIANT: If `{_, ix}` is in queue, then `ix < dirs.size() - 1`.
   // INVARIANT: If `{_, ix}` is in queue, `IsGlobbingPattern(dirs[ix + 1])`.
-  std::deque<std::pair<string, int>> expand_queue;
-  std::deque<std::pair<string, int>> next_expand_queue;
+  std::deque<std::pair<std::string, int>> expand_queue;
+  std::deque<std::pair<std::string, int>> next_expand_queue;
   expand_queue.emplace_back(dirs[matching_index - 1], matching_index - 1);
 
   // Adding to `result` or `new_expand_queue` need to be protected by mutexes
@@ -267,7 +268,7 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> FileExists(Env* env, const string& fname) {
+absl::StatusOr<bool> FileExists(Env* env, const std::string& fname) {
   absl::Status status = env->FileExists(fname);
   if (absl::IsNotFound(status)) {
     return false;

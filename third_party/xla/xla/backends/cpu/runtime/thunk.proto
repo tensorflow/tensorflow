@@ -17,7 +17,8 @@ syntax = "proto3";
 
 package xla.cpu;
 
-import "xla/backends/cpu/xnnpack_config.proto";
+import "xla/backends/cpu/xnn_fusion_options.proto";
+import "xla/backends/cpu/ynn_fusion_options.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
@@ -144,6 +145,7 @@ message SortThunkProto {
   repeated ShapeBufferAllocationSliceProto inputs_shapes = 5;
 }
 
+// TODO: b/467367981, this is deprecated and should be removed.
 message XnnDotThunkProto {
   DotDimensionNumbers dot_dimensions = 1;
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
@@ -169,13 +171,21 @@ message XnnFusionThunkProtoImpl {
 }
 
 message XnnFusionThunkProto {
-  XnnFusionBackendConfig options = 1;
+  XnnFusionOptions options = 1;
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
     XnnConvolutionThunkProto xnn_convolution_thunk = 3;
     XnnFusionThunkProtoImpl xnn_fusion_thunk = 4;
   }
+}
+
+message YnnFusionThunkProto {
+  YnnFusionOptions options = 1;
+
+  int64 instruction_id = 2;
+  repeated ShapeBufferAllocationSliceProto arguments_shapes = 3;
+  repeated ShapeBufferAllocationSliceProto results_shapes = 4;
 }
 
 message DotThunkProto {
@@ -286,6 +296,7 @@ message ThunkProto {
     CallThunkProto call_thunk = 3;
     ConditionalThunkProto conditional_thunk = 4;
     SortThunkProto sort_thunk = 5;
+    // TODO: b/467367981, this is deprecated and should be removed.
     XnnFusionThunkProto xnn_fusion_thunk = 6;
     DotThunkProto dot_thunk = 7;
     RngGetAndUpdateStateThunkProto rng_get_and_update_state_thunk = 8;
@@ -301,6 +312,7 @@ message ThunkProto {
     CollectiveThunkProto collective_thunk = 18;
     PartitionIdThunkProto partition_id_thunk = 19;
     ReplicaIdThunkProto replica_id_thunk = 20;
+    YnnFusionThunkProto ynn_fusion_thunk = 21;
   }
 }
 

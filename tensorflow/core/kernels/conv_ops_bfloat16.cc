@@ -110,8 +110,8 @@ void LaunchConvOp<GPUDevice, Eigen::bfloat16>::operator()(
     Tensor* output) {
   // Get spatial dims for dilations and strides.
   int spatial_dims = input.dims() - 2;
-  gtl::InlinedVector<int64_t, 3> strides_spatial(spatial_dims);
-  gtl::InlinedVector<int64_t, 3> dilations_spatial(spatial_dims);
+  absl::InlinedVector<int64_t, 3UL> strides_spatial(spatial_dims);
+  absl::InlinedVector<int64_t, 3UL> dilations_spatial(spatial_dims);
   for (int i = 0; i < spatial_dims; ++i) {
     strides_spatial[i] =
         GetTensorDim(strides, data_format, static_cast<char>(i + '0'));
@@ -166,9 +166,9 @@ void LaunchConv2DOp<GPUDevice, Eigen::bfloat16>::operator()(
     const std::vector<int64_t>& explicit_paddings, Tensor* output,
     TensorFormat data_format) {
   // Cast strides and dilations.
-  gtl::InlinedVector<int64_t, 3> casted_strides = {row_stride, col_stride};
-  gtl::InlinedVector<int64_t, 3> casted_dilations = {row_dilation,
-                                                     col_dilation};
+  absl::InlinedVector<int64_t, 3UL> casted_strides = {row_stride, col_stride};
+  absl::InlinedVector<int64_t, 3UL> casted_dilations = {row_dilation,
+                                                        col_dilation};
 
   auto* stream = ctx->op_device_context()->stream();
   const bool cast_to_float = !IsBF16SupportedInOps(stream);

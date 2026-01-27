@@ -323,21 +323,19 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
 
     // TODO: b/264218457 - Refactor the component below once StableHLO Quantizer
     // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
-    if (!converter_flags.has_quantization_options()) {
-      // The default minimum number of elements a weights array must have to be
-      // quantized by this transformation.
-      const int kWeightsMinNumElementsDefault = 1024;
+    // The default minimum number of elements a weights array must have to be
+    // quantized by this transformation.
+    const int kWeightsMinNumElementsDefault = 1024;
 
-      quantization::QuantizationOptions quantization_options;
+    quantization::QuantizationOptions quantization_options;
 
-      quantization_options.mutable_quantization_method()->set_preset_method(
-          quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8);
-      quantization_options.set_op_set(quantization::UNIFORM_QUANTIZED);
-      quantization_options.set_min_num_elements_for_weights(
-          kWeightsMinNumElementsDefault);
-      quantization::AddQuantizePtqDynamicRangePasses(pass_manager,
-                                                     quantization_options);
-    }
+    quantization_options.mutable_quantization_method()->set_preset_method(
+        quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8);
+    quantization_options.set_op_set(quantization::UNIFORM_QUANTIZED);
+    quantization_options.set_min_num_elements_for_weights(
+        kWeightsMinNumElementsDefault);
+    quantization::AddQuantizePtqDynamicRangePasses(pass_manager,
+                                                   quantization_options);
     if (failed(pass_manager.run(module))) {
       return status_handler.ConsumeStatus();
     }
@@ -350,10 +348,6 @@ absl::Status ConvertTFExecutorToStablehloFlatbuffer(
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
       mlir::odml::GetAcceptedStableHLODialects()));
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
-  if (converter_flags.has_quantization_options()) {
-    stablehlo::quantization::AddQuantizationPasses(
-        pass_manager, converter_flags.quantization_options());
-  }
   if (failed(pass_manager.run(module))) {
     return status_handler.ConsumeStatus();
   }

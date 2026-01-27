@@ -49,6 +49,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::MLIRContext;
+
 const Shape& GetIndexShape(const Shape& shape) {
   return shape.IsTuple() ? shape.tuple_shapes(0) : shape;
 }
@@ -56,25 +58,24 @@ const Shape& GetIndexShape(const Shape& shape) {
 }  // namespace
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   return emitters::LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
-      GetIndexShape(analysis_.fusion_root(root_index).shape()),
-      symbolic_expr_context);
+      GetIndexShape(analysis_.fusion_root(root_index).shape()), mlir_context);
 }
 
 std::optional<std::vector<IndexingMap>>
-LoopFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+LoopFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                           MLIRContext* mlir_context) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, symbolic_expr_context);
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
   const HloInstruction* fusion_root =
       &analysis_.fusion_root(root_index).instruction();
-  auto output_to_input_indexing = ComputeOutputToInputIndexing(
-      fusion_root, /*output_id=*/0, symbolic_expr_context);
+  auto output_to_input_indexing =
+      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, mlir_context);
   std::vector<IndexingMap> result;
   result.reserve(fusion_root->operand_count());
   for (int64_t operand_index = 0; operand_index < fusion_root->operand_count();
@@ -107,17 +108,16 @@ WorkDimensions LoopFusion::GetWorkDimensions() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
   emitters::LoopFusionKernelEmitter emitter(
-      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status LoopFusion::EmitEntryFunction(

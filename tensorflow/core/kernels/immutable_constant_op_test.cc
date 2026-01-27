@@ -40,7 +40,7 @@ constexpr size_t kTestTensorSizeBytes = kTestTensorSize * sizeof(float);
 class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
  public:
   TestReadOnlyMemoryRegion() = delete;
-  explicit TestReadOnlyMemoryRegion(uint64 length)
+  explicit TestReadOnlyMemoryRegion(uint64_t length)
       : memptr_(cpu_allocator()->AllocateRaw(kTestAlignment, length)),
         length_(length) {}
   ~TestReadOnlyMemoryRegion() override {
@@ -48,11 +48,11 @@ class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   }
   const void* data() override { return memptr_; }
   float* GetWritableDataStart() { return reinterpret_cast<float*>(memptr_); }
-  uint64 length() override { return length_; }
+  uint64_t length() override { return length_; }
 
  protected:
   void* memptr_;
-  uint64 length_;
+  uint64_t length_;
 };
 
 // A mock file system and environment class that creates ReadOnlyMemoryRegion
@@ -65,7 +65,7 @@ class TestFileSystem : public NullFileSystem {
   using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, TransactionToken* token,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     absl::string_view scheme, host, path;
@@ -146,13 +146,13 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
       error::INTERNAL);
 }
 
-absl::Status CreateTempFileFloat(Env* env, float value, uint64 size,
-                                 string* filename) {
-  const string dir = testing::TmpDir();
+absl::Status CreateTempFileFloat(Env* env, float value, uint64_t size,
+                                 std::string* filename) {
+  const std::string dir = testing::TmpDir();
   *filename = io::JoinPath(dir, absl::StrCat("file_", value));
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
-  for (uint64 i = 0; i < size; ++i) {
+  for (uint64_t i = 0; i < size; ++i) {
     absl::string_view sp(static_cast<char*>(static_cast<void*>(&value)),
                          sizeof(value));
     TF_RETURN_IF_ERROR(file->Append(sp));
@@ -166,7 +166,7 @@ TEST(ImmutableConstantOpTest, FromFile) {
   Env* env = Env::Default();
   auto root = Scope::NewRootScope().ExitOnError();
 
-  string two_file, three_file;
+  std::string two_file, three_file;
   TF_ASSERT_OK(CreateTempFileFloat(env, 2.0f, 1000, &two_file));
   TF_ASSERT_OK(CreateTempFileFloat(env, 3.0f, 1000, &three_file));
   auto node1 = ops::ImmutableConst(root, DT_FLOAT, kFileTensorShape, two_file);
@@ -191,9 +191,10 @@ TEST(ImmutableConstantOpTest, FromFile) {
   EXPECT_EQ(outputs.front().flat<float>()(2), 2.0f * 3.0f);
 }
 
-absl::Status CreateTempFileBadString(Env* env, char value, uint64 size,
-                                     const string suffix, string* filename) {
-  const string dir = testing::TmpDir();
+absl::Status CreateTempFileBadString(Env* env, char value, uint64_t size,
+                                     const std::string suffix,
+                                     std::string* filename) {
+  const std::string dir = testing::TmpDir();
   *filename = io::JoinPath(dir, absl::StrCat("file_", suffix));
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
@@ -207,7 +208,7 @@ TEST(ImmutableConstantOpTest, FromFileStringUnimplmented) {
   Env* env = Env::Default();
   auto root = Scope::NewRootScope().ExitOnError();
 
-  string bad_file;
+  std::string bad_file;
   TF_ASSERT_OK(CreateTempFileBadString(env, '\xe2', 128, "bad_e2", &bad_file));
   auto result =
       ops::ImmutableConst(root, DT_STRING, kFileTensorShape, bad_file);

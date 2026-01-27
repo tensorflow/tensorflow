@@ -121,7 +121,7 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
   return true;
 }
 
-absl::StatusOr<bool> BatchDotSimplification::Run(
+absl::StatusOr<bool> BatchDotSimplification::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

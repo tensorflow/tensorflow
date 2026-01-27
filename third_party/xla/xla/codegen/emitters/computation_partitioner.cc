@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -58,6 +57,8 @@ limitations under the License.
 namespace xla {
 namespace emitters {
 namespace {
+
+using ::mlir::MLIRContext;
 
 int Arity(const Shape& shape) {
   return shape.IsTuple() ? shape.tuple_shapes().size() : 1;
@@ -68,8 +69,7 @@ const Shape& TupleShape(const Shape& shape, int index) {
 }
 
 std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
-    const HloInstruction* instr,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    const HloInstruction* instr, MLIRContext* mlir_context) {
   std::vector<IndexingMapSet> indexing_maps_per_operand;
   // For some ops, there is no indexing map implemented for the operands (e.g.
   // scatter) or there are multiple results and the common iteration space is
@@ -79,12 +79,12 @@ std::vector<IndexingMapSet> ComputeOperandIndexingMaps(
     int64_t num_operands = instr->operand_count();
     indexing_maps_per_operand.reserve(num_operands);
     for (int64_t i = 0; i < num_operands; ++i) {
-      indexing_maps_per_operand.push_back({CreateIdentityMap(
-          instr->operand(i)->shape(), symbolic_expr_context)});
+      indexing_maps_per_operand.push_back(
+          {CreateIdentityMap(instr->operand(i)->shape(), mlir_context)});
     }
   } else {
-    auto operands_indexing = ComputeOutputToInputIndexing(
-        instr, /*output_id=*/0, symbolic_expr_context);
+    auto operands_indexing =
+        ComputeOutputToInputIndexing(instr, /*output_id=*/0, mlir_context);
     operands_indexing.Simplify();
     indexing_maps_per_operand.reserve(operands_indexing.indexing_maps.size());
     for (auto& indexing_maps : operands_indexing.indexing_maps) {
@@ -106,7 +106,7 @@ bool HasNoCompute(const HloInstruction* instr) {
 
 EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
     const HloInstruction* hero, const HloInstruction* root,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    MLIRContext* mlir_context) {
   EpilogueSpecification result;
   if (root->shape().IsArray()) {
     absl::c_copy(root->shape().dimensions(),
@@ -114,7 +114,7 @@ EpilogueSpecification EpilogueSpecification::FromIdentityIndexing(
   }
   result.roots.push_back(root);
   result.root_indexing.push_back(
-      CreateIdentityMap(root->shape(), symbolic_expr_context));
+      CreateIdentityMap(root->shape(), mlir_context));
   result.heroes.push_back(hero);
   return result;
 }
@@ -205,8 +205,7 @@ struct HloSubgraphData {
 };
 
 PartitionedComputation::PartitionedComputation(
-    const HloComputation* computation,
-    gpu::SymbolicExprContext* symbolic_expr_context,
+    const HloComputation* computation, MLIRContext* mlir_context,
     std::function<bool(const HloInstruction*)> is_subgraph_root)
     : computation_(computation) {
   CHECK_NE(computation, nullptr);
@@ -254,8 +253,7 @@ PartitionedComputation::PartitionedComputation(
       instr_subgraph_data.indexings.clear();
       num_ops_per_subgraph.push_back(1);
     }
-    auto operands_indexing =
-        ComputeOperandIndexingMaps(instr, symbolic_expr_context);
+    auto operands_indexing = ComputeOperandIndexingMaps(instr, mlir_context);
     // Iterate over the operands and add the func_ids of the current instruction
     // to their HloSubgraphIndexing and compute the indexing maps.
     for (auto [operand_instr, operand_maps] :
@@ -310,9 +308,8 @@ PartitionedComputation::PartitionedComputation(
             root_indexing.push_back(root_indexing.front());
           } else {
             // Bitcast from the first root to the target shape.
-            root_indexing.push_back(GetBitcastMap(*first_root_shape,
-                                                  instruction->shape(),
-                                                  symbolic_expr_context));
+            root_indexing.push_back(GetBitcastMap(
+                *first_root_shape, instruction->shape(), mlir_context));
           }
         } else {
           first_root_shape = &instruction->shape();
@@ -320,7 +317,7 @@ PartitionedComputation::PartitionedComputation(
             first_root_shape = &first_root_shape->tuple_shapes()[0];
           }
           root_indexing.push_back(
-              CreateIdentityMap(*first_root_shape, symbolic_expr_context));
+              CreateIdentityMap(*first_root_shape, mlir_context));
         }
       }
     }
@@ -393,16 +390,17 @@ PartitionedComputation::Subgraph PartitionedComputation::Subgraph::ForEpilogue(
 }
 
 PartitionedComputations::PartitionedComputations(
-    const HloComputation* fusion,
-    gpu::SymbolicExprContext* symbolic_expr_context,
+    const HloComputation* fusion, MLIRContext* mlir_context,
     std::vector<EpilogueSpecification> epilogues)
-    : fusion_(fusion), symbolic_expr_context_(symbolic_expr_context) {
+    : fusion_(fusion), mlir_context_(mlir_context) {
   // Collect all transitively called computations (including the fusion itself).
   absl::flat_hash_set<const HloComputation*> seen;
   std::vector<const HloComputation*> computations;
   std::function<void(const HloComputation*)> visit;
   visit = [&](const HloComputation* computation) {
-    if (!seen.insert(computation).second) return;
+    if (!seen.insert(computation).second) {
+      return;
+    }
     computations.push_back(computation);
     for (auto* instr : computation->instructions()) {
       absl::c_for_each(instr->called_computations(), visit);
@@ -428,8 +426,8 @@ PartitionedComputations::PartitionedComputations(
   partitioned_computations_.reserve(computations.size());
   for (auto* computation : computations) {
     computation_to_partitioning_[computation] =
-        &partitioned_computations_.emplace_back(PartitionedComputation{
-            computation, symbolic_expr_context, is_root});
+        &partitioned_computations_.emplace_back(
+            PartitionedComputation{computation, mlir_context, is_root});
   }
 }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/statusor.h"
@@ -79,9 +79,9 @@ CpuAotCompilationResult::Create(
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data) {
+    TargetMachineOptionsProto target_machine_options) {
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      hlo_module, &buffer_assignment->Allocations());
   TF_ASSIGN_OR_RETURN(ThunkSequenceProto thunk_proto,
                       thunk_sequence_serdes.ToProto(thunks));
 
@@ -108,7 +108,7 @@ CpuAotCompilationResult::Create(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_allocation_infos), std::move(function_library),
-      std::move(hlo_profile_printer_data)));
+      std::move(target_machine_options)));
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -118,16 +118,16 @@ CpuAotCompilationResult::CpuAotCompilationResult(
     std::optional<size_t> temp_allocation_index,
     std::vector<BufferAllocationInfo> buffer_allocation_infos,
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
+    TargetMachineOptionsProto target_machine_options)
     : temp_allocation_index_(temp_allocation_index),
       buffer_allocation_infos_(std::move(buffer_allocation_infos)),
-      function_library_(std::move(function_library)),
-      hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {
+      function_library_(std::move(function_library)) {
   *proto_.mutable_hlo_module()->mutable_hlo_module() = hlo_module->ToProto();
   *proto_.mutable_hlo_module()->mutable_config() =
       hlo_module->config().ToProto();
   *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
   proto_.set_entry_function_name(function_name);
+  *proto_.mutable_target_machine_options() = std::move(target_machine_options);
   for (ObjFileProto& obj_file : obj_files) {
     *proto_.add_object_files() = std::move(obj_file);
   }
@@ -140,13 +140,12 @@ CpuAotCompilationResult::CpuAotCompilationResult(
   module_ = hlo_module->Clone();
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      hlo_module, &buffer_assignment->Allocations());
   *proto_.mutable_thunk_sequence() = thunks;
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable(
-    [[maybe_unused]] Compiler* compiler,
     const se::StreamExecutor* stream_exec) && {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
@@ -156,13 +155,9 @@ CpuAotCompilationResult::LoadExecutable(
 
   // Copied from cpu_compiler.cc in order to avoid dependency on cpu_compiler.
   std::function<int64_t(const BufferValue&)> buffer_size_bytes_function_getter =
-      compiler ? compiler->BufferSizeBytesFunction() : []() {
-        HloCostAnalysis::ShapeSizeFunction shape_size =
-            CpuExecutable::ShapeSizeBytes;
-        return [shape_size](const BufferValue& buffer) {
-          return shape_size(buffer.shape());
-        };
-      }();
+      [](const BufferValue& buffer) {
+        return CpuExecutable::ShapeSizeBytes(buffer.shape());
+      };
 
   // Recreate BufferAssignment from proto.
   AliasInfo alias_info;
@@ -178,7 +173,7 @@ CpuAotCompilationResult::LoadExecutable(
   }
 
   ThunkSequenceSerDesProtobuf thunk_sequence_serdes(
-      &buffer_assignment->Allocations());
+      module.get(), &buffer_assignment->Allocations());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<ThunkSequence> thunks,
                       thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 
@@ -189,11 +184,15 @@ CpuAotCompilationResult::LoadExecutable(
                       CreateConstantAllocations(*buffer_assignment));
 
   TF_ASSIGN_OR_RETURN(
+      TargetMachineOptions target_machine_options,
+      TargetMachineOptions::FromProto(proto_.target_machine_options()));
+
+  TF_ASSIGN_OR_RETURN(
       cpu_executable,
       CpuExecutable::Create(std::move(function_library_),
                             std::move(buffer_assignment), std::move(module),
-                            std::move(*thunks), std::move(constants), nullptr,
-                            nullptr));
+                            std::move(*thunks), std::move(constants),
+                            target_machine_options));
 
   // Dump computation proto state and buffer assignment for
   // GetCompiledMemoryStats results.

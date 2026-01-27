@@ -87,20 +87,20 @@ class HloPassPipeline : public HloPassInterface {
 #endif  // NDEBUG
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-  absl::StatusOr<bool> Run(
-      std::unique_ptr<HloModule>& module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   bool IsPassPipeline() const override { return true; }
 
   // Return size of passes_.
   int PassesSize() { return passes_.size(); }
   // Return reference to pass specified by index.
   HloPassInterface& GetPass(int index) { return *passes_[index]; }
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+  absl::StatusOr<bool> RunImpl(
+      std::unique_ptr<HloModule>& module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Returns the set of passes which are enabled. DebugOptions can selectively
@@ -139,7 +139,7 @@ class HloPassPipeline : public HloPassInterface {
   // computations with specified `execution_threads` are considered by the pass,
   // empty thread list means all `execution_threads` are considered. These
   // helpers enable templating of the core of the pipeline logic by providing
-  // HloModule and HloModuleGroup specific methods with the same name.
+  // HloModule specific methods with the same name.
   template <typename HloT>
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,

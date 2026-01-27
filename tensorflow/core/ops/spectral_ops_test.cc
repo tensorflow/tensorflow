@@ -72,7 +72,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
 
     // Tests with known values for fft_length input.
     op.input_tensors.resize(2);
-    Tensor fft_length = test::AsTensor<int32>({10});
+    Tensor fft_length = test::AsTensor<int32_t>({10});
     op.input_tensors[1] = &fft_length;
 
     // The inner-most dimension of the RFFT is n/2+1 while for IRFFT it's n.
@@ -86,7 +86,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1];[1]", "[d0_0,10]");
     }
 
-    fft_length = test::AsTensor<int32>({11});
+    fft_length = test::AsTensor<int32_t>({11});
     if (forward) {
       INFER_OK(op, "[?];[1]", "[6]");
       INFER_OK(op, "[1];[1]", "[6]");
@@ -97,7 +97,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1];[1]", "[d0_0,11]");
     }
 
-    fft_length = test::AsTensor<int32>({12});
+    fft_length = test::AsTensor<int32_t>({12});
     if (forward) {
       INFER_OK(op, "[?];[1]", "[7]");
       INFER_OK(op, "[1];[1]", "[7]");
@@ -132,7 +132,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
 
     // Tests with known values for fft_length input.
     op.input_tensors.resize(2);
-    Tensor fft_length = test::AsTensor<int32>({9, 10});
+    Tensor fft_length = test::AsTensor<int32_t>({9, 10});
     op.input_tensors[1] = &fft_length;
 
     // The inner-most dimension of the RFFT is n/2+1 while for IRFFT it's n.
@@ -146,7 +146,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1,1];[2]", "[d0_0,9,10]");
     }
 
-    fft_length = test::AsTensor<int32>({10, 11});
+    fft_length = test::AsTensor<int32_t>({10, 11});
     if (forward) {
       INFER_OK(op, "[?,?];[2]", "[10,6]");
       INFER_OK(op, "[1,1];[2]", "[10,6]");
@@ -157,7 +157,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1,1];[2]", "[d0_0,10,11]");
     }
 
-    fft_length = test::AsTensor<int32>({11, 12});
+    fft_length = test::AsTensor<int32_t>({11, 12});
     if (forward) {
       INFER_OK(op, "[?,?];[2]", "[11,7]");
       INFER_OK(op, "[1,1];[2]", "[11,7]");
@@ -192,7 +192,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
 
     // Tests with known values for fft_length input.
     op.input_tensors.resize(2);
-    Tensor fft_length = test::AsTensor<int32>({10, 11, 12});
+    Tensor fft_length = test::AsTensor<int32_t>({10, 11, 12});
     op.input_tensors[1] = &fft_length;
 
     // The inner-most dimension of the RFFT is n/2+1 while for IRFFT it's n.
@@ -206,7 +206,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1,1,1];[3]", "[d0_0,10,11,12]");
     }
 
-    fft_length = test::AsTensor<int32>({11, 12, 13});
+    fft_length = test::AsTensor<int32_t>({11, 12, 13});
     if (forward) {
       INFER_OK(op, "[?,?,?];[3]", "[11,12,7]");
       INFER_OK(op, "[1,1,1];[3]", "[11,12,7]");
@@ -217,7 +217,7 @@ TEST(MathOpsTest, RFFT_ShapeFn) {
       INFER_OK(op, "[1,1,1,1];[3]", "[d0_0,11,12,13]");
     }
 
-    fft_length = test::AsTensor<int32>({12, 13, 14});
+    fft_length = test::AsTensor<int32_t>({12, 13, 14});
     if (forward) {
       INFER_OK(op, "[?,?,?];[3]", "[12,13,8]");
       INFER_OK(op, "[1,1,1];[3]", "[12,13,8]");

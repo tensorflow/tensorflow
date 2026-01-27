@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/tools/verifier.h"
@@ -210,7 +211,7 @@ bool Verify(const void* buf, size_t len) {
 }  // namespace
 
 std::unique_ptr<Model> Import(const ModelFlags& model_flags,
-                              const std::string& input_file_contents) {
+                              absl::string_view input_file_contents) {
   ::tflite::AlwaysTrueResolver r;
   if (!::tflite::Verify(input_file_contents.data(), input_file_contents.size(),
                         r, ::tflite::DefaultErrorReporter())) {

@@ -41,11 +41,11 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
 
   Compiler(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper);
 
-  absl::StatusOr<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
+  tsl::Future<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<xla::ifrt::Program> program,
       std::unique_ptr<xla::ifrt::CompileOptions> options) override;
 
-  absl::StatusOr<xla::ifrt::ExecutableRef> Compile(
+  tsl::Future<xla::ifrt::ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) override;
 
@@ -55,7 +55,7 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
     return absl::UnimplementedError("Not implemented");
   }
 
-  absl::StatusOr<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
+  tsl::Future<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
       override;

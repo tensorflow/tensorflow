@@ -44,7 +44,7 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 2})));
   for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
     for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
-      t.matrix<uint16>()(a, b) = uint16(a * b);
+      t.matrix<uint16_t>()(a, b) = uint16_t(a * b);
     }
   }
 
@@ -181,7 +181,7 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   handles.push_back(h1);
 
   // Create 2 remote TensorHandles (not ready).
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d2 = ListGPUDevices().at(2);
   TensorHandle* h2 = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d2, context());
@@ -439,7 +439,7 @@ TEST_F(RemoteTensorHandleTest, UnknownRemoteDevice) {
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
 
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d1 = device_mgr.ListDevices().at(1);
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
@@ -478,7 +478,7 @@ TEST_F(RemoteTensorHandleTest, PoisonRemote) {
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
 
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d1 = device_mgr.ListDevices().at(1);
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
@@ -519,7 +519,7 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
 
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d1 = device_mgr.ListDevices().at(1);
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
@@ -565,7 +565,7 @@ TEST_F(RemoteTensorHandleTest, SetRemoteTensorHandleShapeTwice) {
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
 
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d1 = device_mgr.ListDevices().at(1);
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,
@@ -623,7 +623,7 @@ TEST_F(RemoteTensorHandleTest, SetRemoteMirrorShapeTwice) {
   tensorflow::DataType dtype = DT_FLOAT;
   TensorShape shape = {};
 
-  const string remote_task = "/job:worker/replica:0/task:1";
+  const std::string remote_task = "/job:worker/replica:0/task:1";
   Device* d1 = device_mgr.ListDevices().at(1);
   TensorHandle* h = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d1, context,

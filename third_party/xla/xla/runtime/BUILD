@@ -19,8 +19,10 @@ cc_library(
     srcs = ["buffer_use.cc"],
     hdrs = ["buffer_use.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
     ],
@@ -31,6 +33,7 @@ xla_cc_test(
     srcs = ["buffer_use_test.cc"],
     deps = [
         ":buffer_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -72,7 +75,6 @@ cc_library(
         "//xla:util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -91,6 +93,7 @@ xla_cc_test(
         ":buffer_use",
         ":execution_graph",
         ":resource_use",
+        "//xla:shape_util",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -149,18 +152,22 @@ cc_library(
 cc_library(
     name = "work_item",
     hdrs = ["work_item.h"],
-    deps = [
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+    deps = ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(
     name = "device_id",
     hdrs = ["device_id.h"],
     deps = [
+        "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/lib/gtl:int_type",
     ],
+)
+
+cc_library(
+    name = "process_id",
+    hdrs = ["process_id.h"],
+    deps = ["//xla/tsl/lib/gtl:int_type"],
 )
 
 cc_library(

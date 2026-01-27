@@ -1431,33 +1431,6 @@ TEST_F(HloVerifierTest, AsyncDoneOutputWrongType) {
                         "async shape at index {1}"));
 }
 
-TEST_F(HloVerifierTest, AsyncUpdateWrongType) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  async_computation {
-    p = f32[2,3] parameter(0)
-    ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
-  }
-
-  ENTRY AsyncStartAndAsyncDone {
-    p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[3,2], u32[]) async-start(p0), calls=async_computation
-    async-update = ((f32[3,2]), f32[3,2], u32[]) async-update(async-start), calls=async_computation
-    ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.message(),
-      HasSubstr(
-          "async-update expects the shape of operand and output to match"));
-}
-
 TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
   const char* const hlo_string = R"(
   HloModule Module
@@ -3265,7 +3238,30 @@ ENTRY main {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("device 2 > num_devices (2) in tile assignment"));
+              HasSubstr("device 2 >= num_devices (2) in tile assignment"));
+}
+
+TEST_F(HloVerifierTest, NegativeDeviceID) {
+  const char* const hlo = R"(
+HloModule Module
+
+ENTRY main {
+  p = f32[4,2] parameter(0), sharding={maximal device=-1}
+  ROOT r = f32[4,2] copy(p)
+}
+)";
+
+  HloModuleConfig config;
+  config.set_num_partitions(2);
+  config.set_use_spmd_partitioning(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo, config));
+  ASSERT_TRUE(module->config().use_spmd_partitioning());
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("device -1 is negative in tile assignment"));
 }
 
 TEST_F(HloVerifierTest, InconsistentWhileSharding) {
@@ -5080,6 +5076,108 @@ TEST_F(HloVerifierTest, VerifyBuffersLayoutChangeInPinAllowed) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithoutAlias) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  ENTRY Entry {
+  p0 = f32[10] parameter(0)
+  b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}: (0, {})}
+  async-start = ((b(f32[10])), b(f32[10])) custom-call-start(b0),
+    custom_call_target="foo"
+  async-done = b(f32[10]) custom-call-done(async-start)
+  ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("buffer is used in operands but not in results")));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallWithAlias) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  ENTRY Entry {
+  p0 = f32[10] parameter(0)
+  b0 = b(f32[10]) custom-call(p0), custom_call_target="Pin",
+    output_to_operand_aliasing={{}: (0, {})}
+  async-start = ((b(f32[10])), b(f32[10])) custom-call-start(b0),
+    custom_call_target="foo", output_to_operand_aliasing={{}: (0, {})}
+  async-done = b(f32[10]) custom-call-done(async-start)
+  ROOT v = f32[10]{0} custom-call(async-done), custom_call_target="Unpin",
+    output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), StatusIs(absl::StatusCode::kOk));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallStreamAnnotated) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  async_comp {
+   pa1 = b(s32[4]) parameter(0)
+   ROOT va1 = b(s32[4]) custom-call(pa1),
+     custom_call_target="xla.gpu.update_buffer1",
+     output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+  }
+
+  ENTRY test_computation {
+    p0 = s32[4] parameter(0)
+    b0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[4]) call(b0), to_apply=async_comp,
+      frontend_attributes={_xla_stream_annotation="1", inlineable="false"}
+    ROOT v = s32[4] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), StatusIs(absl::StatusCode::kOk));
+}
+
+TEST_F(HloVerifierTest, VerifyBuffersAsyncCallExpandedStreamAnnotated) {
+  const char* const hlo = R"(
+  HloModule AsyncOpsWithBuffers
+
+  async_comp {
+   pa1 = b(s32[4]) parameter(0)
+   ROOT va1 = b(s32[4]) custom-call(pa1),
+     custom_call_target="xla.gpu.update_buffer1",
+     output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+  }
+
+  async_computation (param_0: b(s32[4])) -> b(s32[4]) {
+    param_0 = b(s32[4]) parameter(0), metadata={scheduling_name="param_0"}
+    ROOT b = b(s32[4]) call(param_0), to_apply=async_comp,
+      frontend_attributes={inlineable="false"}, metadata={scheduling_name="b"}
+  }
+
+  ENTRY test_computation {
+    p0 = s32[4] parameter(0)
+    b0 = b(s32[4]) custom-call(p0), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    call-start = ((b(s32[4]{0})), b(s32[4]{0})) async-start(b0),
+      calls=async_computation,
+      frontend_attributes={_xla_stream_annotation="1",inlineable="false"},
+      metadata={scheduling_name="call-start"}
+    call-done = b(s32[4]{0}) async-done(call-start),
+      frontend_attributes={_xla_stream_annotation="1",inlineable="false"},
+      metadata={scheduling_name="call-done"}
+    ROOT v = s32[4] custom-call(call-done), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), StatusIs(absl::StatusCode::kOk));
+}
+
 TEST_F(HloVerifierTestLayoutSensitive,
        VerifyBuffersLayoutChangeInPinNotAllowed) {
   const char* const hlo = R"(
@@ -5097,6 +5195,28 @@ TEST_F(HloVerifierTestLayoutSensitive,
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(), HasSubstr("Different aliasing shapes"));
+}
+
+TEST_F(HloVerifierTest, Scan) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2] constant({0, 0})
+    input = f32[4,2] parameter(0)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, is_associative=true, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
 }
 
 }  // namespace

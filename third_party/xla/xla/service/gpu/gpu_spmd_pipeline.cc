@@ -143,10 +143,14 @@ void AddSPMDPasses(
       /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
       /*uniquify_channel_ids=*/false,
-      /*should_inline=*/
-      [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
-        return absl::StrContains(instruction->to_apply()->name(),
-                                 sdy::kInlineableManualComputationFuncName);
+      /*override_policy=*/
+      [](const xla::CallGraph& call_graph,
+         const xla::HloInstruction* instruction) {
+        if (absl::StrContains(instruction->to_apply()->name(),
+                              sdy::kInlineableManualComputationFuncName)) {
+          return xla::CallInliner::InlineOverridePolicy::kAllowInline;
+        }
+        return xla::CallInliner::InlineOverridePolicy::kProhibitInline;
       });
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }

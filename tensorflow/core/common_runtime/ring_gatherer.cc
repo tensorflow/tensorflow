@@ -71,7 +71,7 @@ void RingGatherer::Run(StatusCallback done) {
   DCHECK_GT(num_subdivs_, 0);
 
   if (VLOG_IS_ON(1)) {
-    string buf;
+    std::string buf;
     for (int r = 0; r < col_params_->group.members.size(); ++r) {
       strings::StrAppend(&buf, "dev ", r, " : ",
                          col_params_->group.members[r].device.name(), "\n");
@@ -79,10 +79,10 @@ void RingGatherer::Run(StatusCallback done) {
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
          ++sd) {
-      strings::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
+      absl::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
       for (auto x :
            col_params_->instance.impl_details.subdiv_permutations[sd]) {
-        strings::StrAppend(&buf, x, ", ");
+        absl::StrAppend(&buf, x, ", ");
       }
     }
     VLOG(1) << "RingGatherer::Run for device " << col_ctx_->device_name

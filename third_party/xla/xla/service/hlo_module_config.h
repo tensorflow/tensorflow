@@ -451,6 +451,12 @@ class HloModuleConfig {
     use_shardy_partitioner_ = use_shardy_partitioner;
   }
 
+  // Number of devices in a fast-interconnect domain.
+  int64_t partition_size() const { return partition_size_; }
+  void set_partition_size(int64_t partition_size) {
+    partition_size_ = partition_size;
+  }
+
   // Do channel IDs in this module carry semantic information.
   bool ChannelIdSensitive() const {
     // TODO(b/430952564): Base this on num_partitions / num_replicas instead
@@ -624,6 +630,9 @@ class HloModuleConfig {
   int64_t device_memory_size_ = 0;
 
   bool use_shardy_partitioner_ = false;
+
+  // Number of devices in a fast-interconnect domain.
+  int64_t partition_size_ = 0;
 
   // Sharding configuration, where sharding_config_.nodes[v] controls the
   // sharding of operation v.

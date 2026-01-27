@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -168,7 +167,7 @@ static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
   // Fast path : pattern matching.
   std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
       GetGTEOperandIndices(out, in);
-  if (tuple_idxs != std::nullopt) {
+  if (tuple_idxs.has_value()) {
     return tuple_idxs;
   }
 
@@ -1074,9 +1073,9 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   Literal fake_input = Literal::CreateFromShape(
       new_computation->parameter_instruction(0)->shape());
-  TF_CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
-                                  /*dest_shape_index=*/{0},
-                                  /*src_shape_index=*/{}));
+  CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
+                               /*dest_shape_index=*/{0},
+                               /*src_shape_index=*/{}));
   absl::StatusOr<Literal> eval_result =
       evaluator.Evaluate(*new_computation, {std::move(fake_input)});
 

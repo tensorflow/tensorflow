@@ -822,7 +822,7 @@ class NonMaxSuppressionV4Op : public OpKernel {
     Tensor* num_outputs_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 1, tensorflow::TensorShape{}, &num_outputs_t));
-    num_outputs_t->scalar<int32>().setConstant(num_valid_outputs);
+    num_outputs_t->scalar<int32_t>().setConstant(num_valid_outputs);
   }
 
  private:
@@ -902,7 +902,7 @@ class NonMaxSuppressionV5Op : public OpKernel {
     Tensor* num_outputs_t = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(
                                 2, tensorflow::TensorShape{}, &num_outputs_t));
-    num_outputs_t->scalar<int32>().setConstant(num_valid_outputs);
+    num_outputs_t->scalar<int32_t>().setConstant(num_valid_outputs);
   }
 
  private:

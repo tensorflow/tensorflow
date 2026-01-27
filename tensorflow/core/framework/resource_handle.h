@@ -67,8 +67,8 @@ class ResourceHandle {
 
   // Hash code for the type of the resource. Is only valid in the same device
   // and in the same execution.
-  uint64 hash_code() const { return hash_code_; }
-  void set_hash_code(uint64 hash_code) { hash_code_ = hash_code; }
+  uint64_t hash_code() const { return hash_code_; }
+  void set_hash_code(uint64_t hash_code) { hash_code_ = hash_code; }
 
   // For debug-only, the name of the type pointed to by this handle, if
   // available.
@@ -135,7 +135,7 @@ class ResourceHandle {
   // does not hold a strong reference to the resource.
   template <typename T>
   static ResourceHandle MakeRefCountingHandle(
-      T* resource, const string& device_name,
+      T* resource, const std::string& device_name,
       const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
       const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
     return MakeRefCountingHandle(resource, device_name, TypeIndex::Make<T>(),
@@ -143,7 +143,7 @@ class ResourceHandle {
   }
 
   static ResourceHandle MakeRefCountingHandle(
-      ResourceBase* resource, const string& device_name,
+      ResourceBase* resource, const std::string& device_name,
       const TypeIndex& type_index,
       const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
       const absl::optional<ManagedStackTrace>& definition_stack_trace = {});
@@ -178,7 +178,7 @@ class ResourceHandle {
   std::string device_;
   std::string container_;
   std::string name_;
-  uint64 hash_code_ = 0;
+  uint64_t hash_code_ = 0;
   std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
   std::optional<ManagedStackTrace> definition_stack_trace_;

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -261,7 +263,7 @@ bool InlineComposites(
 
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-bool InlineInstruction(HloInstruction* instruction) {
+bool FrontendAttributesAllowInlining(HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
     return it->second == "true";
@@ -293,18 +295,26 @@ CallInliner::Inline(HloInstruction* call) {
   // inlined instructions.
   if (call->has_frontend_attributes()) {
     const FrontendAttributes& call_attributes = call->frontend_attributes();
-    std::string has_fuse =
-        call_attributes.map().contains("MUST_FUSE")      ? "MUST_FUSE"
-        : call_attributes.map().contains("MAXIMAL_FUSE") ? "MAXIMAL_FUSE"
-                                                         : "";
-    if (!has_fuse.empty()) {
+    for (auto maybe_attribute :
+         {call_attributes.map().contains("MUST_FUSE")
+              ? std::make_optional("MUST_FUSE")
+          : call_attributes.map().contains("MAXIMAL_FUSE")
+              ? std::make_optional("MAXIMAL_FUSE")
+              : std::nullopt,
+          call_attributes.map().contains("mosaic_fusion_group")
+              ? std::make_optional("mosaic_fusion_group")
+              : std::nullopt}) {
+      if (!maybe_attribute.has_value()) {
+        continue;
+      }
+      const auto attribute = *maybe_attribute;
       for (auto instruction : callee->instructions()) {
         // Do so for only fusible instructions.
         if (instruction->IsFusible()) {
           FrontendAttributes frontend_attributes =
               instruction->frontend_attributes();
           frontend_attributes.mutable_map()->insert(
-              {has_fuse, call_attributes.map().at(has_fuse)});
+              {attribute, call_attributes.map().at(attribute)});
           instruction->set_frontend_attributes(frontend_attributes);
         }
       }
@@ -322,11 +332,6 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
                       !instruction->has_backend_config() &&
                       !instruction->parent()->IsAsyncComputation();
   if (!prerequisite) {
-    return false;
-  }
-  if (!InlineInstruction(instruction)) {
-    // Always prioritize user's explicit requests after fulfilling the
-    // prerequisites.
     return false;
   }
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
@@ -351,16 +356,30 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
 
 bool CallInliner::ShouldInline(const CallGraph& call_graph,
                                HloInstruction* instruction) const {
+  // Check this is an inlineable call op (but not frontend attributes)
   if (!IsInlineableCallOp(instruction)) {
     return false;
   }
 
-  if (should_inline_.has_value()) {
-    if (!(*should_inline_)(call_graph, instruction)) {
+  // Check the override policy, if any.
+  InlineOverridePolicy policy = InlineOverridePolicy::kAllowInline;
+  if (override_policy_.has_value()) {
+    policy = (*override_policy_)(call_graph, instruction);
+  }
+
+  // If the policy is to never inline, we're done.
+  if (policy == InlineOverridePolicy::kProhibitInline) {
+    return false;
+  }
+
+  // If the policy is to ignore frontend attributes, do so.
+  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
+    if (!FrontendAttributesAllowInlining(instruction)) {
       return false;
     }
   }
 
+  // If we're only inlining calls with a single call site, check that.
   if (single_call_site_) {
     return call_graph.GetNode(instruction->to_apply())
                .caller_callsites()
@@ -421,13 +440,13 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
   }
   if (did_node_mutate && uniquify_channel_ids_) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (!dynamic_cast<HloChannelInstruction*>(instruction)) {
+      if (!HloChannelInstruction::ClassOf(instruction)) {
         continue;
       }
       // Channel IDs for host transfers are part of the ABI, and can never be
       // uniquified.
       HloSendRecvInstruction* send_recv =
-          dynamic_cast<HloSendRecvInstruction*>(instruction);
+          DynCast<HloSendRecvInstruction>(instruction);
       if (send_recv && send_recv->is_host_transfer()) {
         continue;
       }
@@ -442,21 +461,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   if (uniquify_channel_ids_) {
-    // If we're going to uniquify channel IDs, make sure the new IDs we assigned
-    // are not already used in the module. The easiest way is to just start at
-    // the top currently used ID.
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        HloChannelInstruction* channel_instruction =
-            dynamic_cast<HloChannelInstruction*>(instruction);
-        if (channel_instruction &&
-            channel_instruction->channel_id().has_value()) {
-          next_unique_channel_id_ =
-              std::max(next_unique_channel_id_,
-                       channel_instruction->channel_id().value() + 1);
-        }
-      }
-    }
+    next_unique_channel_id_ = hlo_query::NextChannelId(*module);
   }
 
   // Because call graph nodes are visited in post-order (callees before callers)
@@ -495,7 +500,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
   return did_mutate;
 }
 
-absl::StatusOr<bool> CallInliner::Run(
+absl::StatusOr<bool> CallInliner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return RunWithInlineMap(module, std::nullopt, execution_threads);
@@ -506,7 +511,7 @@ bool IsInlineableComputation(HloComputation* computation) {
     bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
                         !instruction->has_backend_config() &&
                         !instruction->parent()->IsAsyncComputation();
-    if (!prerequisite || !InlineInstruction(instruction)) {
+    if (!prerequisite || (!FrontendAttributesAllowInlining(instruction))) {
       return false;
     }
     return true;

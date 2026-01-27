@@ -81,9 +81,7 @@ string ProfileStrategyToName(const ProfileStrategy strategy) {
 }
 
 Status ProfileStrategyFromName(const string& name, ProfileStrategy* strategy) {
-  string name_lowercase(name);
-  std::transform(name.begin(), name.end(), name_lowercase.begin(),
-                 [](unsigned char c) { return std::tolower(c); });
+  std::string name_lowercase = absl::AsciiStrToLower(name);
   if (name_lowercase == "range") {
     *strategy = ProfileStrategy::kRange;
   } else if (name_lowercase == "optimal") {

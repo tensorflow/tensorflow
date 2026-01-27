@@ -39,7 +39,11 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -105,7 +109,9 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
 
   std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
       llvm::TargetOptions(),
-      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive},
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
       compilation_hooks);
 
   std::vector<std::unique_ptr<llvm::Module>> modules;
@@ -189,14 +195,22 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
       return absl::InternalError("Failed to lookup target: " + error);
     }
 
+    TargetMachineOptions target_machine_options(triple, cpu_name, features);
+
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
-        target_triple, cpu_name, features, target_options,
+        llvm::Triple(target_machine_options.triple()),
+        target_machine_options.cpu(),
+        target_machine_options.GetTargetMachineFeatures(), target_options,
         /*RM=*/std::nullopt));
   };
 
-  IrCompiler ir_compiler(std::move(builder), IrCompiler::Options(),
-                         IrCompiler::CompilationHooks());
+  IrCompiler ir_compiler(
+      std::move(builder),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::None,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      IrCompiler::CompilationHooks());
 
   {
     has_avx512 = true;
@@ -217,6 +231,68 @@ TEST(IrCompilerTest, TestAdditionalFeatures) {
     EXPECT_THAT(features, Not(HasSubstr("+prefer-no-scatter")));
     EXPECT_THAT(features, Not(HasSubstr("+prefer-no-gather")));
   }
+}
+
+TEST(IrCompilerTest, TargetMachineOptionsAreCorrectlySet) {
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(
+      kTargetTripleForHost, kTargetCpuForHost, "+foo-feature,-bar-feature");
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false, target_machine_options},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  EXPECT_EQ(target_machine->getTargetCPU(), kTargetCpuForHost);
+  EXPECT_EQ(target_machine->getTargetTriple().getTriple(),
+            kTargetTripleForHost);
+  EXPECT_EQ(target_machine->getTargetFeatureString(),
+            "+foo-feature,-bar-feature");
+}
+
+TEST(IrCompilerTest, EmitIntrinsicCall) {
+  constexpr absl::string_view kModuleName = "test_module";
+  constexpr absl::string_view kMemcpyCall = R"(
+  define void @memcpy_call(ptr noalias %a, ptr noalias %b, i64 %n) #0 {
+  entry:
+    call void @llvm.memcpy.p0.p0.i64(ptr align 8 %a, ptr align 8 %b, i64 %n, i1 false)
+    ret void
+  }
+  declare void @llvm.memcpy.p0.p0.i64(ptr noalias writeonly captures(none),
+                            ptr noalias readonly captures(none), i64, i1 immarg) #1
+  )";
+
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false,
+                          TargetMachineOptions(GetDebugOptionsFromFlags())},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ir_module,
+                          ParseModule(*context, kMemcpyCall, kModuleName));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  cantFail((*ir_compiler)(*ir_module));
+
+  auto ir = llvm_ir::DumpToString(ir_module.get());
+
+  EXPECT_THAT(ir, ::testing::HasSubstr("tail call"));
+  EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("load i8")));
+  EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("store i8")));
 }
 
 }  // namespace

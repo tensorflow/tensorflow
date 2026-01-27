@@ -18,12 +18,16 @@ limitations under the License.
 
 #include <assert.h>
 
+#include <cstddef>
+#include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 
 #include "tsl/platform/cord.h"
 #include "tsl/platform/ctstring.h"
 #include "tsl/platform/platform.h"
+#include "tsl/platform/refcount.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -92,17 +96,57 @@ class tstring {
     view& operator=(const view&) = delete;
   };
 
+  // `tstring::owner` manages reference-counted shared ownership of a `tstring`
+  // buffer via an owned object of type `T`. `owner<T>` is useful for cases
+  // where an existing object already manages a buffer, and we want to transfer
+  // ownership of that object to a `tstring` via reference counting.
+  //
+  // Ownership of `v` is taken via `std::move`, and `value_` is destroyed via
+  // its destructor when `owner`'s reference count drops to zero. `T` must be
+  // move-constructible.
+  template <typename T>
+  class owner : public tsl::core::RefCounted {
+   public:
+    // Constructs an owner by moving `v` into `value_`.
+    explicit owner(T v) : value_(std::move(v)) {
+      capi_.ref = &RefImpl;
+      capi_.unref = &UnrefImpl;
+      capi_.obj = this;  // Store this to facilitate safe capi_ ref/unref calls.
+    }
+
+    // Accessors for the underlying object.
+    T& value() { return value_; }
+    const T& value() const { return value_; }
+
+   protected:
+    ~owner() override = default;
+
+   private:
+    friend class tstring;
+
+    static void RefImpl(TStringOwnerCApi* self) {
+      static_cast<owner*>(self->obj)->Ref();
+    }
+    static bool UnrefImpl(TStringOwnerCApi* self) {
+      return static_cast<owner*>(self->obj)->Unref();
+    }
+
+    TStringOwnerCApi capi_;
+    T value_;
+  };
+
   typedef const char* const_iterator;
 
   // Ctor
   tstring();
   tstring(const std::string& str);  // NOLINT TODO(b/147740521): Make explicit.
+  explicit tstring(std::string&& str);  // Zero-copy, takes rvalue ownership.
   tstring(const char* str, size_t len);
   tstring(const char* str);  // NOLINT TODO(b/147740521): Make explicit.
   tstring(size_t n, char c);
   explicit tstring(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
-  explicit tstring(const absl::Cord& cord);
+  explicit tstring(const absl::Cord& cord);  // Zero-copy, holds reference.
 #endif  // PLATFORM_GOOGLE
 
   // Copy
@@ -117,11 +161,12 @@ class tstring {
   // Copy Assignment
   tstring& operator=(const tstring& str);
   tstring& operator=(const std::string& str);
+  tstring& operator=(std::string&& str);  // Zero-copy, takes rvalue ownership.
   tstring& operator=(const char* str);
   tstring& operator=(char ch);
   tstring& operator=(const absl::string_view str);
 #ifdef PLATFORM_GOOGLE
-  tstring& operator=(const absl::Cord& cord);
+  tstring& operator=(const absl::Cord& cord);  // Zero-copy, holds reference.
 #endif  // PLATFORM_GOOGLE
 
   // View Assignment
@@ -189,6 +234,23 @@ class tstring {
   tstring& assign_as_view(const char* str, size_t len);
   tstring& assign_as_view(const char* str);
 
+  // Assigns `str` as a shared view, where the lifetime of the buffer `str`
+  // points to is managed by `owner` via reference counting. This is in
+  // contrast to `assign_as_view`, which creates an unowned view.
+  //
+  // This function increments the reference count of `owner`. The caller should
+  // typically call `owner->Unref()` after this to donate their reference to the
+  // tstring(s), ensuring `owner` is deleted only when all tstrings referencing
+  // it are destroyed.
+  //
+  // The buffer pointed to by `str` is guaranteed to remain valid as long as
+  // this tstring (or any copies of it) exists. If `owner` is null, this
+  // method behaves like `assign_as_view`.
+  template <typename T>
+  tstring& assign_as_shared_view(absl::string_view str, owner<T>* owner);
+  template <typename T>
+  tstring& assign_as_shared_view(const char* str, size_t len, owner<T>* owner);
+
   // Modifiers
   // NOTE: Invalid input will result in undefined behavior.
   tstring& append(const tstring& str);
@@ -244,14 +306,33 @@ inline tstring::tstring(size_t n, char c) {
 inline tstring::tstring(const std::string& str)
     : tstring(str.data(), str.size()) {}
 
+inline tstring::tstring(std::string&& str) {
+  TF_TString_Init(&tstr_);
+  if (str.size() > TF_TString_SmallCapacity) {
+    auto* str_owner = new tstring::owner<std::string>(std::move(str));
+    assign_as_shared_view(absl::string_view(str_owner->value()), str_owner);
+    str_owner->Unref();
+  } else {
+    TF_TString_Copy(&tstr_, str.data(), str.size());
+  }
+}
+
 inline tstring::tstring(const absl::string_view str)
     : tstring(str.data(), str.size()) {}
 
 #ifdef PLATFORM_GOOGLE
 inline tstring::tstring(const absl::Cord& cord) {
   TF_TString_Init(&tstr_);
+  if (cord.size() > TF_TString_SmallCapacity) {
+    std::optional<absl::string_view> flat = cord.TryFlat();
+    if (flat.has_value()) {
+      auto* cord_owner = new tstring::owner<absl::Cord>(cord);
+      assign_as_shared_view(*flat, cord_owner);
+      cord_owner->Unref();
+      return;
+    }
+  }
   TF_TString_ResizeUninitialized(&tstr_, cord.size());
-
   cord.CopyToArray(data());
 }
 #endif  // PLATFORM_GOOGLE
@@ -287,6 +368,17 @@ inline tstring& tstring::operator=(const std::string& str) {
   return *this;
 }
 
+inline tstring& tstring::operator=(std::string&& str) {
+  if (str.size() > TF_TString_SmallCapacity) {
+    auto* str_owner = new tstring::owner<std::string>(std::move(str));
+    assign_as_shared_view(absl::string_view(str_owner->value()), str_owner);
+    str_owner->Unref();
+  } else {
+    TF_TString_Copy(&tstr_, str.data(), str.size());
+  }
+  return *this;
+}
+
 inline tstring& tstring::operator=(const char* str) {
   TF_TString_Copy(&tstr_, str, ::strlen(str));
 
@@ -308,10 +400,17 @@ inline tstring& tstring::operator=(const absl::string_view str) {
 
 #ifdef PLATFORM_GOOGLE
 inline tstring& tstring::operator=(const absl::Cord& cord) {
+  if (cord.size() > TF_TString_SmallCapacity) {
+    std::optional<absl::string_view> flat = cord.TryFlat();
+    if (flat.has_value()) {
+      auto* cord_owner = new tstring::owner<absl::Cord>(cord);
+      assign_as_shared_view(*flat, cord_owner);
+      cord_owner->Unref();
+      return *this;
+    }
+  }
   TF_TString_ResizeUninitialized(&tstr_, cord.size());
-
   cord.CopyToArray(data());
-
   return *this;
 }
 #endif  // PLATFORM_GOOGLE
@@ -483,6 +582,22 @@ inline tstring& tstring::assign_as_view(const char* str, size_t len) {
 inline tstring& tstring::assign_as_view(const char* str) {
   assign_as_view(str, ::strlen(str));
 
+  return *this;
+}
+
+template <typename T>
+inline tstring& tstring::assign_as_shared_view(const absl::string_view str,
+                                               tstring::owner<T>* owner) {
+  TF_TString_AssignViewWithOwner(&tstr_, str.data(), str.size(),
+                                 owner ? &owner->capi_ : nullptr);
+  return *this;
+}
+
+template <typename T>
+inline tstring& tstring::assign_as_shared_view(const char* str, size_t len,
+                                               tstring::owner<T>* owner) {
+  TF_TString_AssignViewWithOwner(&tstr_, str, len,
+                                 owner ? &owner->capi_ : nullptr);
   return *this;
 }
 

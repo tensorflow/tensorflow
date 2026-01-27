@@ -37,11 +37,11 @@ struct EmbeddedProtocolBuffers {
   struct CPPShim {
     // `expression` is a C++ expression that creates an instance of said
     // protocol buffer when executed.
-    string expression;
+    std::string expression;
 
     // `variable_decl` is an "extern C" array declaration that is used in
     // `expression`.  It must be visible wherever `expression` is emitted.
-    string variable_decl;
+    std::string variable_decl;
   };
 
   // Each cpp_shim corresponds to one embedded protocol buffer.
@@ -50,20 +50,20 @@ struct EmbeddedProtocolBuffers {
   // The contents of the object (".o") file the protocol buffers are embbed in.
   // This needs to be linked in to any program that wants to execute any of the
   // expressions in `cpp_shims`.
-  string object_file_data;
+  std::string object_file_data;
 };
 
 // Describes a protocol buffer to embed into an object file.
 struct ProtobufToEmbed {
   // `symbol_prefix` is prefix that is guaranteed to be unique across the binary
   // or DSO the generated object file will be linked into.
-  string symbol_prefix;
+  std::string symbol_prefix;
 
   // `qualified_cpp_protobuf_name` is a qualified ("qualified" as in C++
   // namespace qualified) protocol buffer name.  This is only used in
   // CPPShim::expression so relatively qualified names are fine as long as
   // they're valid wherever CPPShim::expression is emitted.
-  string qualified_cpp_protobuf_name;
+  std::string qualified_cpp_protobuf_name;
 
   // `message` is the protocol buffer to be embedded.  It is allowed to be
   // nullptr, in which case the generated C++ shim expression is just `nullptr`,

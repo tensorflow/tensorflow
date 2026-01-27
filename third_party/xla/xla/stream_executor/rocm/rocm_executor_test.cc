@@ -16,11 +16,11 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 
 #include <memory>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -32,16 +32,12 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 using testing::IsEmpty;
 using testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(RocmExecutorTest, CreateDeviceDescription) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
@@ -57,10 +53,10 @@ TEST(RocmExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
   EXPECT_THAT(result->device_vendor(), "Advanced Micro Devices, Inc");
 
-  EXPECT_THAT(
-      std::get_if<RocmComputeCapability>(&result->gpu_compute_capability())
-          ->gcn_arch_name(),
-      Not(IsEmpty()));
+  EXPECT_THAT(result->gpu_compute_capability()
+                  .rocm_compute_capability()
+                  ->gcn_arch_name(),
+              Not(IsEmpty()));
 }
 
 TEST(RocmExecutorTest, GetRocmKernel) {
@@ -93,11 +89,11 @@ TEST(RocmExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kUnified));
+      executor->CreateMemoryAllocator(MemorySpace::kUnified));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -107,11 +103,11 @@ TEST(RocmExecutorTest, CreateHostMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
-                          executor->CreateMemoryAllocator(MemoryType::kHost));
+                          executor->CreateMemoryAllocator(MemorySpace::kHost));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -122,11 +118,11 @@ TEST(RocmExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
-      executor->CreateMemoryAllocator(MemoryType::kCollective));
+      executor->CreateMemoryAllocator(MemorySpace::kCollective));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
                           allocator->Allocate(1024));
-  EXPECT_NE(allocation->opaque(), nullptr);
-  EXPECT_EQ(allocation->size(), 1024);
+  EXPECT_NE(allocation->address().opaque(), nullptr);
+  EXPECT_EQ(allocation->address().size(), 1024);
   allocation.reset();
 }
 
@@ -135,7 +131,7 @@ TEST(RocmExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemorySpace::kDevice),
               Not(absl_testing::IsOk()));
 }
 

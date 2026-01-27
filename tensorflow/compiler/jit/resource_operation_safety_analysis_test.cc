@@ -38,7 +38,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-Node* MakeRead(const Scope& scope, const string& id) {
+Node* MakeRead(const Scope& scope, const std::string& id) {
   Output var_handle =
       ops::VarHandleOp(scope.WithOpName("Var" + id), DT_FLOAT, TensorShape({}));
   Output read =
@@ -46,7 +46,7 @@ Node* MakeRead(const Scope& scope, const string& id) {
   return read.node();
 }
 
-Node* MakeWrite(const Scope& scope, const string& id) {
+Node* MakeWrite(const Scope& scope, const std::string& id) {
   Output var_handle =
       ops::VarHandleOp(scope.WithOpName("Var" + id), DT_FLOAT, TensorShape({}));
   Output value_to_write =
@@ -56,7 +56,7 @@ Node* MakeWrite(const Scope& scope, const string& id) {
   return assign_op.operation.node();
 }
 
-Node* MakeModify(const Scope& scope, const string& id) {
+Node* MakeModify(const Scope& scope, const std::string& id) {
   Output var_handle =
       ops::VarHandleOp(scope.WithOpName("Var" + id), DT_FLOAT, TensorShape({}));
   Output value_to_write = ops::Const(scope.WithOpName("Increment" + id), 1.0f);
@@ -65,7 +65,7 @@ Node* MakeModify(const Scope& scope, const string& id) {
   return assign_add_op.operation.node();
 }
 
-Node* MakeNeutral(const Scope& scope, const string& id) {
+Node* MakeNeutral(const Scope& scope, const std::string& id) {
   return ops::Const(scope.WithOpName("Const" + id), 42.0f).node();
 }
 
@@ -238,7 +238,8 @@ TEST(ResourceOperationSafetyAnalysisTest, WriteReadModify) {
   EXPECT_EQ(incompatible_pairs[1], write_modify_pair);
 }
 
-FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
+FunctionDefLibrary CreateFunctionDefLibWithConstFunction(
+    const std::string& name) {
   FunctionDefLibrary flib_def;
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/name, /*in_def=*/{}, /*out_def=*/{"out: float"},
@@ -249,8 +250,8 @@ FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
   return flib_def;
 }
 
-Node* MakeCall(Graph* graph, const string& callee_name, const string& node_name,
-               absl::Status* status) {
+Node* MakeCall(Graph* graph, const std::string& callee_name,
+               const std::string& node_name, absl::Status* status) {
   NodeDef call_node;
   call_node.set_name(node_name);
   call_node.set_op(callee_name);

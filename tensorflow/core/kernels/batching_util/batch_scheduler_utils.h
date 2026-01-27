@@ -34,13 +34,13 @@ namespace serving {
 // greater than or equal to the given batch size. If allowed_batch_sizes,
 // returns batch_size as is.
 int GetNextAllowedBatchSize(int batch_size,
-                            const std::vector<int32>& allowed_batch_sizes,
+                            const std::vector<int32_t>& allowed_batch_sizes,
                             bool disable_padding);
 
 // Returns the largest allowed batch size that is smaller than or equal to
 // batch_size. Returns batch_size if no such size exists.
 int GetPrevAllowedBatchSize(int batch_size,
-                            const std::vector<int32>& allowed_batch_sizes,
+                            const std::vector<int32_t>& allowed_batch_sizes,
                             bool disable_padding);
 
 // Constants containing possible values for the batch_padding_policy argument
@@ -69,7 +69,7 @@ inline constexpr absl::string_view kMinimizeTpuCostPerRequestPolicy =
 // out_trimmed_tasks vector in the same order as they were in the batch.
 template <typename TaskType>
 void MaybeBatchDown(Batch<TaskType>& batch,
-                    const std::vector<int32>& allowed_batch_sizes,
+                    const std::vector<int32_t>& allowed_batch_sizes,
                     bool disable_padding,
                     absl::string_view batch_padding_policy,
                     ModelBatchStats* model_batch_stats,
@@ -103,15 +103,15 @@ void MaybeBatchDown(Batch<TaskType>& batch,
     return;
   }
 
-  int32 batch_size = batch.size();
+  int32_t batch_size = batch.size();
 
-  int32 pad_up_size =
+  int32_t pad_up_size =
       GetNextAllowedBatchSize(batch_size, allowed_batch_sizes, disable_padding);
   if (pad_up_size == batch_size) {
     return;  // Good, no padding is necessary.
   }
 
-  int32 batch_down_size =
+  int32_t batch_down_size =
       GetPrevAllowedBatchSize(batch_size, allowed_batch_sizes, disable_padding);
   if (batch_down_size == batch_size) {
     return;  // Can't batch down (e.g. no smaller batch size available).

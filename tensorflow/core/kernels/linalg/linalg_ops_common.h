@@ -102,8 +102,9 @@ class LinearAlgebraOp : public OpKernel {
     double m = static_cast<double>(input_matrix_shapes[0].dim_size(0));
     double n = static_cast<double>(input_matrix_shapes[0].dim_size(1));
     double cost = std::max(m, n) * std::min(m, n) * std::min(m, n);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   // Returns true if it is safe to forward (alias) input to output buffer

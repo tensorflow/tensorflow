@@ -44,12 +44,12 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -71,6 +71,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
         mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
         mlir::LLVM::LLVMDialect, mlir::DLTIDialect, xla::XlaDialect,
         xla::gpu::XlaGpuDialect>();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   // Converts the root subgraph of the entry function of the given hlo module to
@@ -97,7 +98,7 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
       epilogue_spec.push_back(epilogue_spec_fn(entry_computation));
     }
     PartitionedComputations partitioned_computations(
-        entry_computation, &symbolic_expr_context_, epilogue_spec);
+        entry_computation, &mlir_context_, epilogue_spec);
     auto fns = partitioned_computations.DeclareFunctions(module.get());
     auto entry_func = fns[&partitioned_computations
                                .FindPartitionedComputation(entry_computation)
@@ -113,13 +114,12 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
     auto call_targets = partitioned_computations.CreateCallTargetProvider(fns);
     TF_RETURN_IF_ERROR(
         SubgraphToMlirFunction(entry_pc, entry_pc.GetRootSubgraph(), entry_func,
-                               call_targets, &symbolic_expr_context_));
+                               call_targets, &mlir_context_));
 
     if (!partitioned_computations.epilogues().empty()) {
       const auto& epilogue = partitioned_computations.epilogues().front();
-      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(entry_pc, epilogue,
-                                                fns[&epilogue], call_targets,
-                                                &symbolic_expr_context_));
+      TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+          entry_pc, epilogue, fns[&epilogue], call_targets, &mlir_context_));
     }
 
     // Canonicalize and CSE for better readability of check tests.
@@ -139,7 +139,6 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
   }
 
   mlir::MLIRContext mlir_context_;
-  xla::gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(ElementalHloToMlirTest, Reduce) {

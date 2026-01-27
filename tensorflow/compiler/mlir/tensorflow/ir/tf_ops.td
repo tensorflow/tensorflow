@@ -335,7 +335,6 @@ def TF_IfRegionOp : TF_Op<"IfRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
        ]>
       ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
@@ -395,7 +394,6 @@ def TF_GeneratorDatasetRegionOp : TF_Op<"GeneratorDatasetRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
        ]>,
        SingleBlockImplicitTerminator<"YieldOp">,
        TF_GeneratorOpSideEffect,
@@ -739,9 +737,6 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
-           "getRegionInvocationBounds", "getEntrySuccessorOperands",
-           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{
@@ -2229,7 +2224,6 @@ def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> 
   let arguments = (ins
     TF_Int32Tensor:$embedding_ids,
     TF_Int32Tensor:$sample_ids,
-    TF_Float32Tensor:$gains,
     TF_Tensor:$embedding_table,
 
     ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 
 #include <memory>
-#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>

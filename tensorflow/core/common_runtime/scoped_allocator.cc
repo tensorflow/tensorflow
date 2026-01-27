@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 ScopedAllocator::ScopedAllocator(const Tensor& backing_tensor, int32_t scope_id,
-                                 const string& name,
+                                 const std::string& name,
                                  const absl::Span<const Field> fields,
                                  int32_t expected_call_count,
                                  ScopedAllocatorContainer* container)
@@ -69,7 +69,7 @@ void* ScopedAllocator::AllocateRaw(int32_t field_index, size_t num_bytes) {
       return nullptr;
     }
 
-    int32_t num_fields = static_cast<int32>(fields_.size());
+    int32_t num_fields = static_cast<int32_t>(fields_.size());
     if (field_index >= num_fields) {
       LOG(ERROR) << "ScopedAllocator " << name_
                  << " received unexpected field number " << field_index;
@@ -228,8 +228,8 @@ void ScopedAllocatorInstance::DeallocateRaw(void* p) {
   if (del) delete this;
 }
 
-string ScopedAllocatorInstance::Name() {
-  return strings::StrCat(scoped_allocator_->name(), "_field_", field_index_);
+std::string ScopedAllocatorInstance::Name() {
+  return absl::StrCat(scoped_allocator_->name(), "_field_", field_index_);
 }
 
 }  // namespace tensorflow

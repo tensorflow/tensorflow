@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <variant>
-
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"

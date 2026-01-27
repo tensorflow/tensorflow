@@ -177,15 +177,17 @@ class BitcastConvertOpPattern
       return failure();
     } else if (is_input_legal) {
       // output is f32, we bitcast_convert to f32 and then convert to bf16.
-      const Value output = rewriter.create<mlir::stablehlo::BitcastConvertOp>(
-          op->getLoc(), op.getResult().getType(), adaptor.getOperand());
+      const Value output = mlir::stablehlo::BitcastConvertOp::create(
+          rewriter, op->getLoc(), op.getResult().getType(),
+          adaptor.getOperand());
       rewriter.replaceOpWithNewOp<mlir::stablehlo::ConvertOp>(
           op, getTypeConverter()->convertType(op.getResult().getType()),
           output);
     } else if (is_output_legal) {
       // input is f32, we convert from bf16 and then bitcast_convert.
-      const Value output = rewriter.create<mlir::stablehlo::ConvertOp>(
-          op->getLoc(), op.getOperand().getType(), adaptor.getOperand());
+      const Value output = mlir::stablehlo::ConvertOp::create(
+          rewriter, op->getLoc(), op.getOperand().getType(),
+          adaptor.getOperand());
       rewriter.replaceOpWithNewOp<mlir::stablehlo::BitcastConvertOp>(
           op, op.getResult().getType(), output);
     } else {

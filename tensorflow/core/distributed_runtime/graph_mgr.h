@@ -85,21 +85,21 @@ class GraphMgr {
 
   // Registers a graph. Fills in "handle". The registered graph retains a
   // reference to cluster_flr to do cross process function calls.
-  absl::Status Register(const string& handle, const GraphDef& gdef,
+  absl::Status Register(const std::string& handle, const GraphDef& gdef,
                         const GraphOptions& graph_options,
                         const DebugOptions& debug_options,
                         const ConfigProto& config_proto,
                         int64_t collective_graph_key, WorkerSession* session,
                         DistributedFunctionLibraryRuntime* cluster_flr,
-                        string* graph_handle);
+                        std::string* graph_handle);
 
   // Executes one step of a registered graph "handle".
   //
   // If "out" is not nullptr, "out" specifies all keys the execution
   // should receive upon finish.
-  typedef std::map<string, Tensor> NamedTensors;
+  typedef std::map<std::string, Tensor> NamedTensors;
   typedef std::function<void(const absl::Status&)> StatusCallback;
-  void ExecuteAsync(const string& handle, const int64_t step_id,
+  void ExecuteAsync(const std::string& handle, const int64_t step_id,
                     const ExecutorOpts& opts, const NamedTensors& in,
                     WorkerSession* session, StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
@@ -113,7 +113,7 @@ class GraphMgr {
                         StatusCallback done);
 
   // Deregisters a graph.
-  absl::Status Deregister(const string& handle);
+  absl::Status Deregister(const std::string& handle);
 
   // Deregister all graphs.
   absl::Status DeregisterAll();
@@ -137,10 +137,10 @@ class GraphMgr {
     ~Item() override;
 
     // Session handle.
-    string session;
+    std::string session;
 
     // Graph handle.
-    string handle;
+    std::string handle;
 
     // Session configuration options for the graph.
     ConfigProto session_config;
@@ -177,13 +177,14 @@ class GraphMgr {
   // TODO(zhifengc): If the client does not call Deregister, we'll
   // lose memory over time. We should implement a timeout-based
   // mechanism to gc these graphs.
-  std::unordered_map<string, Item*> table_;
+  std::unordered_map<std::string, Item*> table_;
 
   void StartParallelExecutors(
-      const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
-      CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
-      CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-      WorkerSession* session, int64_t start_time_usecs,
+      const std::string& handle, int64_t step_id, Item* item,
+      Rendezvous* rendezvous, CollectiveExecutor::Handle* ce_handle,
+      StepStatsCollector* collector, CostGraphDef* cost_graph,
+      CancellationManager* cancellation_manager, WorkerSession* session,
+      int64_t start_time_usecs,
       tsl::CoordinationServiceAgent* coordination_service_agent,
       StatusCallback done);
 
@@ -194,7 +195,7 @@ class GraphMgr {
   void BuildCostModel(Item* item, StepStatsCollector* collector,
                       CostGraphDef* cost_graph);
 
-  absl::Status InitItem(const string& handle, const GraphDef& gdef,
+  absl::Status InitItem(const std::string& handle, const GraphDef& gdef,
                         const GraphOptions& graph_options,
                         const DebugOptions& debug_options,
                         const ConfigProto& config_proto,

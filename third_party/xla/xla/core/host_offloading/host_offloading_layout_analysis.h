@@ -30,17 +30,6 @@ class HostOffloadingLayoutAnalysis : public HloModulePass {
     return "host-offloading-layout-analysis";
   }
 
-  using HloPassInterface::Run;
-  // This method does not modify the module; it purely informs the caller
-  // whether device<->host layout conversion (i.e., (de)linearization of input
-  // and result buffers) can be safely skipped.
-  // Note: the pass is conservative in that it can return true for some cases
-  // that might not need layout conversion. This is OK because performing layout
-  // conversion is always correct, despite its performance impact.
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) final;
-
   // This static method provides an API better named than "Run".
   static absl::StatusOr<bool> NeedsLayoutConversion(HloModule* module) {
     HostOffloadingLayoutAnalysis pass;
@@ -51,6 +40,17 @@ class HostOffloadingLayoutAnalysis : public HloModulePass {
   // This function is useful when the HloModule has no tiling information, yet
   // we have it from shapes coming from buffers, e.g. TpuBuffer's.
   static bool ShapeHasPadding(const Shape& shape);
+
+ protected:
+  // This method does not modify the module; it purely informs the caller
+  // whether device<->host layout conversion (i.e., (de)linearization of input
+  // and result buffers) can be safely skipped.
+  // Note: the pass is conservative in that it can return true for some cases
+  // that might not need layout conversion. This is OK because performing layout
+  // conversion is always correct, despite its performance impact.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) final;
 };
 
 }  // namespace xla

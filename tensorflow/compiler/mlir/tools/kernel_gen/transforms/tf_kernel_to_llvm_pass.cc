@@ -115,27 +115,28 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   for (auto argument : arguments) argument_types.push_back(argument.getType());
   auto struct_type = LLVM::LLVMStructType::getNewIdentified(
       context_, StringRef(), argument_types);
-  auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
-                                              builder.getI32IntegerAttr(1));
-  auto struct_ptr = builder.create<LLVM::AllocaOp>(
-      loc, llvm_pointer_type_, struct_type, one, /*alignment=*/0);
-  auto array_size = builder.create<LLVM::ConstantOp>(
-      loc, llvm_int32_type_, builder.getI32IntegerAttr(num_arguments));
-  auto array_ptr = builder.create<LLVM::AllocaOp>(
-      loc, llvm_pointer_type_, llvm_pointer_type_, array_size, /*alignment=*/0);
-  auto zero = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
-                                               builder.getI32IntegerAttr(0));
+  auto one = LLVM::ConstantOp::create(builder, loc, llvm_int32_type_,
+                                      builder.getI32IntegerAttr(1));
+  auto struct_ptr = LLVM::AllocaOp::create(builder, loc, llvm_pointer_type_,
+                                           struct_type, one, /*alignment=*/0);
+  auto array_size = LLVM::ConstantOp::create(
+      builder, loc, llvm_int32_type_, builder.getI32IntegerAttr(num_arguments));
+  auto array_ptr =
+      LLVM::AllocaOp::create(builder, loc, llvm_pointer_type_,
+                             llvm_pointer_type_, array_size, /*alignment=*/0);
+  auto zero = LLVM::ConstantOp::create(builder, loc, llvm_int32_type_,
+                                       builder.getI32IntegerAttr(0));
   for (auto en : llvm::enumerate(arguments)) {
-    auto index = builder.create<LLVM::ConstantOp>(
-        loc, llvm_int32_type_, builder.getI32IntegerAttr(en.index()));
-    auto field_ptr = builder.create<LLVM::GEPOp>(
-        loc, llvm_pointer_type_, struct_type, struct_ptr,
+    auto index = LLVM::ConstantOp::create(
+        builder, loc, llvm_int32_type_, builder.getI32IntegerAttr(en.index()));
+    auto field_ptr = LLVM::GEPOp::create(
+        builder, loc, llvm_pointer_type_, struct_type, struct_ptr,
         ArrayRef<Value>{zero, index.getResult()});
-    builder.create<LLVM::StoreOp>(loc, en.value(), field_ptr);
+    LLVM::StoreOp::create(builder, loc, en.value(), field_ptr);
     auto element_ptr =
-        builder.create<LLVM::GEPOp>(loc, llvm_pointer_type_, llvm_pointer_type_,
-                                    array_ptr, index.getResult());
-    builder.create<LLVM::StoreOp>(loc, field_ptr, element_ptr);
+        LLVM::GEPOp::create(builder, loc, llvm_pointer_type_,
+                            llvm_pointer_type_, array_ptr, index.getResult());
+    LLVM::StoreOp::create(builder, loc, field_ptr, element_ptr);
   }
   return array_ptr;
 }
@@ -220,11 +221,11 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
                          });
     rewriter.setInsertionPointToStart(
         launch_op->getParentOfType<ModuleOp>().getBody());
-    function = rewriter.create<LLVM::LLVMFuncOp>(
-        loc, kTfWrapperLibaryLaunchHelperName, function_type);
+    function = LLVM::LLVMFuncOp::create(
+        rewriter, loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }
-  rewriter.create<LLVM::CallOp>(
-      loc, TypeRange(), mlir::SymbolRefAttr::get(function),
+  LLVM::CallOp::create(
+      rewriter, loc, TypeRange(), mlir::SymbolRefAttr::get(function),
 
       ArrayRef<Value>{context_arg, module_blob, kernel_name_global,
                       adaptor.getGridSizeX(), adaptor.getGridSizeY(),

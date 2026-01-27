@@ -38,25 +38,28 @@ from tensorflow.python.types import core
 from tensorflow.python.util import object_identity
 
 # Attributes for each Trackable in the checkpointed object graph.
-_TrackableData = collections.namedtuple("_TrackableData", [
-    # A trackable in the root Trackable object graph.
-    "trackable",
-    # The index at which the Trackable appears in TrackableObjectGraph.nodes.
-    "node_id",
-    # The BFS-generated path from the root object / used to generate readable
-    # checkpoint keys.
-    "object_name",
-    # A list of ObjectReference for each child connected to this Trackable.
-    "children_proto",
-    # A list of SlotVariableReference to save to the object (only valid for
-    # Optimizer objects).
-    "slot_variable_proto",
-    # The object to save to checkpoint. Usually this is the same as `trackable`,
-    # but can differ when the the caller wants to specify a different object to
-    # save. For example, when saving checkpoints asynchronously, variables are
-    # copied to the CPU. `object_to_save` is set as the copied variable.
-    "object_to_save",
-    ])
+_TrackableData = collections.namedtuple(
+    "_TrackableData",
+    [
+        # A trackable in the root Trackable object graph.
+        "trackable",
+        # The index at which the Trackable appears in TrackableObjectGraph.nodes.
+        "node_id",
+        # The BFS-generated path from the root object / used to generate readable
+        # checkpoint keys.
+        "object_name",
+        # A list of ObjectReference for each child connected to this Trackable.
+        "children_proto",
+        # A list of SlotVariableReference to save to the object (only valid for
+        # Optimizer objects).
+        "slot_variable_proto",
+        # The object to save to checkpoint. Usually this is the same as `trackable`,
+        # but can differ when the caller wants to specify a different object to
+        # save. For example, when saving checkpoints asynchronously, variables are
+        # copied to the CPU. `object_to_save` is set as the copied variable.
+        "object_to_save",
+    ],
+)
 
 
 def _split_trackables(
@@ -341,4 +344,3 @@ def serialize_graph_view(
   util.add_checkpoint_values_check(object_graph_proto)
   return (serialized_tensors, feed_additions, registered_savers,
           object_graph_proto)
-

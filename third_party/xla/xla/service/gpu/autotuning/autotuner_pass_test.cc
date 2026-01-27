@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -69,11 +69,12 @@ class AutotunerPassTest : public HloHardwareIndependentTestBase {
  protected:
   AutotunerPassTest()
       : stream_executor_(GpuExecutor()),
-        allocator_(std::make_unique<se::StreamExecutorMemoryAllocator>(
-            stream_executor_)) {}
+        allocator_(
+            std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+                stream_executor_)) {}
 
   se::StreamExecutor* stream_executor_;
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
   NVPTXCompiler compiler_;
 };
 
@@ -106,7 +107,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
       &target_config));
@@ -134,7 +135,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
@@ -172,7 +173,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   // Run the pass for the first time, this should populate the cache.
   {
@@ -255,7 +256,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   // Run the pass for the first time, this should populate the cache.
   {
@@ -319,7 +320,7 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<CublasBackend>(
@@ -376,7 +377,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  GpuCompiler::TargetConfig target_config(stream_executor_);
+  GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,

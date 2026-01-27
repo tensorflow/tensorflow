@@ -85,7 +85,6 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

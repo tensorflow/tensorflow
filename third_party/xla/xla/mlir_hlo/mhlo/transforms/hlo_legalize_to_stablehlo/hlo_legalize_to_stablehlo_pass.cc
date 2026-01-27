@@ -106,13 +106,23 @@ struct HloLegalizeToStablehloPass
     stablehlo::registerFuncOpsForTypeConversion(target, patterns, converter);
 
     if (allow_xla_features_) {
-      // These ops do not exist in StableHLO.
-      target.addLegalOp<mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
-                        mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp,
-                        mhlo::DomainOp, mhlo::ErfOp, mhlo::FusionOp,
-                        mhlo::MinimumBroadcastShapesOp, mhlo::RaggedDotOp,
-                        mhlo::StochasticConvertOp, mhlo::TopKOp, mhlo::TraceOp,
-                        mhlo::XlaRngGetAndUpdateStateOp>();
+      // These ops do not exist in StableHLO. (They do exist in CHLO, a slightly
+      // higher-level dialect wrapping StableHLO, but we leave them as MHLO here
+      // since we're specifically legalizing to StableHLO, not to CHLO.)
+      target.addLegalOp<  //
+          mhlo::AcosOp, mhlo::AcoshOp, mhlo::AsinOp, mhlo::AsinhOp,
+          mhlo::AtanhOp, mhlo::CoshOp, mhlo::ErfOp, mhlo::RaggedDotOp,
+          mhlo::ScanOp, mhlo::SinhOp, mhlo::TopKOp>();
+
+      // These ops do not exist in StableHLO. (They don't exist in CHLO, either;
+      // MHLO is the appropriate dialect for expressing XLA-specific features
+      // such as these.)
+      target.addLegalOp<
+          mhlo::AsyncDoneOp, mhlo::AsyncStartOp, mhlo::AsyncUpdateOp,
+          mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp, mhlo::FusionOp,
+          mhlo::MinimumBroadcastShapesOp, mhlo::StochasticConvertOp,
+          mhlo::TraceOp, mhlo::XlaRngGetAndUpdateStateOp>();
+
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
           [](mhlo::AddDependencyOp op) {
             return !hasMhloTypes(op->getOperandTypes());
@@ -142,8 +152,11 @@ struct HloLegalizeToStablehloPass
         [](Operation* op) { return !hasMhloTypes(op->getOperandTypes()); });
     patterns.add<UpdateOperandsInUnknownOp>(converter, &getContext());
 
+    ConversionConfig config;
+    config.foldingMode = DialectConversionFoldingMode::Never;
+
     if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
+                                      std::move(patterns), config)))
       return signalPassFailure();
   }
 };

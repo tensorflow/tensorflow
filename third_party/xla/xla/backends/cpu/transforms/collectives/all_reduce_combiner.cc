@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<bool> CpuAllReduceCombiner::Run(
+absl::StatusOr<bool> CpuAllReduceCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return RunWithKeyCombiner(module, execution_threads,

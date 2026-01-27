@@ -33,39 +33,39 @@ ABSL_CONST_INIT const char kFeaturesCount[] = "features_count";
 ABSL_CONST_INIT const char kFeatureValuesCount[] = "feature_values_count";
 ABSL_CONST_INIT const char kExamplesCount[] = "examples_count";
 
-string ExecutionTimeHistogramName(const string& prefix) {
+std::string ExecutionTimeHistogramName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kExecutionTime);
 }
 
-string ThreadUtilizationScalarName(const string& prefix) {
+std::string ThreadUtilizationScalarName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kThreadUtilization);
 }
 
-string BufferSizeScalarName(const string& prefix) {
+std::string BufferSizeScalarName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kBufferSize);
 }
 
-string BufferCapacityScalarName(const string& prefix) {
+std::string BufferCapacityScalarName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kBufferCapacity);
 }
 
-string BufferUtilizationHistogramName(const string& prefix) {
+std::string BufferUtilizationHistogramName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kBufferUtilization);
 }
 
-string FilterdElementsScalarName(const string& prefix) {
+std::string FilterdElementsScalarName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kFilteredElements);
 }
 
-string DroppedElementsScalarName(const string& prefix) {
+std::string DroppedElementsScalarName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kDroppedElements);
 }
 
-string FeatureHistogramName(const string& prefix) {
+std::string FeatureHistogramName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kFeaturesCount);
 }
 
-string FeatureValueHistogramName(const string& prefix) {
+std::string FeatureValueHistogramName(const std::string& prefix) {
   return absl::StrCat(prefix, kDelimiter, kFeatureValuesCount);
 }
 

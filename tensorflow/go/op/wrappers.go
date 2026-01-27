@@ -6511,6 +6511,9 @@ func Complex(scope *Scope, real tf.Output, imag tf.Output, optional ...ComplexAt
 type ComplexAbsAttr func(optionalAttr)
 
 // ComplexAbsTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ComplexAbsTout(value tf.DataType) ComplexAbsAttr {
 	return func(m optionalAttr) {
@@ -20905,6 +20908,9 @@ func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []t
 type ImagAttr func(optionalAttr)
 
 // ImagTout sets the optional Tout attribute to value.
+//
+// value: Need to be `tf.float32` when the type of `x` is `tf.complex64`.
+// Need to be `tf.float64` when the type of `x` is `tf.complex128`.
 // If not specified, defaults to DT_FLOAT
 func ImagTout(value tf.DataType) ImagAttr {
 	return func(m optionalAttr) {
@@ -21910,7 +21916,15 @@ type IsotonicRegressionAttr func(optionalAttr)
 
 // IsotonicRegressionOutputDtype sets the optional output_dtype attribute to value.
 //
-// value: Dtype of output.
+// value: Dtype of the output tensor.
+//
+// Note on supported input-output type combinations:
+// * For floating-point types, the output has the same dtype as the input.
+// * For 8-bit and 16-bit integer inputs, the output is a 32-bit float.
+// * For 32-bit and 64-bit integer inputs, the output is a 64-bit float.
+//
+// Using unsupported dtype pairs (for example, input=float64 with output=float32)
+// will result in a "Could not find device for node" error.
 // If not specified, defaults to DT_FLOAT
 func IsotonicRegressionOutputDtype(value tf.DataType) IsotonicRegressionAttr {
 	return func(m optionalAttr) {
@@ -35184,6 +35198,9 @@ func QueueSizeV2(scope *Scope, handle tf.Output) (size tf.Output) {
 type RFFTAttr func(optionalAttr)
 
 // RFFTTcomplex sets the optional Tcomplex attribute to value.
+//
+// value: Should be `tf.complex64` when the type of `input` is `float32`.
+// Should be `tf.complex128` when the type of `input` is `float64`.
 // If not specified, defaults to DT_COMPLEX64
 func RFFTTcomplex(value tf.DataType) RFFTAttr {
 	return func(m optionalAttr) {
@@ -35206,7 +35223,7 @@ func RFFTTcomplex(value tf.DataType) RFFTAttr {
 //
 // Arguments:
 //
-//	input: A float32 tensor.
+//	input: A float32 or float64 tensor.
 //	fft_length: An int32 tensor of shape [1]. The FFT length.
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most
@@ -35240,6 +35257,9 @@ func RFFT(scope *Scope, input tf.Output, fft_length tf.Output, optional ...RFFTA
 type RFFT2DAttr func(optionalAttr)
 
 // RFFT2DTcomplex sets the optional Tcomplex attribute to value.
+//
+// value: Should be `tf.complex64` when the type of `input` is `float32`.
+// Should be `tf.complex128` when the type of `input` is `float64`.
 // If not specified, defaults to DT_COMPLEX64
 func RFFT2DTcomplex(value tf.DataType) RFFT2DAttr {
 	return func(m optionalAttr) {
@@ -35263,7 +35283,7 @@ func RFFT2DTcomplex(value tf.DataType) RFFT2DAttr {
 //
 // Arguments:
 //
-//	input: A float32 tensor.
+//	input: A float32 or float64 tensor.
 //	fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most 2
@@ -35298,6 +35318,9 @@ func RFFT2D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...RFF
 type RFFT3DAttr func(optionalAttr)
 
 // RFFT3DTcomplex sets the optional Tcomplex attribute to value.
+//
+// value: Should be `tf.complex64` when the type of `input` is `float32`.
+// Should be `tf.complex128` when the type of `input` is `float64`.
 // If not specified, defaults to DT_COMPLEX64
 func RFFT3DTcomplex(value tf.DataType) RFFT3DAttr {
 	return func(m optionalAttr) {
@@ -35321,7 +35344,7 @@ func RFFT3DTcomplex(value tf.DataType) RFFT3DAttr {
 //
 // Arguments:
 //
-//	input: A float32 tensor.
+//	input: A float32 or float64 tensor.
 //	fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
 //
 // Returns A complex64 tensor of the same rank as `input`. The inner-most 3
@@ -35356,6 +35379,9 @@ func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...RFF
 type RFFTNDAttr func(optionalAttr)
 
 // RFFTNDTcomplex sets the optional Tcomplex attribute to value.
+//
+// value: Should be `tf.complex64` when the type of `input` is `float32`.
+// Should be `tf.complex128` when the type of `input` is `float64`.
 // If not specified, defaults to DT_COMPLEX64
 func RFFTNDTcomplex(value tf.DataType) RFFTNDAttr {
 	return func(m optionalAttr) {
@@ -35379,7 +35405,7 @@ func RFFTNDTcomplex(value tf.DataType) RFFTNDAttr {
 //
 // Arguments:
 //
-//	input: A complex tensor.
+//	input: A float32 or float64 tensor.
 //	fft_length: An int32 tensor. The FFT length for each dimension.
 //	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
 //

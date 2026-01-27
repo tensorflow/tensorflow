@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -320,8 +321,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       }
     }
 
-    std::string ToString() const {
-      return absl::StrFormat(
+    std::string ToString(bool print_named_properties = false) const {
+      std::string string = absl::StrFormat(
           "HloCostAnalysis::Properties{\n"
           " flops: %f,\n"
           " transcendentals: %f\n"
@@ -333,12 +334,18 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           " operand0_bytes_accessed: %f\n"
           " operand1_bytes_accessed: %f\n"
           " output_root_bytes_accessed: %f\n"
-          " reserved0: %f\n"
-          "}",
+          " reserved0: %f\n",
           flops_, transcendentals_, bytes_accessed_, optimal_seconds_,
           utilization_, operand0_utilization_, operand1_utilization_,
           operand0_bytes_accessed_, operand1_bytes_accessed_,
           output_root_bytes_accessed_, reserved0_);
+      if (print_named_properties) {
+        for (const auto& [k, v] : named_props_) {
+          absl::StrAppend(&string, absl::StrFormat(" %s: %f\n", k, v));
+        }
+      }
+      absl::StrAppend(&string, "}");
+      return string;
     }
 
    private:
@@ -510,6 +517,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleSort(const HloInstruction* sort) override;
   absl::Status HandleParameter(const HloInstruction* parameter) override;
   absl::Status HandleReduce(const HloInstruction* reduce) override;
+  absl::Status HandleScan(const HloInstruction* scan) override;
   absl::Status HandleBatchNormTraining(
       const HloInstruction* batch_norm_training) override;
   absl::Status HandleBatchNormInference(

@@ -204,7 +204,8 @@ TokKind HloLexer::LexToken(uint64_t skip_mask) {
           }
           // Return no token for the comment. Keep lexing.
           continue;
-        } else if (PeekCurrentChar() == '/') {
+        }
+        if (PeekCurrentChar() == '/') {
           // This is the start of a '//' delimited comment. Throw away
           // everything until end of line or file. The end-of-line character(s)
           // are left unlexed in the buffer which is harmless because these are
@@ -334,6 +335,10 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
   KEYWORD(ROOT);
+  KEYWORD(FileLocations);
+  KEYWORD(FileNames);
+  KEYWORD(FunctionNames);
+  KEYWORD(StackFrames);
   KEYWORD(maximal);
   KEYWORD(replicated);
   KEYWORD(manual);
@@ -608,21 +613,29 @@ TokKind HloLexer::LexString() {
 
 TokKind HloLexer::LexJsonDict() {
   // We require that you've already lexed the open curly brace.
-  if (GetKind() != TokKind::kLbrace) return TokKind::kError;
+  if (GetKind() != TokKind::kLbrace) {
+    return TokKind::kError;
+  }
 
   absl::string_view orig = StringViewFromPointers(token_state_.token_start,
                                                   buf_.data() + buf_.size());
   absl::string_view str = orig;
 
   int64_t object_depth = 0;
-  if (str.empty()) return TokKind::kError;
+  if (str.empty()) {
+    return TokKind::kError;
+  }
 
-  if (str.front() != '{') return TokKind::kError;
+  if (str.front() != '{') {
+    return TokKind::kError;
+  }
   ++object_depth;
   str = str.substr(1);
 
   while (!str.empty()) {
-    if (object_depth == 0) break;
+    if (object_depth == 0) {
+      break;
+    }
 
     if (str.front() == '"') {
       static LazyRE2 string_pattern = {R"("([^"\\]|\\.)*")"};
@@ -632,8 +645,12 @@ TokKind HloLexer::LexJsonDict() {
       continue;
     }
 
-    if (str.front() == '{') ++object_depth;
-    if (str.front() == '}') --object_depth;
+    if (str.front() == '{') {
+      ++object_depth;
+    }
+    if (str.front() == '}') {
+      --object_depth;
+    }
     str = str.substr(1);
   }
   if (object_depth != 0) {
@@ -690,6 +707,14 @@ std::string TokKindToString(TokKind kind) {
       return "kw_ENTRY";
     case TokKind::kw_ROOT:
       return "kw_ROOT";
+    case TokKind::kw_FileNames:
+      return "kw_FileNames";
+    case TokKind::kw_FunctionNames:
+      return "kw_FunctionNames";
+    case TokKind::kw_FileLocations:
+      return "kw_FileLocations";
+    case TokKind::kw_StackFrames:
+      return "kw_StackFrames";
     case TokKind::kw_true:
       return "kw_true";
     case TokKind::kw_false:

@@ -28,7 +28,7 @@ iteratively.
 Defines the `HloPassPipeline` class. Organizes a sequence of HLO passes into a
 pipeline for sequential execution.  Provides methods to add passes (`AddPass`)
 and invariant checkers (`AddInvariantChecker`) to the pipeline. `Run` method
-executes the entire pipeline on an HloModule or HloModuleGroup.
+executes the entire pipeline on an HloModule.
 
 ## Example Usage
 
@@ -48,7 +48,7 @@ auto status = pipeline.Run(&module);
 ## Important Considerations
 
 When creating custom HLO passes, inherit from `HloModulePass`. Implement
-the required virtual methods (e.g., `Run`) to define the pass's behavior.
+the required virtual methods (e.g., `RunImpl`) to define the pass's behavior.
 Utilize `HloPassFix` when your pass's transformations may trigger further
 optimizations upon repeated application. Construct `HloPassPipelines` to
 orchestrate the execution of multiple passes in a defined sequence.

@@ -63,8 +63,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/lib/io:buffered_file",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/lib/io:buffered_file",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -92,7 +92,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -109,9 +109,9 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:logging",
+        "@tsl//tsl/platform:platform_port",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
     ],
 )
 

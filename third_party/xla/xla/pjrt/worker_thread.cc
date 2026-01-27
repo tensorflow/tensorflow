@@ -30,13 +30,13 @@ WorkerThread::WorkerThread(tsl::Env* env, const std::string& name) {
 }
 
 WorkerThread::~WorkerThread() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   work_queue_.push(nullptr);
 }
 
 void WorkerThread::Schedule(absl::AnyInvocable<void() &&> fn) {
   CHECK(fn != nullptr);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   work_queue_.push(std::move(fn));
 }
 
@@ -46,7 +46,7 @@ void WorkerThread::WorkLoop() {
   while (true) {
     absl::AnyInvocable<void() &&> fn;
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(mu_);
       mu_.Await(absl::Condition(this, &WorkerThread::WorkAvailable));
       fn = std::move(work_queue_.front());
       work_queue_.pop();

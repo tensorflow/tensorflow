@@ -24,6 +24,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 

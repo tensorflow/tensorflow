@@ -16,6 +16,7 @@ package(
         "//learning/brain/google/monitoring:__subpackages__",
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
         # copybara:uncomment "//learning/pathways/util/platform:__subpackages__",
+        # copybara:uncomment "//third_party/pathways/util/platform:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
@@ -52,8 +53,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -69,8 +70,31 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
+    ],
+)
+
+cc_library(
+    name = "counter_gauge",
+    hdrs = ["counter_gauge.h"],
+    deps = [
+        ":collection_registry",
+        ":metric_def",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "counter_gauge_test",
+    srcs = ["counter_gauge_test.cc"],
+    deps = [
+        ":counter_gauge",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -89,8 +113,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -112,7 +136,7 @@ cc_library(
         ":types",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -131,9 +155,9 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -176,7 +200,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -191,6 +214,7 @@ tsl_cc_test(
     deps = [
         ":cell_reader",
         ":counter",
+        ":counter_gauge",
         ":gauge",
         ":percentile_sampler",
         ":sampler",
@@ -214,8 +238,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -231,6 +255,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -241,10 +266,7 @@ cc_library(
     hdrs = [
         "timed.h",
     ],
-    deps = [
-        "//xla/tsl/platform:env_time",
-        "//xla/tsl/platform:types",
-    ],
+    deps = ["//xla/tsl/platform:env_time"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

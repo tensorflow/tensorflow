@@ -489,7 +489,7 @@ absl::StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   return changed;
 }
 
-absl::StatusOr<bool> CudnnPadForConvolutions::Run(
+absl::StatusOr<bool> CudnnPadForConvolutions::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -18,24 +18,26 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "google/protobuf/descriptor.pb.h"
 #include <gmock/gmock.h>
+#include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/dynamic_message.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
-using ::tsl::testing::StatusIs;
-
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
 // must define ProcessNewEnv for them.
-std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv1(
-    std::unique_ptr<tsl::protobuf::Message> msg) {
+std::unique_ptr<google::protobuf::Message> ProcessNewEnv1(
+    std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
       tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   if (!env) {
@@ -46,8 +48,8 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv1(
   }
   return env;
 }
-std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv2(
-    std::unique_ptr<tsl::protobuf::Message> msg) {
+std::unique_ptr<google::protobuf::Message> ProcessNewEnv2(
+    std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment2> env(
       tensorflow::down_cast<test::TestCompilationEnvironment2*>(msg.release()));
   if (!env) {
@@ -58,8 +60,8 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv2(
   }
   return env;
 }
-std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv3(
-    std::unique_ptr<tsl::protobuf::Message> msg) {
+std::unique_ptr<google::protobuf::Message> ProcessNewEnv3(
+    std::unique_ptr<google::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment3> env(
       tensorflow::down_cast<test::TestCompilationEnvironment3*>(msg.release()));
   if (!env) {
@@ -71,8 +73,8 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv3(
   return env;
 }
 
-std::unique_ptr<tsl::protobuf::Message> ProcessCustomDescInFallbackTest(
-    std::unique_ptr<tsl::protobuf::Message> msg_dynamic) {
+std::unique_ptr<google::protobuf::Message> ProcessCustomDescInFallbackTest(
+    std::unique_ptr<google::protobuf::Message> msg_dynamic) {
   auto new_generated_env =
       std::make_unique<xla::test::TestCompilationEnvironment1>();
   // This value is used to identify that the environment was processed via this
@@ -84,9 +86,9 @@ std::unique_ptr<tsl::protobuf::Message> ProcessCustomDescInFallbackTest(
   new_generated_env->set_some_flag(kDefaultValueIfInputIsUnexpected);
 
   if (msg_dynamic) {
-    const tsl::protobuf::Reflection* refl = msg_dynamic->GetReflection();
-    const tsl::protobuf::Descriptor* d = msg_dynamic->GetDescriptor();
-    const tsl::protobuf::FieldDescriptor* f = d->FindFieldByName("some_flag");
+    const google::protobuf::Reflection* refl = msg_dynamic->GetReflection();
+    const google::protobuf::Descriptor* d = msg_dynamic->GetDescriptor();
+    const google::protobuf::FieldDescriptor* f = d->FindFieldByName("some_flag");
     // Check if the incoming dynamic message has the flag set to
     // kTestSpecificValue
     if (refl && f && refl->HasField(*msg_dynamic, f) &&
@@ -287,25 +289,29 @@ TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
 
 TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
   // Create a custom descriptor pool and load the proto into it.
-  const tsl::protobuf::Descriptor* desc_generated =
+  const google::protobuf::Descriptor* desc_generated =
       test::TestCompilationEnvironment1::descriptor();
-  auto* custom_pool = new tsl::protobuf::DescriptorPool(
-      tsl::protobuf::DescriptorPool::generated_pool());
-  tsl::protobuf::FileDescriptorProto file_proto;
+  google::protobuf::FileDescriptorProto file_proto;
   desc_generated->file()->CopyTo(&file_proto);
-  custom_pool->BuildFile(file_proto);
+
+  google::protobuf::DescriptorPool custom_pool;
+  custom_pool.BuildFile(file_proto);
 
   // Register a custom handler for the descriptor from the custom_pool.
-  const tsl::protobuf::Descriptor* desc_custom =
-      custom_pool->FindMessageTypeByName(desc_generated->full_name());
+  const google::protobuf::Descriptor* desc_custom =
+      custom_pool.FindMessageTypeByName(desc_generated->full_name());
   CompilationEnvironments::RegisterProcessNewEnvFn(
       desc_custom, ProcessCustomDescInFallbackTest);
+  // We need to deregister the function to avoid side effects in other tests.
+  absl::Cleanup cleanup = [=]() {
+    CompilationEnvironments::DeregisterProcessNewEnvFn(desc_custom);
+  };
 
   // Create and populate a dynamic message instance using the custom descriptor.
-  tsl::protobuf::DynamicMessageFactory factory(custom_pool);
-  std::unique_ptr<tsl::protobuf::Message> dynamic_env_instance(
+  google::protobuf::DynamicMessageFactory factory(&custom_pool);
+  std::unique_ptr<google::protobuf::Message> dynamic_env_instance(
       factory.GetPrototype(desc_custom)->New());
-  const tsl::protobuf::FieldDescriptor* flag_field =
+  const google::protobuf::FieldDescriptor* flag_field =
       desc_custom->FindFieldByName("some_flag");
   auto kExpectedFallbackValue = 555;
   dynamic_env_instance->GetReflection()->SetUInt32(

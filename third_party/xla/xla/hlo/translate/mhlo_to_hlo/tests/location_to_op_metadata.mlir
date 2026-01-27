@@ -1,4 +1,4 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --check-prefixes=CHECK
 
 // CHECK-LABEL: %main
 func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
@@ -62,7 +62,7 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK: after-all
-// CHECK-SAME: metadata={op_name="name(anothername)" source_file="file_name" source_line=2 source_end_line=2 source_column=8 source_end_column=8}
+// CHECK-SAME: metadata={op_name="name(anothername)" stack_frame_id=1}
 
 // -----
 

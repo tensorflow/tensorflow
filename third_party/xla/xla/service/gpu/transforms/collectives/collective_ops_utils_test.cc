@@ -62,7 +62,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
@@ -85,7 +85,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
@@ -106,12 +106,12 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+  EXPECT_THAT(CommunicationType(/*partition_size=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
 }
 
-TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
+TEST_F(CommunicationTypeTest, DetectWorldLevelAllDevices) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
 
@@ -131,10 +131,10 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
 }
 
-TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
+TEST_F(CommunicationTypeTest, DetectWorldLevelHalfMesh) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=32
 
@@ -157,10 +157,10 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
 }
 
-TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
+TEST_F(CommunicationTypeTest, DetectNonWorldLevel) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
 
@@ -180,7 +180,7 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
@@ -201,10 +201,10 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/16, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
 }
 
-TEST_F(CommunicationTypeTest, DetectsRailAligned8DevicesForEmptyReplicaGroups) {
+TEST_F(CommunicationTypeTest, DetectWorldLevel8DevicesForEmptyReplicaGroups) {
   absl::string_view kHlo = R"(
     HloModule m, replica_count=16
 
@@ -222,10 +222,10 @@ TEST_F(CommunicationTypeTest, DetectsRailAligned8DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
 }
 
-TEST_F(CommunicationTypeTest, DetectsNonRailAligned16Devices) {
+TEST_F(CommunicationTypeTest, DetectNonWorldLevel16Devices) {
   absl::string_view kHlo = R"(
     HloModule m, replica_count=16
 
@@ -243,7 +243,7 @@ TEST_F(CommunicationTypeTest, DetectsNonRailAligned16Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
@@ -263,10 +263,30 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
 }
 
-TEST_F(CommunicationTypeTest, DetectsNonRailAlignedCollectivePermute) {
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermuteSinglePair) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,7},{7,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectNonWorldLevelCollectivePermute) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
 
@@ -284,10 +304,10 @@ TEST_F(CommunicationTypeTest, DetectsNonRailAlignedCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
 }
 
-TEST_F(CommunicationTypeTest, DetectsRailAlignedCollectivePermute) {
+TEST_F(CommunicationTypeTest, DetectWorldLevelCollectivePermute) {
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=16
 
@@ -304,8 +324,312 @@ TEST_F(CommunicationTypeTest, DetectsRailAlignedCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsCrossHostCollectivePermuteMixed) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,7},
+                            {0,8},
+                            {1,9},
+                            {2,10},
+                            {3,11},
+                            {4,12},
+                            {5,13},
+                            {6,14},
+                            {7,15}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSinglePartitionMultiHost) {
+  // 16 devices across 2 hosts with partition_size=16 (single partition spanning
+  // 2 hosts)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,16]<=[16]
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/16, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsMultiPartitionWith8DevicePartitions) {
+  // 64 devices across 2 partitions with partition_size=32
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1, 64]<=[64]
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/32, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsMultiPartitionNonRailAligned) {
+  // 64 devices with partition_size=36: partition 0 has 36 devices, partition 1
+  // has 28 devices
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=12
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[1536] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1, 64]<=[64]
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  // With partition_size=8, spans 2 partitions but not rail-aligned (8 and 4
+  // devices)
+  EXPECT_THAT(CommunicationType(/*partition_size=*/36, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_NON_WORLD_LEVEL));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSinglePartitionSubset) {
+  // 6 devices within a single partition (partition_size=36)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=4
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups={{0,1,2,3,4,5}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/36, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::SINGLE_PARTITION));
+}
+
+TEST_F(CommunicationTypeTest, DetectsRailAlignedMultiPartition) {
+  // 128 devices across 2 partitions with partition_size=8 (rail-aligned: 64
+  // devices per partition)
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=32
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[4096] all-gather(p),
+        dimensions={0},
+        use_global_device_ids=true,
+        channel_id=1,
+        replica_groups=[1,128]<=[128]
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*partition_size=*/64, *instr,
+                                device_info().gpu_compute_capability()),
+              IsOkAndHolds(GPUCommunicationType::MULTI_HOST_WORLD_LEVEL));
 }
 
 }  // namespace
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{2,3},{4,5},{6,7}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteIntraPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=4
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,0},{2,3},{3,2}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionTwoWayMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{8,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayAllMutual);
+}
+
+TEST_F(CommunicationTypeTest, CollectivePermuteInterPartitionOneWay) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionOneWay);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteIntraPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,2},{2,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual);
+}
+
+TEST_F(CommunicationTypeTest,
+       CollectivePermuteInterPartitionTwoWayHasNonMutual) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{1,9},{8,2}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kInterPartitionTwoWayHasNonMutual);
+}
+
+// TODO(b/460155942): remove once the collective-permute with empty pairs is
+// disallowed by the HLO verifier.
+TEST_F(CommunicationTypeTest, CollectivePermuteEmptyPairs) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectivePermuteInstruction* instr =
+      Cast<HloCollectivePermuteInstruction>(
+          module->entry_computation()->root_instruction());
+  EXPECT_EQ(GetCollectivePermuteCostModelType(*instr,
+                                              /*num_devices_per_partition=*/8),
+            CollectivePermuteCostModelType::kUnknown);
+}
+
 }  // namespace xla::gpu

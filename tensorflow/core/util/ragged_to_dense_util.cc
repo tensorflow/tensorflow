@@ -28,7 +28,7 @@ namespace tensorflow {
 using errors::InvalidArgument;
 
 absl::Status GetRowPartitionTypesHelper(
-    const std::vector<string>& row_partition_type_strings,
+    const std::vector<std::string>& row_partition_type_strings,
     std::vector<RowPartitionType>* row_partition_types) {
   *row_partition_types = GetRowPartitionTypesHelper(row_partition_type_strings);
   if (row_partition_types->size() != row_partition_type_strings.size()) {

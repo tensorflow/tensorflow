@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -1530,7 +1531,6 @@ class DefaultSchedulerCore : public SchedulerCore {
     bool has_pressure_change = false;
     bool has_estimated_connected_send_ready_time = false;
     bool has_resource_constrained = false;
-    bool unused = false;
 
     int64_t pressure_change_first;
     int64_t pressure_change_second;
@@ -1839,13 +1839,12 @@ class LatencyHidingScheduler : public HloModulePass {
                           const std::vector<double>& preferences,
                           const HloComputation* computation);
 
-  using HloPassInterface::Run;
+  virtual void LogScheduleStatistics(const HloComputation* computation);
 
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
-  virtual void LogScheduleStatistics(const HloComputation* computation);
 
  protected:
   std::shared_ptr<const SchedulingContext> scheduling_context_;

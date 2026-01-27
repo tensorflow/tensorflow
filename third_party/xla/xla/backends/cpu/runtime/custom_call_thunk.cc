@@ -52,7 +52,7 @@ limitations under the License.
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -60,7 +60,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-using AttributesMap = ffi::CallFrameBuilder::AttributesMap;
+using AttributesMap = ffi::AttributesMap;
 
 static absl::StatusOr<AttributesMap> ParseAttributes(
     absl::string_view backend_config) {
@@ -133,7 +133,7 @@ static absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
-    se::DeviceMemoryBase placeholder_arg(nullptr, elements * dtype_bytes);
+    se::DeviceAddressBase placeholder_arg(nullptr, elements * dtype_bytes);
     builder.AddBufferArg(placeholder_arg, shape.element_type(),
                          shape.dimensions());
   }
@@ -151,7 +151,7 @@ static absl::StatusOr<ffi::CallFrame> BuildCallFrameForTypedFFI(
     auto elements = absl::c_accumulate(shape.dimensions(), 1ULL,
                                        std::multiplies<int64_t>());
     auto dtype_bytes = primitive_util::ByteWidth(shape.element_type());
-    se::DeviceMemoryBase placeholder_ret(nullptr, elements * dtype_bytes);
+    se::DeviceAddressBase placeholder_ret(nullptr, elements * dtype_bytes);
     builder.AddBufferRet(placeholder_ret, shape.element_type(),
                          shape.dimensions());
   }
@@ -302,7 +302,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   }
 
   // Collect argument buffers.
-  absl::InlinedVector<se::DeviceMemoryBase, 8> arguments;
+  absl::InlinedVector<se::DeviceAddressBase, 8> arguments;
   arguments.reserve(op_buffers_.arguments_buffers.size());
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
     BufferAllocation::Slice& slice = op_buffers_.arguments_buffers[i];
@@ -317,7 +317,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   }
 
   // Collect results buffers.
-  absl::InlinedVector<se::DeviceMemoryBase, 4> results;
+  absl::InlinedVector<se::DeviceAddressBase, 4> results;
   results.reserve(op_buffers_.results_buffers.size());
   for (int i = 0; i < op_buffers_.results_buffers.size(); ++i) {
     BufferAllocation::Slice& slice = op_buffers_.results_buffers[i];
@@ -355,7 +355,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
   arguments.reserve(op_buffers_.arguments_buffers.size());
   for (int i = 0; i < op_buffers_.arguments_buffers.size(); ++i) {
     auto& slice = op_buffers_.arguments_buffers[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase arg,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase arg,
                         params.buffer_allocations->GetDeviceAddress(slice));
     arguments.push_back(arg.opaque());
     VLOG(3) << absl::StreamFormat(
@@ -370,7 +370,7 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
   results.reserve(op_buffers_.results_buffers.size());
   for (int i = 0; i < op_buffers_.results_buffers.size(); ++i) {
     auto& slice = op_buffers_.results_buffers[i];
-    TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase res,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddressBase res,
                         params.buffer_allocations->GetDeviceAddress(slice));
     results.push_back(res.opaque());
     VLOG(3) << absl::StreamFormat("  res: %s in slice %s (%p)",
@@ -396,11 +396,13 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(
 
 CustomCallThunk::BufferUses CustomCallThunk::buffer_uses() const {
   BufferUses buffer_uses;
-  for (const auto& argument : op_buffers_.arguments_buffers) {
-    buffer_uses.emplace_back(BufferUse::Read(argument));
+  for (int i = 0; i < op_buffers_.arguments_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Read(op_buffers_.arguments_buffers[i],
+                                             op_buffers_.arguments_shapes[i]));
   }
-  for (const auto& result : op_buffers_.results_buffers) {
-    buffer_uses.emplace_back(BufferUse::Write(result));
+  for (int i = 0; i < op_buffers_.results_buffers.size(); i++) {
+    buffer_uses.emplace_back(BufferUse::Write(op_buffers_.results_buffers[i],
+                                              op_buffers_.results_shapes[i]));
   }
   return buffer_uses;
 }

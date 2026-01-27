@@ -21,12 +21,12 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status InstantiateFunctionForTest(
-    const string& name, const FunctionLibraryDefinition& library,
+    const std::string& name, const FunctionLibraryDefinition& library,
     InstantiationResultForTest* result) {
   const FunctionDef* fdef = library.Find(name);
   TF_RET_CHECK(fdef != nullptr);
 
-  auto get_func_sig = [&library](const string& op, const OpDef** sig) {
+  auto get_func_sig = [&library](const std::string& op, const OpDef** sig) {
     return library.LookUpOpDef(op, sig);
   };
   InstantiationResult inst;

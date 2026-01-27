@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "fuzztest/fuzztest.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 

@@ -21,10 +21,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -36,8 +36,6 @@ using ::testing::HasSubstr;
 using ::testing::Key;
 using ::testing::SizeIs;
 using ::testing::StrEq;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CreateRepresentativeDatasetFileMapTest,
      ConfigWithoutExplicitSignatureKeyMappedToServingDefault) {

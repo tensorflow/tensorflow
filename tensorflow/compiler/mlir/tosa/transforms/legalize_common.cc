@@ -4774,7 +4774,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       tensorflow::GetTypeFromTFTensorShape({N, W, C},
                                            on_value_type.getElementType()),
       op1_reshape_on_value.getResult(),
-      getTosaConstShape(rewriter, op, {N, W, C}));
+      getTosaConstShape(rewriter, op->getLoc(), {N, W, C}));
 
   // Reshape off_value to [1, 1, 1]
   auto op3_reshape_off_value = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -4789,7 +4789,7 @@ std::optional<Value> convertOneHotOp(PatternRewriter& rewriter, Operation* op,
       tensorflow::GetTypeFromTFTensorShape({N, K, C},
                                            on_value_type.getElementType()),
       op3_reshape_off_value.getResult(),
-      getTosaConstShape(rewriter, op, {N, K, C}));
+      getTosaConstShape(rewriter, op->getLoc(), {N, K, C}));
 
   // Reshape indices to [N, W]
   shape_value =

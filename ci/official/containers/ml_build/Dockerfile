@@ -12,18 +12,9 @@ COPY builder.packages.txt /builder.packages.txt
 
 RUN /setup.sources.sh && /setup.packages.sh /builder.packages.txt
 
-# Install devtoolset-9 in /dt9 with glibc 2.17 and libstdc++ 4.8, for building
-# manylinux2014-compatible packages.
-COPY builder.devtoolset/fixlinks.sh /fixlinks.sh
-COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
-COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
-COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
-RUN /build_devtoolset.sh devtoolset-9 /dt9
-
 # Setup Python
 COPY setup.python.sh /setup.python.sh
 COPY builder.requirements.txt /builder.requirements.txt
-RUN /setup.python.sh python3.9 /builder.requirements.txt
 RUN /setup.python.sh python3.10 /builder.requirements.txt
 RUN /setup.python.sh python3.11 /builder.requirements.txt
 RUN /setup.python.sh python3.13 /builder.requirements.txt
@@ -56,9 +47,6 @@ RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
 
-# Make sure clang is on the path
-RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
-
 # Link the compat driver to the location if available.
 RUN if [ -e "/usr/local/cuda/compat/libcuda.so.1" ]; then ln -s /usr/local/cuda/compat/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1; fi
 
@@ -69,10 +57,10 @@ RUN if [ -e "/usr/local/cuda/compat/libcuda.so.1" ]; then ln -s /usr/local/cuda/
 # - buildozer: clean bazel build deps
 # - gcloud SDK: communicate with Google Cloud Platform (GCP) for RBE, CI
 # - patchelf: Utility tool to modify existing ELF executables and libraries
-RUN git clone --branch v1.11.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
-RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.21.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
-RUN wget https://github.com/bazelbuild/buildtools/releases/download/v7.3.1/buildifier-linux-amd64 -O /usr/local/bin/buildifier && chmod +x /usr/local/bin/buildifier
-RUN wget https://github.com/bazelbuild/buildtools/releases/download/v7.3.1/buildozer-linux-amd64 -O /usr/local/bin/buildozer && chmod +x /usr/local/bin/buildozer
+RUN git clone --branch v1.13.0 https://github.com/bats-core/bats-core.git && bats-core/install.sh /usr/local && rm -rf bats-core
+RUN wget https://github.com/bazelbuild/bazelisk/releases/download/v1.27.0/bazelisk-linux-amd64 -O /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/v8.2.1/buildifier-linux-amd64 -O /usr/local/bin/buildifier && chmod +x /usr/local/bin/buildifier
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/v8.2.1/buildozer-linux-amd64 -O /usr/local/bin/buildozer && chmod +x /usr/local/bin/buildozer
 
 RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz | \
     tar zxf - google-cloud-sdk && \

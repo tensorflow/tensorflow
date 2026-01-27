@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 
 namespace xla::cpu {
@@ -57,12 +57,18 @@ class FusionCompiler {
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
       llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module);
   // Compile a MLIR kernel source to a LLVM kernel source.
-  absl::StatusOr<LlvmIrKernelSource> Compile(
-      MlirKernelSource mlir_kernel_source);
+  absl::StatusOr<LlvmKernelSource> Compile(MlirKernelSource mlir_kernel_source);
 
   // Create a new MLIR context for the compiler with the required dialects for
   // compiling an XLA:CPU fusion.
   static std::unique_ptr<mlir::MLIRContext> CreateContext();
+
+  // Create a dialect registry for the compiler with the required dialects for
+  // compiling an XLA:CPU fusion. If `register_pass_pipelines` is true, this
+  // will also register the pass pipelines for the compiler, typically to be
+  // used in tests.
+  static mlir::DialectRegistry CreateDialectRegistry(
+      bool register_pass_pipelines = false);
 
  private:
   Options options_;

@@ -486,7 +486,7 @@ pytype_strict_library(
         ":test_util",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/flags",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 

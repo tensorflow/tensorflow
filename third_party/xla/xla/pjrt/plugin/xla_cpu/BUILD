@@ -28,8 +28,8 @@ xla_cc_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -43,6 +43,7 @@ cc_library(
     hdrs = ["cpu_client_options.h"],
     deps = [
         ":cpu_memory",
+        ":cpu_topology_description",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/status:statusor",
@@ -133,7 +134,7 @@ xla_cc_test(
         ":cpu_topology_proto_cc",
         "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

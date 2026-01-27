@@ -289,8 +289,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     // Compute dimensions to reduce for inner reduction.
     absl::InlinedVector<int64_t, 2> inner_reduce_dims(
         sorted_dims_to_reduce.begin(), sorted_dims_to_reduce.end());
-    auto split_dim_it = std::find(inner_reduce_dims.begin(),
-                                  inner_reduce_dims.end(), split_params.dim);
+    auto split_dim_it = absl::c_find(inner_reduce_dims, split_params.dim);
     *split_dim_it += 1;
 
     // Compute dimension to reduce for outer reduction.
@@ -371,9 +370,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   const se::DeviceDescription &device_description_;
 };
 
-absl::StatusOr<bool> TreeReductionRewriter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
   TF_ASSIGN_OR_RETURN(bool changed,
                       ReductionRewriterVisitor(device_description_)

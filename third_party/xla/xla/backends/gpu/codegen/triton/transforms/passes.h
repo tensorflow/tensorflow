@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
@@ -31,7 +32,7 @@ namespace mlir::triton::xla {
 
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
-    bool allow_tma);
+    bool allow_tma, int num_stages);
 std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
@@ -47,8 +48,14 @@ std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerRemoteAccessPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerXTilePass();
-std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass();
+std::unique_ptr<mlir::Pass> CreateStableHLOLowerToTritonPass(
+    bool warp_specialization_allowed);
 std::unique_ptr<mlir::Pass> CreateTensorLowerToTritonPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLAMathToLibdevicePass(
+    absl::string_view libdevice_path, absl::string_view triple);
+std::unique_ptr<mlir::Pass> CreateXTileLowerToTritonPass();
+std::unique_ptr<mlir::Pass> CreateArithFP8ConversionToTritonPass();
+std::unique_ptr<mlir::Pass> CreateUnsupportedElementwiseToTritonPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

@@ -54,8 +54,8 @@ struct ConvOpAttrs {
 
   bool depthwise;
   int num_spatial_dims;
-  std::vector<int32> dilations;
-  std::vector<int32> strides;
+  std::vector<int32_t> dilations;
+  std::vector<int32_t> strides;
   Padding padding;
   std::vector<int64_t> explicit_paddings;
   TensorFormat data_format;
@@ -68,8 +68,8 @@ struct ConvNDOpAttrs {
 
   int groups;
   int batch_dims;
-  std::vector<int32> dilations;
-  std::vector<int32> strides;
+  std::vector<int32_t> dilations;
+  std::vector<int32_t> strides;
   Padding padding;
   std::vector<int64_t> explicit_paddings;
   TensorFormat data_format;

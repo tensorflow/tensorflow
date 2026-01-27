@@ -22,6 +22,7 @@ import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/execute_options.proto";
+import "xla/python/ifrt/layout.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
@@ -37,7 +38,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 30.
+// Next ID: 34.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -58,6 +59,7 @@ message IfrtRequest {
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
+    ReshardArraysRequest reshard_arrays_request = 33;
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
         disassemble_into_single_device_arrays_request = 7;
@@ -73,6 +75,8 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
+    LoadedExecutableFetchExecuteResultRequest
+        loaded_executable_fetch_execute_result_request = 32;
     LoadedExecutableCostAnalysisRequest
         loaded_executable_cost_analysis_request = 28;
     LoadedExecutableHumanReadableProgramTextRequest
@@ -82,6 +86,12 @@ message IfrtRequest {
     LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
         [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
+
+    // ===== MpmdLoadedExecutable =====
+    LoadedExecutableMpmdMetadataRequest
+        loaded_executable_mpmd_metadata_request = 30;
+    LoadedExecutableMpmdCostAnalysisRequest
+        loaded_executable_mpmd_cost_analysis_request = 31;
 
     // ===== LoadedHostCallback =====
     LoadedHostCallbackPollRequest loaded_host_callback_poll_request = 21;
@@ -96,7 +106,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 30.
+// Next ID: 34.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -117,6 +127,7 @@ message IfrtResponse {
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
+    ReshardArraysResponse reshard_arrays_response = 33;
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
         disassemble_into_single_device_arrays_response = 7;
@@ -132,6 +143,8 @@ message IfrtResponse {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataResponse loaded_executable_metadata_response = 14;
     LoadedExecutableExecuteResponse loaded_executable_execute_response = 15;
+    LoadedExecutableFetchExecuteResultResponse
+        loaded_executable_fetch_execute_result_response = 32;
     LoadedExecutableCostAnalysisResponse
         loaded_executable_cost_analysis_response = 28;
     LoadedExecutableHumanReadableProgramTextResponse
@@ -140,6 +153,12 @@ message IfrtResponse {
     LoadedExecutableIsDeletedResponse loaded_executable_is_deleted_response =
         17;
     LoadedExecutableDestructResponse loaded_executable_destruct_response = 18;
+
+    // ===== MpmdLoadedExecutable =====
+    LoadedExecutableMpmdMetadataResponse
+        loaded_executable_mpmd_metadata_response = 30;
+    LoadedExecutableMpmdCostAnalysisResponse
+        loaded_executable_mpmd_cost_analysis_response = 31;
 
     // ===== LoadedHostCallback =====
     LoadedHostCallbackPollResponse loaded_host_callback_poll_response = 21;
@@ -165,6 +184,9 @@ message RequestMetadata {
   // may stretch across multiple successive IfrtSessions used to reconnect and
   // resync after transient connectivity failures.
   fixed64 op_id = 1;
+
+  // User context ID of the operation.
+  fixed64 user_context_id = 5;
 
   // Implementation-specific payloads.
   repeated google.protobuf.Any payloads = 4;
@@ -194,6 +216,13 @@ message ResponseMetadata {
   //    specific error type or string when this is not OK, they should check the
   //    response message for individual absl::Statuses.
   tensorflow.StatusProto status = 2;
+
+  // The sequence number of the response.
+  int64 seq_num = 3;
+
+  // IDs of the destroyed user contexts since the last response identified by
+  // `seq_num` - 1.
+  repeated fixed64 destroyed_user_context_ids = 4;
 }
 
 // InitRequest allows the client to specify the optional startup configuration
@@ -222,14 +251,15 @@ message InitResponse {
     int32 id = 1;
     int32 local_device_id = 9;
     int32 local_hardware_id = 2;
+    string platform_name = 11;
     string device_kind = 3;
     optional int32 default_memory_id = 7;
     repeated int32 memory_ids = 8;
     string debug_string = 4;
     string to_string = 5;
-    map<string, proto.Variant> deprecated_attributes = 6
-        [deprecated = true];            // Deprecated since Version 4.
-    AttributeMapProto attributes = 10;  // New in Version 4.
+    AttributeMapProto attributes = 10;
+
+    reserved 6;
   }
 
   repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
@@ -282,6 +312,7 @@ message MakeArrayFromHostBufferRequest {
   DTypeProto dtype = 1;
   ShapeProto shape = 2;
   ShardingProto sharding = 3;
+  LayoutProto layout = 7;
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
   // If array_handle is provided, the server will either respond with the same
@@ -362,6 +393,18 @@ message RemapArraysResponse {
   repeated fixed64 array_handles = 1;
 }
 
+// Reshards the given IFRT arrays to new IFRT arrays.
+// Equivalent to ifrt::Client::ReshardArrays.
+message ReshardArraysRequest {
+  repeated fixed64 array_handles = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message ReshardArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
 // Reads the contents of a given IFRT Array.
 // Equivalent to ifrt::Array::CopyToHostBuffer.
 message CopyToHostBufferRequest {
@@ -406,10 +449,9 @@ message FullyReplicatedShardResponse {
 // Deletes the given Array. Response contains the handle for a Future that
 // becomes ready when the deletion completes.
 message DeleteArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DeleteArrayResponse {
   fixed64 deletion_future_handle = 1;
@@ -423,10 +465,9 @@ message IsArrayDeletedResponse {
 }
 
 message DestructArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DestructArrayResponse {}
 
@@ -439,6 +480,12 @@ message CompileRequest {
   repeated bytes host_callbacks = 3;
 }
 message CompileResponse {
+  message MpmdDeviceList {
+    repeated int32 mpmd_addressable_device_ids = 1;
+  }
+  message MpmdAddressableDevices {
+    map<string, MpmdDeviceList> mpmd_addressable_devices = 1;
+  }
   fixed64 loaded_executable_handle = 1;
   repeated fixed64 loaded_host_callback_handles = 8;
 
@@ -448,6 +495,11 @@ message CompileResponse {
   int32 num_devices = 3;
   repeated int32 device_ids = 10;
   repeated int32 addressable_device_ids = 5;
+  oneof mpmd_addressable_devices_oneof {
+    // MPMD addressable devices are only populated for MPMD executables.
+    MpmdAddressableDevices mpmd_addressable_devices = 11;
+    tensorflow.StatusProto mpmd_addressable_devices_error = 12;
+  }
   oneof fingerprint {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
@@ -482,6 +534,9 @@ message LoadedExecutableMetadataResponse {
   message DonatedInputIndices {
     repeated fixed32 donated_input_indices = 1;
   }
+  message MpmdCompiledMemoryStats {
+    map<string, xla.CompiledMemoryStatsProto> compiled_memory_stats = 1;
+  }
 
   optional ShardingList parameter_shardings = 1;
   optional ShardingList output_shardings = 2;
@@ -505,6 +560,11 @@ message LoadedExecutableMetadataResponse {
   oneof compiled_memory_stats_oneof {
     xla.CompiledMemoryStatsProto compiled_memory_stats = 10;
     tensorflow.StatusProto compiled_memory_stats_error = 11;
+  }
+
+  oneof mpmd_compiled_memory_stats_oneof {
+    MpmdCompiledMemoryStats mpmd_compiled_memory_stats = 13;
+    tensorflow.StatusProto mpmd_compiled_memory_stats_error = 14;
   }
 
   int64 size_of_generated_code_in_bytes = 12;
@@ -563,6 +623,14 @@ message LoadedExecutableExecuteResponse {
   repeated Output outputs = 2;
 }
 
+message LoadedExecutableFetchExecuteResultRequest {
+  fixed64 result_status_handle = 1;
+}
+message LoadedExecutableFetchExecuteResultResponse {
+  // Map from device types to device time in microseconds.
+  map<string, double> device_time = 1;
+}
+
 // Mirrors `LoadedExecutable::Delete`. Returns a handle of a future that becomes
 // ready when the deletion completes.
 message LoadedExecutableDeleteRequest {
@@ -586,6 +654,41 @@ message LoadedExecutableDestructRequest {
   fixed64 loaded_executable_handle = 1;
 }
 message LoadedExecutableDestructResponse {}
+
+// ================ MpmdLoadedExecutable-related operations ================
+
+// Reads `MpmdLoadedExecutable`'s metadata that's typically available only after
+// compilation. MpmdMetadata fields that are cheaper to calculate are available
+// immediately as part of `CompileResponse`.
+message LoadedExecutableMpmdMetadataRequest {
+  fixed64 mpmd_loaded_executable_handle = 1;
+}
+message LoadedExecutableMpmdMetadataResponse {
+  message MpmdCompiledMemoryStats {
+    map<string, xla.CompiledMemoryStatsProto> compiled_memory_stats = 1;
+  }
+  oneof mpmd_compiled_memory_stats_oneof {
+    MpmdCompiledMemoryStats mpmd_compiled_memory_stats = 1;
+    tensorflow.StatusProto mpmd_compiled_memory_stats_error = 2;
+  }
+}
+
+// Queries the value of `MpmdLoadedExecutable::GetMpmdCostAnalysis()`. Separate
+// from MpmdLoadedExecutableMetadataRequest since `GetMpmdCostAnalysis()` has
+// non-trivial cost.
+message LoadedExecutableMpmdCostAnalysisRequest {
+  fixed64 loaded_executable_handle = 1;
+}
+
+message LoadedExecutableMpmdCostAnalysisResponse {
+  message MpmdAttributes {
+    map<string, AttributeMapProto> attributes = 1;
+  }
+  oneof result {
+    tensorflow.StatusProto status = 1;
+    MpmdAttributes attributes = 2;
+  }
+}
 
 // ================ LoadedHostCallback-related operations ================
 

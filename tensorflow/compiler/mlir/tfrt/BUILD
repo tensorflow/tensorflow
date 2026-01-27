@@ -264,11 +264,11 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:stream_analysis",
         "@tf_runtime//:test_kernels_opdefs",
+        "@tsl//tsl/platform:errors",
     ],
     alwayslink = 1,
 )
@@ -341,10 +341,10 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:bef",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:mlirtobef",
+        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -399,11 +399,11 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:bef",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:errors",
     ],
 )
 
@@ -551,10 +551,10 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
         "@stablehlo//:register",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -755,7 +755,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )

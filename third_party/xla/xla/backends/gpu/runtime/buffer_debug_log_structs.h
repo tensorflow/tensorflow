@@ -20,25 +20,27 @@ limitations under the License.
 #include <cstdint>
 #include <tuple>
 
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
+#include "absl/strings/str_format.h"
+#include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 
+TSL_LIB_GTL_DEFINE_INT_TYPE(BufferDebugLogEntryId, uint32_t)
+
 struct BufferDebugLogEntry {
-  // An ID that uniquely identifies a thunk and its specific input or output
-  // buffer.
-  ThunkBufferId entry_id;
-  uint32_t checksum;
+  // An ID that uniquely identifies a log entry within a HLO module execution.
+  BufferDebugLogEntryId entry_id;
+  uint32_t value;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const BufferDebugLogEntry& entry) {
-    absl::Format(&sink, "{entry_id: %v, checksum: %u}", entry.entry_id,
-                 entry.checksum);
+    absl::Format(&sink, "{entry_id: %v, value: %u}", entry.entry_id.value(),
+                 entry.value);
   }
 
   bool operator==(const BufferDebugLogEntry& other) const {
-    return std::tie(entry_id, checksum) ==
-           std::tie(other.entry_id, other.checksum);
+    return std::tie(entry_id, value) == std::tie(other.entry_id, other.value);
   }
 
   bool operator!=(const BufferDebugLogEntry& other) const {
@@ -50,7 +52,60 @@ struct BufferDebugLogEntry {
 static_assert(_Alignof(BufferDebugLogEntry) == _Alignof(uint32_t));
 static_assert(sizeof(BufferDebugLogEntry) == sizeof(uint32_t) * 2);
 static_assert(offsetof(BufferDebugLogEntry, entry_id) == 0);
-static_assert(offsetof(BufferDebugLogEntry, checksum) == sizeof(uint32_t));
+static_assert(offsetof(BufferDebugLogEntry, value) == sizeof(uint32_t));
+
+struct FloatCheckResult {
+  uint32_t nan_count;
+  uint32_t inf_count;
+  uint32_t zero_count;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const FloatCheckResult& result) {
+    absl::Format(&sink, "{nan_count: %u, inf_count: %u, zero_count: %u}",
+                 result.nan_count, result.inf_count, result.zero_count);
+  }
+};
+
+// The struct layout must match on both host and device.
+static_assert(_Alignof(FloatCheckResult) == _Alignof(uint32_t));
+static_assert(sizeof(FloatCheckResult) == sizeof(uint32_t) * 3);
+static_assert(offsetof(FloatCheckResult, nan_count) == 0);
+static_assert(offsetof(FloatCheckResult, inf_count) == sizeof(uint32_t));
+static_assert(offsetof(FloatCheckResult, zero_count) == sizeof(uint32_t) * 2);
+
+struct BufferDebugFloatCheckEntry {
+  // An ID that uniquely identifies a log entry within a HLO module execution.
+  BufferDebugLogEntryId entry_id;
+  uint32_t nan_count;
+  uint32_t inf_count;
+  uint32_t zero_count;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink,
+                            const BufferDebugFloatCheckEntry& entry) {
+    absl::Format(&sink,
+                 "{entry_id: %v, nan_count: %u, inf_count: %u, zero_count: %u}",
+                 entry.entry_id.value(), entry.nan_count, entry.inf_count,
+                 entry.zero_count);
+  }
+
+  bool operator==(const BufferDebugFloatCheckEntry& other) const {
+    return std::tie(entry_id, nan_count, inf_count, zero_count) ==
+           std::tie(other.entry_id, other.nan_count, other.inf_count,
+                    other.zero_count);
+  }
+
+  bool operator!=(const BufferDebugFloatCheckEntry& other) const {
+    return !(*this == other);
+  }
+};
+
+// The struct layout must match on both host and device.
+static_assert(_Alignof(BufferDebugFloatCheckEntry) == _Alignof(uint32_t));
+static_assert(sizeof(BufferDebugFloatCheckEntry) == sizeof(uint32_t) * 4);
+static_assert(offsetof(BufferDebugFloatCheckEntry, entry_id) == 0);
+static_assert(offsetof(BufferDebugFloatCheckEntry, nan_count) ==
+              sizeof(uint32_t));
 
 struct BufferDebugLogHeader {
   // The first entry in `BufferDebugLogEntry` following the header that has not

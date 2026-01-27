@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/str_util.h"
@@ -37,14 +37,14 @@ static std::vector<int> BufferSizes() {
 
 TEST(InputBuffer, ReadLine_Empty) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, ""));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string line;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string line;
     io::InputBuffer in(file.get(), buf_size);
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
   }
@@ -52,21 +52,20 @@ TEST(InputBuffer, ReadLine_Empty) {
 
 TEST(InputBuffer, ReadLine1) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_CHECK_OK(
-      WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
+  CHECK_OK(WriteStringToFile(env, fname, "line one\nline two\nline three\n"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string line;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string line;
     io::InputBuffer in(file.get(), buf_size);
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -76,20 +75,20 @@ TEST(InputBuffer, ReadLine1) {
 
 TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "line one\nline two\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string line;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string line;
     io::InputBuffer in(file.get(), buf_size);
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -99,25 +98,24 @@ TEST(InputBuffer, ReadLine_NoTrailingNewLine) {
 
 TEST(InputBuffer, ReadLine_EmptyLines) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  TF_CHECK_OK(
-      WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
+  CHECK_OK(WriteStringToFile(env, fname, "line one\n\n\nline two\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string line;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string line;
     io::InputBuffer in(file.get(), buf_size);
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -127,25 +125,25 @@ TEST(InputBuffer, ReadLine_EmptyLines) {
 
 TEST(InputBuffer, ReadLine_CRLF) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname,
                                  "line one\r\n\r\n\r\nline two\r\nline three"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string line;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string line;
     io::InputBuffer in(file.get(), buf_size);
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line one");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line two");
-    TF_CHECK_OK(in.ReadLine(&line));
+    CHECK_OK(in.ReadLine(&line));
     EXPECT_EQ(line, "line three");
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadLine(&line)));
     // A second call should also return end of file
@@ -155,27 +153,27 @@ TEST(InputBuffer, ReadLine_CRLF) {
 
 TEST(InputBuffer, ReadNBytes) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   // ReadNBytes(int64, string*).
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string read;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string read;
     io::InputBuffer in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
     EXPECT_EQ(3, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(0, &read));
+    CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(3, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    CHECK_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
     EXPECT_EQ(7, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(0, &read));
+    CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(7, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
@@ -184,7 +182,7 @@ TEST(InputBuffer, ReadNBytes) {
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(5, &read)));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(0, &read));
+    CHECK_OK(in.ReadNBytes(0, &read));
     EXPECT_EQ(read, "");
     EXPECT_EQ(10, in.Tell());
   }
@@ -192,7 +190,7 @@ TEST(InputBuffer, ReadNBytes) {
   size_t bytes_read;
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
     char read[5];
     io::InputBuffer in(file.get(), buf_size);
 
@@ -229,28 +227,28 @@ TEST(InputBuffer, ReadNBytes) {
 
 TEST(InputBuffer, SkipNBytes) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string read;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string read;
     io::InputBuffer in(file.get(), buf_size);
     EXPECT_EQ(0, in.Tell());
-    TF_CHECK_OK(in.SkipNBytes(3));
+    CHECK_OK(in.SkipNBytes(3));
     EXPECT_EQ(3, in.Tell());
-    TF_CHECK_OK(in.SkipNBytes(0));
+    CHECK_OK(in.SkipNBytes(0));
     EXPECT_EQ(3, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(2, &read));
+    CHECK_OK(in.ReadNBytes(2, &read));
     EXPECT_EQ(read, "34");
     EXPECT_EQ(5, in.Tell());
-    TF_CHECK_OK(in.SkipNBytes(0));
+    CHECK_OK(in.SkipNBytes(0));
     EXPECT_EQ(5, in.Tell());
-    TF_CHECK_OK(in.SkipNBytes(2));
+    CHECK_OK(in.SkipNBytes(2));
     EXPECT_EQ(7, in.Tell());
-    TF_CHECK_OK(in.ReadNBytes(1, &read));
+    CHECK_OK(in.ReadNBytes(1, &read));
     EXPECT_EQ(read, "7");
     EXPECT_EQ(8, in.Tell());
     EXPECT_TRUE(absl::IsOutOfRange(in.SkipNBytes(5)));
@@ -265,34 +263,34 @@ TEST(InputBuffer, SkipNBytes) {
 
 TEST(InputBuffer, Seek) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string read;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string read;
     io::InputBuffer in(file.get(), buf_size);
 
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "345");
 
-    TF_CHECK_OK(in.Seek(0));
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.Seek(0));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
 
-    TF_CHECK_OK(in.Seek(3));
-    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    CHECK_OK(in.Seek(3));
+    CHECK_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
 
-    TF_CHECK_OK(in.Seek(4));
-    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    CHECK_OK(in.Seek(4));
+    CHECK_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "4567");
 
-    TF_CHECK_OK(in.Seek(1 << 25));
+    CHECK_OK(in.Seek(1 << 25));
     EXPECT_TRUE(absl::IsOutOfRange(in.ReadNBytes(1, &read)));
 
     EXPECT_TRUE(absl::StrContains(in.Seek(-1).ToString(), "negative position"));
@@ -301,36 +299,36 @@ TEST(InputBuffer, Seek) {
 
 TEST(InputBuffer, ReadVarint32) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
 
   // Generates data.
-  std::vector<uint32> data;
-  uint32 i = 0;
+  std::vector<uint32_t> data;
+  uint32_t i = 0;
   for (; i < (1U << 10); i += 1) data.push_back(i);
   for (; i < (1U << 15); i += 5) data.push_back(i);
   for (; i < (1U << 31); i += 132817) data.push_back(i);
-  data.push_back(std::numeric_limits<uint32>::max());
+  data.push_back(std::numeric_limits<uint32_t>::max());
 
   // Writes the varints.
   {
     std::unique_ptr<WritableFile> file;
-    TF_CHECK_OK(env->NewWritableFile(fname, &file));
-    string varint;
-    for (uint32 number : data) {
+    CHECK_OK(env->NewWritableFile(fname, &file));
+    std::string varint;
+    for (uint32_t number : data) {
       varint.clear();
       core::PutVarint32(&varint, number);
-      TF_CHECK_OK(file->Append(absl::string_view(varint)));
+      CHECK_OK(file->Append(absl::string_view(varint)));
     }
   }
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
     io::InputBuffer in(file.get(), buf_size);
-    uint32 result = 0;
+    uint32_t result = 0;
 
-    for (uint32 expected : data) {
+    for (uint32_t expected : data) {
       TF_ASSERT_OK(in.ReadVarint32(&result));
       EXPECT_EQ(expected, result);
     }
@@ -340,37 +338,37 @@ TEST(InputBuffer, ReadVarint32) {
 
 TEST(InputBuffer, ReadVarint64) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
 
   // Generates data.
-  std::vector<uint64> data;
-  uint64 i = 0;
+  std::vector<uint64_t> data;
+  uint64_t i = 0;
   for (; i < (1U << 10); i += 1) data.push_back(i);
   for (; i < (1U << 15); i += 5) data.push_back(i);
   for (; i < (1U << 31); i += 164817) data.push_back(i);
   for (; i < (1ULL << 63); i += 16481797854795663UL) data.push_back(i);
-  data.push_back(std::numeric_limits<uint64>::max());
+  data.push_back(std::numeric_limits<uint64_t>::max());
 
   // Writes the varints.
   {
     std::unique_ptr<WritableFile> file;
-    TF_CHECK_OK(env->NewWritableFile(fname, &file));
-    string varint;
-    for (uint64 number : data) {
+    CHECK_OK(env->NewWritableFile(fname, &file));
+    std::string varint;
+    for (uint64_t number : data) {
       varint.clear();
       core::PutVarint64(&varint, number);
-      TF_CHECK_OK(file->Append(absl::string_view(varint)));
+      CHECK_OK(file->Append(absl::string_view(varint)));
     }
   }
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
     io::InputBuffer in(file.get(), buf_size);
-    uint64 result = 0;
+    uint64_t result = 0;
 
-    for (uint64 expected : data) {
+    for (uint64_t expected : data) {
       TF_ASSERT_OK(in.ReadVarint64(&result));
       EXPECT_EQ(expected, result);
     }
@@ -380,41 +378,41 @@ TEST(InputBuffer, ReadVarint64) {
 
 TEST(InputBuffer, Hint) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
 
   for (auto buf_size : BufferSizes()) {
     std::unique_ptr<RandomAccessFile> file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
-    string read;
+    CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    std::string read;
     io::InputBuffer in(file.get(), buf_size);
 
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
-    TF_CHECK_OK(in.Hint(4));
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.Hint(4));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "345");
-    TF_CHECK_OK(in.Hint(1));
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.Hint(1));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "678");
 
-    TF_CHECK_OK(in.Seek(0));
-    TF_CHECK_OK(in.Hint(7));
-    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    CHECK_OK(in.Seek(0));
+    CHECK_OK(in.Hint(7));
+    CHECK_OK(in.ReadNBytes(3, &read));
     EXPECT_EQ(read, "012");
-    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    CHECK_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "3456");
 
-    TF_CHECK_OK(in.Hint(2));
-    TF_CHECK_OK(in.Seek(4));
-    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    CHECK_OK(in.Hint(2));
+    CHECK_OK(in.Seek(4));
+    CHECK_OK(in.ReadNBytes(4, &read));
     EXPECT_EQ(read, "4567");
 
-    TF_CHECK_OK(in.Seek(0));
-    TF_CHECK_OK(in.Hint(1 << 25));
+    CHECK_OK(in.Seek(0));
+    CHECK_OK(in.Hint(1 << 25));
 
-    TF_CHECK_OK(in.Seek(1 << 25));
+    CHECK_OK(in.Seek(1 << 25));
     EXPECT_TRUE(absl::IsOutOfRange(in.Hint(1)));
 
     EXPECT_TRUE(absl::IsInvalidArgument(in.Hint(-1)));

@@ -38,7 +38,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "fp16/fp16.h"  // from @FP16
 #include "absl/algorithm/container.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -57,6 +56,8 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "tensorflow/lite/types/fp16.h"
+#include "tensorflow/lite/types/half.h"
 #include "tensorflow/lite/util.h"
 #include "tsl/platform/logging.h"
 
@@ -134,7 +135,7 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 }
 
 template <>
-constexpr TfLiteType typeToTfLiteType<Eigen::half>() {
+constexpr TfLiteType typeToTfLiteType<half>() {
   return kTfLiteFloat16;
 }
 
@@ -801,6 +802,9 @@ class SingleOpModel {
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
+    if (!v && tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+      v = reinterpret_cast<const T*>(tensor->data.raw);
+    }
     ABSL_CHECK(v) << "Could not extract vector at index: " << index;
     int tensor_size;
     if (tensor->sparsity) {
@@ -812,6 +816,10 @@ class SingleOpModel {
                         .array_indices->size;
     } else {
       tensor_size = GetTensorSize(index);
+    }
+
+    if (tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+      tensor_size = (tensor_size + 1) / 2;
     }
 
     return std::vector<T>(v, v + tensor_size);
@@ -1098,11 +1106,15 @@ class SingleOpModel {
       ABSL_CHECK(t) << "No tensor with index " << index << ".";
       ABSL_CHECK(t->data.raw)
           << "Empty data for tensor with index " << index << ".";
-      ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())
-          << "Type mismatch for tensor with index " << index << ". Requested "
-          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
-          << TfLiteTypeGetName(t->type) << ".";
-      ABSL_LOG(FATAL) << "Unknown tensor error.";
+      if (t->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+        v = reinterpret_cast<T*>(t->data.raw);
+      } else {
+        ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())
+            << "Type mismatch for tensor with index " << index << ". Requested "
+            << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+            << TfLiteTypeGetName(t->type) << ".";
+        ABSL_LOG(FATAL) << "Unknown tensor error.";
+      }
     }
     absl::c_copy(data, v + offset);
   }
@@ -1362,7 +1374,7 @@ TFLITE_TENSOR_TYPE_ASSOC(uint16_t, TensorType_UINT16);
 TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
 TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
 TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
-TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(half, TensorType_FLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(TfLiteBFloat16, TensorType_BFLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(Eigen::bfloat16, TensorType_BFLOAT16);
 TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
@@ -1461,13 +1473,13 @@ struct TypeUnion<uint8_t> {
 };
 
 template <>
-struct TypeUnion<Eigen::half> {
+struct TypeUnion<half> {
  public:
   // NOLINTNEXTLINE
   static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT16;
   // NOLINTNEXTLINE
   static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat16;
-  typedef Eigen::half ScalarType;
+  typedef half ScalarType;
 };
 
 template <>

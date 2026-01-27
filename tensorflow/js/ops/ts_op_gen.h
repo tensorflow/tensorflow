@@ -24,7 +24,7 @@ namespace tensorflow {
 
 // Generated code is written to the file ts_filename:
 void WriteTSOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& ts_filename);
+                const std::string& ts_filename);
 
 }  // namespace tensorflow
 

@@ -32,7 +32,7 @@ namespace tensorflow {
 
 namespace activity_watcher {
 
-using ActivityId = tsl::uint64;
+using ActivityId = uint64_t;
 constexpr ActivityId kActivityNotRecorded = 0;
 constexpr int kWatcherDisabled = 0;
 
@@ -45,7 +45,7 @@ enum ActivityCategory {
   kRendezvous = 5,
 };
 
-static tsl::string ToString(ActivityCategory category) {
+static std::string ToString(ActivityCategory category) {
   switch (category) {
     case ActivityCategory::kCollective:
       return "Collective";
@@ -64,17 +64,17 @@ static tsl::string ToString(ActivityCategory category) {
 
 // An activity to be recorded.
 struct Activity {
-  using Attributes = absl::flat_hash_map<tsl::string, tsl::string>;
+  using Attributes = absl::flat_hash_map<std::string, std::string>;
   // A human readable title of the activity.
-  tsl::string title;
+  std::string title;
   // The category of the activity.
   ActivityCategory category = ActivityCategory::kMisc;
   // Key/value pairs that are attached to the activity.
   Attributes attributes;
   Activity() = default;
-  Activity(tsl::string title, ActivityCategory category)
+  Activity(std::string title, ActivityCategory category)
       : title(std::move(title)), category(category) {}
-  Activity(tsl::string title, ActivityCategory category, Attributes attributes)
+  Activity(std::string title, ActivityCategory category, Attributes attributes)
       : title(std::move(title)),
         category(category),
         attributes(std::move(attributes)) {}

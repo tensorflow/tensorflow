@@ -234,10 +234,6 @@ class FragmentCallOpPattern final : public OpConversionPattern<FragmentCallOp> {
     // per-mesh compile options users might have provided.
     ifrt_call_op->setAttr(kIfrtMeshNameAttrName,
                           rewriter.getStringAttr(mesh_name));
-    if (op->hasAttr(mpmd::kIsSdyPartitioned)) {
-      ifrt_call_op->setAttr(xla::ifrt::kIsSdyPartitioned,
-                            rewriter.getUnitAttr());
-    }
     rewriter.replaceOp(op, ifrt_call_op.getOutputs());
     return success();
   }
@@ -497,6 +493,8 @@ class BuildCompileOptionsPass
     SymbolTableCollection symbol_table;
     FuncOp func_op = GetMainFunction(module);
     int threshold_for_argument_tupling = threshold_for_argument_tupling_;
+    bool is_sdy_partitioned =
+        module->hasAttr(xla::ifrt::kIfrtSdyMeshesRoundTripAttr);
     auto walk_result = func_op.walk([&](xla::ifrt::CallOp call_op) {
       xla::CompileOptions compile_options;
       xla::ExecutableBuildOptions& exec_build_options =
@@ -511,7 +509,7 @@ class BuildCompileOptionsPass
       }
       exec_build_options.set_device_assignment(device_assignment);
       exec_build_options.set_use_spmd_partitioning(true);
-      if (call_op->hasAttr(xla::ifrt::kIsSdyPartitioned)) {
+      if (is_sdy_partitioned) {
         exec_build_options.set_use_shardy_partitioner(true);
       }
       FuncOp callee = call_op.getCalleeOp(symbol_table);
@@ -594,10 +592,7 @@ void AddLowerToIfrtPasses(mlir::OpPassManager& pm,
     pm.addNestedPass<FuncOp>(CreateAddCtrlDependenciesPass());
   }
   // Outline the IFRT atom programs to modules.
-  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
-  outline_pipeline_options.propagate_shardings = false;
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
-                                                      outline_pipeline_options);
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 }
 
 void RegisterLowerToIfrtPasses() {

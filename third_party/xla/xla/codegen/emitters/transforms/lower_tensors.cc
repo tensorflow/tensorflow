@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -70,7 +71,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -202,8 +203,8 @@ class RewriteFunctionSignatures : public OpRewritePattern<mlir::func::FuncOp> {
     for (auto&& [index, operand] : llvm::enumerate(new_operands)) {
       if (is_tensor(operand)) {
         rewriter.setInsertionPointToStart(&op.getBody().front());
-        auto cast = rewriter.create<UnrealizedConversionCastOp>(
-            op.getLoc(), operand, op.getArgument(index));
+        auto cast = UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), operand, op.getArgument(index));
         op.getArgument(index).replaceAllUsesExcept(cast.getResult(0), cast);
         operand = ml::LLVMPointerType::get(op.getContext());
       }
@@ -260,9 +261,9 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
     // Create new ForOp with updated init args. The empty body builder is needed
     // to avoid implicit construction of scf.yield in the body block.
     Location loc = op.getLoc();
-    auto new_for_op = rewriter.create<scf::ForOp>(
-        loc, op.getLowerBound(), op.getUpperBound(), op.getStep(), new_inits,
-        [](OpBuilder&, Location, Value, ValueRange) {});
+    auto new_for_op = scf::ForOp::create(
+        rewriter, loc, op.getLowerBound(), op.getUpperBound(), op.getStep(),
+        new_inits, [](OpBuilder&, Location, Value, ValueRange) {});
     new_for_op->setAttrs(op->getAttrs());
 
     // Collect a mapping for block arguments and results. If the init is
@@ -316,12 +317,12 @@ struct RewriteFor : public OpRewritePattern<scf::ForOp> {
 
 Value GetLinearIndex(ValueRange indices, mlir::ImplicitLocOpBuilder& b) {
   CHECK_LE(indices.size(), 1) << "Only 0D and 1D tensors are supported";
-  auto index = indices.empty() ? b.create<mlir::arith::ConstantIndexOp>(0)
+  auto index = indices.empty() ? mlir::arith::ConstantIndexOp::create(b, 0)
                                : indices.front();
   auto index_ty = b.getIntegerType(
       mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
           .getTypeSizeInBits(index.getType()));
-  return b.create<mlir::arith::IndexCastUIOp>(index_ty, index);
+  return mlir::arith::IndexCastUIOp::create(b, index_ty, index);
 }
 
 // If the provided type is a sub-byte type get its bit-width, else nullopt.
@@ -346,18 +347,19 @@ std::tuple<Value, Value> GetSubByteIndex(Value linear_index, int bit_width,
   CHECK_LT(bit_width, 8) << "Passed width is not a sub-byte";
   int sub_byte_indexing_bits = SubByteIndexingBits(bit_width);
   // Get the sub-byte index by just masking out the high bits.
-  Value sub_byte_index = b.create<mlir::arith::TruncIOp>(
-      b.getI8Type(), b.create<mlir::arith::AndIOp>(
-                         linear_index, b.create<mlir::arith::ConstantIntOp>(
-                                           linear_index.getType(),
-                                           (1 << sub_byte_indexing_bits) - 1)));
+  Value sub_byte_index = mlir::arith::TruncIOp::create(
+      b, b.getI8Type(),
+      mlir::arith::AndIOp::create(
+          b, linear_index,
+          mlir::arith::ConstantIntOp::create(
+              b, linear_index.getType(), (1 << sub_byte_indexing_bits) - 1)));
   //  Calculate the bit shift (assume little-endianness).
-  Value sub_byte_shift = b.create<mlir::arith::MulIOp>(
-      b.create<mlir::arith::ConstantIntOp>(b.getI8Type(), bit_width),
+  Value sub_byte_shift = mlir::arith::MulIOp::create(
+      b, mlir::arith::ConstantIntOp::create(b, b.getI8Type(), bit_width),
       sub_byte_index);
-  Value byte_shift = b.create<mlir::arith::ConstantIntOp>(
-      linear_index.getType(), sub_byte_indexing_bits);
-  Value i8_index = b.create<mlir::arith::ShRUIOp>(linear_index, byte_shift);
+  Value byte_shift = mlir::arith::ConstantIntOp::create(
+      b, linear_index.getType(), sub_byte_indexing_bits);
+  Value i8_index = mlir::arith::ShRUIOp::create(b, linear_index, byte_shift);
   return {i8_index, sub_byte_shift};
 }
 
@@ -374,14 +376,14 @@ ml::GEPOp CreateGep(TypedValue<mlir::RankedTensorType> tensor,
   }
   auto ptr = ml::LLVMPointerType::get(b.getContext());
   auto tensor_ptr =
-      b.create<UnrealizedConversionCastOp>(ptr, tensor).getResult(0);
+      UnrealizedConversionCastOp::create(b, ptr, tensor).getResult(0);
   mlir::LLVMTypeConverter converter(b.getContext());
   auto llvm_element_type = converter.convertType(element_type);
   auto array_type =
       b.getType<ml::LLVMArrayType>(llvm_element_type, num_elements);
-  auto gep = b.create<ml::GEPOp>(
-      ptr, array_type, tensor_ptr,
-      llvm::SmallVector<mlir::LLVM::GEPArg>{0, linear_index});
+  auto gep =
+      ml::GEPOp::create(b, ptr, array_type, tensor_ptr,
+                        llvm::SmallVector<mlir::LLVM::GEPArg>{0, linear_index});
   gep.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
   return gep;
 }
@@ -410,7 +412,7 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
     auto gep = CreateGep(op.getTensor(), linear_index, b);
     Type llvm_type =
         mlir::dyn_cast<ml::LLVMArrayType>(gep.getElemType()).getElementType();
-    auto load_op = rewriter.create<ml::LoadOp>(gep.getLoc(), llvm_type, gep);
+    auto load_op = ml::LoadOp::create(rewriter, gep.getLoc(), llvm_type, gep);
     if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
             ml::LLVMDialect::getNoAliasAttrName())) {
       load_op.setNoaliasScopesAttr(no_alias_attr);
@@ -418,9 +420,9 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
     auto load = load_op.getResult();
 
     if (sub_byte_shift) {
-      load = b.create<mlir::arith::TruncIOp>(
-          b.getIntegerType(*sub_byte_width),
-          b.create<mlir::arith::ShRUIOp>(load, sub_byte_shift));
+      load = mlir::arith::TruncIOp::create(
+          b, b.getIntegerType(*sub_byte_width),
+          mlir::arith::ShRUIOp::create(b, load, sub_byte_shift));
     }
 
     if (op.getType().isIntOrFloat()) {
@@ -455,16 +457,16 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     mlir::Type gep_element_type = vector_type.getElementType();
     std::optional<int> sub_byte_width = GetSubByteBitWidth(gep_element_type);
     if (sub_byte_width) {
-      linear_index = b.create<arith::ShRUIOp>(
-          linear_index,
-          b.create<arith::ConstantIntOp>(linear_index.getType(),
-                                         SubByteIndexingBits(*sub_byte_width)));
+      linear_index = arith::ShRUIOp::create(
+          b, linear_index,
+          arith::ConstantIntOp::create(b, linear_index.getType(),
+                                       SubByteIndexingBits(*sub_byte_width)));
     }
     auto gep = CreateGep(source, linear_index, b);
 
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
-    auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
+    auto load = ml::LoadOp::create(b, llvm_vector_type, gep);
     if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       load.setAlignment(*alignment);
     } else {
@@ -478,9 +480,9 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     auto loaded = load.getResult();
 
     if (source_element_type.isInteger(1)) {
-      Value zero = b.create<mlir::arith::ConstantOp>(
-          mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
-      loaded = b.create<arith::CmpIOp>(arith::CmpIPredicate::ne, loaded, zero);
+      Value zero = mlir::arith::ConstantOp::create(
+          b, mlir::DenseElementsAttr::get(vector_type, b.getI8IntegerAttr(0)));
+      loaded = arith::CmpIOp::create(b, arith::CmpIPredicate::ne, loaded, zero);
     }
 
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
@@ -525,39 +527,41 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       Type ty = b.getI8Type();
       Type tensor_ty = tensor_dest.getType().clone(ty);
       auto tensor_dest_i8 =
-          b.create<UnrealizedConversionCastOp>(tensor_ty, tensor_dest)
+          UnrealizedConversionCastOp::create(b, tensor_ty, tensor_dest)
               .getResult(0);
       if (scalar_value.getType() != b.getIntegerType(*sub_byte_width)) {
-        scalar_value = b.create<arith::BitcastOp>(
-            b.getIntegerType(*sub_byte_width), scalar_value);
+        scalar_value = arith::BitcastOp::create(
+            b, b.getIntegerType(*sub_byte_width), scalar_value);
       }
-      scalar_value = b.create<mlir::arith::ExtUIOp>(ty, scalar_value);
+      scalar_value = mlir::arith::ExtUIOp::create(b, ty, scalar_value);
 
       // Mask of 1s in the sub-byte position & 0s elsewhere.
-      Value mask = b.create<mlir::arith::ShLIOp>(
-          b.create<mlir::arith::ConstantIntOp>(ty, (1 << *sub_byte_width) - 1),
+      Value mask = mlir::arith::ShLIOp::create(
+          b,
+          mlir::arith::ConstantIntOp::create(b, ty, (1 << *sub_byte_width) - 1),
           sub_byte_shift);
       // Mask of 0s in the sub-byte position & 1s elsewhere.
-      Value inverse_mask = b.create<mlir::arith::XOrIOp>(
-          b.create<mlir::arith::ConstantIntOp>(ty, 0xff), mask);
+      Value inverse_mask = mlir::arith::XOrIOp::create(
+          b, mlir::arith::ConstantIntOp::create(b, ty, 0xff), mask);
 
       Value shifted_value =
-          b.create<mlir::arith::ShLIOp>(scalar_value, sub_byte_shift);
+          mlir::arith::ShLIOp::create(b, scalar_value, sub_byte_shift);
 
       // We need AtomicRMWOp because it can happen that different threads try to
       // access the same memory location.
-      auto atomic_rmw = b.create<AtomicRMWOp>(tensor_dest_i8, linear_index);
+      auto atomic_rmw = AtomicRMWOp::create(b, tensor_dest_i8, linear_index);
       mlir::ImplicitLocOpBuilder body_builder(atomic_rmw.getLoc(),
                                               atomic_rmw.getBodyBuilder());
       Value current_value = atomic_rmw.getCurrentValue();
-      Value masked_out_current_value =
-          body_builder.create<mlir::arith::AndIOp>(current_value, inverse_mask);
-      Value new_value = body_builder.create<mlir::arith::OrIOp>(
-          masked_out_current_value, shifted_value);
-      body_builder.create<scf::YieldOp>(new_value);
-      Value casted_result = b.create<UnrealizedConversionCastOp>(
-                                 tensor_dest.getType(), atomic_rmw.getResult())
-                                .getResult(0);
+      Value masked_out_current_value = mlir::arith::AndIOp::create(
+          body_builder, current_value, inverse_mask);
+      Value new_value = mlir::arith::OrIOp::create(
+          body_builder, masked_out_current_value, shifted_value);
+      scf::YieldOp::create(body_builder, new_value);
+      Value casted_result =
+          UnrealizedConversionCastOp::create(b, tensor_dest.getType(),
+                                             atomic_rmw.getResult())
+              .getResult(0);
       op.replaceAllUsesWith(casted_result);
     } else {
       auto gep = CreateGep(tensor_dest, linear_index, b);
@@ -565,10 +569,10 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       auto llvm_type = converter.convertType(scalar_value.getType());
       scalar_value =
           scalar_value.getType().isIntOrFloat()
-              ? b.create<arith::BitcastOp>(llvm_type, scalar_value)
-              : b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
+              ? arith::BitcastOp::create(b, llvm_type, scalar_value)
+              : UnrealizedConversionCastOp::create(b, llvm_type, scalar_value)
                     .getResult(0);
-      auto store_op = b.create<ml::StoreOp>(scalar_value, gep);
+      auto store_op = ml::StoreOp::create(b, scalar_value, gep);
       if (auto alias_scope_attr = op->getAttrOfType<mlir::ArrayAttr>(
               ml::LLVMDialect::getAliasScopesAttrName())) {
         store_op.setAliasScopesAttr(alias_scope_attr);
@@ -601,24 +605,25 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     mlir::Value vector_value = op.getVector();
     mlir::Type vector_element_type = op.getVectorType().getElementType();
     if (vector_element_type.isInteger(1)) {
-      vector_value = b.create<arith::ExtUIOp>(
-          op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
+      vector_value = arith::ExtUIOp::create(
+          b, op.getVectorType().cloneWith(std::nullopt, b.getI8Type()),
           vector_value);
     }
     std::optional<int> sub_byte_width = GetSubByteBitWidth(vector_element_type);
     if (sub_byte_width) {
-      linear_index = b.create<arith::ShRUIOp>(
-          linear_index,
-          b.create<arith::ConstantIntOp>(linear_index.getType(),
-                                         SubByteIndexingBits(*sub_byte_width)));
+      linear_index = arith::ShRUIOp::create(
+          b, linear_index,
+          arith::ConstantIntOp::create(b, linear_index.getType(),
+                                       SubByteIndexingBits(*sub_byte_width)));
     }
     auto gep = CreateGep(tensor_dest, linear_index, b);
 
     mlir::LLVMTypeConverter converter(getContext());
     auto llvm_type = converter.convertType(vector_value.getType());
-    vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
-                       .getResult(0);
-    auto store = b.create<ml::StoreOp>(vector_value, gep);
+    vector_value =
+        UnrealizedConversionCastOp::create(b, llvm_type, vector_value)
+            .getResult(0);
+    auto store = ml::StoreOp::create(b, vector_value, gep);
     if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       store.setAlignment(*alignment);
     } else {
@@ -652,9 +657,8 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
     llvm::SmallVector<Type, 4> new_result_types;
     for (const auto&& [index, arg] : llvm::enumerate(op.getOperands())) {
       if (mlir::isa<mlir::RankedTensorType>(arg.getType())) {
-        new_operands.push_back(rewriter
-                                   .create<mlir::UnrealizedConversionCastOp>(
-                                       op.getLoc(), ptr_ty, arg)
+        new_operands.push_back(mlir::UnrealizedConversionCastOp::create(
+                                   rewriter, op.getLoc(), ptr_ty, arg)
                                    .getResult(0));
       } else {
         new_operands.push_back(arg);
@@ -665,8 +669,8 @@ struct RewriteCall : OpRewritePattern<mlir::func::CallOp> {
         new_result_types.push_back(result_type);
       }
     }
-    auto new_call = rewriter.create<mlir::func::CallOp>(
-        op.getLoc(), op.getCallee(), new_result_types, new_operands);
+    auto new_call = mlir::func::CallOp::create(
+        rewriter, op.getLoc(), op.getCallee(), new_result_types, new_operands);
 
     if (new_call.getNumResults() == 0) {
       rewriter.eraseOp(op);
@@ -718,9 +722,9 @@ ml::GlobalOp CreateGlobalOp(mlir::Attribute value,
     ++index;
   } while (module.lookupSymbol(name));
   b.setInsertionPointToStart(module.getBody());
-  return b.create<ml::GlobalOp>(array_ty, is_constant,
-                                /*linkage=*/ml::Linkage::Private, name, value,
-                                /*alignment=*/0, addr_space);
+  return ml::GlobalOp::create(b, array_ty, is_constant,
+                              /*linkage=*/ml::Linkage::Private, name, value,
+                              /*alignment=*/0, addr_space);
 }
 
 struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
@@ -739,12 +743,12 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
                        /*is_constant=*/false, kGPUSharedMemoryAddrSpace, b);
 
     rewriter.setInsertionPoint(op);
-    auto addr = rewriter.create<ml::AddressOfOp>(op.getLoc(), global);
+    auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
-        rewriter
-            .create<ml::AddrSpaceCastOp>(
-                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
+        ml::AddrSpaceCastOp::create(rewriter, op.getLoc(),
+                                    ml::LLVMPointerType::get(op.getContext()),
+                                    addr)
             .getResult());
     return success();
   }
@@ -774,12 +778,12 @@ struct RewriteNonScalarConstants : OpRewritePattern<mlir::arith::ConstantOp> {
                        /*is_constant=*/true, kGPUGlobalMemoryAddrSpace, b);
 
     rewriter.setInsertionPoint(op);
-    auto addr = rewriter.create<ml::AddressOfOp>(op.getLoc(), global);
+    auto addr = ml::AddressOfOp::create(rewriter, op.getLoc(), global);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         op, op.getResult().getType(),
-        rewriter
-            .create<ml::AddrSpaceCastOp>(
-                op.getLoc(), ml::LLVMPointerType::get(op.getContext()), addr)
+        ml::AddrSpaceCastOp::create(rewriter, op.getLoc(),
+                                    ml::LLVMPointerType::get(op.getContext()),
+                                    addr)
             .getResult());
     return success();
   }
@@ -790,7 +794,7 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
 
   LogicalResult matchAndRewrite(
       gpu::SyncThreadsOp op, mlir::PatternRewriter& rewriter) const override {
-    rewriter.create<mlir::gpu::BarrierOp>(op.getLoc());
+    mlir::gpu::BarrierOp::create(rewriter, op.getLoc());
     rewriter.replaceOp(op, op.getOperands());
     return success();
   }
@@ -807,9 +811,9 @@ struct RemoveUnusedIndexSwitchResults : OpRewritePattern<scf::IndexSwitchOp> {
       return rewriter.notifyMatchFailure(op, "the op has users");
     }
 
-    auto new_op = rewriter.create<scf::IndexSwitchOp>(
-        op.getLoc(), mlir::TypeRange{}, op.getArg(), op.getCases(),
-        op.getNumCases());
+    auto new_op = scf::IndexSwitchOp::create(rewriter, op.getLoc(),
+                                             mlir::TypeRange{}, op.getArg(),
+                                             op.getCases(), op.getNumCases());
     for (int i = 0; i < op->getNumRegions(); ++i) {
       auto& old_region = op->getRegion(i);
       auto& new_region = new_op->getRegion(i);
@@ -834,7 +838,7 @@ bool IsAtomicIntegral(Type element_type) {
 Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
                     Value value, Type ty) {
   if (value.getType().isIntOrFloat() && ty.isIntOrFloat()) {
-    return b.create<arith::BitcastOp>(ty, value);
+    return arith::BitcastOp::create(b, ty, value);
   }
 
   mlir::LLVMTypeConverter converter(b.getContext());
@@ -850,12 +854,13 @@ Value CreateBitcast(mlir::ImplicitLocOpBuilder& b, mlir::Operation* op,
       b.getLoc(), &func.getBody().front(), b.getListener());
 
   Value llvm_value =
-      b.create<UnrealizedConversionCastOp>(llvm_input_ty, value).getResult(0);
-  Value alloca = entry_builder.create<ml::AllocaOp>(
-      ptr_ty, llvm_input_ty, b.create<ml::ConstantOp>(b.getI32Type(), 1));
-  b.create<ml::StoreOp>(llvm_value, alloca);
-  auto result = b.create<ml::LoadOp>(llvm_result_ty, alloca).getResult();
-  return b.create<UnrealizedConversionCastOp>(ty, result).getResult(0);
+      UnrealizedConversionCastOp::create(b, llvm_input_ty, value).getResult(0);
+  Value alloca =
+      ml::AllocaOp::create(entry_builder, ptr_ty, llvm_input_ty,
+                           ml::ConstantOp::create(b, b.getI32Type(), 1));
+  ml::StoreOp::create(b, llvm_value, alloca);
+  auto result = ml::LoadOp::create(b, llvm_result_ty, alloca).getResult();
+  return UnrealizedConversionCastOp::create(b, ty, result).getResult(0);
 };
 
 class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
@@ -916,8 +921,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
 
     switch (atomic_bin_op) {
       case ml::AtomicBinOp::xchg: {
-        rewriter.create<ml::StoreOp>(
-            loc, modifier_arg, addr,
+        ml::StoreOp::create(
+            rewriter, loc, modifier_arg, addr,
             /*alignment=*/element_type.getIntOrFloatBitWidth() / 8,
             /*volatile*/ false, /*isNonTemporal=*/false,
             /*isInvariantGroup=*/false, ml::AtomicOrdering::unordered);
@@ -928,9 +933,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       case ml::AtomicBinOp::min:
       case ml::AtomicBinOp::umax:
       case ml::AtomicBinOp::umin: {
-        rewriter.create<ml::AtomicRMWOp>(loc, atomic_bin_op, addr, modifier_arg,
-                                         ml::AtomicOrdering::monotonic,
-                                         sync_scope);
+        ml::AtomicRMWOp::create(rewriter, loc, atomic_bin_op, addr,
+                                modifier_arg, ml::AtomicOrdering::monotonic,
+                                sync_scope);
         return success();
       }
       case ml::AtomicBinOp::fadd: {
@@ -979,8 +984,8 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       return failure();
     }
 
-    b.create<ml::AtomicRMWOp>(loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
-                              ml::AtomicOrdering::monotonic);
+    ml::AtomicRMWOp::create(b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+                            ml::AtomicOrdering::monotonic);
     return success();
   }
 
@@ -1016,16 +1021,16 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     }
     SmallVector<Value> asm_operands{addr};
     for (int i = 0; i < vector_type.getNumElements(); ++i) {
-      asm_operands.push_back(b.create<vector::ExtractOp>(
-          loc, modifier_arg,
-          b.create<arith::ConstantIndexOp>(loc, i).getResult()));
+      asm_operands.push_back(vector::ExtractOp::create(
+          b, loc, modifier_arg,
+          arith::ConstantIndexOp::create(b, loc, i).getResult()));
     }
     SmallVector<Type> outputTypes(vector_type.getNumElements(),
                                   vector_type.getElementType());
     auto outputType =
         ml::LLVMStructType::getLiteral(b.getContext(), outputTypes);
-    b.create<ml::InlineAsmOp>(
-        loc, outputType, asm_operands, asm_string, constraints,
+    ml::InlineAsmOp::create(
+        b, loc, outputType, asm_operands, asm_string, constraints,
         /*has_side_effects=*/true,
         /*is_align_stack=*/true, ml::TailCallKind::None, asmDialectAttr,
         /*operand_attrs=*/mlir::ArrayAttr());
@@ -1058,33 +1063,35 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       auto i64_type = b.getI64Type();
       auto i32_type = b.getI32Type();
       auto i16_type = b.getI16Type();
-      Value addr_int = b.create<ml::PtrToIntOp>(loc, i64_type, addr);
-      Value addr_masked = b.create<ml::AndOp>(
-          loc, addr_int, b.create<ml::ConstantOp>(loc, i64_type, -4));
+      Value addr_int = ml::PtrToIntOp::create(b, loc, i64_type, addr);
+      Value addr_masked = ml::AndOp::create(
+          b, loc, addr_int, ml::ConstantOp::create(b, loc, i64_type, -4));
 
-      Value offset = b.create<ml::AndOp>(
-          loc, b.create<ml::TruncOp>(loc, i32_type, addr_int),
-          b.create<ml::ConstantOp>(loc, i32_type, 2));
+      Value offset = ml::AndOp::create(
+          b, loc, ml::TruncOp::create(b, loc, i32_type, addr_int),
+          ml::ConstantOp::create(b, loc, i32_type, 2));
 
-      Value shift = b.create<ml::MulOp>(
-          loc, offset, b.create<ml::ConstantOp>(loc, i32_type, 8));
+      Value shift = ml::MulOp::create(
+          b, loc, offset, ml::ConstantOp::create(b, loc, i32_type, 8));
 
-      Value modifier_int = b.create<ml::BitcastOp>(loc, i16_type, modifier_arg);
+      Value modifier_int =
+          ml::BitcastOp::create(b, loc, i16_type, modifier_arg);
 
-      Value modifier_masked = b.create<ml::ShlOp>(
-          loc, b.create<ml::ZExtOp>(loc, i32_type, modifier_int), shift);
+      Value modifier_masked = ml::ShlOp::create(
+          b, loc, ml::ZExtOp::create(b, loc, i32_type, modifier_int), shift);
 
       constexpr int kGlobalMemory = 1;
-      addr = b.create<ml::IntToPtrOp>(
-          loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory),
+      addr = ml::IntToPtrOp::create(
+          b, loc, ml::LLVMPointerType::get(b.getContext(), kGlobalMemory),
           addr_masked);
 
-      modifier_arg = b.create<ml::BitcastOp>(loc, packed_type, modifier_masked);
+      modifier_arg =
+          ml::BitcastOp::create(b, loc, packed_type, modifier_masked);
       element_type = packed_type;
     }
 
-    auto op = b.create<ml::AtomicRMWOp>(
-        loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
+    auto op = ml::AtomicRMWOp::create(
+        b, loc, ml::AtomicBinOp::fadd, addr, modifier_arg,
         ml::AtomicOrdering::monotonic, "agent-one-as");
 
     auto unitAttr = b.getUnitAttr();
@@ -1112,65 +1119,66 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
     // Evaluating floating max using integer atomics has the limitation of not
     // propagating -NaNs. To handle this, we check if the update value is -NaN
     // and convert it to a positive one by dropping the sign-bit.
-    Value current = b.create<ml::LoadOp>(loc, element_type, addr);
+    Value current = ml::LoadOp::create(b, loc, element_type, addr);
 
     Value current_is_nan =
-        b.create<ml::FCmpOp>(loc, ml::FCmpPredicate::uno, current, current);
+        ml::FCmpOp::create(b, loc, ml::FCmpPredicate::uno, current, current);
     auto is_current_nan =
-        b.create<scf::IfOp>(loc, /*resultTypes=*/TypeRange{}, current_is_nan,
-                            /*addThenBlock=*/true, /*addElseBlock=*/true);
+        scf::IfOp::create(b, loc, /*resultTypes=*/TypeRange{}, current_is_nan,
+                          /*addThenBlock=*/true, /*addElseBlock=*/true);
     auto if_current_nan_then_builder =
         OpBuilder::atBlockEnd(is_current_nan.thenBlock(), b.getListener());
-    if_current_nan_then_builder.create<scf::YieldOp>(loc);
+    scf::YieldOp::create(if_current_nan_then_builder, loc);
 
     auto if_current_nan_else_builder =
         OpBuilder::atBlockEnd(is_current_nan.elseBlock(), b.getListener());
-    Value is_modifier_nan = if_current_nan_else_builder.create<ml::FCmpOp>(
-        loc, ml::FCmpPredicate::uno, modifier_arg, modifier_arg);
+    Value is_modifier_nan =
+        ml::FCmpOp::create(if_current_nan_else_builder, loc,
+                           ml::FCmpPredicate::uno, modifier_arg, modifier_arg);
     auto f32_nan = mlir::APFloat::getNaN(mlir::APFloat::IEEEsingle());
-    Value nan = if_current_nan_else_builder.create<ml::ConstantOp>(
-        loc, b.getF32Type(), f32_nan);
-    Value no_negative_nan_source =
-        if_current_nan_else_builder.create<ml::SelectOp>(loc, is_modifier_nan,
-                                                         nan, modifier_arg);
-    Value current_less_than_modifier =
-        if_current_nan_else_builder.create<ml::FCmpOp>(
-            loc, ml::FCmpPredicate::ult, current, no_negative_nan_source);
+    Value nan = ml::ConstantOp::create(if_current_nan_else_builder, loc,
+                                       b.getF32Type(), f32_nan);
+    Value no_negative_nan_source = ml::SelectOp::create(
+        if_current_nan_else_builder, loc, is_modifier_nan, nan, modifier_arg);
+    Value current_less_than_modifier = ml::FCmpOp::create(
+        if_current_nan_else_builder, loc, ml::FCmpPredicate::ult, current,
+        no_negative_nan_source);
 
     // This check allows us to skip the atomic update all-together at the
     // expense of reading the value in memory for every update. Evaluated
     // against Waymo's benchmarks, adding the check achieves better overall
     // performance.
-    auto if_need_update = if_current_nan_else_builder.create<scf::IfOp>(
-        loc, /*resultTypes=*/TypeRange{}, current_less_than_modifier,
-        /*withElseRegion=*/true,
-        /*addElseBlock=*/false);
-    if_current_nan_else_builder.create<scf::YieldOp>(loc);
+    auto if_need_update = scf::IfOp::create(if_current_nan_else_builder, loc,
+                                            /*resultTypes=*/TypeRange{},
+                                            current_less_than_modifier,
+                                            /*withElseRegion=*/true,
+                                            /*addElseBlock=*/false);
+    scf::YieldOp::create(if_current_nan_else_builder, loc);
 
     auto then_builder =
         OpBuilder::atBlockEnd(if_need_update.thenBlock(), b.getListener());
-    Value source_float_as_int = then_builder.create<arith::BitcastOp>(
-        loc, then_builder.getI32Type(), no_negative_nan_source);
-    Value c0 = then_builder.create<ml::ConstantOp>(loc, b.getI32Type(), 0);
-    Value is_not_negative = then_builder.create<ml::ICmpOp>(
-        loc, ml::ICmpPredicate::sge, source_float_as_int, c0);
-    then_builder.create<scf::IfOp>(
-        loc, is_not_negative,
+    Value source_float_as_int = arith::BitcastOp::create(
+        then_builder, loc, then_builder.getI32Type(), no_negative_nan_source);
+    Value c0 = ml::ConstantOp::create(then_builder, loc, b.getI32Type(), 0);
+    Value is_not_negative = ml::ICmpOp::create(
+        then_builder, loc, ml::ICmpPredicate::sge, source_float_as_int, c0);
+    scf::IfOp::create(
+        then_builder, loc, is_not_negative,
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
-          nested_b.create<ml::AtomicRMWOp>(
-              loc, ml::AtomicBinOp::max, addr, source_float_as_int,
-              ml::AtomicOrdering::monotonic, sync_scope);
-          nested_b.create<scf::YieldOp>(nested_loc);
+          ml::AtomicRMWOp::create(nested_b, loc, ml::AtomicBinOp::max, addr,
+                                  source_float_as_int,
+                                  ml::AtomicOrdering::monotonic, sync_scope);
+          scf::YieldOp::create(nested_b, nested_loc);
         },
         [&](OpBuilder& nested_b, Location nested_loc) {
           // atomicMax((int *)address, __float_as_int(val))
-          nested_b.create<ml::AtomicRMWOp>(
-              loc, ml::AtomicBinOp::umin, addr, source_float_as_int,
-              ml::AtomicOrdering::monotonic, sync_scope);
-          nested_b.create<scf::YieldOp>(nested_loc);
+          ml::AtomicRMWOp::create(nested_b, loc, ml::AtomicBinOp::umin, addr,
+                                  source_float_as_int,
+                                  ml::AtomicOrdering::monotonic, sync_scope);
+          scf::YieldOp::create(nested_b, nested_loc);
         });
-    then_builder.create<scf::YieldOp>(loc);
+    scf::YieldOp::create(then_builder, loc);
     return success();
   }
 
@@ -1235,40 +1243,42 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
       // 32-bit boundary for small input types (will not result in OOB, as the
       // input alignment is at least 32 bits).
       Type addr_int_ty = rewriter.getI64Type();
-      Value addr_int = rewriter.create<ml::PtrToIntOp>(loc, addr_int_ty, addr);
-      Value addr_offset = rewriter.create<ml::AndOp>(
-          loc, addr_int, rewriter.create<ml::ConstantOp>(loc, addr_int_ty, 3));
-      Value index = rewriter.create<ml::MulOp>(
-          loc, addr_offset,
-          rewriter.create<ml::ConstantOp>(loc, addr_int_ty, -1));
-      addr = rewriter.create<ml::GEPOp>(loc, addr.getType(),
-                                        rewriter.getI8Type(), addr, index,
-                                        mlir::LLVM::GEPNoWrapFlags::inbounds);
+      Value addr_int = ml::PtrToIntOp::create(rewriter, loc, addr_int_ty, addr);
+      Value addr_offset = ml::AndOp::create(
+          rewriter, loc, addr_int,
+          ml::ConstantOp::create(rewriter, loc, addr_int_ty, 3));
+      Value index = ml::MulOp::create(
+          rewriter, loc, addr_offset,
+          ml::ConstantOp::create(rewriter, loc, addr_int_ty, -1));
+      addr =
+          ml::GEPOp::create(rewriter, loc, addr.getType(), rewriter.getI8Type(),
+                            addr, index, mlir::LLVM::GEPNoWrapFlags::inbounds);
 
-      Value offset = rewriter.create<ml::TruncOp>(loc, atomic_ty, addr_offset);
-      shift = rewriter.create<ml::MulOp>(
-          loc, offset,
-          rewriter.create<ml::ConstantOp>(loc, offset.getType(), 8));
+      Value offset = ml::TruncOp::create(rewriter, loc, atomic_ty, addr_offset);
+      shift = ml::MulOp::create(
+          rewriter, loc, offset,
+          ml::ConstantOp::create(rewriter, loc, offset.getType(), 8));
       if (sub_byte_bit_width) {
         sub_byte_shift =
-            rewriter.create<ml::ZExtOp>(loc, shift.getType(), sub_byte_shift);
-        shift = rewriter.create<ml::AddOp>(loc, shift, sub_byte_shift);
+            ml::ZExtOp::create(rewriter, loc, shift.getType(), sub_byte_shift);
+        shift = ml::AddOp::create(rewriter, loc, shift, sub_byte_shift);
       }
 
       // Compose the update mask.
-      Value bits_long = rewriter.create<ml::ConstantOp>(loc, atomic_ty, -1);
-      Value bits_short = rewriter.create<ml::ZExtOp>(
-          loc, atomic_ty,
-          rewriter.create<ml::ConstantOp>(
-              loc, rewriter.getIntegerType(result_size), -1));
-      mask = rewriter.create<ml::XOrOp>(
-          loc, bits_long, rewriter.create<ml::ShlOp>(loc, bits_short, shift));
+      Value bits_long = ml::ConstantOp::create(rewriter, loc, atomic_ty, -1);
+      Value bits_short = ml::ZExtOp::create(
+          rewriter, loc, atomic_ty,
+          ml::ConstantOp::create(rewriter, loc,
+                                 rewriter.getIntegerType(result_size), -1));
+      mask = ml::XOrOp::create(
+          rewriter, loc, bits_long,
+          ml::ShlOp::create(rewriter, loc, bits_short, shift));
     }
 
     // Load initial atomic value and create the loop.
-    Value initial = rewriter.create<ml::LoadOp>(loc, atomic_ty, addr);
-    rewriter.create<scf::WhileOp>(
-        loc, TypeRange{atomic_ty}, ValueRange{initial},
+    Value initial = ml::LoadOp::create(rewriter, loc, atomic_ty, addr);
+    scf::WhileOp::create(
+        rewriter, loc, TypeRange{atomic_ty}, ValueRange{initial},
         [&](mlir::OpBuilder& builder, Location loc, ValueRange values) {
           mlir::ImplicitLocOpBuilder b(loc, builder);
           Value old_value = values[0];
@@ -1277,9 +1287,9 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           Value input_value;
           if (small_type) {
             Value short_value =
-                b.create<ml::TruncOp>(b.getIntegerType(result_size),
-                                      b.create<ml::LShrOp>(old_value, shift));
-            input_value = b.create<arith::BitcastOp>(result_ty, short_value);
+                ml::TruncOp::create(b, b.getIntegerType(result_size),
+                                    ml::LShrOp::create(b, old_value, shift));
+            input_value = arith::BitcastOp::create(b, result_ty, short_value);
           } else {
             input_value = CreateBitcast(b, op, old_value, result_ty);
           }
@@ -1294,12 +1304,13 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           // Convert resulting value to atomic value.
           Value new_value;
           if (small_type) {
-            Value cast_value = b.create<ml::ZExtOp>(
-                atomic_ty, b.create<arith::BitcastOp>(
-                               rewriter.getIntegerType(result_size), result));
+            Value cast_value = ml::ZExtOp::create(
+                b, atomic_ty,
+                arith::BitcastOp::create(
+                    b, rewriter.getIntegerType(result_size), result));
             new_value =
-                b.create<ml::OrOp>(b.create<ml::AndOp>(old_value, mask),
-                                   b.create<ml::ShlOp>(cast_value, shift));
+                ml::OrOp::create(b, ml::AndOp::create(b, old_value, mask),
+                                 ml::ShlOp::create(b, cast_value, shift));
           } else {
             new_value = CreateBitcast(b, op, result, atomic_ty);
           }
@@ -1307,22 +1318,73 @@ class RewriteAtomicRMW : public OpRewritePattern<AtomicRMWOp> {
           auto sync_scope = determinateScope();
 
           // Try saving the result atomically, retry if failed.
-          Value cmpxchg = b.create<ml::AtomicCmpXchgOp>(
-              loc, addr, old_value, new_value,
+          Value cmpxchg = ml::AtomicCmpXchgOp::create(
+              b, loc, addr, old_value, new_value,
               /*success_ordering=*/ml::AtomicOrdering::monotonic,
               /*failure_ordering=*/ml::AtomicOrdering::monotonic, sync_scope);
-          Value next = b.create<ml::ExtractValueOp>(cmpxchg, 0);
-          Value ok = b.create<ml::ExtractValueOp>(cmpxchg, 1);
-          Value low_bit = b.create<ml::ConstantOp>(b.getOneAttr(b.getI1Type()));
-          Value not_ok = b.create<ml::XOrOp>(ok, low_bit);
-          b.create<scf::ConditionOp>(not_ok, ValueRange{next});
+          Value next = ml::ExtractValueOp::create(b, cmpxchg, 0);
+          Value ok = ml::ExtractValueOp::create(b, cmpxchg, 1);
+          Value low_bit =
+              ml::ConstantOp::create(b, b.getOneAttr(b.getI1Type()));
+          Value not_ok = ml::XOrOp::create(b, ok, low_bit);
+          scf::ConditionOp::create(b, not_ok, ValueRange{next});
         },
         [&](mlir::OpBuilder& b, Location loc, ValueRange values) {
-          b.create<scf::YieldOp>(loc, values);
+          scf::YieldOp::create(b, loc, values);
         });
   }
 
   const DeviceSpec& device_spec_;
+};
+
+class RewriteGetDynamicDimSize : public OpRewritePattern<GetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(
+      GetDynamicDimSizeOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto tensor = op.getTensor();
+    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(tensor.getType());
+
+    Type element_type = tensor_type.getElementType();
+    int64_t num_elements = tensor_type.getNumElements();
+    std::optional<int> sub_byte_width = GetSubByteBitWidth(element_type);
+    if (sub_byte_width) {
+      element_type = b.getI8Type();
+      // Elements are packed.
+      num_elements = CeilOfRatio<int64_t>(num_elements, 8 / *sub_byte_width);
+    }
+
+    // The offset of the dim size from the start of the buffer. The dynamic dim
+    // sizes are stored after the tensor data as a tail-allocated metadata of
+    // s32 type.
+    int64_t dynamic_size_offset_in_bytes =
+        num_elements * element_type.getIntOrFloatBitWidth() / 8 +
+        op.getDim() * b.getI32Type().getWidth() / 8;
+
+    int64_t alignment = dynamic_size_offset_in_bytes % 4;
+    // TODO(b/463569416): Support unaligned loads.
+    if (alignment != 0) {
+      return op->emitOpError("dynamic size offset is not 4-byte aligned");
+    }
+
+    auto ptr_type = ml::LLVMPointerType::get(b.getContext());
+    Value tensor_ptr =
+        UnrealizedConversionCastOp::create(b, ptr_type, tensor).getResult(0);
+
+    Value addr_offset =
+        ml::ConstantOp::create(b, b.getI64Type(), dynamic_size_offset_in_bytes);
+
+    Value addr_int = ml::PtrToIntOp::create(b, b.getI64Type(), tensor_ptr);
+    Value metadata_addr_int = ml::AddOp::create(b, addr_int, addr_offset);
+    Value metadata_addr =
+        ml::IntToPtrOp::create(b, ptr_type, metadata_addr_int);
+
+    rewriter.replaceOpWithNewOp<ml::LoadOp>(op, b.getI32Type(), metadata_addr);
+
+    return success();
+  }
 };
 
 class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
@@ -1340,7 +1402,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
                                                        &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       *device_spec_.mutable_type() = *device_description;
     } else if (target_type_ == "cpu") {
       CHECK(gpu_device_info_.empty());
@@ -1351,10 +1413,11 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
     mlir::RewritePatternSet tensor_patterns(mlir_context);
 
     tensor_patterns.add<RewriteAtomicRMW>(mlir_context, device_spec_);
-    tensor_patterns
-        .add<RewriteAllocateShared, RewriteNonScalarConstants,
-             RewriteSyncThreads, RewriteTensorExtract, RewriteTransferRead,
-             RewriteTensorInsert, RewriteTransferWrite>(mlir_context);
+    tensor_patterns.add<RewriteAllocateShared, RewriteGetDynamicDimSize,
+                        RewriteNonScalarConstants, RewriteSyncThreads,
+                        RewriteTensorExtract, RewriteTensorInsert,
+                        RewriteTransferRead, RewriteTransferWrite>(
+        mlir_context);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(tensor_patterns)))) {
       signalPassFailure();
@@ -1396,13 +1459,7 @@ class LowerTensorsPass : public impl::LowerTensorsPassBase<LowerTensorsPass> {
           if (func.getArgAttr(base.getArgNumber(), "xla.invariant")) {
             load.setInvariant(true);
           }
-          return;
         }
-      }
-      if (!device_spec_.IsCpu()) {
-        load.emitOpError(
-            "load op address is not (a GEP of) a function argument");
-        signalPassFailure();
       }
     });
   }

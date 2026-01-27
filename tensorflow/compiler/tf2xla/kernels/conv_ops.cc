@@ -92,9 +92,9 @@ class ConvNDOp : public XlaOpKernel {
     ConvOpAttrs forward_attrs;
     forward_attrs.depthwise = false;
     forward_attrs.num_spatial_dims = num_spatial_dims;
-    forward_attrs.dilations = attrs_.dilations.empty()
-                                  ? std::vector<int32>(num_spatial_dims + 2, 1)
-                                  : attrs_.dilations;
+    forward_attrs.dilations =
+        attrs_.dilations.empty() ? std::vector<int32_t>(num_spatial_dims + 2, 1)
+                                 : attrs_.dilations;
     forward_attrs.strides = attrs_.strides;
     forward_attrs.padding = attrs_.padding;
     forward_attrs.explicit_paddings = attrs_.explicit_paddings;

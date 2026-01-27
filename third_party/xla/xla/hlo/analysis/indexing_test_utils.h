@@ -28,13 +28,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 
@@ -68,29 +69,32 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
 
 class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
-  IndexingTestBase() : symbolic_expr_context_(&mlir_context_) {}
-
+  IndexingTestBase() { RegisterSymbolicExprStorage(&mlir_context_); }
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
-  HloInstructionIndexing GetOutputToInputIndexing(
-      const HloInstruction* instr, int output_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetOutputToInputIndexing(
+      const HloInstruction* instr, int output_id, bool use_physical_layout);
+  HloInstructionIndexing GetOutputToInputIndexing(const HloInstruction* instr,
+                                                  int output_id = 0) {
+    return GetOutputToInputIndexing(instr, output_id, false);
+  }
 
-  HloInstructionIndexing GetInputToOutputIndexing(
-      const HloInstruction* instr, int input_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetInputToOutputIndexing(
+      const HloInstruction* instr, int input_id, bool use_physical_layout);
+  HloInstructionIndexing GetInputToOutputIndexing(const HloInstruction* instr,
+                                                  int input_id = 0) {
+    return GetInputToOutputIndexing(instr, input_id, false);
+  }
 
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
 mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               gpu::SymbolicExprContext* symbolic_expr_context);
+                               mlir::MLIRContext* mlir_context);
 
-mlir::AffineExpr ParseAffineExpr(
-    absl::string_view serialized_affine_expr,
-    gpu::SymbolicExprContext* symbolic_expr_context);
+mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
+                                 mlir::MLIRContext* mlir_context);
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).

@@ -64,8 +64,8 @@ void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
     c_j_stride = 1;
   }
 
-  const int32_t highest = static_cast<int32>(Eigen::NumTraits<T3>::highest());
-  const int32_t lowest = static_cast<int32>(Eigen::NumTraits<T3>::lowest());
+  const int32_t highest = static_cast<int32_t>(Eigen::NumTraits<T3>::highest());
+  const int32_t lowest = static_cast<int32_t>(Eigen::NumTraits<T3>::lowest());
   const int32_t rounding = (shift_c < 1) ? 0 : (1 << (shift_c - 1));
 
   int i, j, l;
@@ -74,9 +74,9 @@ void ReferenceGemm(bool transpose_a, bool transpose_b, bool transpose_c,
       int32_t total = 0;
       for (l = 0; l < k; l++) {
         const size_t a_index = ((i * a_i_stride) + (l * a_l_stride));
-        const int32_t a_value = static_cast<int32>(a[a_index]) - offset_a;
+        const int32_t a_value = static_cast<int32_t>(a[a_index]) - offset_a;
         const size_t b_index = ((j * b_j_stride) + (l * b_l_stride));
-        const int32_t b_value = static_cast<int32>(b[b_index]) - offset_b;
+        const int32_t b_value = static_cast<int32_t>(b[b_index]) - offset_b;
         total += (a_value * b_value);
       }
       const size_t c_index = ((i * c_i_stride) + (j * c_j_stride));

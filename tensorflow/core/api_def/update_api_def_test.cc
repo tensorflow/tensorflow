@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace {
 
 TEST(UpdateApiDefTest, TestRemoveDocSingleOp) {
-  const string op_def_text = R"opdef(
+  const std::string op_def_text = R"opdef(
 REGISTER_OP("Op1")
     .Input("a: T")
     .Output("output: T")
@@ -32,7 +32,7 @@ REGISTER_OP("Op1")
     .SetShapeFn(shape_inference::UnchangedShape);
 )opdef";
 
-  const string op_def_text_with_doc = R"opdef(
+  const std::string op_def_text_with_doc = R"opdef(
 REGISTER_OP("Op1")
     .Input("a: T")
     .Output("output: T")
@@ -50,7 +50,7 @@ output: Description for output.
 )doc");
 )opdef";
 
-  const string op_text = R"(
+  const std::string op_text = R"(
 name: "Op1"
 input_arg {
   name: "a"
@@ -75,7 +75,7 @@ description: "Description\nfor Op1."
 }
 
 TEST(UpdateApiDefTest, TestRemoveDocMultipleOps) {
-  const string op_def_text = R"opdef(
+  const std::string op_def_text = R"opdef(
 REGISTER_OP("Op1")
     .Input("a: T")
     .SetShapeFn(shape_inference::UnchangedShape);
@@ -89,7 +89,7 @@ REGISTER_OP("Op3")
     .SetShapeFn(shape_inference::UnchangedShape);
 )opdef";
 
-  const string op_def_text_with_doc = R"opdef(
+  const std::string op_def_text_with_doc = R"opdef(
 REGISTER_OP("Op1")
     .Input("a: T")
     .Doc(R"doc(
@@ -112,21 +112,21 @@ Summary for Op3.
 )doc");
 )opdef";
 
-  const string op1_text = R"(
+  const std::string op1_text = R"(
 name: "Op1"
 input_arg {
   name: "a"
 }
 summary: "Summary for Op1."
 )";
-  const string op2_text = R"(
+  const std::string op2_text = R"(
 name: "Op2"
 input_arg {
   name: "a"
 }
 summary: "Summary for Op2."
 )";
-  const string op3_text = R"(
+  const std::string op3_text = R"(
 name: "Op3"
 input_arg {
   name: "c"
@@ -138,12 +138,12 @@ summary: "Summary for Op3."
   protobuf::TextFormat::ParseFromString(op2_text, &op2);  // NOLINT
   protobuf::TextFormat::ParseFromString(op3_text, &op3);  // NOLINT
 
-  string updated_text =
+  std::string updated_text =
       RemoveDoc(op2, op_def_text_with_doc,
                 op_def_text_with_doc.find("Op2") /* start_location */);
-  EXPECT_EQ(string::npos, updated_text.find("Summary for Op2"));
-  EXPECT_NE(string::npos, updated_text.find("Summary for Op1"));
-  EXPECT_NE(string::npos, updated_text.find("Summary for Op3"));
+  EXPECT_EQ(std::string::npos, updated_text.find("Summary for Op2"));
+  EXPECT_NE(std::string::npos, updated_text.find("Summary for Op1"));
+  EXPECT_NE(std::string::npos, updated_text.find("Summary for Op3"));
 
   updated_text = RemoveDoc(op3, updated_text,
                            updated_text.find("Op3") /* start_location */);
@@ -153,7 +153,7 @@ summary: "Summary for Op3."
 }
 
 TEST(UpdateApiDefTest, TestCreateApiDef) {
-  const string op_text = R"(
+  const std::string op_text = R"(
 name: "Op1"
 input_arg {
   name: "a"
@@ -173,7 +173,7 @@ description: "Description\nfor Op1."
   OpDef op;
   protobuf::TextFormat::ParseFromString(op_text, &op);  // NOLINT
 
-  const string expected_api_def = R"(op {
+  const std::string expected_api_def = R"(op {
   graph_op_name: "Op1"
   in_arg {
     name: "a"

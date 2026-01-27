@@ -38,28 +38,27 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
-#include "xla/pjrt/gpu/tfrt/host_memory_allocator.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/gpu/tfrt/utils.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -232,8 +231,8 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
         buffer->AsShapedBuffer(device_shapes_[buffer_index], device_);
 
     auto stream = device_->stream();
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
-                                                               shaped_buffer));
+    CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(stream, literal,
+                                                            shaped_buffer));
 
     absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
     VLOG(3) << "Finish transfer h2d for literal with shape "
@@ -245,7 +244,7 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
     CleanUp(buffer_index, std::move(on_done));
   };
   // Enqueue the transfer to the h2d thread.
-  EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
+  client_->blocking_thread_pool()->Schedule(std::move(h2d_copy));
   return absl::OkStatus();
 }
 
@@ -264,8 +263,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
   DCHECK(client);
 
   HostMemoryAllocator::OwnedPtr staging_buffer;
-  if (client->should_stage_host_to_device_transfers() &&
-      !client->IsDmaMapped(data, transfer_size)) {
+  if (client->ShouldStageHostToDeviceTransfers(data, transfer_size)) {
     HostMemoryAllocator* host_memory_allocator =
         client->host_memory_allocator();
     if (host_memory_allocator == nullptr) {
@@ -276,7 +274,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
     staging_buffer = host_memory_allocator->Allocate(transfer_size);
   }
 
-  se::DeviceMemoryBase sub_buffer;
+  se::DeviceAddressBase sub_buffer;
   {
     absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffer_ptrs_.size());
@@ -332,7 +330,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
       VLOG(3) << "H2D copy: " << host_data_ptr << " -> " << sub_buffer.opaque()
               << " (" << transfer_size << " bytes) on device "
               << device_->DebugString();
-      TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
+      CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
           << "Failed to copy data to GPU";
 
       absl::Status status = BlockHostUntilDoneWithHostCallback(stream);
@@ -345,7 +343,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
   // Note: The ordering of transfers enqueued via this method is not
   // guaranteed.  If multiple transfers for the same buffer are submitted,
   // their execution order may vary.
-  EnqueueWork(client_->blocking_thread_pool(), std::move(h2d_copy));
+  client_->blocking_thread_pool()->Schedule(std::move(h2d_copy));
   return absl::OkStatus();
 }
 
@@ -406,7 +404,7 @@ void TfrtGpuAsyncHostToDeviceTransferManager::CleanUp(
   // here is unsafe, as the manager instance could be destroyed after
   // `transfers_in_flight_` is decremented and the mutex released,
   // invalidating member access.
-  EnqueueWork(client->non_blocking_thread_pool(), std::move(on_done));
+  client->non_blocking_thread_pool()->Schedule(std::move(on_done));
 }
 
 }  // namespace xla

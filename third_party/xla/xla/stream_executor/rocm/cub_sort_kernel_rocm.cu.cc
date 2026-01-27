@@ -24,6 +24,7 @@ limitations under the License.
 #include "rocm/include/rocprim/thread/radix_key_codec.hpp"
 #include "rocm/include/rocprim/type_traits.hpp"
 #include "rocm/rocm_config.h"
+#include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -61,7 +62,7 @@ struct radix_key_codec_base<tsl::bfloat16>
 namespace traits {
 
 template <>
-struct rocprim::traits::define<Eigen::half> {
+struct define<Eigen::half> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7C00, 0x03FF>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
@@ -70,7 +71,7 @@ struct rocprim::traits::define<Eigen::half> {
 };
 
 template <>
-struct rocprim::traits::define<tsl::bfloat16> {
+struct define<tsl::bfloat16> {
   using float_bit_mask =
       rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7F80, 0x007F>;
   using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
@@ -251,7 +252,7 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                          \
           .Attr<size_t>("batch_size"));                                       \
   XLA_FFI_REGISTER_HANDLER(                                                   \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_keys_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                \
        /* .initialize = */ kCubSortKeysInitialize_##suffix,                   \
        /* .execute = */ kCubSortKeysExecute_##suffix});
@@ -277,14 +278,14 @@ static absl::Status CubSortPairsGetScratchSize(size_t* temp_bytes,
           .Attr<size_t>("num_items")                                           \
           .Attr<size_t>("batch_size"));                                        \
   XLA_FFI_REGISTER_HANDLER(                                                    \
-      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "CUDA", \
+      xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_sort_pairs_" #suffix, "ROCM", \
       {/* .instantiate = */ nullptr, /* .prepare = */ nullptr,                 \
        /* .initialize = */ kCubSortPairsInitialize_##suffix,                   \
        /* .execute = */ kCubSortPairsExecute_##suffix});
 
 // Floating point types.
 #ifdef CUB_TYPE_BF16
-XLA_CUB_DEFINE_SORT_KEYS(bf16, __nv_bfloat16)
+XLA_CUB_DEFINE_SORT_KEYS(bf16, hip_bfloat16)
 #endif
 #ifdef CUB_TYPE_F16
 XLA_CUB_DEFINE_SORT_KEYS(f16, __half)
@@ -347,6 +348,9 @@ XLA_CUB_DEFINE_SORT_PAIRS(u16_b64, uint16_t, uint64_t)
 #endif
 
 // Pairs with 32-bit key.
+#ifdef CUB_TYPE_S32_B32
+XLA_CUB_DEFINE_SORT_PAIRS(s32_b32, int32_t, uint32_t)
+#endif
 #ifdef CUB_TYPE_U32_B16
 XLA_CUB_DEFINE_SORT_PAIRS(u32_b16, uint32_t, uint16_t)
 #endif

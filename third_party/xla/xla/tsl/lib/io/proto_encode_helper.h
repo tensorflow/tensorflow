@@ -41,7 +41,7 @@ class ProtoEncodeHelper {
   const char* data() const { return base_; }
   size_t size() const { return p_ - base_; }
 
-  void WriteUint64(int tag, uint64 v) {
+  void WriteUint64(int tag, uint64_t v) {
     Encode32(combine(tag, WIRETYPE_VARINT));
     Encode64(v);
   }
@@ -54,7 +54,7 @@ class ProtoEncodeHelper {
     Encode32(v.size());
     EncodeBytes(v.data(), v.size());
   }
-  void WriteVarlengthBeginning(int tag, uint32 len) {
+  void WriteVarlengthBeginning(int tag, uint32_t len) {
     Encode32(combine(tag, WIRETYPE_LENGTH_DELIMITED));
     Encode32(len);
   }
@@ -67,8 +67,10 @@ class ProtoEncodeHelper {
     WIRETYPE_VARINT = 0,
     WIRETYPE_LENGTH_DELIMITED = 2,
   };
-  static uint32 combine(uint32 tag, uint32 type) { return ((tag << 3) | type); }
-  inline void Encode32(uint32 v) {
+  static uint32_t combine(uint32_t tag, uint32_t type) {
+    return ((tag << 3) | type);
+  }
+  inline void Encode32(uint32_t v) {
     if (v < 128) {
       // Fast path for single-byte values.  Many of the calls will use a
       // constant value for v, so the comparison will get optimized away
@@ -79,7 +81,7 @@ class ProtoEncodeHelper {
       p_ = core::EncodeVarint32(p_, v);
     }
   }
-  void Encode64(uint64 v) { p_ = core::EncodeVarint64(p_, v); }
+  void Encode64(uint64_t v) { p_ = core::EncodeVarint64(p_, v); }
   void EncodeBool(bool v) {
     *p_ = (v ? 1 : 0);  // Equal to varint32 encoding of 0 or 1
     p_++;

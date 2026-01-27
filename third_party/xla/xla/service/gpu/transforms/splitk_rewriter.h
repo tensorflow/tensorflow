@@ -35,12 +35,14 @@ class SplitkRewriter : public HloModulePass {
   explicit SplitkRewriter(se::DeviceDescription device_description)
       : device_description_(device_description) {}
 
- private:
   absl::string_view name() const override { return "splitk-rewriter"; }
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+ private:
   se::DeviceDescription device_description_;
 };
 

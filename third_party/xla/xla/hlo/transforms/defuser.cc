@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> Defuser::Run(
+absl::StatusOr<bool> Defuser::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Defusing module " << module->name();

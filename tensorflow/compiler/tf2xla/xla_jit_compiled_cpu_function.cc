@@ -76,12 +76,12 @@ int CountResults(
 // tf2xla::{Feed,Fetch,Variable}. We hold the actual strings in nonempty_names,
 // and hold arrays of pointers in name_ptrs, terminated by a nullptr entry.
 template <typename T>
-void CollectNames(const T& entries, std::vector<string>* nonempty_names,
+void CollectNames(const T& entries, std::vector<std::string>* nonempty_names,
                   std::vector<const char*>* name_ptrs) {
   // First collect `nonempty_names`, to ensure the underlying strings won't
   // change out from under us.
   for (const auto& entry : entries) {
-    const string& name = entry.name();
+    const std::string& name = entry.name();
     if (!name.empty()) {
       nonempty_names->push_back(name);
     }
@@ -90,7 +90,7 @@ void CollectNames(const T& entries, std::vector<string>* nonempty_names,
   name_ptrs->reserve(entries.size() + 1);  // +1 for nullptr array terminator
   size_t nonempty_index = 0;
   for (const auto& entry : entries) {
-    const string& name = entry.name();
+    const std::string& name = entry.name();
     if (!name.empty()) {
       name_ptrs->push_back(nonempty_names->at(nonempty_index).c_str());
       ++nonempty_index;
@@ -158,9 +158,9 @@ XlaJitCompiledCpuFunction::Compile(
       xla::cpu::CreateBufferAllocationInfos(cpu_executable->module(),
                                             buffer_assignment);
 
-  std::vector<int32> arg_index_table =
+  std::vector<int32_t> arg_index_table =
       xla::cpu::CreateArgIndexTable(buffer_infos);
-  std::vector<int32> result_index_table =
+  std::vector<int32_t> result_index_table =
       xla::cpu::CreateResultIndexTable(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,
                       ComputeResultIndex(buffer_assignment));
@@ -189,8 +189,7 @@ XlaJitCompiledCpuFunction::Compile(
             // owned by XlaJitCompiledCpuFunction.
             /*obj_files=*/{}, /*symbols=*/{},
             cpu_executable->thunks().thunk_sequence(),
-            /*function_library=*/nullptr,
-            /*hlo_profile_printer_data=*/nullptr));
+            /*function_library=*/nullptr));
 
     const std::optional<size_t> temp_allocation_index =
         compilation_result->temp_allocation_index();
@@ -266,14 +265,6 @@ XlaJitCompiledCpuFunction::Compile(
       &jit->static_data_, jit->result_names_.data());
   XlaCompiledCpuFunction::set_static_data_program_shape(
       &jit->static_data_, jit->program_shape_.get());
-
-  if (cpu_executable->hlo_profiling_enabled()) {
-    XlaCompiledCpuFunction::set_static_data_hlo_profile_printer_data(
-        &jit->static_data_, &cpu_executable->hlo_profile_printer_data());
-    XlaCompiledCpuFunction::set_static_data_profile_counters_size(
-        &jit->static_data_,
-        cpu_executable->hlo_profile_printer_data().profile_counters_size());
-  }
 
   return std::move(jit_unique_ptr);
 }

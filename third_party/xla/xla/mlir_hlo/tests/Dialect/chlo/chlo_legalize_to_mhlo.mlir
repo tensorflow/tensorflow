@@ -3620,3 +3620,17 @@ func.func @ragged_dot_frontend_attributes(%lhs : tensor<2x11x5xf32>, %rhs : tens
   } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
   func.return %0 : tensor<2x11x7xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @scan
+// CHECK-HIGH-LEVEL-LABEL: func.func @scan
+func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.scan
+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
+  func.return %0 : tensor<2x3xf32>
+}

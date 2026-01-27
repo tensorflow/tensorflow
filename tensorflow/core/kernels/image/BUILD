@@ -206,7 +206,7 @@ tf_kernel_library(
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -228,7 +228,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 
@@ -415,8 +415,8 @@ tf_cc_test(
     deps = [
         ":scale_and_translate_op",
         "@com_google_benchmark//:benchmark",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@tsl//tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:test_main",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -470,7 +470,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <string>
+#include <cstddef>
+#include <cstdint>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -24,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -36,8 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 // Sample kernels for the light outside compilation test.
 
@@ -64,14 +65,15 @@ class TestStaticTfOp : public OpKernel {
 
     // Just pass the value through.
     uint64_t size = input.AllocatedBytes();
-    se::DeviceMemoryBase gpu_dst{out_tensor->data(), size};
+    stream_executor::DeviceAddressBase gpu_dst{out_tensor->data(), size};
     se::Stream* stream = ctx->op_device_context()->stream();
 
-    OP_REQUIRES_OK(ctx,
-                   stream->MemcpyD2D(
-                       /*gpu_dst=*/&gpu_dst,
-                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-                       /*size=*/input.AllocatedBytes()));
+    OP_REQUIRES_OK(
+        ctx,
+        stream->MemcpyD2D(
+            /*gpu_dst=*/&gpu_dst,
+            /*gpu_src=*/stream_executor::DeviceAddressBase{input.data(), size},
+            /*size=*/input.AllocatedBytes()));
   }
 };
 
@@ -105,21 +107,23 @@ class TestStaticMultipleOutputTfOp : public OpKernel {
 
     // Just pass the value through.
     uint64_t size = input.AllocatedBytes();
-    se::DeviceMemoryBase gpu_dst1{out_tensor1->data(), size};
-    se::DeviceMemoryBase gpu_dst2{out_tensor2->data(), size};
+    stream_executor::DeviceAddressBase gpu_dst1{out_tensor1->data(), size};
+    stream_executor::DeviceAddressBase gpu_dst2{out_tensor2->data(), size};
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
-    OP_REQUIRES_OK(ctx,
-                   stream->MemcpyD2D(
-                       /*gpu_dst=*/&gpu_dst1,
-                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-                       /*size=*/input.AllocatedBytes()));
-    OP_REQUIRES_OK(ctx,
-                   stream->MemcpyD2D(
-                       /*gpu_dst=*/&gpu_dst2,
-                       /*gpu_src=*/se::DeviceMemoryBase{input.data(), size},
-                       /*size=*/input.AllocatedBytes()));
+    OP_REQUIRES_OK(
+        ctx,
+        stream->MemcpyD2D(
+            /*gpu_dst=*/&gpu_dst1,
+            /*gpu_src=*/stream_executor::DeviceAddressBase{input.data(), size},
+            /*size=*/input.AllocatedBytes()));
+    OP_REQUIRES_OK(
+        ctx,
+        stream->MemcpyD2D(
+            /*gpu_dst=*/&gpu_dst2,
+            /*gpu_src=*/stream_executor::DeviceAddressBase{input.data(), size},
+            /*size=*/input.AllocatedBytes()));
   }
 };
 
@@ -165,12 +169,12 @@ class TestDynamicTfOp : public OpKernel {
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
 
-    se::DeviceMemoryBase gpu_dst{out_tensor->data(), size_to_cpy};
+    stream_executor::DeviceAddressBase gpu_dst{out_tensor->data(), size_to_cpy};
     OP_REQUIRES_OK(ctx, stream->MemcpyD2D(
                             /*gpu_dst=*/&gpu_dst,
                             /*gpu_src=*/
-                            se::DeviceMemoryBase{input.data(),
-                                                 static_cast<uint64_t>(size)},
+                            stream_executor::DeviceAddressBase{
+                                input.data(), static_cast<uint64_t>(size)},
                             /*size=*/size_to_cpy));
   }
 
@@ -211,7 +215,7 @@ class DynamicMultidimOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     TensorShape output_shape;
-    auto vec = ctx->input(0).flat<int32>();
+    auto vec = ctx->input(0).flat<int32_t>();
     for (int i = 0; i < vec.size(); i++) {
       OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(vec(i)));
     }
@@ -225,8 +229,8 @@ class DynamicMultidimOp : public OpKernel {
     for (int i = 0; i < output_shape.num_elements(); i++) {
       host_data[i] = 1.0;
     }
-    se::DeviceMemoryBase gpu_dst{out_tensor->data(),
-                                 static_cast<uint64_t>(num_elements)};
+    stream_executor::DeviceAddressBase gpu_dst{
+        out_tensor->data(), static_cast<uint64_t>(num_elements)};
 
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
@@ -299,13 +303,13 @@ class TestTfMustBeConstantOp : public OpKernel {
     AllocatorAttributes pinned_alloc_attrs;
     pinned_alloc_attrs.set_on_host(true);
     pinned_alloc_attrs.set_gpu_compatible(true);
-    TF_CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
-                                   pinned_alloc_attrs));
+    CHECK_OK(ctx->allocate_temp(input.dtype(), input.shape(), &tmp,
+                                pinned_alloc_attrs));
 
-    OP_REQUIRES_OK(
-        ctx, stream->Memcpy(tmp.data(),
-                            se::DeviceMemoryBase{input.data(), allocated_size},
-                            allocated_size));
+    OP_REQUIRES_OK(ctx, stream->Memcpy(tmp.data(),
+                                       stream_executor::DeviceAddressBase{
+                                           input.data(), allocated_size},
+                                       allocated_size));
 
     OP_REQUIRES_OK(ctx, stream->BlockHostUntilDone());
 
@@ -316,8 +320,8 @@ class TestTfMustBeConstantOp : public OpKernel {
     Tensor* out_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("output", ctx->input(0).shape(),
                                              &out_tensor));
-    se::DeviceMemoryBase gpu_dst{out_tensor->data(),
-                                 static_cast<uint64_t>(allocated_size)};
+    stream_executor::DeviceAddressBase gpu_dst{
+        out_tensor->data(), static_cast<uint64_t>(allocated_size)};
     OP_REQUIRES_OK(ctx, stream->Memcpy(&gpu_dst, tmp.data(), allocated_size));
   }
 };
@@ -361,11 +365,12 @@ class TestDynamicTfWithBoundOp : public OpKernel {
 
     se::Stream* stream =
         ctx->device()->tensorflow_accelerator_device_info()->stream;
-    se::DeviceMemoryBase gpu_dst{out_tensor->data(), size_to_cpy};
+    stream_executor::DeviceAddressBase gpu_dst{out_tensor->data(), size_to_cpy};
     OP_REQUIRES_OK(
         ctx, stream->MemcpyD2D(
                  /*gpu_dst=*/&gpu_dst,
-                 /*gpu_src=*/se::DeviceMemoryBase{input.data(), size_to_cpy},
+                 /*gpu_src=*/
+                 stream_executor::DeviceAddressBase{input.data(), size_to_cpy},
                  /*size=*/size_to_cpy));
   }
 

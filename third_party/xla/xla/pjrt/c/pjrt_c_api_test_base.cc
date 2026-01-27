@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 
 #include <memory>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla_data.pb.h"
 
 namespace pjrt {
@@ -135,7 +134,7 @@ std::string PjrtCApiTestBase::BuildSingleDeviceCompileOptionStr() {
   xla::CompileOptions options;
   options.executable_build_options = build_options;
   absl::StatusOr<xla::CompileOptionsProto> options_proto = options.ToProto();
-  TF_CHECK_OK(options_proto.status());
+  CHECK_OK(options_proto.status());
   return options_proto->SerializeAsString();
 }
 
@@ -189,7 +188,7 @@ std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
 PjrtCApiTestBase::create_iota_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   return create_buffer_from_data(float_data, shape, device);
 }
 

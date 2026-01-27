@@ -28,32 +28,33 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/protobuf.h"
 
 namespace mlir {
 class DialectRegistry;
@@ -67,39 +68,9 @@ namespace xla {
 // computation.
 using ObjectFileData = std::vector<char>;
 
-class Compiler;
 class AotCompilationOptions;
 
-// Abstract superclass describing the result of an ahead-of-time compilation.
-class AotCompilationResult {
- public:
-  AotCompilationResult(const AotCompilationResult&) = delete;
-  AotCompilationResult& operator=(AotCompilationResult const&) = delete;
-
-  virtual ~AotCompilationResult() = default;
-
-  virtual absl::StatusOr<std::string> SerializeAsString() const {
-    return Unimplemented("SerializeAsString unimplemented.");
-  }
-
-  virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      Compiler* compiler, const se::StreamExecutor* executor) && {
-    return Unimplemented("LoadExecutable unimplemented.");
-  }
-
-  virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const {
-    return Unimplemented("buffer_assignment unimplemented.");
-  }
-
-  // Returns the optimized HLO module if one was computed and the implementation
-  // supports it.
-  virtual const HloModule* optimized_module() const = 0;
-  virtual std::unique_ptr<HloModule> consume_optimized_module() = 0;
-
- protected:
-  AotCompilationResult() = default;
-};
+using AotCompilationResult ABSL_DEPRECATE_AND_INLINE() = CompiledModule;
 
 // Abstract superclass describing metadata produced during ahead-of-time
 // compilation.
@@ -131,30 +102,17 @@ class AotCompilationMetadata {
 class Compiler {
  public:
   // Description of a target device for compilation.
-  struct TargetConfig {
-    explicit TargetConfig(se::StreamExecutor* s);
+  using GpuTargetConfig = ::xla::gpu::GpuTargetConfig;
 
-    static absl::StatusOr<TargetConfig> FromProto(
-        const se::GpuTargetConfigProto& proto);
+  // Description of a target CPU for compilation.
+  struct CpuTargetConfig {
+    explicit CpuTargetConfig(
+        const cpu::TargetMachineOptions& target_machine_options)
+        : cpu_target_machine_options(target_machine_options) {};
 
-    se::GpuTargetConfigProto ToProto() const;
-
-    bool operator==(const TargetConfig& other) const {
-      // TODO(cheshire): More efficient comparator, this is currently just for
-      // tests.
-      return ToProto().SerializeAsString() ==
-             other.ToProto().SerializeAsString();
-    }
-
-    std::string ToString() { return ToProto().DebugString(); }
-
-    se::DeviceDescription device_description;
-    std::string platform_name;
-    se::dnn::VersionInfo dnn_version_info;
-    std::string device_description_str;
-
-   private:
-    TargetConfig() = default;
+    // If not set, we default to the options inferred from the host machine.
+    std::optional<cpu::TargetMachineOptions> cpu_target_machine_options =
+        std::nullopt;
   };
 
   struct CompileOptions {
@@ -163,7 +121,7 @@ class Compiler {
     // compiler may allocate buffers on the device and then run variants of a
     // given algorithm over those buffers, to see which variant is fastest.  Any
     // space allocated will be deallocated before the compilation returns.
-    se::DeviceMemoryAllocator* device_allocator = nullptr;
+    se::DeviceAddressAllocator* device_allocator = nullptr;
 
     // An optional thread pool for parallel compilation.
     tsl::thread::ThreadPool* thread_pool = nullptr;
@@ -172,16 +130,23 @@ class Compiler {
         const HloModule& module)>
         layout_canonicalization_callback = {};
 
-    bool is_autotuning_compilation = false;
+    // GPU topology. If provided, used instead of querying the device on which
+    // compilation is performed.
+    std::optional<GpuTopology> gpu_topology;
 
-    // AOT device description. If provided, used instead of querying the device
-    // on which compilation is performed.
-    std::optional<TargetConfig> target_config;
+    // CPU specific target information.
+    std::optional<CpuTargetConfig> cpu_target_config;
 
     MultiProcessKeyValueStore key_value_store;
 
     // The number of devices in a fast-interconnect domain.
     int64_t slice_size = 0;
+
+    // Embed HLO module in the executable. Only used on GPU at the moment.
+    bool embed_hlo_module = true;
+
+    // If true, the compiler will exit after the layout assignment pass.
+    bool early_exit_with_layouts = false;
   };
 
   virtual ~Compiler() = default;
@@ -196,7 +161,7 @@ class Compiler {
       const CompileOptions& options) = 0;
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      se::DeviceMemoryAllocator* device_allocator) {
+      se::DeviceAddressAllocator* device_allocator) {
     return RunHloPasses(std::move(module), executor,
                         CompileOptions{device_allocator});
   }
@@ -214,7 +179,7 @@ class Compiler {
       const CompileOptions& options) = 0;
   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      se::DeviceMemoryAllocator* device_allocator) {
+      se::DeviceAddressAllocator* device_allocator) {
     return RunBackend(std::move(module), executor,
                       CompileOptions{device_allocator});
   }
@@ -238,7 +203,7 @@ class Compiler {
       std::unique_ptr<HloModule> module,
       const BufferAssignmentProto* buffer_assignment_proto,
       se::StreamExecutor* executor,
-      se::DeviceMemoryAllocator* device_allocator) {
+      se::DeviceAddressAllocator* device_allocator) {
     return RunBackendWithBufferAssignment(std::move(module),
                                           buffer_assignment_proto, executor,
                                           CompileOptions{device_allocator});
@@ -246,7 +211,7 @@ class Compiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>>
   LoadAotCompilationResult(const std::string& serialized_aot_result) {
     return Unimplemented("LoadAotCompilationResult unimplemented.");
   }
@@ -264,7 +229,7 @@ class Compiler {
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModule> hlo_module,
       std::vector<se::StreamExecutor*> stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) {
+      se::DeviceAddressAllocator* device_allocator) {
     return Compile(std::move(hlo_module), stream_exec,
                    CompileOptions{device_allocator});
   }
@@ -290,13 +255,13 @@ class Compiler {
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
-  virtual absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  virtual absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> module,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
@@ -318,7 +283,11 @@ class Compiler {
   // Returns the compiler singleton pointer if it is available for the given
   // platform, or an error status if it is not.
   static absl::StatusOr<std::unique_ptr<Compiler>> GetForPlatform(
-      const se::Platform* platform);
+      se::Platform::Id platform_id);
+
+  static bool ExistsForPlatform(const se::Platform* platform) {
+    return GetPlatformCompilerFactories()->contains(platform->id());
+  }
 
   // Returns a function that computes the size in bytes of the logical
   // buffer that contains a shape.
@@ -338,8 +307,8 @@ class Compiler {
   }
 
   // Returns an AotCompilationResult of the executable for serialization.
-  virtual absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const {
+  virtual absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
+      Executable* executable) {
     return Unimplemented("Export unimplemented");
   }
 
@@ -352,6 +321,13 @@ class Compiler {
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
       const absl::string_view serialized) const {
     return Unimplemented("DeserializeExecutable unimplemented");
+  }
+
+  // Creates an `Executable` based on the given `aot_result`.
+  virtual absl::StatusOr<std::unique_ptr<Executable>>
+  LoadExecutableFromAotResult(const CompiledModule& aot_result,
+                              const se::StreamExecutor& stream_exec) {
+    return Unimplemented("LoadExecutableFromAotResult unimplemented");
   }
 
  private:
@@ -399,10 +375,10 @@ class AotCompilationOptions {
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
-  se::DeviceMemoryAllocator* device_allocator() const {
+  se::DeviceAddressAllocator* device_allocator() const {
     return device_allocator_;
   }
-  void set_device_allocator(se::DeviceMemoryAllocator* device_allocator) {
+  void set_device_allocator(se::DeviceAddressAllocator* device_allocator) {
     device_allocator_ = device_allocator;
   }
 
@@ -468,11 +444,23 @@ class AotCompilationOptions {
     sanitize_abilists_dataflow_ = abilists;
   }
 
-  const std::optional<Compiler::TargetConfig>& target_config() const {
-    return target_config_;
+  const std::optional<GpuTopology>& gpu_topology() const {
+    return gpu_topology_;
   }
-  void set_target_config(const Compiler::TargetConfig& target_config) {
-    target_config_ = target_config;
+  void set_gpu_topology(const GpuTopology& gpu_topology) {
+    gpu_topology_ = gpu_topology;
+  }
+
+  // Provides a way to end compilation early and get partial outputs.
+  enum class EarlyExitPoint {
+    kNone,
+    kAfterLayoutAssignment,
+    kAfterBufferAssignment,
+  };
+
+  EarlyExitPoint early_exit_point() const { return early_exit_point_; }
+  void set_early_exit_point(EarlyExitPoint early_exit_point) {
+    early_exit_point_ = early_exit_point;
   }
 
  protected:
@@ -480,7 +468,7 @@ class AotCompilationOptions {
 
  private:
   se::Platform::Id platform_id_;
-  se::DeviceMemoryAllocator* device_allocator_ = nullptr;
+  se::DeviceAddressAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   std::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
@@ -493,7 +481,8 @@ class AotCompilationOptions {
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
   // Contains target-specific information required by AOT compilation.
-  std::optional<Compiler::TargetConfig> target_config_;
+  std::optional<GpuTopology> gpu_topology_;
+  EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
 };
 
 }  // namespace xla

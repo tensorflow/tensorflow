@@ -883,7 +883,7 @@ absl::Status LinearizeCollectivesWithPipelinedP2PChild(
 
 }  // namespace
 
-absl::StatusOr<bool> P2PSchedulePreparation::Run(
+absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   P2PGroupMap p2p_group_map;

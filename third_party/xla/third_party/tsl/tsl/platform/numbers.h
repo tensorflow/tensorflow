@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <type_traits>
 
 #include "absl/base/macros.h"
 #include "absl/strings/numbers.h"
@@ -30,21 +31,7 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
-// ----------------------------------------------------------------------
-// FastIntToBufferLeft()
-//    These are intended for speed.
-//
-//    All functions take the output buffer as an arg.  FastInt() uses
-//    at most 22 bytes, FastTime() uses exactly 30 bytes.  They all
-//    return a pointer to the beginning of the output, which is the same as
-//    the beginning of the input buffer.
-//
-//    NOTE: In 64-bit land, sizeof(time_t) is 8, so it is possible
-//    to pass to FastTimeToBuffer() a time whose year cannot be
-//    represented in 4 digits. In this case, the output buffer
-//    will contain the string "Invalid:<value>"
-// ----------------------------------------------------------------------
-
+namespace strings_internal {
 // Previously documented minimums -- the buffers provided must be at least this
 // long, though these numbers are subject to change:
 //     Int32, UInt32:                   12 bytes
@@ -53,33 +40,6 @@ namespace strings {
 // Use kFastToBufferSize rather than hardcoding constants.
 inline constexpr int kFastToBufferSize = 32;
 
-// ----------------------------------------------------------------------
-// FastInt32ToBufferLeft()
-// FastUInt32ToBufferLeft()
-// FastInt64ToBufferLeft()
-// FastUInt64ToBufferLeft()
-//
-// These functions convert their numeric argument to an ASCII
-// representation of the numeric value in base 10, with the
-// representation being left-aligned in the buffer.  The caller is
-// responsible for ensuring that the buffer has enough space to hold
-// the output.  The buffer should typically be at least kFastToBufferSize
-// bytes.
-//
-// Returns the number of characters written.
-// ----------------------------------------------------------------------
-
-size_t FastInt32ToBufferLeft(int32_t i, char* buffer);  // at least 12 bytes
-size_t FastUInt32ToBufferLeft(uint32_t i, char* buffer);  // at least 12 bytes
-size_t FastInt64ToBufferLeft(int64_t i, char* buffer);  // at least 22 bytes
-size_t FastUInt64ToBufferLeft(uint64_t i, char* buffer);  // at least 22 bytes
-
-// Required buffer size for DoubleToBuffer is kFastToBufferSize.
-// Required buffer size for FloatToBuffer is kFastToBufferSize.
-size_t DoubleToBuffer(double value, char* buffer);
-size_t FloatToBuffer(float value, char* buffer);
-
-namespace strings_internal {
 // AlphaNumBuffer allows a way to pass a string to absl::StrCat without having
 // to do memory allocation. It is simply a pair of a fixed-size character
 // array, and a size.  Please don't use outside of the "strings" package.
@@ -173,36 +133,19 @@ inline bool safe_strtod(absl::string_view str, double* value) {
   return absl::SimpleAtod(str, value);
 }
 
-inline bool ProtoParseNumeric(absl::string_view s, int32_t* value) {
-  return absl::SimpleAtoi(s, value);
-}
-
-inline bool ProtoParseNumeric(absl::string_view s, uint32_t* value) {
-  return absl::SimpleAtoi(s, value);
-}
-
-inline bool ProtoParseNumeric(absl::string_view s, int64_t* value) {
-  return absl::SimpleAtoi(s, value);
-}
-
-inline bool ProtoParseNumeric(absl::string_view s, uint64_t* value) {
-  return absl::SimpleAtoi(s, value);
-}
-
-inline bool ProtoParseNumeric(absl::string_view s, float* value) {
-  return absl::SimpleAtof(s, value);
-}
-
-inline bool ProtoParseNumeric(absl::string_view s, double* value) {
-  return absl::SimpleAtod(s, value);
-}
-
 // Convert strings to number of type T.
 // Leading and trailing spaces are allowed.
 // Values may be rounded on over- and underflow.
 template <typename T>
 bool SafeStringToNumeric(absl::string_view s, T* value) {
-  return ProtoParseNumeric(s, value);
+  if constexpr (std::is_integral_v<T>) {
+    return absl::SimpleAtoi(s, value);
+  } else if constexpr (std::is_same_v<T, float>) {
+    return absl::SimpleAtof(s, value);
+  } else {
+    static_assert(std::is_same_v<T, double>);
+    return absl::SimpleAtod(s, value);
+  }
 }
 
 // Converts from an int64 to a human readable string representing the

@@ -31,10 +31,8 @@ class ConditionalToSelect : public HloModulePass {
   ~ConditionalToSelect() override = default;
   absl::string_view name() const override { return "conditional-to-select"; }
 
-  // Run conditional to select on the given computation. Returns whether the
-  // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

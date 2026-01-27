@@ -539,8 +539,8 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     DimensionHandle new_height = c->UnknownDim();
     DimensionHandle new_width = c->UnknownDim();
     if (size != nullptr) {
-      new_height = c->MakeDim(size->flat<int32>()(0));
-      new_width = c->MakeDim(size->flat<int32>()(1));
+      new_height = c->MakeDim(size->flat<int32_t>()(0));
+      new_width = c->MakeDim(size->flat<int32_t>()(1));
     }
     TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 1, new_height, &resized));
     TF_RETURN_IF_ERROR(c->ReplaceDim(resized, 2, new_width, &resized));
@@ -559,8 +559,8 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
     std::vector<DimensionHandle> output_dims;
     for (int i = 0; i < 4; ++i) {
       DimensionHandle dim = c->Dim(resized, i);
-      int64_t p0 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 0));
-      int64_t p1 = static_cast<int64_t>(paddings_t->matrix<int32>()(i, 1));
+      int64_t p0 = static_cast<int64_t>(paddings_t->matrix<int32_t>()(i, 0));
+      int64_t p1 = static_cast<int64_t>(paddings_t->matrix<int32_t>()(i, 1));
       if (p0 < 0 || p1 < 0) {
         return errors::InvalidArgument("Paddings must be non-negative");
       }
@@ -576,7 +576,7 @@ absl::Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   // Work out the convolution's effect with 'padded' as the input.
   ShapeHandle filter;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(filter_index), 4, &filter));
-  std::vector<int32> strides;
+  std::vector<int32_t> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
   if (strides.size() != 4) {
     return errors::InvalidArgument(
@@ -1026,7 +1026,7 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
-      std::vector<int32> ksize;
+      std::vector<int32_t> ksize;
       TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
       for (int i = 0; i < ksize.size(); ++i) {
         if (ksize[i] <= 0) {
@@ -1091,7 +1091,7 @@ REGISTER_OP("Dilation2D")
       ShapeHandle filter_shape;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &filter_shape));
 
-      std::vector<int32> strides;
+      std::vector<int32_t> strides;
       TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
       if (strides.size() != 4) {
         return errors::InvalidArgument(
@@ -1100,7 +1100,7 @@ REGISTER_OP("Dilation2D")
             strides.size());
       }
 
-      std::vector<int32> rates;
+      std::vector<int32_t> rates;
       TF_RETURN_IF_ERROR(c->GetAttr("rates", &rates));
       if (rates.size() != 4) {
         return errors::InvalidArgument(

@@ -19,7 +19,7 @@ cc_library(
     ],
     hdrs = ["snappy.h"],
     copts = ["-DHAVE_CONFIG_H"] + select({
-        "@local_xla//xla/tsl:windows": [],
+        "@xla//xla/tsl:windows": [],
         "//conditions:default": [
             "-fno-exceptions",
             "-Wno-sign-compare",
@@ -28,7 +28,7 @@ cc_library(
         ],
     }),
     defines = select({
-        "@local_xla//xla/tsl:windows": [],
+        "@xla//xla/tsl:windows": [],
         "//conditions:default": ["HAVE_SYS_UIO_H"],
     }),
 )

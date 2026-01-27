@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <cstdlib>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -34,20 +33,9 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/nvml/include/nvml.h"
-#endif  // GOOGLE_CUDA
 namespace xla {
 namespace gpu {
-
 namespace {
-
-// Different algorithms that can be used to perform the collective.
-enum class CollectiveAlgo {
-  RING = 0,
-  TREE,
-};
 
 struct CudaBandwidthSettings {
   // Table for max system bandwidths GB/s for using NCCL's low latency
@@ -87,15 +75,22 @@ struct CudaBandwidthSettings {
 
   // Returns NVLink bw in GB/s
   float GetNvlinkBw() const {
-    return compute_capability.IsAtLeast(se::CudaComputeCapability::kHopper)
-               ? kSm90NvlinkBandwidth
-           : compute_capability.IsAtLeast(se::CudaComputeCapability::kAmpere)
-               ? kSm80NvlinkBandwidth
-           : compute_capability.IsAtLeast(se::CudaComputeCapability::kVolta)
-               ? kSm70NvlinkBandwidth
-           : compute_capability.IsAtLeast(se::CudaComputeCapability::kPascal)
-               ? kSm60NvlinkBandwidth
-               : kSm80NvlinkBandwidth;
+    switch (compute_capability.major) {
+      case se::CudaComputeCapability::kBlackwell:
+        return kSm100NvlinkBandwidth;
+      case se::CudaComputeCapability::kHopper:
+        return kSm90NvlinkBandwidth;
+      case se::CudaComputeCapability::kAmpere:
+        return kSm80NvlinkBandwidth;
+      case se::CudaComputeCapability::kVolta:
+        return kSm70NvlinkBandwidth;
+      case se::CudaComputeCapability::kPascal:
+        return kSm60NvlinkBandwidth;
+      default:
+        LOG(WARNING) << "NVLink bandwidth for " << compute_capability.ToString()
+                     << "unknown. Assumes Blackwell.";
+        return kSm100NvlinkBandwidth;
+    }
   }
 
   // Max bandwidth in GB/s for ring low latency 128 algorithm per channel on a
@@ -111,15 +106,13 @@ struct CudaBandwidthSettings {
   static constexpr double kSm70NvlinkBandwidth = 20.0;
   static constexpr double kSm80NvlinkBandwidth = 20.0;
   static constexpr double kSm90NvlinkBandwidth = 20.0;
-
-  // PCIE bandwidth for PCI Gen3 x16
-  static constexpr double kPciBandwidth = 12.0;
+  static constexpr double kSm100NvlinkBandwidth = 40.0;
 
   // Discount factor for ring algorithm
   static constexpr double kRingAlgorithmDiscountFactor = 0.92;
 
   // Maximum number of channels allowed by NCCL
-  static constexpr int64_t kMaxNumChannelsRing = 16;
+  static constexpr int64_t kMaxNumChannelsRing = 32;
 
   // ll128 is by default enabled for Volta, Ampere and Hopper, ll128 by default
   // launches 640 threads.
@@ -211,9 +204,6 @@ struct RocmBandwidthSettings {
   static constexpr double kMi200InfinityFabricBandwidth = 75.0;
   static constexpr double kMi300InfinityFabricBandwidth = 112.0;
 
-  // PCIe bandwidth for PCI Gen4 x16 (approximate)
-  static constexpr double kPciBandwidth = 32.0;
-
   // Discount factor for ring algorithm (based on ROCm NCCL implementation)
   static constexpr double kRingAlgorithmDiscountFactor = 0.90;
 
@@ -245,15 +235,9 @@ float GetMaxLowLatencyBandwidth(const BandwidthSettings& bandwidth_settings) {
 static constexpr absl::Duration kNcclKernelLaunchOverhead =
     absl::Microseconds(5);
 
-int64_t GetNcclMaxNumChannels(CollectiveAlgo algorithm) {
-  int64_t max_nchannels = 0;
-  switch (algorithm) {
-      // Tree and Ring algos share the same max channel number.
-    case CollectiveAlgo::RING:
-    case CollectiveAlgo::TREE:
-      max_nchannels = CudaBandwidthSettings::kMaxNumChannelsRing;
-      break;
-  }
+int64_t GetNcclMaxNumChannels() {
+  int64_t max_nchannels = CudaBandwidthSettings::kMaxNumChannelsRing;
+
   const char* env = std::getenv("NCCL_MAX_NCHANNELS");
   if (env != nullptr) {
     int64_t max_nchannels_from_env;
@@ -264,15 +248,8 @@ int64_t GetNcclMaxNumChannels(CollectiveAlgo algorithm) {
   return max_nchannels;
 }
 
-int64_t GetMinNumberOfChannels(CollectiveAlgo algorithm) {
-  int64_t min_nchannels = 0;
-  switch (algorithm) {
-      // Tree and Ring algos share the same min channel number.
-    case CollectiveAlgo::RING:
-    case CollectiveAlgo::TREE:
-      min_nchannels = 1;
-      break;
-  }
+int64_t GetMinNumberOfChannels() {
+  int64_t min_nchannels = 1;
   const char* env = std::getenv("NCCL_MIN_NCHANNELS");
   if (env != nullptr) {
     int64_t min_nchannels_from_env;
@@ -317,14 +294,13 @@ absl::Duration ComputeAllreduceTimeImpl(
   float bw_intra_node = GetMaxLowLatencyBandwidth(bandwidth_settings);
   int64_t num_devices = cost_analysis->NumOfDevices(instr);
 
-  int64_t min_nchannels =
-      std::max(num_devices, GetMinNumberOfChannels(CollectiveAlgo::RING));
-  int64_t num_channels =
-      std::max(min_nchannels, GetNcclMaxNumChannels(CollectiveAlgo::RING));
-  int default_threads =
-      (bw_intra_node * num_channels <= bandwidth_settings.kPciBandwidth)
-          ? 256
-          : bandwidth_settings.kLL128NumThreads;
+  int64_t min_nchannels = std::max(num_devices, GetMinNumberOfChannels());
+  int64_t num_channels = std::max(min_nchannels, GetNcclMaxNumChannels());
+  int64_t pcie_bandwidth_gbps =
+      gpu_device_info.pcie_bandwidth() / 1024 / 1024 / 1024;
+  int default_threads = (bw_intra_node * num_channels <= pcie_bandwidth_gbps)
+                            ? 256
+                            : bandwidth_settings.kLL128NumThreads;
 
   int warp_size = gpu_device_info.threads_per_warp();
   int num_threads =
@@ -339,16 +315,17 @@ absl::Duration ComputeAllreduceTimeImpl(
           /*num_blocks=*/num_channels, /*num_threads_per_block=*/num_threads);
   total_time += compute_time_per_channel;
 
-  uint32_t supported_p2p =
-      GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P();
-
-  if (supported_p2p == 0) {
-    VLOG(8) << "Nvlink doesn't support p2p communication. Model will "
-               "continue using default system bandwidth.";
-  } else {
+  if (gpu_device_info.device_interconnect_info().active_links) {
     VLOG(8) << "Nvlink supports p2p communication, setting intra node "
                "bandwidth to nvlink bw.";
     bw_intra_node = bandwidth_settings.GetNvlinkBw();
+    num_channels =
+        std::min(static_cast<int64_t>(
+                     gpu_device_info.device_interconnect_info().active_links),
+                 num_channels);
+  } else {
+    VLOG(8) << "Nvlink doesn't support p2p communication. Model will "
+               "continue using default system bandwidth.";
   }
 
   double bus_bandwidth = bw_intra_node * num_channels;
@@ -379,31 +356,6 @@ RocmBandwidthSettings CreateSettings(
 }
 
 }  // namespace
-
-/*static*/ uint32_t
-GpuPerformanceWithCollectiveModel::CheckIfNvlinkSupportsP2P() {
-#if GOOGLE_CUDA
-  // We will use nvml library to detect nvlink capability
-  // to see if it supports p2p communication.
-  // Then gpu 0 will be used to query for nvlink capability, note that
-  // we only look at link 0 of gpu 0 since all other links are assumed
-  // to have the same capability.
-  nvmlDevice_t nvml_device;
-  nvmlReturn_t get_device_result = nvmlDeviceGetHandleByIndex(0, &nvml_device);
-  CHECK(get_device_result == NVML_SUCCESS);
-
-  uint32_t supported_p2p = 0;
-
-  nvmlReturn_t nvlink_cap_result = nvmlDeviceGetNvLinkCapability(
-      nvml_device, /*nvlink link number*/ 0, NVML_NVLINK_CAP_P2P_SUPPORTED,
-      &supported_p2p);
-  CHECK(nvlink_cap_result == NVML_SUCCESS ||
-        nvlink_cap_result == NVML_ERROR_NOT_SUPPORTED);
-  return supported_p2p;
-#else
-  return 0;
-#endif  // GOOGLE_CUDA
-}
 
 /*static*/ absl::Duration
 GpuPerformanceWithCollectiveModel::ComputeAllreduceTime(

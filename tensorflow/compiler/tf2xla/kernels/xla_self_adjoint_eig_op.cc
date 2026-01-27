@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/hlo/builder/lib/self_adjoint_eig.h"
@@ -41,7 +43,7 @@ class XlaSelfAdjointEigOp : public XlaOpKernel {
 
  private:
   bool lower_;
-  int32 max_iter_;
+  int32_t max_iter_;
   float epsilon_;
 };
 

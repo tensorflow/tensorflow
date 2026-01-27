@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"
@@ -47,7 +47,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -59,9 +61,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/service/gpu/thunk_emitter.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -80,8 +81,9 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
-
 namespace {
+
+using ::mlir::MLIRContext;
 
 using tsl::profiler::ScopedAnnotation;
 
@@ -118,27 +120,9 @@ void RemoveUnusedAndUninitializedGlobals(
   }
 }
 
-CompileModuleResults InitializeResults(const HloModule* hlo_module,
-                                       llvm::LLVMContext* llvm_context,
-                                       const std::string& target_triple,
-                                       const std::string& data_layout,
-                                       const bool split_constants_module) {
-  absl::string_view module_name = hlo_module->name();
+CompileModuleResults InitializeResults(const HloModule* hlo_module) {
   CompileModuleResults results;
-  results.module_name = module_name;
-  results.llvm_module =
-      std::make_unique<llvm::Module>(module_name, *llvm_context);
-  results.llvm_module->setTargetTriple(llvm::Triple(target_triple));
-  results.llvm_module->setDataLayout(data_layout);
-
-  if (split_constants_module) {
-    // Constants are emitted into a separate module to avoid caching them.
-    results.llvm_module_constants = std::make_unique<llvm::Module>(
-        absl::StrCat(module_name, "_consts"), *llvm_context);
-    results.llvm_module_constants->setTargetTriple(llvm::Triple(target_triple));
-    results.llvm_module_constants->setDataLayout(data_layout);
-  }
-
+  results.module_name = hlo_module->name();
   results.use_original_allocations = true;
   results.execution_stream_assignment =
       std::make_unique<ExecutionStreamAssignment>(hlo_module);
@@ -164,6 +148,7 @@ std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto mlir_context = std::make_unique<mlir::MLIRContext>(
       registry, mlir::MLIRContext::Threading::DISABLED);
   mlir_context->getDiagEngine().registerHandler(DiagnosticHandler);
+  RegisterSymbolicExprStorage(mlir_context.get());
   return mlir_context;
 }
 
@@ -176,39 +161,6 @@ bool UseCache(const DebugOptions& options, bool split_constants_module) {
   return split_constants_module &&
          options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
          !options.xla_gpu_kernel_cache_file().empty();
-}
-
-absl::StatusOr<std::unique_ptr<SequentialThunk>> LowerHlo(
-    const HloModule* hlo_module, IrEmitterContext& ir_emitter_context,
-    llvm::Module* llvm_module_constants, se::Platform::Id platform_id,
-    bool use_cache) {
-  const DebugOptions& options = hlo_module->config().debug_options();
-  ScopedAnnotation annotation(Phase("XlaEmitLlvmIr", hlo_module));
-  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-
-  if (use_cache) {
-    TF_RETURN_IF_ERROR(
-        LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
-  }
-  std::unique_ptr<IrEmitterUnnested> ir_emitter =
-      IrEmitterUnnested::Create(&ir_emitter_context);
-  {
-    XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
-        "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
-
-    TF_RETURN_IF_ERROR(
-        ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
-
-    RemoveUnusedAndUninitializedGlobals(
-        platform_id, options, ir_emitter_context.llvm_module_constants(),
-        ir_emitter_context.constants());
-
-    // This won't record values for calls that error out (because if they error
-    // out we have no way of telling how far through the process we got).
-    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
-    RecordHloToLlvmDuration(end_usecs - start_usecs);
-  }
-  return ir_emitter->ConsumeThunkSequence();
 }
 
 }  // namespace
@@ -233,8 +185,7 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
     // Register all cached kernel names with the name uniquer to avoid
     // naming conflicts.
     for (const auto& [name, _] : proto.entries()) {
-      TF_RET_CHECK(ir_emitter_context.name_uniquer()->GetUniqueName(name) ==
-                   name)
+      TF_RET_CHECK(ir_emitter_context.GetSanitizedUniqueName(name) == name)
           << "Failed registering " << name << "in NameUniquer.";
     }
     TF_RETURN_IF_ERROR(ir_emitter_context.kernel_cache().Load(proto));
@@ -257,6 +208,10 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
                 (int)MemorySpaceColor::kTempBuffer)
           : std::nullopt;
 
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = CreateColorer(options);
+  opts.temp_buffer_color = color;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
@@ -264,12 +219,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           std::move(buffer_size_bytes_function), alias_info,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
-          /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/CreateColorer(options),
-          /*must_not_live_out=*/{},
-          /*preset_assignments*/ {},
-          /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
-          /*isolation_options*/ std::nullopt, color));
+          std::move(opts)));
 
   VLOG(1) << "Buffer Assignment Stats for " << module->name() << "\n"
           << buffer_assignment->StatsString(alias_info);
@@ -279,17 +229,16 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const se::Platform* platform, const se::DeviceDescription& device_desc,
+    se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     bool split_constants_module) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const bool use_cache =
       UseCache(hlo_module->config().debug_options(), split_constants_module);
 
-  CompileModuleResults results =
-      InitializeResults(hlo_module, llvm_context, target_triple, data_layout,
-                        split_constants_module);
+  CompileModuleResults results = InitializeResults(hlo_module);
 
   TF_ASSIGN_OR_RETURN(
       results.buffer_assignment,
@@ -308,19 +257,52 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           << ": " << hlo_module->GetFingerprint128();
 
   std::unique_ptr<mlir::MLIRContext> mlir_context = CreateMlirContext();
-  auto symbolic_expr_context =
-      std::make_unique<SymbolicExprContext>(mlir_context.get());
   IrEmitterContext ir_emitter_context(
       hlo_module, results.buffer_assignment.get(),
-      results.execution_stream_assignment.get(), platform->Name(), device_desc,
-      symbolic_expr_context.get(), results.llvm_module.get(),
-      results.llvm_module_constants.get(),
-      /*emit_kernels=*/true);
+      results.execution_stream_assignment.get(), platform_id->ToName(),
+      device_desc, mlir_context.get(), llvm_context, /*emit_kernels=*/true,
+      llvm::Triple(target_triple), data_layout);
+  ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
 
-  TF_ASSIGN_OR_RETURN(
-      results.executable,
-      LowerHlo(hlo_module, ir_emitter_context,
-               results.llvm_module_constants.get(), platform->id(), use_cache));
+  const DebugOptions& options = hlo_module->config().debug_options();
+  ScopedAnnotation annotation(Phase("XlaEmitLlvmIr", hlo_module));
+  uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
+  if (use_cache) {
+    TF_RETURN_IF_ERROR(
+        LoadCache(ir_emitter_context, options.xla_gpu_kernel_cache_file()));
+  }
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
+
+  TF_ASSIGN_OR_RETURN(auto sequential_thunk,
+                      thunk_emitter.EmitHloEntryComputation(hlo_module));
+  results.executable = std::move(sequential_thunk);
+
+  // Assemble the LLVM module with all kernels.
+  results.llvm_module =
+      split_constants_module
+          ? ir_emitter_context.CreateLLVMModule(hlo_module->name())
+          : thunk_emitter.ConsumeConstantsModule();
+  llvm::Linker linker(*results.llvm_module);
+  for (auto& kernel_module : thunk_emitter.ConsumeKernelModules()) {
+    CHECK(!linker.linkInModule(std::move(kernel_module),
+                               llvm::Linker::Flags::OverrideFromSrc));
+  }
+  if (split_constants_module) {
+    results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
+  }
+
+  RemoveUnusedAndUninitializedGlobals(platform_id, options,
+                                      split_constants_module
+                                          ? results.llvm_module_constants.get()
+                                          : results.llvm_module.get(),
+                                      ir_emitter_context.constants());
+
+  // This won't record values for calls that error out (because if they error
+  // out we have no way of telling how far through the process we got).
+  uint64_t end_usecs = tsl::Env::Default()->NowMicros();
+  RecordHloToLlvmDuration(end_usecs - start_usecs);
 
   results.constants = std::move(ir_emitter_context.constants());
   if (use_cache) {

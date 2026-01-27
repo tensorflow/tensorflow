@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_EXECUTOR_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -38,50 +40,57 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/tensor_map.h"
 
 namespace stream_executor::gpu {
 
 // This class implements GpuExecutor for NVIDIA GPUs that use CUDA libraries.
 class CudaExecutor : public GpuExecutor {
  public:
-  CudaExecutor(Platform* platform, int device_ordinal)
-      : GpuExecutor(platform, device_ordinal) {}
+  CudaExecutor(Platform* platform, int device_ordinal,
+               CollectiveAllocatorType collective_allocator_type)
+      : GpuExecutor(platform, device_ordinal),
+        collective_allocator_type_(collective_allocator_type) {}
+
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
   bool SynchronizeAllActivity() override;
-  absl::StatusOr<DeviceMemoryBase> GetMemoryRange(
-      const DeviceMemoryBase& location) override;
-
+  absl::StatusOr<DeviceAddressBase> GetMemoryRange(
+      const DeviceAddressBase& location) const override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       Stream* stream, bool use_delay_kernel) override;
-  absl::StatusOr<DeviceMemoryBase> GetSymbol(
+  absl::StatusOr<DeviceAddressBase> GetSymbol(
       const std::string& symbol_name, ModuleHandle module_handle) override;
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override;
-  absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
+                                 const DeviceAddressBase& gpu_src,
                                  uint64_t size) override;
   void DeallocateStream(Stream* stream) override;
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override;
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
+  bool CanEnablePeerAccessTo(int other_device_ordinal) override;
   bool DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
@@ -89,10 +98,10 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
   bool UnloadModule(ModuleHandle module_handle) override;
-  absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
+  absl::StatusOr<std::shared_ptr<DeviceAddressBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void Deallocate(DeviceMemoryBase* mem) override;
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
+  void Deallocate(DeviceAddressBase* mem) override;
   blas::BlasSupport* AsBlas() override;
   fft::FftSupport* AsFft() override;
   dnn::DnnSupport* AsDnn() override;
@@ -112,7 +121,7 @@ class CudaExecutor : public GpuExecutor {
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
 
-  absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
+  absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
     absl::MutexLock lock(alive_gpu_streams_mu_);
@@ -136,7 +145,14 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<TensorMap> CreateTensorMap(const TmaDescriptor& tma_desc,
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
+
+  // Returns the granularity which is the minimum unit of memory that can be
+  // allocated with VMM API. In order to map the memory slices to multicast
+  // object, the offset of the slices should be aligned with this granularity.
+  absl::StatusOr<size_t> GetVmmGranularity() const;
+
+  int GetGpuStreamPriority(StreamPriority priority) override;
 
   // RAII wrapper for a VMM memory handle.
   class VmmMemoryHandle {
@@ -167,13 +183,13 @@ class CudaExecutor : public GpuExecutor {
 
     absl::Status SubscribeDevice(int device_number) override;
 
-    absl::StatusOr<void*> MapMemory(void* device_ptr,
-                                    GpuExecutor* gpu_executor) override;
+    absl::StatusOr<void*> MapMemory(const DeviceAddressBase& location,
+                                    const GpuExecutor* gpu_executor) override;
 
    private:
     friend class CudaExecutor;
     absl::Status Initialize(uint64_t size, int num_devices,
-                            GpuExecutor* gpu_executor);
+                            const GpuExecutor* gpu_executor);
     CUmemGenericAllocationHandle handle_;
     uint64_t padded_size_;
     uint64_t granularity_;
@@ -185,15 +201,20 @@ class CudaExecutor : public GpuExecutor {
   };
 
   absl::StatusOr<std::unique_ptr<MulticastMemory>> CreateMulticastMemory(
-      uint64_t size, int num_devices) override;
+      uint64_t size, int num_devices) const override;
 
   // Returns a handle to the given memory if it was allocated with VMM API.
-  absl::StatusOr<VmmMemoryHandle> RetainVmmMemoryHandle(void* ptr);
+  absl::StatusOr<VmmMemoryHandle> RetainVmmMemoryHandle(void* ptr) const;
 
-  bool is_multicast_supported() const { return is_multicast_supported_; }
+  bool is_multicast_supported() const override {
+    return is_multicast_supported_;
+  }
 
  private:
-  absl::Status VmmDeallocateMemory(void* ptr);
+  // Checks if the memory was allocated with VMM API.
+  // If yes, deallocates the memory and returns true.
+  // If not, returns false.
+  absl::StatusOr<bool> VmmDeallocateMemory(void* ptr);
 
   absl::StatusOr<void*> VmmAllocateMemory(uint64_t bytes);
 
@@ -211,6 +232,8 @@ class CudaExecutor : public GpuExecutor {
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
 
+  CollectiveAllocatorType collective_allocator_type_;
+
   bool is_vmm_supported_ = false;
 
   bool is_rdma_supported_ = false;
@@ -224,7 +247,7 @@ class CudaExecutor : public GpuExecutor {
   // On-device constants that can be shared between multiple executables. A
   // pointer for a given constant will expire when no executables require use
   // of that constant anymore.
-  std::map<const absl::uint128, std::weak_ptr<DeviceMemoryBase>>
+  std::map<const absl::uint128, std::weak_ptr<DeviceAddressBase>>
       shared_constants_ ABSL_GUARDED_BY(shared_constants_mu_);
 
   // Kernel -> loaded GPU module. Many kernels may load the same binary.
@@ -271,8 +294,32 @@ class CudaExecutor : public GpuExecutor {
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
+  class MemoryTracker {
+   public:
+    // Adds a pointer to the set of allocated memory. Returns true if the memory
+    // was not already tracked.
+    bool Insert(CUdeviceptr ptr);
+    // Removes a pointer from the set of allocated memory. Returns true if the
+    // memory was tracked.
+    bool Remove(CUdeviceptr ptr);
+
+   private:
+    absl::Mutex mutex_;
+    absl::flat_hash_set<CUdeviceptr> allocated_memory_ ABSL_GUARDED_BY(mutex_);
+  };
+  // Memory allocation tracker for VMM memory.
+  MemoryTracker vmm_memory_tracker_;
+
   // CudaContext for this device.
   CudaContext* cuda_context_;
+
+  // Cached CUDA stream priority range. Initialized once on first non-default
+  // request and then reused for subsequent calls.
+  absl::once_flag stream_priority_once_;
+  int stream_priority_lowest_ = 0;
+  int stream_priority_highest_ = 0;
+  bool stream_priority_query_ok_ = false;
+  absl::flat_hash_map<int, bool> peer_access_cache_;
 };
 
 }  // namespace stream_executor::gpu

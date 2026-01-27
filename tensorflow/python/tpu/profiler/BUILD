@@ -14,7 +14,7 @@ py_strict_library(
     deps = [
         "//tensorflow/core/profiler:profiler_analysis_proto_py",
         "//tensorflow/python/util:all_util",
-        "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
+        "@tsl//tsl/profiler/protobuf:trace_events_proto_py",
     ],
 )
 
@@ -41,7 +41,7 @@ py_strict_library(
         "//tensorflow/python/profiler:profiler_v2",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )
 
@@ -52,6 +52,6 @@ py_strict_binary(
     deps = [
         ":capture_tpu_profile_lib",
         "@absl_py//absl/flags",
-        "@pypi_packaging//:pkg",
+        "@pypi//packaging",
     ],
 )

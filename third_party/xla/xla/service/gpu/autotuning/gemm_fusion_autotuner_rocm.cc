@@ -14,13 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "rocm/include/hipblas/hipblas.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -28,14 +35,22 @@ namespace gpu {
 const int64_t GemmFusionAutotunerImpl::BLAS_GEMM_DEFAULT = HIPBLAS_GEMM_DEFAULT;
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   return false;
 }
 
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+GemmFusionAutotuner::GetPlatformCodegenBackends(
+    se::StreamExecutor* stream_exec, Compiler* compiler,
+    const Compiler::GpuTargetConfig* target_config,
+    const DebugOptions* debug_options) {
+  return std::vector<std::unique_ptr<CodegenBackend>>();
+}
+
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
-  return *kDefaultRocmConfigs;
+  return GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultRocm);
 }
 
 }  // namespace gpu

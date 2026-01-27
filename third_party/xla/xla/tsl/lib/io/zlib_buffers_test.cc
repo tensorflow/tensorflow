@@ -35,8 +35,8 @@ static std::vector<int> OutputBufferSizes() { return {100, 200, 500, 1000}; }
 
 static std::vector<int> NumCopies() { return {1, 50, 500}; }
 
-static string GetRecord() {
-  static const string lorem_ipsum =
+static std::string GetRecord() {
+  static const std::string lorem_ipsum =
       "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
       " Fusce vehicula tincidunt libero sit amet ultrices. Vestibulum non "
       "felis augue. Duis vitae augue id lectus lacinia congue et ut purus. "
@@ -52,8 +52,8 @@ static string GetRecord() {
   return lorem_ipsum;
 }
 
-static string GenTestString(int copies = 1) {
-  string result = "";
+static std::string GenTestString(int copies = 1) {
+  std::string result = "";
   for (int i = 0; i < copies; i++) {
     result += GetRecord();
   }
@@ -65,11 +65,11 @@ typedef io::ZlibCompressionOptions CompressionOptions;
 void TestAllCombinations(CompressionOptions input_options,
                          CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
     // Write to compressed file
-    string data = GenTestString(file_size);
+    std::string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
       for (auto output_buf_size : OutputBufferSizes()) {
         std::unique_ptr<WritableFile> file_writer;
@@ -111,18 +111,18 @@ TEST(ZlibBuffers, Gzip) {
   TestAllCombinations(CompressionOptions::GZIP(), CompressionOptions::GZIP());
 }
 
-void TestMultipleWrites(uint8 input_buf_size, uint8 output_buf_size,
+void TestMultipleWrites(uint8_t input_buf_size, uint8_t output_buf_size,
                         int num_writes, bool with_flush = false) {
   Env* env = Env::Default();
   CompressionOptions input_options = CompressionOptions::DEFAULT();
   CompressionOptions output_options = CompressionOptions::DEFAULT();
 
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
-  string data = GenTestString();
+  std::string data = GenTestString();
   std::unique_ptr<WritableFile> file_writer;
-  string actual_result;
-  string expected_result;
+  std::string actual_result;
+  std::string expected_result;
 
   TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
   ZlibOutputBuffer out(file_writer.get(), input_buf_size, output_buf_size,
@@ -166,7 +166,7 @@ TEST(ZlibBuffers, MultipleWriteCallsWithFlush) {
 
 TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   CompressionOptions output_options = CompressionOptions::DEFAULT();
   CompressionOptions input_options = CompressionOptions::DEFAULT();
@@ -175,7 +175,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   // inflate() has smaller history buffer.
   input_options.window_bits = output_options.window_bits - 1;
 
-  string data = GenTestString(10);
+  std::string data = GenTestString(10);
   std::unique_ptr<WritableFile> file_writer;
   TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
   tstring result;
@@ -199,10 +199,10 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
   CHECK(absl::StrContains(read_status.message(), "inflate() failed"));
 }
 
-void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,
+void WriteCompressedFile(Env* env, const std::string& fname, int input_buf_size,
                          int output_buf_size,
                          const CompressionOptions& output_options,
-                         const string& data) {
+                         const std::string& data) {
   std::unique_ptr<WritableFile> file_writer;
   TF_ASSERT_OK(env->NewWritableFile(fname, &file_writer));
 
@@ -219,10 +219,10 @@ void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,
 void TestTell(CompressionOptions input_options,
               CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
-    string data = GenTestString(file_size);
+    std::string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
       for (auto output_buf_size : OutputBufferSizes()) {
         // Write the compressed file.
@@ -237,7 +237,7 @@ void TestTell(CompressionOptions input_options,
         ZlibInputStream in(input_stream.get(), input_buf_size, output_buf_size,
                            input_options);
 
-        tstring first_half(string(data, 0, data.size() / 2));
+        tstring first_half(std::string(data, 0, data.size() / 2));
         tstring bytes_read;
 
         // Read the first half of the uncompressed file and expect that Tell()
@@ -264,10 +264,10 @@ void TestTell(CompressionOptions input_options,
 void TestSkipNBytes(CompressionOptions input_options,
                     CompressionOptions output_options) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   for (auto file_size : NumCopies()) {
-    string data = GenTestString(file_size);
+    std::string data = GenTestString(file_size);
     for (auto input_buf_size : InputBufferSizes()) {
       for (auto output_buf_size : OutputBufferSizes()) {
         // Write the compressed file.
@@ -283,7 +283,8 @@ void TestSkipNBytes(CompressionOptions input_options,
                            input_options);
 
         size_t data_half_size = data.size() / 2;
-        string second_half(data, data_half_size, data.size() - data_half_size);
+        std::string second_half(data, data_half_size,
+                                data.size() - data_half_size);
 
         // Skip past the first half of the file and expect Tell() returns
         // correctly.
@@ -303,7 +304,7 @@ void TestSkipNBytes(CompressionOptions input_options,
 
 void TestSoftErrorOnDecompress(CompressionOptions input_options) {
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
 
   input_options.soft_fail_on_error = true;

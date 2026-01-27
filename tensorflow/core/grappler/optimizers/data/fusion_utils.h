@@ -34,7 +34,7 @@ using SetFunctionSignatureFn = std::function<void(
     const OpDef& first_function_signature,
     const OpDef& second_function_signature, OpDef* fused_function_signature)>;
 
-using StringCollection = absl::InlinedVector<string, 2UL>;
+using StringCollection = absl::InlinedVector<std::string, 2UL>;
 
 // These functions are invoked with nodes from second function that were
 // previously taking arguments as input. The `arg_num` tells which
@@ -43,17 +43,17 @@ using StringCollection = absl::InlinedVector<string, 2UL>;
 // would be called on the first and third input with arg_num equal 1 and 4.
 // It should set up inputs based on first function inputs or outputs or
 // second function inputs.
-using SetInputFn =
-    std::function<string(const StringCollection& first_function_inputs,
-                         const StringCollection& second_function_inputs,
-                         const StringCollection& parent_outputs, int arg_num)>;
+using SetInputFn = std::function<std::string(
+    const StringCollection& first_function_inputs,
+    const StringCollection& second_function_inputs,
+    const StringCollection& parent_outputs, int arg_num)>;
 
 // This function is invoked with first and second function ret. It is used to
 // set up returns of fused function.
-using SetOutputFn =
-    std::function<void(const protobuf::Map<string, string>& parent_ret,
-                       const protobuf::Map<string, string>& second_function_ret,
-                       protobuf::Map<string, string>* fused_ret)>;
+using SetOutputFn = std::function<void(
+    const protobuf::Map<std::string, std::string>& parent_ret,
+    const protobuf::Map<std::string, std::string>& second_function_ret,
+    protobuf::Map<std::string, std::string>* fused_ret)>;
 
 using SetNodesFn = std::function<void(
     const FunctionDef& first_function, const FunctionDef& second_function,
@@ -69,15 +69,15 @@ bool CanCompose(const OpDef& first_signature, const OpDef& second_signature);
 void ComposeSignature(const OpDef& first_signature,
                       const OpDef& second_signature, OpDef* fused_signature);
 
-string ComposeInput(const StringCollection& first_inputs,
-                    const StringCollection& second_inputs,
-                    const StringCollection& first_outputs, int arg_num);
+std::string ComposeInput(const StringCollection& first_inputs,
+                         const StringCollection& second_inputs,
+                         const StringCollection& first_outputs, int arg_num);
 
 // Sets output to the composition of first and second function:
 // second_function(first_function(args...)).
-void ComposeOutput(const protobuf::Map<string, string>& first_ret,
-                   const protobuf::Map<string, string>& second_ret,
-                   protobuf::Map<string, string>* fused_ret);
+void ComposeOutput(const protobuf::Map<std::string, std::string>& first_ret,
+                   const protobuf::Map<std::string, std::string>& second_ret,
+                   protobuf::Map<std::string, std::string>* fused_ret);
 
 // Set input signature to `first_function_signature` and output signature
 // to `first_function_signature` + `second_function_signature`
@@ -87,9 +87,9 @@ void CombineSignature(const OpDef& first_signature,
 // Apart from first function returns, return values from second function as
 // extra returns like:
 // return *first_function(...), *second_function(...)
-void CombineOutput(const protobuf::Map<string, string>& first_ret,
-                   const protobuf::Map<string, string>& second_ret,
-                   protobuf::Map<string, string>* fused_ret);
+void CombineOutput(const protobuf::Map<std::string, std::string>& first_ret,
+                   const protobuf::Map<std::string, std::string>& second_ret,
+                   protobuf::Map<std::string, std::string>* fused_ret);
 
 // Returns true if both signatures have the same number of input and output
 // args.
@@ -101,15 +101,16 @@ void SameSignature(const OpDef& first_signature, const OpDef& second_signature,
                    OpDef* fused_signature);
 
 // Take the same input as first function.
-string SameInput(const StringCollection& first_inputs,
-                 const StringCollection& second_inputs,
-                 const StringCollection& first_outputs, int arg_num);
+std::string SameInput(const StringCollection& first_inputs,
+                      const StringCollection& second_inputs,
+                      const StringCollection& first_outputs, int arg_num);
 
 // Create a fused function that computes the short-circuit logical AND of the
 // result of the first function and the result of the second function.
-void LazyConjunctionOutput(const protobuf::Map<string, string>& first_ret,
-                           const protobuf::Map<string, string>& second_ret,
-                           protobuf::Map<string, string>* fused_ret);
+void LazyConjunctionOutput(
+    const protobuf::Map<std::string, std::string>& first_ret,
+    const protobuf::Map<std::string, std::string>& second_ret,
+    protobuf::Map<std::string, std::string>* fused_ret);
 
 void LazyConjunctionNodes(const FunctionDef& first_function,
                           const FunctionDef& second_function,

@@ -14,13 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/autotuning/triton_configs.h"
@@ -29,8 +35,11 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -49,23 +58,33 @@ int GetCuDnnPlanCount(const HloInstruction& hlo,
 }
 
 bool GemmFusionAutotunerImpl::AddLibConfigs(
-    const HloFusionInstruction& fusion, const HloDotInstruction* dot,
+    const HloFusionInstruction& fusion, const HloInstruction* dot,
     std::vector<BackendConfig>& configs) {
   // Add cuDNN plans, if available.
   stream_executor::CudaComputeCapability cc =
       *GetComputeCapability().cuda_compute_capability();
-  bool is_cudnn_enabled =
-      !config_.IsDeviceless() &&
-      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9 &&
+  auto dnn_version = GetDnnVersionInfoOrDefault(
+      !config_.IsDeviceless() ? config_.GetExecutor() : nullptr);
+
+  bool is_cudnn_fusion = IsGpuFusionKind(fusion, kCuDnnFusionKind);
+  bool is_supported_triton_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonGemmFusionKind) &&
+      dnn_version.major_version() >= 9 &&
+      algorithm_util::IsSupportedByCudnn(dot->precision_config().algorithm()) &&
       ((cc.IsAtLeastAmpere() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 1) ||
        (cc.IsAtLeastBlackwell() &&
         debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0));
-  if ((IsGpuFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
-      (IsGpuFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
-       algorithm_util::IsSupportedByCudnn(
-           dot->precision_config().algorithm()) &&
-       IsAutotuningEnabled())) {
+  bool is_cudnn_supported_scaled_dot_fusion =
+      IsGpuFusionKind(fusion, kTritonNestedGemmFusionKind) &&
+      dot->opcode() == HloOpcode::kScaledDot &&
+      dnn_version >= kCudnnSupportsBlockScaledDot &&
+      CudnnScaledDotHelper::IsSupported(Cast<HloScaledDotInstruction>(dot)) &&
+      cc.IsAtLeastBlackwell();
+
+  if (IsAutotuningEnabled() &&
+      (is_cudnn_fusion || is_supported_triton_dot_fusion ||
+       is_cudnn_supported_scaled_dot_fusion)) {
     const int plan_count = GetCuDnnPlanCount(fusion, config_);
     for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
       configs.push_back(CuDnnConfig{plan_id});
@@ -80,6 +99,17 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
   return false;
 }
 
+absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+GemmFusionAutotuner::GetPlatformCodegenBackends(
+    se::StreamExecutor* stream_exec, Compiler* compiler,
+    const Compiler::GpuTargetConfig* target_config,
+    const DebugOptions* debug_options) {
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CudnnBackend>(stream_exec, debug_options,
+                                                    compiler, target_config));
+  return backends;
+}
+
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
   stream_executor::CudaComputeCapability compute_capability =
@@ -87,28 +117,35 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
   std::vector<TritonGemmConfig> configs;
 
   if (compute_capability.IsAtLeastBlackwell()) {
-    configs = *kBlackwellConfigs;
-  } else if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
-    configs = *kHopperAmpereConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  } else if (compute_capability.IsHopper()) {
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
+  } else if (compute_capability.IsAmpere()) {
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kAmpere);
   } else {
-    configs = *kDefaultCudaConfigs;
+    configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kDefaultCuda);
   }
 
-  if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
-      !compute_capability.IsAtLeastHopper()) {
+  // TODO(b/449668102): Currently only supporting warp specialization on
+  // Blackwell+. Potentially extend support to Hopper.
+  if (!debug_options_
+           .xla_gpu_experimental_enable_triton_warp_specialization() ||
+      !compute_capability.IsAtLeastBlackwell()) {
     return configs;
   }
-
-  // Hopper+ devices support TMA. Add TMA parameterized configs.
-  std::vector<TritonGemmConfig> tma_parameterized_configs;
+  std::vector<TritonGemmConfig> warp_specialized_configs;
   for (auto& config : configs) {
-    config.is_tma_allowed = false;
-    tma_parameterized_configs.push_back(config);
+    config.is_warp_specialization_allowed = false;
+    warp_specialized_configs.push_back(config);
 
-    config.is_tma_allowed = true;
-    tma_parameterized_configs.push_back(config);
+    if (config.is_tma_allowed && config.num_warps <= 16 &&
+        config.num_warps % 4 == 0) {
+      config.is_warp_specialization_allowed = true;
+      warp_specialized_configs.push_back(config);
+    }
   }
-  return tma_parameterized_configs;
+
+  return warp_specialized_configs;
 }
 
 }  // namespace gpu

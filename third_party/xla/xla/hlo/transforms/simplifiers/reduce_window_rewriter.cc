@@ -498,7 +498,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   return true;
 }
 
-absl::StatusOr<bool> ReduceWindowRewriter::Run(
+absl::StatusOr<bool> ReduceWindowRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

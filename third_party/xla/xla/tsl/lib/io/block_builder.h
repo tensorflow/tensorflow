@@ -53,11 +53,11 @@ class BlockBuilder {
 
  private:
   const Options* options_;
-  string buffer_;                 // Destination buffer
-  std::vector<uint32> restarts_;  // Restart points
+  std::string buffer_;              // Destination buffer
+  std::vector<uint32_t> restarts_;  // Restart points
   int counter_;                   // Number of entries emitted since restart
   bool finished_;                 // Has Finish() been called?
-  string last_key_;
+  std::string last_key_;
 
   // No copying allowed
   BlockBuilder(const BlockBuilder&);

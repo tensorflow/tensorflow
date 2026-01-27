@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
 
 struct RedzoneAllocatorKernel {
-  using KernelType = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
-                                 DeviceMemory<uint64_t>>;
+  using KernelType = TypedKernel<DeviceAddress<uint8_t>, uint8_t, uint64_t,
+                                 DeviceAddress<uint64_t>>;
 };
 
 }  // namespace stream_executor::gpu

@@ -37,10 +37,10 @@ class AllGatherSimplifier : public HloModulePass {
   static constexpr absl::string_view kName = "all-gather-simplifier";
   absl::string_view name() const override { return kName; }
 
+ protected:
   // Run all-gather simplification on the given computation. Returns whether the
   // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

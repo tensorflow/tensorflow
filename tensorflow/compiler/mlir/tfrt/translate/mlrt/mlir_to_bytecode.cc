@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/function.h"
@@ -169,19 +170,26 @@ struct FunctionEmitterContext {
   struct RegInfo {
     int num_uses = 0;
     int id = -1;
+    bool persistent = false;  // True if the register should not be freed
   };
 
   int next_reg_id = 0;
   llvm::DenseMap<mlir::Value, RegInfo> register_table;
   std::vector<int> free_regs;
 
-  int AssignRegId() {
-    if (free_regs.empty()) {
+  int AssignRegId(bool is_persistent) {
+    if (is_persistent) {
+      // Persistent types ALWAYS get a brand new ID.
       return next_reg_id++;
     }
-    int id = free_regs.back();
-    free_regs.pop_back();
-    return id;
+
+    // Non-persistent types can reuse from free_regs.
+    if (!free_regs.empty()) {
+      int id = free_regs.back();
+      free_regs.pop_back();
+      return id;
+    }
+    return next_reg_id++;
   }
 
   void FreeRegId(int id) { free_regs.push_back(id); }
@@ -202,7 +210,7 @@ void EmitKernel(FunctionEmitterContext& function_context,
     auto iter = function_context.register_table.find(result);
     CHECK(iter != function_context.register_table.end());  // Crash Ok
     CHECK_EQ(iter->second.id, -1);                         // Crash Ok
-    iter->second.id = function_context.AssignRegId();
+    iter->second.id = function_context.AssignRegId(iter->second.persistent);
     results.push_back(iter->second.id);
   }
   constructor.construct_results(results.size())
@@ -218,9 +226,12 @@ void EmitKernel(FunctionEmitterContext& function_context,
     int id = iter->second.id;
     CHECK_NE(id, -1);  // Crash Ok
     last_uses.push_back(0);
-    if (--iter->second.num_uses == 0) {
-      function_context.FreeRegId(id);
-      last_uses.back() = 1;
+    auto& reg_info = iter->second;
+    if (!reg_info.persistent) {
+      if (--reg_info.num_uses == 0) {
+        function_context.FreeRegId(id);
+        last_uses.back() = 1;
+      }
     }
     arguments.push_back(id);
   }
@@ -282,18 +293,23 @@ void EmitFunction(const ModuleEmitterContext& module_context,
   std::vector<uint32_t> input_regs;
   input_regs.reserve(block.getNumArguments());
   for (auto arg : block.getArguments()) {
-    int id = function_context.AssignRegId();
+    bool persistent = mlir::isa<mlrt::compiler::AsyncHandleType>(arg.getType());
+    int id = function_context.AssignRegId(persistent);
     input_regs.push_back(id);
     register_table[arg] = {static_cast<int>(std::distance(arg.getUses().begin(),
                                                           arg.getUses().end())),
-                           id};
+                           id, persistent};
   }
   constructor.construct_input_regs(input_regs);
 
   for (auto& op : block) {
     for (auto result : op.getResults()) {
-      register_table[result] = {static_cast<int>(
-          std::distance(result.getUses().begin(), result.getUses().end()))};
+      bool persistent =
+          mlir::isa<mlrt::compiler::AsyncHandleType>(result.getType());
+      register_table[result] = {
+          static_cast<int>(
+              std::distance(result.getUses().begin(), result.getUses().end())),
+          -1, persistent};
     }
   }
 

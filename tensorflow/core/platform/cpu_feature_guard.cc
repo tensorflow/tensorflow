@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace tensorflow {
 namespace port {
 namespace {
@@ -42,6 +46,19 @@ void CheckFeatureOrDie(CPUFeature feature, const std::string& feature_name) {
     // framework here because std::cout and std::cerr made some Android targets
     // crash.
     LOG(WARNING) << error_msg;
+#elif defined(_WIN32)
+    // On Windows, std::cerr might not be fully initialized during static
+    // initialization of a DLL. We use native Windows API to write to the
+    // console handle directly, and also OutputDebugString for debuggers.
+    const std::string fatal_msg = error_msg + "\r\n";
+    OutputDebugStringA(fatal_msg.c_str());
+    HANDLE hStdErr = GetStdHandle(STD_ERROR_HANDLE);
+    if (hStdErr != INVALID_HANDLE_VALUE && hStdErr != NULL) {
+      DWORD written;
+      WriteFile(hStdErr, fatal_msg.c_str(),
+                static_cast<DWORD>(fatal_msg.size()), &written, NULL);
+    }
+    std::abort();
 #else
     // Avoiding use of the logging framework here as that might trigger a SIGILL
     // by itself.

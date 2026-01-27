@@ -185,10 +185,6 @@ class ConditionalCodeMotion : public HloModulePass {
   }
 
   absl::string_view name() const override { return "conditional-code-motion"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Optimization decision for each boundary of the conditional instruction.
   class Decision {
@@ -215,6 +211,11 @@ class ConditionalCodeMotion : public HloModulePass {
       HloInstruction* conditional, const Boundary& cur_boundary,
       std::vector<Boundary>& to_move, std::vector<Boundary>& new_boundaries,
       absl::flat_hash_map<HloInstruction*, int>& visited_count);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const bool is_layout_sensitive_;

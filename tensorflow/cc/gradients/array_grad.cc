@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -218,9 +220,9 @@ REGISTER_GRADIENT_OP("GatherNd", GatherNdGrad);
 absl::Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                                const std::vector<Output>& grad_inputs,
                                std::vector<Output>* grad_outputs) {
-  string message;
+  std::string message;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "message", &message));
-  string err_msg = absl::StrCat(
+  std::string err_msg = absl::StrCat(
       "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
       message);
   grad_outputs->push_back(CheckNumerics(scope, grad_inputs[0], err_msg));
@@ -411,7 +413,7 @@ REGISTER_GRADIENT_OP("DepthToSpace", DepthToSpaceGrad);
 absl::Status MirrorPadGrad(const Scope& scope, const Operation& op,
                            const std::vector<Output>& grad_inputs,
                            std::vector<Output>* grad_outputs) {
-  string mode;
+  std::string mode;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(tensorflow::ops::internal::MirrorPadGrad(
       scope, grad_inputs[0], op.input(1), mode));
@@ -424,7 +426,7 @@ REGISTER_GRADIENT_OP("MirrorPad", MirrorPadGrad);
 absl::Status MirrorPadGradGrad(const Scope& scope, const Operation& op,
                                const std::vector<Output>& grad_inputs,
                                std::vector<Output>* grad_outputs) {
-  string mode;
+  std::string mode;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "mode", &mode));
   grad_outputs->push_back(MirrorPad(scope, grad_inputs[0], op.input(1), mode));
   grad_outputs->push_back(NoGradient());

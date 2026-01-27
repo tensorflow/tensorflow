@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_HLO_RUNNER_H_
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <vector>
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -65,7 +65,7 @@ class HloRunner : public HloRunnerInterface {
   // the backend allocator.
   explicit HloRunner(
       se::Platform* platform, int intra_op_parallelism_threads = -1,
-      std::unique_ptr<se::DeviceMemoryAllocator> allocator = nullptr);
+      std::unique_ptr<se::DeviceAddressAllocator> allocator = nullptr);
 
   ~HloRunner() override;
 
@@ -173,6 +173,16 @@ class HloRunner : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options) override;
+
+  // Same as above, but with specified device assignment.
+  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithExecutable(
+      OpaqueExecutable* absl_nonnull executable,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment) override;
+
   // Same as above, but with a reusable Executable.  This may update the profile
   // information in *executable.
   //
@@ -188,9 +198,9 @@ class HloRunner : public HloRunnerInterface {
   // Note that this call ignores `ReplicatedExecutionOptions::run_hlo_passes`,
   // since we've already compiled the `Executable`.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::function<OpaqueExecutable*(int64_t)> executable_provider,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment) override;
 
@@ -264,17 +274,17 @@ class HloRunner : public HloRunnerInterface {
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
-      std::function<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
+      absl::AnyInvocable<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
           const std::vector<ServiceExecutableRunOptions>&,
           const std::vector<absl::Span<const ShapedBuffer* const>>&)>
           execution_helper,
-      std::function<int64_t(int64_t)> argument_count_provider,
-      std::function<const Literal*(int64_t, int64_t)> argument_provider,
+      absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
+      absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
   // Gets or creates the `DeviceMemoryAllocator`.
-  se::DeviceMemoryAllocator* GetAllocator();
+  se::DeviceAddressAllocator* GetAllocator();
 
   // Calls `UpdateEntryComputationLayout` if HloRunner has not called it on the
   // module before. This method is called before the module is executed. The
@@ -287,7 +297,7 @@ class HloRunner : public HloRunnerInterface {
   std::unique_ptr<Backend> backend_;
   TransferManager::DeviceShapeRepresentationFn device_shape_representation_fn_;
 
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
 
   absl::Mutex mu_;
   // Set of module unique_ids that we already called

@@ -17,8 +17,6 @@ package tflite;
 
 import "tensorflow/compiler/mlir/lite/debug/debug_options.proto";
 import "tensorflow/compiler/mlir/lite/types.proto";
-import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.proto";
-import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.proto";
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
 enum FileFormat {
@@ -43,6 +41,8 @@ enum FileFormat {
 //
 // Next ID to use: 69.
 message ConverterFlags {
+  reserved 54, 61;
+
   // Input file format
   optional FileFormat input_format = 1;
 
@@ -312,12 +312,6 @@ message ConverterFlags {
   // If true, disable folding mul->fc as in layer norm during optimize pass.
   optional bool disable_fuse_mul_and_fc = 53 [default = false];
 
-  // Indicates the quantization specs. Quantization spec can be set to either
-  // a preset method or a custom method.
-  // Note: This is deprecated; use `quantization_config` instead.
-  optional stablehlo.quantization.QuantizationOptions quantization_options = 54
-      [deprecated = true];
-
   // Flag to enable hlo to tf conversion.
   // This is useful to exercise StableHLO -> HLO -> TF -> TFLite path.
   optional bool enable_hlo_to_tf_conversion = 55
@@ -345,11 +339,6 @@ message ConverterFlags {
   // ops and to convert kernels to quantized kernels wherever appropriate.
   // WARNING: Experimental interface, subject to change.
   optional string qdq_conversion_mode = 60 [default = "NONE"];
-
-  // Configures quantization behavior. This config is fed to the StableHLO
-  // Quantizer integrated in the converter.
-  // WARNING: Experimental interface, subject to change.
-  optional stablehlo.quantization.QuantizationConfig quantization_config = 61;
 
   // Disables per channel weights quantization for Dense layers and enables
   // legacy per tensor quantization. The legacy quantization for Dense layers is

@@ -50,15 +50,16 @@ class TypeIndex {
 
   const char* name() const { return name_; }
 
-  uint64 hash_code() const { return hash_; }
+  uint64_t hash_code() const { return hash_; }
 
   // Returns a TypeIndex object that corresponds to a typename.
   template <typename T>
   static TypeIndex Make() {
 #ifdef PLATFORM_CLOUD_TPU
     static bool hash_bit[1];
-    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
-                     typeid(T).name());
+    return TypeIndex(
+        static_cast<uint64_t>(reinterpret_cast<intptr_t>(hash_bit)),
+        typeid(T).name());
 #endif
 #if defined(__GXX_RTTI) || defined(_CPPRTTI)
 
@@ -76,17 +77,18 @@ class TypeIndex {
 #endif  // TARGET_OS_OSX
 
     // No type names available.
-    return TypeIndex(static_cast<uint64>(reinterpret_cast<intptr_t>(hash_bit)),
-                     "[RTTI disabled]");
+    return TypeIndex(
+        static_cast<uint64_t>(reinterpret_cast<intptr_t>(hash_bit)),
+        "[RTTI disabled]");
 #endif  // __GXX_RTTI
   }
 
  private:
   // We hide the constructor of the TypeIndex class. Use the templated
   // Make<T>() function to create a TypeIndex object.
-  explicit TypeIndex(const uint64 hash, const char* name)
+  explicit TypeIndex(const uint64_t hash, const char* name)
       : hash_(hash), name_(name) {}
-  uint64 hash_;
+  uint64_t hash_;
   const char* name_;
 };
 

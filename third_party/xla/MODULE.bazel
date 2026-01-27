@@ -3,7 +3,8 @@ module(name = "xla")
 ##############################################################
 # Bazel module dependencies
 
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+# go/keep-sorted start
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
@@ -12,6 +13,7 @@ bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
 bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil")
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -21,11 +23,13 @@ bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_cc", version = "0.2.0")
+bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
 bazel_dep(name = "rules_python", version = "1.6.0")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
+# go/keep-sorted end
 
 # Only for compatibility, not directly used, change repo_name to None after upgrading Bazel to latest 7.x
 bazel_dep(name = "eigen", version = "4.0.0-20241125.bcr.3", repo_name = "DO_NOT_USE_eigen")
@@ -40,9 +44,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-QTPGwgRd5dehM/b8AI7mvWE693jxIUPQkAPpCN1UHYw=",
-    strip_prefix = "rules_ml_toolchain-d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8d8f49297a1e74fcceffc9ef6c7f8da9b0a0c53.tar.gz"],
+    integrity = "sha256-VMGjV/cfYR79tIkevUvL5K6236fkc/FP1+ytUGIJZhY=",
+    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -61,14 +65,16 @@ single_version_override(
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
         "//third_party/absl:rules_cc.patch",
-        "//third_party/absl:check_op.patch",
-        "//third_party/absl:check_op_2.patch",
     ],
 )
 
 # Use an unreleased version of googletest
 archive_override(
     module_name = "googletest",
+    patch_strip = 1,
+    patches = [
+        "//third_party/googletest:0001-Add-ASSERT_OK-EXPECT_OK-ASSERT_OK_AND_ASSIGN-macros.patch",
+    ],
     strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
     urls = ["https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c94018.zip"],
 )
@@ -84,6 +90,7 @@ use_repo(
     "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
+    "dlpack",
     "ducc",
     "eigen_archive",
     "farmhash_archive",
@@ -100,6 +107,7 @@ use_repo(
     "nvshmem",
     "onednn",
     "pthreadpool",
+    "riegeli",
     "rocm_device_libs",
     "shardy",
     "slinky",
@@ -179,16 +187,16 @@ remote_execution_configure = use_extension("//third_party/extensions:remote_exec
 use_repo(remote_execution_configure, "local_config_remote_execution")
 
 ### From @rules_ml_toolchain
-cuda_configure = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_configure.bzl", "cuda_configure_ext")
+cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
 use_repo(cuda_configure, "local_config_cuda")
 
-nccl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:nccl_configure.bzl", "nccl_configure_ext")
+nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
 
-sycl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:sycl_configure.bzl", "sycl_configure_ext")
+sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
 
-cuda_redist_init_ext = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(cuda_redist_init_ext, "cuda_cudart")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
@@ -205,3 +213,9 @@ use_repo(rocm_configure, "local_config_rocm")
 
 tensorrt_configure = use_extension("//third_party/extensions:tensorrt_configure.bzl", "tensorrt_configure_ext")
 use_repo(tensorrt_configure, "local_config_tensorrt")
+
+pjrt_nightly_timestamp = use_extension("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo_bzlmod")
+use_repo(pjrt_nightly_timestamp, "nightly_timestamp")
+
+pjrt_rc_number = use_extension("//build_tools/pjrt_wheels:release_candidate.bzl", "rc_number_repo_bzlmod")
+use_repo(pjrt_rc_number, "rc_number")

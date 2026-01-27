@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<bool> TriangularSolveRewriter::Run(
+absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

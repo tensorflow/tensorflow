@@ -15,23 +15,34 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
 
-void ExpectHasSubstr(const string& s, const string& expected) {
+void ExpectHasSubstr(const std::string& s, const std::string& expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectHasNoSubstr(const string& s, const string& expected) {
+void ExpectHasNoSubstr(const std::string& s, const std::string& expected) {
   EXPECT_FALSE(absl::StrContains(s, expected))
       << "'" << s << "' should not contain '" << expected << "'";
 }
@@ -39,7 +50,7 @@ void ExpectHasNoSubstr(const string& s, const string& expected) {
 // WritableFile that simply concats into string.
 class StringWritableFile : public WritableFile {
  public:
-  explicit StringWritableFile(string* str) : str_(*str) {}
+  explicit StringWritableFile(std::string* str) : str_(*str) {}
 
   absl::Status Append(absl::string_view data) override {
     absl::StrAppend(&str_, data);
@@ -62,20 +73,20 @@ class StringWritableFile : public WritableFile {
   }
 
  private:
-  string& str_;
+  std::string& str_;
 };
 
 TEST(Dump, TextualIrToFileSuccess) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+  CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
 
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
   UseMlirForGraphDump(MlirDumpConfig());
-  string ret = DumpGraphToFile("tir", graph);
+  std::string ret = DumpGraphToFile("tir", graph);
   ASSERT_EQ(ret, io::JoinPath(testing::TmpDir(), "tir.mlir"));
 
-  string actual;
+  std::string actual;
   TF_ASSERT_OK(ReadFileToString(Env::Default(), ret, &actual));
 }
 
@@ -86,31 +97,31 @@ TEST(Dump, TextualIrWithOptions) {
                    .Attr("dtype", DT_FLOAT)
                    .Finalize(&graph, &node));
 
-  string actual;
+  std::string actual;
   StringWritableFile file(&actual);
   TF_ASSERT_OK(DumpTextualIRToFile(MlirDumpConfig().emit_location_information(),
                                    graph, /*flib_def=*/nullptr, &file));
 
-  string expected_substr = R"(loc(#loc))";
+  std::string expected_substr = R"(loc(#loc))";
   ExpectHasSubstr(actual, expected_substr);
 }
 
 TEST(Dump, DumpToTFG) {
   Graph graph(OpRegistry::Global());
   Node* node;
-  TF_CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
+  CHECK_OK(NodeBuilder("A", "NoOp").Finalize(&graph, &node));
 
-  string actual;
+  std::string actual;
   StringWritableFile file(&actual);
 
   TF_ASSERT_OK(DumpTextualIRToFile(
       MlirDumpConfig().emit_dialect(MlirDumpConfig::Dialect::kTFG), graph,
       /*flib_def=*/nullptr, &file));
 
-  string expected_substr("tfg.graph");
+  std::string expected_substr("tfg.graph");
   ExpectHasSubstr(actual, expected_substr);
 
-  string not_expected_substr("tf_executor.island");
+  std::string not_expected_substr("tf_executor.island");
   ExpectHasNoSubstr(actual, not_expected_substr);
 }
 

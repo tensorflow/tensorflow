@@ -21,7 +21,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
@@ -32,10 +32,10 @@ inline constexpr int64_t kMaxNumRaggedAllToAllOutputPtrs = 8;
 template <int64_t kVectorSize>
 struct RaggedAllToAllKernel {
   using KernelType = stream_executor::TypedKernel<
-      stream_executor::DeviceMemoryBase,
+      stream_executor::DeviceAddressBase,
       std::array<void*, kMaxNumRaggedAllToAllOutputPtrs>,
-      stream_executor::DeviceMemoryBase, stream_executor::DeviceMemoryBase,
-      stream_executor::DeviceMemoryBase, int64_t, int64_t>;
+      stream_executor::DeviceAddressBase, stream_executor::DeviceAddressBase,
+      stream_executor::DeviceAddressBase, int64_t, int64_t>;
 };
 
 }  // namespace stream_executor::gpu

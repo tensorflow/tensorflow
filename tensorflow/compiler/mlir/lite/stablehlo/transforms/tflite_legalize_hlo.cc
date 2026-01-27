@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/case.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
@@ -68,7 +69,7 @@ arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
   auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
                                          rewriter.getIntegerType(64));
   auto attr = DenseElementsAttr::get(attr_type, shape);
-  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
+  return arith::ConstantOp::create(rewriter, value.getLoc(), attr_type, attr);
 }
 
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
@@ -106,7 +107,7 @@ arith::ConstantOp ExpandedShape(OpBuilder& b, Value input,
   auto attr_type = RankedTensorType::get(
       {static_cast<int64_t>(expanded_shape.size())}, b.getIntegerType(32));
   auto attr = DenseElementsAttr::get(attr_type, expanded_shape);
-  return b.create<arith::ConstantOp>(output.getLoc(), attr_type, attr);
+  return arith::ConstantOp::create(b, output.getLoc(), attr_type, attr);
 }
 
 Value ExpandedDynamicShape(OpBuilder& b, Value input,
@@ -131,7 +132,7 @@ Value ExpandedDynamicShape(OpBuilder& b, Value input,
   for (int64_t i : expanded_dimensions) {
     auto index_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({}, b.getI64Type()), {i});
-    Value index = b.create<arith::ConstantOp>(output.getLoc(), index_attr);
+    Value index = arith::ConstantOp::create(b, output.getLoc(), index_attr);
 
     auto cur_type = llvm::cast<ShapedType>(expanded_input.getType());
     auto cur_shape = cur_type.getShape();
@@ -144,8 +145,8 @@ Value ExpandedDynamicShape(OpBuilder& b, Value input,
 
     auto new_type = RankedTensorType::get(new_shape, cur_type.getElementType());
 
-    expanded_input = b.create<TFL::ExpandDimsOp>(output.getLoc(), new_type,
-                                                 expanded_input, index);
+    expanded_input = TFL::ExpandDimsOp::create(b, output.getLoc(), new_type,
+                                               expanded_input, index);
   }
 
   return expanded_input;
@@ -479,6 +480,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateWhilePatterns(context, patterns, target);
   PopulateGetDimensionSizePatterns(context, patterns, target);
   PopulateIfPatterns(context, patterns, target);
+  PopulateCasePatterns(context, patterns, target);
   PopulateLegalizeFftPatterns(context, patterns, target);
   PopulateCustomCallPatterns(context, patterns, target);
 
@@ -492,7 +494,6 @@ void LegalizeHloToTfLitePass::runOnOperation() {
 }
 
 }  // namespace
-
 
 // Creates an instance of the pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass() {

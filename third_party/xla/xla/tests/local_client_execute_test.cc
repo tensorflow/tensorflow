@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -857,8 +857,10 @@ TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.
+// Not all TPU generations support infeed/outfeed, but SE does provide the
+// capability to query this.
 TEST_F(LocalClientExecuteTest, InfeedTest) {
-  if (test::DeviceIs(test::kInterpreter)) {
+  if (test::DeviceTypeIsOneOf({test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
@@ -885,8 +887,10 @@ TEST_F(LocalClientExecuteTest, InfeedTest) {
 }
 
 // Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
+// Not all TPU generations support infeed/outfeed, but SE does provide the
+// capability to query this.
 TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
-  if (test::DeviceIs(test::kInterpreter)) {
+  if (test::DeviceTypeIsOneOf({test::kInterpreter, test::kTpu})) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
@@ -916,7 +920,8 @@ TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
 void BM_LocalClientOverhead(::testing::benchmark::State& state) {
   se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
   auto executors = PlatformUtil::GetStreamExecutors(platform).value();
-  se::StreamExecutorMemoryAllocator allocator(platform, executors);
+  stream_executor::StreamExecutorAddressAllocator allocator(platform,
+                                                            executors);
   LocalClient* client = ClientLibrary::GetOrCreateLocalClient(platform).value();
   auto* transfer_manager = TransferManager::GetForPlatform(platform).value();
   int device_ordinal = client->default_device_ordinal();

@@ -61,8 +61,8 @@ class XlaIfOp : public XlaOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   bool has_token_input_output_;
-  std::vector<string> token_input_nodes_;
-  string original_node_name_;
+  std::vector<std::string> token_input_nodes_;
+  std::string original_node_name_;
 };
 
 }  // namespace tensorflow

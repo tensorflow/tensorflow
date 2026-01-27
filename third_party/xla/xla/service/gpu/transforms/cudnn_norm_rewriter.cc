@@ -967,8 +967,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<int64_t> non_norm_dims;
       for (int64_t x_dim = 0; x_dim < x.instr()->shape().dimensions().size();
            ++x_dim) {
-        if (std::find(norm_dims.begin(), norm_dims.end(), x_dim) ==
-            norm_dims.end()) {
+        if (absl::c_find(norm_dims, x_dim) == norm_dims.end()) {
           non_norm_dims.push_back(x_dim);
         }
       }
@@ -1512,7 +1511,7 @@ CudnnNormRewriter::CudnnNormRewriter(
     const se::CudaComputeCapability& cuda_compute_capability)
     : cuda_compute_capability_(cuda_compute_capability) {}
 
-absl::StatusOr<bool> CudnnNormRewriter::Run(
+absl::StatusOr<bool> CudnnNormRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

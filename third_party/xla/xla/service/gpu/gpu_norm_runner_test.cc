@@ -70,7 +70,11 @@ TEST(GpuNormRunnerTest, GpuNormDescriptorToFromProto) {
       }
       is_dynamic_dimension: [ false, false ]
     }
-    scratch_size: 1024
+    scratch_shape: {
+      element_type: S8
+      dimensions: 1024
+      is_dynamic_dimension: false
+    }
   )pb");
 
   TF_ASSERT_OK_AND_ASSIGN(GpuNormDescriptor descriptor,

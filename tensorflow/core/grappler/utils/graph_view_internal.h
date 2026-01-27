@@ -406,7 +406,7 @@ inline bool UpdateName(NodeViewDiff<GraphViewT>* diff, absl::string_view name) {
     diff->name.clear();
     diff->update_name = false;
   } else {
-    diff->name = string(name);
+    diff->name = std::string(name);
     diff->update_name = true;
   }
   return true;
@@ -435,7 +435,7 @@ inline bool UpdateDevice(NodeViewDiff<GraphViewT>* diff,
     diff->device.clear();
     diff->update_device = false;
   } else {
-    diff->device = string(device);
+    diff->device = std::string(device);
     diff->update_device = true;
   }
   return true;
@@ -602,7 +602,7 @@ inline bool AddOrUpdateAttribute(NodeViewDiff<GraphViewT>* diff,
                                  absl::string_view attr_name,
                                  const AttrValue& attr_value) {
   diff->attrs_to_add.empty() ? 0 : diff->attrs_to_remove.erase(attr_name);
-  gtl::InsertOrUpdate(&diff->attrs_to_add, string(attr_name), attr_value);
+  gtl::InsertOrUpdate(&diff->attrs_to_add, std::string(attr_name), attr_value);
   return true;
 }
 
@@ -787,7 +787,7 @@ struct NewNode {
   NodeDef node;
   std::vector<SafeTensorId> regular_fanins;
   int num_regular_fanins = 0;
-  absl::flat_hash_set<string> controlling_fanins;
+  absl::flat_hash_set<std::string> controlling_fanins;
 };
 
 // Updates new node name.

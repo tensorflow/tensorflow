@@ -68,7 +68,7 @@ TEST(CRC, Extend) {
 }
 
 TEST(CRC, Mask) {
-  uint32 crc = Value("foo", 3);
+  uint32_t crc = Value("foo", 3);
   ASSERT_NE(crc, Mask(crc));
   ASSERT_NE(crc, Mask(Mask(crc)));
   ASSERT_EQ(crc, Unmask(Mask(crc)));
@@ -89,7 +89,7 @@ TEST(CRC, ExtendWithCord) {
 static void BM_CRC(::testing::benchmark::State& state) {
   int len = state.range(0);
   std::string input(len, 'x');
-  uint32 h = 0;
+  uint32_t h = 0;
   for (auto s : state) {
     h = Extend(h, input.data() + 1, len - 1);
   }

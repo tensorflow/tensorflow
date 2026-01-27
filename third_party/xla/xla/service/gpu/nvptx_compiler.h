@@ -28,11 +28,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -62,35 +61,25 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const TargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const GpuAliasInfo* alias_info,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  bool RequiresCollectiveScheduleLinearizer(
-      const HloModule* module, se::StreamExecutor* stream_exec) override;
-
-  // target_config must outlive the pipeline.
-  absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::TargetConfig* target_config) override;
-
-  absl::Status AddGemmFusionAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version,
-      se::StreamExecutor* stream_executor) override;
+  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+  GetCodegenBackends(se::StreamExecutor* stream_exec,
+                     const Compiler::GpuTargetConfig* target_config,
+                     const AliasInfo* alias_info,
+                     const DebugOptions& debug_options,
+                     mlir::MLIRContext* mlir_context) override;
 
   // target_config must outlive the pipeline.
   absl::Status AddFusionAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
-      const Compiler::TargetConfig* target_config,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
+      const Compiler::GpuTargetConfig* target_config,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      const MultiProcessKeyValueStore& key_value_store) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec,

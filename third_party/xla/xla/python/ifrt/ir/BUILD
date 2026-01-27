@@ -158,6 +158,44 @@ tf_proto_library(
     visibility = ["//xla/python/ifrt:users"],
 )
 
+tf_proto_library(
+    name = "ifrt_ir_executable_version_proto",
+    srcs = ["ifrt_ir_executable_version.proto"],
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+    ],
+)
+
+cc_library(
+    name = "ifrt_ir_executable_version",
+    srcs = ["ifrt_ir_executable_version.cc"],
+    hdrs = ["ifrt_ir_executable_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":ifrt_ir_executable_version_proto_cc",
+        ":version",
+        "//xla:util",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:device_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
+        "//xla/python/ifrt:serdes_version",
+        "//xla/python/ifrt:serdes_week_4_old_version_accessor",
+        "//xla/python/pjrt_ifrt:xla_executable_version",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
 cc_library(
     name = "ifrt_ir_program",
     srcs = ["ifrt_ir_program.cc"],
@@ -174,6 +212,7 @@ cc_library(
         "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -184,7 +223,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:human_readable_json",
+        "@tsl//tsl/platform:human_readable_json",
     ],
 )
 
@@ -196,8 +235,8 @@ tf_proto_library(
 tf_proto_library(
     name = "ifrt_ir_compile_options_proto",
     srcs = ["ifrt_ir_compile_options.proto"],
-    protodeps = ["//xla/pjrt/proto:compile_options_proto"],
     visibility = ["//xla/python/ifrt:users"],
+    deps = ["//xla/pjrt/proto:compile_options_proto"],
 )
 
 xla_cc_test(
@@ -261,9 +300,9 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt/support:module_parsing",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -282,8 +321,8 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -301,16 +340,15 @@ cc_library(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:random",
     ],
 )
 
@@ -470,19 +508,23 @@ cc_library(
         ":atom_program_compiler",
         ":ifrt_ir_program",
         ":ir",
+        ":program_interpreter",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
-        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -494,7 +536,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -505,7 +547,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:users"],
     deps = [
-        ":compiled_ifrt_ir_program",
+        ":atom_program_compiler",
         ":ir",
         "//xla:status_macros",
         "//xla/python/ifrt",
@@ -518,6 +560,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -529,7 +573,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -543,5 +587,14 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_proto_library(
+    name = "serialized_executable_metadata_proto",
+    srcs = ["serialized_executable_metadata.proto"],
+    visibility = ["//learning/brain/research/ifrt:__subpackages__"],
+    deps = [
+        ":ifrt_ir_compile_options_proto",
     ],
 )

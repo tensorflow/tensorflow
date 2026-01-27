@@ -669,10 +669,10 @@ CloneComputationsForNonNormalizingInstructions(
 }
 }  // namespace
 
-absl::StatusOr<bool> FloatNormalization::Run(
+absl::StatusOr<bool> FloatNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+  XLA_VLOG_LINES(2, "FloatNormalization::RunImpl() for " +
                         primitive_util::LowercasePrimitiveTypeName(
                             float_support_->LowPrecisionType()) +
                         ", before:\n" + module->ToString());
@@ -686,7 +686,7 @@ absl::StatusOr<bool> FloatNormalization::Run(
     if (computations_to_skip.contains(comp)) continue;
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
-  XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
+  XLA_VLOG_LINES(2, "FloatNormalization::RunImpl() for " +
                         primitive_util::LowercasePrimitiveTypeName(
                             float_support_->LowPrecisionType()) +
                         ", after:\n" + module->ToString());

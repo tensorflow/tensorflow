@@ -35,7 +35,7 @@ class PluggableDeviceSimpleAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
 
   bool TracksAllocationSizes() const override { return false; }
-  string Name() override { return "Simple allocator"; }
+  std::string Name() override { return "Simple allocator"; }
   std::optional<AllocatorStats> GetStats() override;
 
   AllocatorMemoryType GetMemoryType() const override {

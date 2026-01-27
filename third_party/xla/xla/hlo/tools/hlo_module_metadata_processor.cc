@@ -36,14 +36,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "google/protobuf/text_format.h"
 #include "xla/service/hlo.pb.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace tools {
@@ -99,8 +99,7 @@ int main(int argc, char** argv) {
 
   QCHECK_EQ(argc, 2) << "usage: " << argv[0] << " <filepath>";
   std::string serialized;
-  TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), std::string(argv[1]),
-                                    &serialized));
+  CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), argv[1], &serialized));
   xla::tools::ProcessMetadata(serialized);
   return 0;
 }

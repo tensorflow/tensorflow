@@ -31,7 +31,7 @@ class Device;
 // for specific collective functions.
 class RingAlg : public CollectiveImplementationInterface {
  public:
-  explicit RingAlg(CollectiveType type, const string& name);
+  explicit RingAlg(CollectiveType type, const std::string& name);
   ~RingAlg() override {}
 
   // Establishes the requested number of subdivision permutations based on the
@@ -63,11 +63,11 @@ class RingAlg : public CollectiveImplementationInterface {
 
   // Tracks progress of actions on a single subfield of the entire tensor.
   struct RingField {
-    int16 chunk_idx;     // major division index
-    int16 subdiv_idx;    // minor division index
-    int16 sc_idx;        // subchunk index
-    int16 rank;          // rank within subdiv permutation
-    int16 recv_dev_idx;  // dev from which value should be recv'd
+    int16_t chunk_idx;     // major division index
+    int16_t subdiv_idx;    // minor division index
+    int16_t sc_idx;        // subchunk index
+    int16_t rank;          // rank within subdiv permutation
+    int16_t recv_dev_idx;  // dev from which value should be recv'd
     RingFieldAction action;
     bool second_pass;
     bool recv_is_remote = false;
@@ -78,7 +78,7 @@ class RingAlg : public CollectiveImplementationInterface {
     Tensor chunk;           // alias to field values
     Tensor tmp_chunk;
     absl::Status status;
-    string DebugString() const;
+    std::string DebugString() const;
   };
   virtual void InitRingField(RingField* rf, int chunk_idx, int subdiv_idx,
                              int field_idx);
@@ -87,8 +87,8 @@ class RingAlg : public CollectiveImplementationInterface {
   void DispatchRecv(RingField* rf, const StatusCallback& done);
 
   // For constructing log messages for debugging.
-  string FieldState();
-  string TensorDebugString(const Tensor& tensor);
+  std::string FieldState();
+  std::string TensorDebugString(const Tensor& tensor);
 
   // Producer/Consumer Queue of RingField structs.
   class PCQueue {
@@ -104,7 +104,7 @@ class RingAlg : public CollectiveImplementationInterface {
   };
 
   const CollectiveType type_;
-  const string name_;
+  const std::string name_;
   std::shared_ptr<CollectiveContext> col_ctx_;
   const CollectiveParams* col_params_;  // Not owned
   StatusCallback done_;

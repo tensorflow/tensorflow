@@ -97,7 +97,7 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
 
 }  // namespace
 
-absl::StatusOr<bool> AlgorithmChecker::Run(
+absl::StatusOr<bool> AlgorithmChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(AlgorithmCheckerVisitor(gpu_compute_capability_)

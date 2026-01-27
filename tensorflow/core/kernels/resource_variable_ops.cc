@@ -135,6 +135,7 @@ absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
       TF_CALL_ALL_TYPES(HANDLER);
       TF_CALL_float8_e5m2(HANDLER);
       TF_CALL_float8_e4m3fn(HANDLER);
+      TF_CALL_float4_e2m1fn(HANDLER);
       TF_CALL_int4(HANDLER);
       TF_CALL_uint4(HANDLER);
       TF_CALL_int2(HANDLER);
@@ -578,6 +579,7 @@ TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_float8_e5m2(REGISTER_KERNELS);
 TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
+TF_CALL_float4_e2m1fn(REGISTER_KERNELS);
 TF_CALL_int4(REGISTER_KERNELS);
 TF_CALL_uint4(REGISTER_KERNELS);
 TF_CALL_int2(REGISTER_KERNELS);
@@ -596,6 +598,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
 TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
+TF_CALL_float4_e2m1fn(REGISTER_GPU_KERNELS);
 TF_CALL_int4(REGISTER_GPU_KERNELS);
 TF_CALL_uint4(REGISTER_GPU_KERNELS);
 TF_CALL_int2(REGISTER_GPU_KERNELS);
@@ -1012,7 +1015,7 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   auto stream = c->op_device_context()->stream();
   TF_RETURN_IF_ERROR(c->allocate_temp(
       device_tensor.dtype(), device_tensor.shape(), host_tensor, alloc_attr));
-  se::DeviceMemoryBase device_ptr(
+  stream_executor::DeviceAddressBase device_ptr(
       const_cast<Tensor&>(device_tensor).flat<T>().data(),
       device_tensor.flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(host_tensor->flat<T>().data(), device_ptr,
@@ -1049,8 +1052,8 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
       c, &host_params, host_indices, host_updates, num_indices));
 
   // Copy 'host_params' to device.
-  se::DeviceMemoryBase params_ptr(params->flat<T>().data(),
-                                  params->flat<T>().size() * sizeof(T));
+  stream_executor::DeviceAddressBase params_ptr(
+      params->flat<T>().data(), params->flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(&params_ptr, host_params.flat<T>().data(),
                                     host_params.NumElements() * sizeof(T)));
   if (!stream) {

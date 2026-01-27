@@ -252,7 +252,7 @@ absl::Status SinkSlices(
 // This pass currently doesn't transform non-elementwise instructions. We may
 // extend this pass to transform non-elementwise instructions, such as dot,
 // broadcast and reduce in the future.
-absl::StatusOr<bool> SliceSinker::Run(
+absl::StatusOr<bool> SliceSinker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

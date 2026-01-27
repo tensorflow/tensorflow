@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-string CheckAndRemoveDoc(const string& doc) {
+std::string CheckAndRemoveDoc(const std::string& doc) {
   auto pos = doc.find("Profile:");
   CHECK(pos != doc.npos);
   return doc.substr(pos + 9);
@@ -38,32 +38,33 @@ string CheckAndRemoveDoc(const string& doc) {
 class TFProfShowTest : public ::testing::Test {
  protected:
   TFProfShowTest() {
-    string graph_path =
+    std::string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
-    std::unique_ptr<tensorflow::GraphDef> graph_pb(new tensorflow::GraphDef());
+    std::unique_ptr<tensorflow::GraphDef> graph_pb =
+        std::make_unique<tensorflow::GraphDef>();
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), graph_path, graph_pb.get(), false));
 
-    std::unique_ptr<tensorflow::RunMetadata> run_meta_pb(
-        new tensorflow::RunMetadata());
-    string run_meta_path =
+    std::unique_ptr<tensorflow::RunMetadata> run_meta_pb =
+        std::make_unique<tensorflow::RunMetadata>();
+    std::string run_meta_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/run_meta");
     TF_CHECK_OK(
         ReadProtoFile(Env::Default(), run_meta_path, run_meta_pb.get(), true));
 
-    std::unique_ptr<OpLogProto> op_log_pb(new OpLogProto());
-    string op_log_path =
+    std::unique_ptr<OpLogProto> op_log_pb = std::make_unique<OpLogProto>();
+    std::string op_log_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/tfprof_log");
     TF_CHECK_OK(ReadBinaryProto(Env::Default(), op_log_path, op_log_pb.get()));
 
-    string ckpt_path = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                    "core/profiler/internal/testdata/ckpt");
+    std::string ckpt_path = io::JoinPath(
+        testing::TensorFlowSrcRoot(), "core/profiler/internal/testdata/ckpt");
     TF_Status* status = TF_NewStatus();
-    std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader(
-        new checkpoint::CheckpointReader(ckpt_path, status));
+    std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader =
+        std::make_unique<checkpoint::CheckpointReader>(ckpt_path, status);
     CHECK(TF_GetCode(status) == TF_OK);
     TF_DeleteStatus(status);
 
@@ -73,9 +74,9 @@ class TFProfShowTest : public ::testing::Test {
     tf_stats_->BuildAllViews();
   }
 
-  string TestToFromProto(const string& cmd, const Options& opts,
-                         bool show_multi_node = false) {
-    string profile_file = io::JoinPath(testing::TmpDir(), "profile");
+  std::string TestToFromProto(const std::string& cmd, const Options& opts,
+                              bool show_multi_node = false) {
+    std::string profile_file = io::JoinPath(testing::TmpDir(), "profile");
     tf_stats_->WriteProfile(profile_file);
     TFStats new_stats(profile_file, nullptr);
     new_stats.BuildAllViews();
@@ -84,7 +85,7 @@ class TFProfShowTest : public ::testing::Test {
     } else {
       new_stats.ShowGraphNode(cmd, opts);
     }
-    string dump_str;
+    std::string dump_str;
     TF_CHECK_OK(ReadFileToString(Env::Default(),
                                  opts.output_options.at("outfile"), &dump_str));
     return dump_str;
@@ -94,7 +95,7 @@ class TFProfShowTest : public ::testing::Test {
 };
 
 TEST_F(TFProfShowTest, DumpScopeMode) {
-  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  std::string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(
       5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, "name",
       {"VariableV2"},  // accout_type_regexes
@@ -104,7 +105,7 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
       "file", {{"outfile", dump_file}});
   tf_stats_->ShowGraphNode("scope", opts);
 
-  string dump_str;
+  std::string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
       "node name | # parameters | # float_ops | requested bytes | peak bytes | "
@@ -123,7 +124,7 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
 }
 
 TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
-  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  std::string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, "cpu_micros",
                {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
@@ -131,7 +132,7 @@ TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
                {{"outfile", dump_file}});
   tf_stats_->ShowGraphNode("scope", opts);
 
-  string dump_str;
+  std::string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
       "node name | accelerator execution time | cpu execution "
@@ -170,7 +171,7 @@ TEST_F(TFProfShowTest, DumpAcceleratorAndCPUMicros) {
 }
 
 TEST_F(TFProfShowTest, DumpOpMode) {
-  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  std::string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(
       5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, -1, "params",
       {".*"},  // accout_type_regexes
@@ -179,7 +180,7 @@ TEST_F(TFProfShowTest, DumpOpMode) {
       "file", {{"outfile", dump_file}});
   tf_stats_->ShowMultiGraphNode("op", opts);
 
-  string dump_str;
+  std::string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
   EXPECT_EQ(
       "nodename|requestedbytes|totalexecutiontime|acceleratorexecutiontime|"

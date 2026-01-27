@@ -252,7 +252,7 @@ class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
       LOG(ERROR) << "No kernel events";
       return 0;
     }
-    std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
+    absl::c_sort(kernel_times_ns_);
     auto i = kernel_times_ns_.size() / 2;
     // Return median value if number of values is odd.
     if (kernel_times_ns_.size() % 2 != 0) {
@@ -397,7 +397,9 @@ absl::StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
 
   // Longer chains are too slow to compile.
   constexpr int kMinOpChainLength = 16;
-  constexpr int kMaxOpChainLength = 8192;
+  // If you get "too fast to measure" errors on faster GPUs, try increasing
+  // kMaxOpChainLength.
+  constexpr int kMaxOpChainLength = 16 * 1024;
 
   absl::Duration duration = absl::ZeroDuration();
   int chain_length = kMinOpChainLength;

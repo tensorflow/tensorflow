@@ -24,12 +24,10 @@ limitations under the License.
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -66,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -653,7 +652,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                  const_cast<HloInstruction*>(instr->operand(0)))) &&
             (b = MatchFp8Param(
                  const_cast<HloInstruction*>(instr->operand(1))))) {
-          if (IsRocm(gpu_version_) &&
+          if (gpu_version_.IsRocm() &&
               toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0} &&
               instr->shape().element_type() != F16 &&
               instr->shape().element_type() != F32) {
@@ -1048,10 +1047,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  static bool IsCuda(const se::GpuComputeCapability& gpu_version) {
-    return gpu_version.IsCuda();
-  }
-
   static absl::StatusOr<se::CudaComputeCapability> GetCudaComputeCapability(
       const se::GpuComputeCapability& gpu_version) {
     auto* cuda_cc = gpu_version.cuda_compute_capability();
@@ -1059,10 +1054,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::InvalidArgumentError("Compute Capability is not CUDA.");
     }
     return *cuda_cc;
-  }
-
-  static bool IsRocm(const se::GpuComputeCapability& gpu_version) {
-    return gpu_version.IsRocm();
   }
 
   static absl::StatusOr<se::RocmComputeCapability> GetRocmComputeCapability(
@@ -1081,7 +1072,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     GemmBackendConfig& gemm_backend_config =
         *gpu_backend_config.mutable_gemm_backend_config();
     se::CudaComputeCapability cuda_compute_capability;
-    if (IsCuda(gpu_version_)) {
+    if (gpu_version_.IsCuda()) {
       TF_ASSIGN_OR_RETURN(cuda_compute_capability,
                           GetCudaComputeCapability(gpu_version_));
       // FP8 GEMM kernels are only available on Ada, Hopper, and later
@@ -1100,7 +1091,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    if (IsRocm(gpu_version_)) {
+    if (gpu_version_.IsRocm()) {
       TF_ASSIGN_OR_RETURN(auto rocm_compute_capability,
                           GetRocmComputeCapability(gpu_version_));
       if (!rocm_compute_capability.has_fp8_support()) {
@@ -1119,7 +1110,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // cuBLASLt FP8 GEMM kernels require one of the two operands to be in
     // F8E4M3FN format.
-    if (IsCuda(gpu_version_)) {
+    if (gpu_version_.IsCuda()) {
       if (a_type == F8E5M2 && b_type == F8E5M2) {
         VLOG(1)
             << "Failed to rewrite " << instr->ToShortString()
@@ -1138,7 +1129,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    if (IsRocm(gpu_version_)) {
+    if (gpu_version_.IsRocm()) {
       TF_ASSIGN_OR_RETURN(auto rocm_compute_capability,
                           GetRocmComputeCapability(gpu_version_));
       if (rocm_compute_capability.has_ocp_fp8_support()) {
@@ -1232,7 +1223,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     PrimitiveType d_type = instr->shape().element_type();
     std::unordered_set<PrimitiveType> supported_d_types = {BF16, F16, F32};
-    if (IsCuda(gpu_version_)) {
+    if (gpu_version_.IsCuda()) {
       supported_d_types.insert(F8E4M3FN);
       supported_d_types.insert(F8E5M2);
       if (supported_d_types.find(d_type) == supported_d_types.end()) {
@@ -1243,7 +1234,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
       }
     }
-    if (IsRocm(gpu_version_)) {
+    if (gpu_version_.IsRocm()) {
       if (toolkit_version_ < stream_executor::SemanticVersion{6, 2, 0}) {
         if (supported_d_types.find(d_type) == supported_d_types.end()) {
           VLOG(1) << "Failed to rewrite " << instr->ToShortString()
@@ -1397,7 +1388,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     a.fp8_input = PadOperandToMultipleOf16(a_batch_dims, a.fp8_input);
     b.fp8_input = PadOperandToMultipleOf16(b_batch_dims, b.fp8_input);
     std::vector<int64_t> out_batch_dims(num_batch_dims);
-    std::iota(out_batch_dims.begin(), out_batch_dims.end(), 0);
+    absl::c_iota(out_batch_dims, 0);
     Shape new_output_shape =
         PadShapeToMultipleOf16(instr->shape(), out_batch_dims);
 
@@ -1476,7 +1467,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                           HloInstruction* clamp_upper,
                           bool mult_scale = false) {
     // TODO: add ROCm support to this fusion pattern
-    if (IsRocm(gpu_version_)) {
+    if (gpu_version_.IsRocm()) {
       return absl::OkStatus();
     }
     // Verify the data types and the operands of clamp.
@@ -1946,7 +1937,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
     // matmul. We cannot check the patch version, so disable this fusion with
     // CUDA versions less than 12.4.
-    if (IsCuda(gpu_version_) &&
+    if (gpu_version_.IsCuda() &&
         toolkit_version_ < stream_executor::SemanticVersion{12, 4, 0} &&
         IsCublasLtMatmulF8(*gemm)) {
       return absl::OkStatus();
@@ -2002,7 +1993,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // CUBLAS_STATUS_NOT_SUPPORTED in some cases when fusing gelu into an FP8
     // matmul. We cannot check the patch version, so disable this fusion with
     // CUDA versions less than 12.4.
-    if (IsCuda(gpu_version_) &&
+    if (gpu_version_.IsCuda() &&
         toolkit_version_ < stream_executor::SemanticVersion{12, 4, 0} &&
         IsCublasLtMatmulF8(*gemm)) {
       return absl::OkStatus();
@@ -2056,10 +2047,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction& instr,
       const GemmBackendConfig& gemm_backend_config) const {
-    if (!instr.GetModule()
-             ->config()
-             .debug_options()
-             .xla_gpu_enable_cublaslt()) {
+    if (!options_.enable_cublaslt) {
       // cublasLt is not enabled.
       return absl::string_view(kGemmCallTarget);
     }
@@ -2107,7 +2095,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         const se::blas::ComputationType compute_type,
         se::gpu::GetBlasComputationType(
             instr.precision_config().algorithm(), a_dtype, output_type,
-            stream_executor::blas::kDefaultComputePrecision));
+            stream_executor::blas::kDefaultComputePrecision, gpu_version_));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -2205,10 +2193,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return false;
     }
 
-    TF_ASSIGN_OR_RETURN(
-        const se::blas::ComputationType compute_type,
-        se::gpu::GetBlasComputationType(
-            algorithm, a_dtype, instr.shape().element_type(), max_precision));
+    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
+                        se::gpu::GetBlasComputationType(
+                            algorithm, a_dtype, instr.shape().element_type(),
+                            max_precision, gpu_version_));
     se::blas::DataType scale_type =
         se::gpu::GetScaleType(output_dtype, compute_type);
 
@@ -2278,7 +2266,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         {ComputationType::kF64, DataType::kComplexDouble, PrimitiveType::C128,
          PrimitiveType::C128, DataType::kComplexDouble},
     };
-    if (IsCuda(gpu_version_) &&
+    if (gpu_version_.IsCuda() &&
         absl::c_linear_search(supported_cublas_type_combinations,
                               std::tuple{compute_type, scale_type, a_dtype,
                                          b_dtype, output_dtype})) {
@@ -2349,7 +2337,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
          PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
     };
-    if (IsRocm(gpu_version_) &&
+    if (gpu_version_.IsRocm() &&
         absl::c_linear_search(supported_hipblas_type_combinations,
                               std::tuple{compute_type, scale_type, a_dtype,
                                          b_dtype, output_dtype})) {
@@ -2580,8 +2568,8 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
 
     if (instr->shape().IsTuple()) {
       for (auto user : instr->users()) {
-        auto user_get_tuple =
-            dynamic_cast<HloGetTupleElementInstruction*>(user);
+        HloGetTupleElementInstruction* user_get_tuple =
+            DynCast<HloGetTupleElementInstruction>(user);
         TF_RET_CHECK(user_get_tuple);
         HloInstruction* get_output =
             instr->AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -2608,7 +2596,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
-  return visitor.changed();
+  return visitor.changed() || workspace_visitor.changed();
 }
 
 }  // anonymous namespace
@@ -2620,7 +2608,7 @@ GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version,
       toolkit_version_(toolkit_version),
       options_(options) {}
 
-absl::StatusOr<bool> GemmRewriter::Run(
+absl::StatusOr<bool> GemmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

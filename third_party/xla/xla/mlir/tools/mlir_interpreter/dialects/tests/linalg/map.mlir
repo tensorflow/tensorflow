@@ -2,7 +2,7 @@
 
 func.func @no_inputs() -> tensor<4xf32> {
   %init = arith.constant dense<[1.0,2.0,3.0,4.0]> : tensor<4xf32>
-  %zero = linalg.map outs(%init:tensor<4xf32>)() {
+  %zero = linalg.map outs(%init:tensor<4xf32>)(%out: f32) {
     %0 = arith.constant 0.0: f32
     linalg.yield %0: f32
   }
@@ -19,7 +19,7 @@ func.func @binary() -> tensor<4xi32> {
   %rhs = arith.constant dense<[10, 20, 30, 40]> : tensor<4xi32>
   %add = linalg.map ins(%lhs, %rhs: tensor<4xi32>, tensor<4xi32>)
                     outs(%init: tensor<4xi32>)
-    (%lhs_elem: i32, %rhs_elem: i32) {
+    (%lhs_elem: i32, %rhs_elem: i32, %out: i32) {
       %0 = arith.addi %lhs_elem, %rhs_elem: i32
       linalg.yield %0: i32
     }
@@ -36,7 +36,7 @@ func.func @memref() -> memref<4xi32> {
   %rhs = arith.constant dense<[10, 20, 30, 40]> : memref<4xi32>
   linalg.map ins(%lhs, %rhs: memref<4xi32>, memref<4xi32>)
              outs(%alloc: memref<4xi32>)
-    (%lhs_elem: i32, %rhs_elem: i32) {
+    (%lhs_elem: i32, %rhs_elem: i32, %out: i32) {
       %0 = arith.muli %lhs_elem, %rhs_elem: i32
       linalg.yield %0: i32
     }
@@ -49,7 +49,7 @@ func.func @memref() -> memref<4xi32> {
 
 func.func @index() -> memref<4xindex> {
   %alloc = memref.alloc() : memref<4xindex>
-  linalg.map outs(%alloc: memref<4xindex>)() {
+  linalg.map outs(%alloc: memref<4xindex>)(%out: index) {
     %0 = linalg.index 0 : index
     linalg.yield %0: index
   }
@@ -63,7 +63,8 @@ func.func @index() -> memref<4xindex> {
 func.func @vector() -> memref<4xvector<2xindex>> {
   %c = arith.constant dense<42> : vector<2xindex>
   %alloc = memref.alloc() : memref<4xvector<2xindex>>
-  linalg.map outs(%alloc: memref<4xvector<2xindex>>)() {
+  linalg.map outs(%alloc: memref<4xvector<2xindex>>)
+  (%out: vector<2xindex>) {
     linalg.yield %c: vector<2xindex>
   }
   func.return %alloc : memref<4xvector<2xindex>>

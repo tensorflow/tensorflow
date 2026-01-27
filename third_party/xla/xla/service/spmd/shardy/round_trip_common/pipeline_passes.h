@@ -24,8 +24,9 @@ namespace sdy {
 // Adds the common import passes for both the SDY and StableHLO import
 // pipelines that need to be called before each pipeline converts an HLO
 // sharding/SDY sharding string into an `sdy.sharding` attribute.
-void addCommonPreImportPasses(mlir::OpPassManager& pm,
-                              bool enableConstantImport = true);
+void addCommonPreImportPasses(
+    mlir::OpPassManager& pm, bool enableConstantImport = true,
+    bool enableStablehloCanonicalizeFromHloImport = true);
 
 // Adds the common import passes for both the SDY and StableHLO import
 // pipelines that need to be called after each pipeline converts an HLO

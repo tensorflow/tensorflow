@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -62,7 +62,7 @@ static absl::Status PlatformInitialize() {
 }
 }  // namespace
 
-ROCmPlatform::ROCmPlatform() : name_("ROCM") {}
+ROCmPlatform::ROCmPlatform() : name_(rocm::kROCmPlatformId->ToName()) {}
 
 Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
 
@@ -114,7 +114,7 @@ ROCmPlatform::GetUncachedExecutor(int ordinal) {
 static void InitializeROCmPlatform() {
   auto status = PlatformManager::PlatformWithName("ROCM");
   if (!status.ok()) {
-    TF_CHECK_OK(PlatformManager::RegisterPlatform(
+    CHECK_OK(PlatformManager::RegisterPlatform(
         std::make_unique<gpu::ROCmPlatform>()));
   }
 }

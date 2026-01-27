@@ -23,8 +23,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -34,11 +34,12 @@ using ::testing::HasSubstr;
 
 class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
  public:
+  IndexingMapSerializationTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   void ParseAndCheck(absl::string_view indexing_map_str) {
-    auto indexing_map =
-        ParseIndexingMap(indexing_map_str, &symbolic_expr_context_);
+    auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
     ASSERT_TRUE(indexing_map.has_value());
     EXPECT_THAT(ToString(*indexing_map), MatchIndexingString(indexing_map_str));
   }
@@ -52,8 +53,8 @@ TEST_F(IndexingMapSerializationTest, UndefinedMap) {
 }
 
 TEST_F(IndexingMapSerializationTest, KnownEmptyMap) {
-  auto map = ParseIndexingMap("(d0) -> (), domain: d0 in [1, 0]",
-                              &symbolic_expr_context_);
+  auto map =
+      ParseIndexingMap("(d0) -> (), domain: d0 in [1, 0]", &mlir_context_);
   EXPECT_TRUE(map->IsKnownEmpty());
   EXPECT_THAT(ToString(*map), MatchIndexingString("KNOWN EMPTY"));
 }

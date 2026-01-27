@@ -246,7 +246,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
 
 }  // namespace
 
-absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
+absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<HloInstruction*,

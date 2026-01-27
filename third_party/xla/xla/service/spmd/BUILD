@@ -52,6 +52,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
@@ -89,7 +90,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:numbers",
     ],
 )
 
@@ -278,6 +279,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -424,6 +426,8 @@ xla_cc_test(
     deps = [
         ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "@com_google_googletest//:gtest_main",
     ],

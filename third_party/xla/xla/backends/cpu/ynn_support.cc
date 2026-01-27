@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/ynn_support.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <tuple>
 
 #include "ynnpack/include/ynnpack.h"
@@ -25,14 +26,18 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -44,10 +49,13 @@ const absl::flat_hash_map<HloOpcode, ynn_unary_operator>& GetYnnUnaryOpMap() {
           {HloOpcode::kCeil, ynn_unary_ceil},
           {HloOpcode::kConvert, ynn_unary_convert},
           {HloOpcode::kCos, ynn_unary_cosine},
+          {HloOpcode::kErf, ynn_unary_erf},
           {HloOpcode::kExp, ynn_unary_exp},
+          {HloOpcode::kExpm1, ynn_unary_expm1},
           {HloOpcode::kCbrt, ynn_unary_cube_root},
           {HloOpcode::kFloor, ynn_unary_floor},
           {HloOpcode::kLog, ynn_unary_log},
+          {HloOpcode::kLog1p, ynn_unary_log1p},
           {HloOpcode::kLogistic, ynn_unary_sigmoid},
           {HloOpcode::kNegate, ynn_unary_negate},
           {HloOpcode::kRoundNearestEven, ynn_unary_round},
@@ -95,6 +103,10 @@ absl::StatusOr<ynn_binary_operator> YnnBinaryOperator(const HloOpcode& opcode) {
 }
 
 bool IsLayoutSupportedByYnn(const Shape& shape) {
+  if (shape.dimensions().size() > YNN_MAX_TENSOR_RANK) {
+    // TODO(b/460602165): We should eliminate this limitation.
+    return false;
+  }
   return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
@@ -130,6 +142,15 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
                    [](const HloInstruction* op) {
                      return YnnType(op->shape().element_type()).ok();
                    })) {
+    return false;
+  }
+
+  // We don't want to handle ops that are too small, overhead will be
+  // significant.
+  // TODO(b/469236467): This threshold is probably too small in some cases and
+  // too big in others.
+  constexpr int64_t kMinElements = 64;
+  if (ShapeUtil::ElementsIn(hlo->shape()) < kMinElements) {
     return false;
   }
 
@@ -191,6 +212,13 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
     return false;
   }
 
+  if (std::max({dot_canonical_dims.m, dot_canonical_dims.k,
+                dot_canonical_dims.n}) < 8) {
+    // If this dot is small, our overhead is probably too significant.
+    // TODO(b/458529782): This is here as a workaround for an unrelated bug.
+    return false;
+  }
+
   // YNNPACK supports transposing the inputs efficiently if possible (they will
   // fuse with dot packing), but we don't currently support generating the
   // necessary transposes.
@@ -201,6 +229,179 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   }
 
   return true;
+}
+
+absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kDot);
+  return IsDotSupportedByYnn(hlo->dot_dimension_numbers(),
+                             hlo->operand(0)->shape(), hlo->operand(1)->shape(),
+                             hlo->shape());
+}
+
+bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReduce);
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
+  CHECK_NE(reduce, nullptr);
+  // TODO(ashaposhnikov): we can support this edge case,
+  // planning to come back to this later.
+  if (reduce->dimensions().empty()) {
+    return false;
+  }
+
+  HloInstruction* init = reduce->init_values().front();
+  const PrimitiveType type = init->shape().element_type();
+  // TODO(ashaposhnikov): The list of supported types can be extended.
+  if (type != F32) {
+    return false;
+  }
+  if (type != hlo->shape().element_type()) {
+    return false;
+  }
+
+  const HloComputation* to_apply = reduce->to_apply();
+  CHECK_NE(to_apply, nullptr);
+  return Match(to_apply->root_instruction(),
+               match::AnyOf<HloInstruction>(match::Add(), match::Maximum(),
+                                            match::Minimum())
+                   .WithBinaryOperandsAnyOrder(match::Parameter(0),
+                                               match::Parameter(1)));
+}
+
+bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo) {
+  if (!IsReduceOpSupportedByYnn(hlo)) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (ShapeUtil::ElementsIn(input->shape()) < 32 * 1024) {
+    return false;
+  }
+  switch (input->opcode()) {
+    case HloOpcode::kMultiply:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kSlice:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConvert:
+    case HloOpcode::kReshape:
+      return false;
+    default: {
+      return true;
+    }
+  }
+}
+
+bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
+  CHECK_EQ(instr->opcode(), HloOpcode::kConvolution);
+  const HloConvolutionInstruction* conv =
+      Cast<HloConvolutionInstruction>(instr);
+
+  ConvolutionDimensionNumbers conv_dimensions =
+      conv->convolution_dimension_numbers();
+  Window window = conv->window();
+
+  if (conv->batch_group_count() != 1) {
+    return false;
+  }
+
+  // Only support 2D convolution.
+  if (window.dimensions_size() != 2) {
+    return false;
+  }
+
+  // Stores tuple of allowed (input, output) dtypes.
+  // TODO(b/466474339): Enable other data types.
+  static const absl::NoDestructor<absl::flat_hash_set<
+      std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
+      kAllowedTypes({/*{F32, F32, F32}, {BF16, BF16, F32},*/ {S8, S8, S32}});
+
+  const Shape& lhs_shape = conv->operand(0)->shape();
+  const Shape& rhs_shape = conv->operand(1)->shape();
+  const Shape& out_shape = conv->shape();
+
+  PrimitiveType lhs_dtype = lhs_shape.element_type();
+  PrimitiveType rhs_dtype = rhs_shape.element_type();
+  PrimitiveType out_dtype = out_shape.element_type();
+
+  if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
+    return false;
+  }
+
+  // Make sure that this layout is supported.
+  if (conv_dimensions.input_feature_dimension() != 3 ||
+      conv_dimensions.output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.kernel_input_feature_dimension() != 2 ||
+      conv_dimensions.kernel_output_feature_dimension() != 3) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions_size() != 2 ||
+      conv_dimensions.kernel_spatial_dimensions_size() != 2 ||
+      conv_dimensions.output_spatial_dimensions_size() != 2) {
+    return false;
+  }
+
+  if (conv_dimensions.input_spatial_dimensions(0) != 1 ||
+      conv_dimensions.input_spatial_dimensions(1) != 2 ||
+      conv_dimensions.kernel_spatial_dimensions(0) != 0 ||
+      conv_dimensions.kernel_spatial_dimensions(1) != 1 ||
+      conv_dimensions.output_spatial_dimensions(0) != 1 ||
+      conv_dimensions.output_spatial_dimensions(1) != 2) {
+    return false;
+  }
+
+  if (std::max({
+          lhs_shape.dimensions(conv_dimensions.input_feature_dimension()),
+          out_shape.dimensions(conv_dimensions.output_feature_dimension()),
+      }) <= 16) {
+    // If this  convolution is small, our overhead is probably too significant.
+    // TODO(b/458529782, b/473570788): This is here as a workaround for an
+    // unrelated bug.
+    return false;
+  }
+
+  // Skip if output or filter is larger than input.
+  // TODO(b/476207717): this should work fine in theory, but currently this
+  // fails at one of the shape checks fails as statically false. I think the
+  // issue is that an inferred input size is larger than what was provided.
+  for (int i = 0; i < conv_dimensions.input_spatial_dimensions_size(); ++i) {
+    if (out_shape.dimensions(conv_dimensions.output_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
+    if (rhs_shape.dimensions(conv_dimensions.kernel_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
+  }
+
+  // No base dilation for now.
+  if ((window.dimensions(0).base_dilation() != 1) ||
+      (window.dimensions(1).base_dilation() != 1)) {
+    return false;
+  }
+
+  // TODO(b/474103597): we might be able to do this using negative strides,
+  // but this feature is rarely used and considered for deprecation.
+  if ((window.dimensions(0).window_reversal() != 0) ||
+      (window.dimensions(1).window_reversal() != 0)) {
+    return false;
+  }
+
+  return true;
+}
+
+uint32_t YnnFlags(const DebugOptions& debug_options) {
+  uint32_t flags = 0;
+  if (!debug_options.xla_cpu_enable_platform_dependent_math()) {
+    flags |= YNN_FLAG_CONSISTENT_ARITHMETIC;
+  }
+  return flags;
 }
 
 }  // namespace xla::cpu

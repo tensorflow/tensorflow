@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_LOGGING_H_
 #define XLA_TSL_PLATFORM_LOGGING_H_
 
+#include "absl/log/absl_log.h"
 #include "absl/log/check.h"       // IWYU pragma: export
 #include "absl/log/log.h"         // IWYU pragma: export
 #include "absl/log/vlog_is_on.h"  // IWYU pragma: export
@@ -29,7 +30,9 @@ template <typename T>
 T&& CheckNotNull(absl::string_view file, int line, absl::string_view exprtext,
                  T&& t) {
   if (t == nullptr) {
-    LOG(FATAL).AtLocation(file, line) << exprtext;
+    // Use ABSL_LOG instead of LOG to avoid conflicts if downstream
+    // projects (e.g. pytorch) define their own LOG macro.
+    ABSL_LOG(FATAL).AtLocation(file, line) << exprtext;
   }
   return std::forward<T>(t);
 }

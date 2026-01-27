@@ -22,8 +22,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -32,14 +33,12 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace stream_executor::gpu {
 namespace {
 using ::testing::Gt;
-using ::tsl::testing::IsOk;
 
 class RocmTimerTest : public ::testing::Test {
  public:
@@ -50,9 +49,9 @@ class RocmTimerTest : public ::testing::Test {
     int64_t byte_length = sizeof(int32_t) * length;
 
     // Prepare arguments: a=1, b=2, c=0
-    DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
-    DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
-    DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+    DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
     ASSERT_THAT(stream->Memset32(&a, 1, byte_length), absl_testing::IsOk());
     ASSERT_THAT(stream->Memset32(&b, 2, byte_length), absl_testing::IsOk());

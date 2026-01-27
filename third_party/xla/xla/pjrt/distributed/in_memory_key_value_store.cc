@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
@@ -23,6 +24,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace xla {
 
@@ -50,6 +53,15 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
         absl::StrCat(key, " is not found in the kv store."));
   }
   return it->second;
+}
+
+std::shared_ptr<tsl::CallOptions> InMemoryKeyValueStore::AsyncGet(
+    absl::string_view key,
+    tsl::CoordinationServiceAgent::StatusOrValueCallback done) {
+  absl::Status status = absl::UnimplementedError(
+      "AsyncGet is not supported in InMemoryKeyValueStore.");
+  done(status);
+  return nullptr;
 }
 
 absl::Status InMemoryKeyValueStore::Set(absl::string_view key,

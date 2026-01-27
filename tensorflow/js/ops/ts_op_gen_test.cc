@@ -81,8 +81,9 @@ op {
 )";
 
 // Generate TypeScript code
-void GenerateTsOpFileText(const string& op_def_str, const string& api_def_str,
-                          string* ts_file_text) {
+void GenerateTsOpFileText(const std::string& op_def_str,
+                          const std::string& api_def_str,
+                          std::string* ts_file_text) {
   Env* env = Env::Default();
   OpList op_defs;
   protobuf::TextFormat::ParseFromString(
@@ -93,7 +94,7 @@ void GenerateTsOpFileText(const string& op_def_str, const string& api_def_str,
     TF_ASSERT_OK(api_def_map.LoadApiDef(api_def_str));
   }
 
-  const string& tmpdir = testing::TmpDir();
+  const std::string& tmpdir = testing::TmpDir();
   const auto ts_file_path = io::JoinPath(tmpdir, "test.ts");
 
   WriteTSOps(op_defs, api_def_map, ts_file_path);
@@ -101,10 +102,10 @@ void GenerateTsOpFileText(const string& op_def_str, const string& api_def_str,
 }
 
 TEST(TsOpGenTest, TestImports) {
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText("", "", &ts_file_text);
 
-  const string expected = R"(
+  const std::string expected = R"(
 import * as tfc from '@tensorflow/tfjs-core';
 import {createTensorsTypeOpAttr, nodeBackend} from './op_utils';
 )";
@@ -112,38 +113,38 @@ import {createTensorsTypeOpAttr, nodeBackend} from './op_utils';
 }
 
 TEST(TsOpGenTest, InputSingleAndList) {
-  const string api_def = R"pb(
+  const std::string api_def = R"pb(
     op { graph_op_name: "Foo" arg_order: "dim" arg_order: "images" }
   )pb";
 
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText("", api_def, &ts_file_text);
 
-  const string expected = R"(
+  const std::string expected = R"(
 export function Foo(dim: tfc.Tensor, images: tfc.Tensor[]): tfc.Tensor {
 )";
   ExpectContainsStr(ts_file_text, expected);
 }
 
 TEST(TsOpGenTest, TestVisibility) {
-  const string api_def = R"(
+  const std::string api_def = R"(
 op {
   graph_op_name: "Foo"
   visibility: HIDDEN
 }
 )";
 
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText("", api_def, &ts_file_text);
 
-  const string expected = R"(
+  const std::string expected = R"(
 export function Foo(images: tfc.Tensor[], dim: tfc.Tensor): tfc.Tensor {
 )";
   ExpectDoesNotContainStr(ts_file_text, expected);
 }
 
 TEST(TsOpGenTest, SkipDeprecated) {
-  const string op_def = R"(
+  const std::string op_def = R"(
 op {
   name: "DeprecatedFoo"
   input_arg {
@@ -172,14 +173,14 @@ op {
 }
 )";
 
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText(op_def, "", &ts_file_text);
 
   ExpectDoesNotContainStr(ts_file_text, "DeprecatedFoo");
 }
 
 TEST(TsOpGenTest, MultiOutput) {
-  const string op_def = R"(
+  const std::string op_def = R"(
 op {
   name: "MultiOutputFoo"
   input_arg {
@@ -212,20 +213,20 @@ op {
 }
 )";
 
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText(op_def, "", &ts_file_text);
 
-  const string expected = R"(
+  const std::string expected = R"(
 export function MultiOutputFoo(input: tfc.Tensor): tfc.Tensor[] {
 )";
   ExpectContainsStr(ts_file_text, expected);
 }
 
 TEST(TsOpGenTest, OpAttrs) {
-  string ts_file_text;
+  std::string ts_file_text;
   GenerateTsOpFileText("", "", &ts_file_text);
 
-  const string expectedFooAttrs = R"(
+  const std::string expectedFooAttrs = R"(
   const opAttrs = [
     createTensorsTypeOpAttr('T', images),
     {name: 'N', type: nodeBackend().binding.TF_ATTR_INT, value: images.length}

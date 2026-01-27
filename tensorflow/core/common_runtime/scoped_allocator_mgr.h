@@ -54,7 +54,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
   int64_t step_id_;
   mutex mu_;
   struct SAField {
-    int32 field_index;
+    int32_t field_index;
     union {
       ScopedAllocator* scoped_allocator;
       ScopedAllocatorInstance* instance;
@@ -67,7 +67,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
         : field_index(ScopedAllocator::kBackingIndex),
           scoped_allocator(nullptr) {}
   };
-  std::unordered_map<int32, SAField> allocators_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int32_t, SAField> allocators_ TF_GUARDED_BY(mu_);
 };
 
 // At most one of these exists per device.

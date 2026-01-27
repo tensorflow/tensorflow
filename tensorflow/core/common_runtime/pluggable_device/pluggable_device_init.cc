@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 
+#include <string>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -25,11 +27,11 @@ limitations under the License.
 namespace tensorflow {
 
 absl::Status ValidatePluggableDeviceMachineManager(
-    const string& platform_name) {
+    const std::string& platform_name) {
   return se::PlatformManager::PlatformWithName(platform_name).status();
 }
 
-se::Platform* PluggableDeviceMachineManager(const string& platform_name) {
+se::Platform* PluggableDeviceMachineManager(const std::string& platform_name) {
   auto result = se::PlatformManager::PlatformWithName(platform_name);
   if (!result.ok()) {
     LOG(FATAL) << "Could not find platform with name "  // Crash OK

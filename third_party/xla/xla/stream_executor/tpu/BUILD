@@ -72,15 +72,15 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -102,7 +102,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -120,8 +120,8 @@ cc_library(
     deps = [
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -154,7 +154,7 @@ cc_library(
     deps = [
         ":c_api_decl",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -202,8 +202,8 @@ cc_library(
         ":tpu_stream_interface",
         ":tpu_topology_external",
         "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:memory_allocation",
@@ -219,9 +219,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -251,7 +251,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -273,8 +273,8 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_topology_external",
         "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:memory_allocation",
@@ -291,9 +291,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:types",
     ],
 )
 
@@ -329,8 +329,8 @@ cc_library(
         ":tpu_stream_interface",
         ":tpu_topology_external",
         "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:memory_allocation",
@@ -349,11 +349,10 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:types",
     ],
 )
 
@@ -390,11 +389,11 @@ cc_library(
         "//xla/service",
         "//xla/service:backend",
         "//xla/service:stream_pool",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address_allocator",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:macros",
     ],
 )
 
@@ -459,7 +458,7 @@ cc_library(
         "//xla:shape_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -468,8 +467,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -490,14 +489,14 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:macros",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:macros",
     ],
 )
 
@@ -518,8 +517,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -530,7 +529,7 @@ cc_library(
     deps = [
         ":tpu_platform_interface",
         ":tpu_topology_external",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_common",
         "@com_google_absl//absl/status",
@@ -551,7 +550,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -566,13 +565,10 @@ cc_library(
         ":status_helper",
         ":tpu_executable",
         ":tpu_executor_api",
-        ":tpu_executor_c_api_hdrs",
         ":tpu_executor_hdrs",
         ":tpu_platform_id",
         "//xla:shape_util",
-        "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
@@ -580,7 +576,7 @@ cc_library(
         "//xla/stream_executor:platform",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
     alwayslink = True,
 )
@@ -590,7 +586,7 @@ cc_library(
     hdrs = ["tpu_stream_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream_common",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
@@ -609,13 +605,15 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
+        "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -623,9 +621,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -647,7 +642,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
-        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
@@ -657,8 +652,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -689,6 +684,6 @@ cc_library(
     deps = [
         ":c_api_decl",
         ":tpu_executor_api",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:types",
     ],
 )

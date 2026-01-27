@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <memory>
 #include <optional>
 #include <vector>
 
@@ -42,8 +41,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -97,29 +94,6 @@ absl::Status UpdateWhileUsesWithTuple(HloInstruction* while_instr,
   return absl::OkStatus();
 }
 
-void AppendOriginalValues(HloInstruction* instr,
-                          const HloInstruction::InstructionVector& new_operands,
-                          int64_t next_index) {
-  if (instr->original_value() != nullptr && !new_operands.empty()) {
-    std::shared_ptr<OriginalValue> old_original_value = instr->original_value(),
-                                   new_original_value =
-                                       std::make_shared<OriginalValue>(
-                                           instr->shape());
-    for (auto& [shape_index, original_array] : old_original_value->tree()) {
-      *new_original_value->mutable_tree()->mutable_element(shape_index) =
-          original_array;
-    }
-
-    for (int64_t i = 0; i < new_operands.size(); ++i) {
-      if (new_operands[i]->original_value() != nullptr) {
-        new_original_value->mutable_tree()->CopySubtreeFrom(
-            new_operands[i]->original_value()->tree(), {}, {next_index + i});
-      }
-    }
-    return instr->set_original_value(new_original_value);
-  }
-}
-
 // Appends the given new operand to while input and update loops computations
 // and shape accordingly and returns the gte instruction within the body that
 // represents the new operand.
@@ -130,8 +104,6 @@ absl::StatusOr<HloInstruction*> AppendToWhileState(
   ShapeUtil::AppendShapeToTuple(new_operand->shape(),
                                 while_input->mutable_shape());
   while_input->AppendOperand(new_operand);
-  AppendOriginalValues(while_input, {new_operand},
-                       while_input->operand_count() - 1);
   // Update the body computation.
   HloComputation* body = while_instr->while_body();
   *body->parameter_instruction(0)->mutable_shape() = while_input->shape();
@@ -149,8 +121,8 @@ absl::StatusOr<HloInstruction*> AppendToWhileState(
   TF_RETURN_IF_ERROR(
       UpdateWhileUsesWithTuple(while_instr, while_input->operand_count() - 1));
   *while_instr->mutable_shape() = while_input->shape();
-  AppendOriginalValues(while_instr, {new_operand},
-                       while_input->operand_count() - 1);
+  // The new body root tuple element has the same value as the new operand.
+  AppendToWhileLoopOriginalValue(while_instr, {new_operand});
 
   return new_gte;
 }
@@ -499,11 +471,11 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
       root->AppendOperand(new_operands[i]);
     }
     *(init_value->mutable_shape()) = parameter->shape();
-    AppendOriginalValues(init_value, fusion->operands(),
-                         next_index - fusion->operand_count());
     *(while_instr->mutable_shape()) = parameter->shape();
-    AppendOriginalValues(while_instr, fusion->operands(),
-                         next_index - fusion->operand_count());
+    //
+    // The new body root tuple elements have the same value as the fusion
+    // operands.
+    AppendToWhileLoopOriginalValue(while_instr, fusion->operands());
     *(while_cond->parameter_instruction(0)->mutable_shape()) =
         parameter->shape();
     *(root->mutable_shape()) = parameter->shape();
@@ -518,7 +490,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before WhileLoopFusibleSinking " << module->unique_id();

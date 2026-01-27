@@ -268,9 +268,9 @@ absl::Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
 
 absl::Status AddShuffleDataset(MutableGraphView* graph,
                                const NodeDef& add_before,
-                               const string& buffer_size_node,
-                               const string& seed_node,
-                               const string& seed2_node,
+                               const std::string& buffer_size_node,
+                               const std::string& seed_node,
+                               const std::string& seed2_node,
                                bool reshuffle_each_iteration) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
@@ -299,8 +299,8 @@ absl::Status AddShuffleDataset(MutableGraphView* graph,
 
 absl::Status AddShuffleDatasetV2(MutableGraphView* graph,
                                  const NodeDef& add_before,
-                                 const string& buffer_size_node,
-                                 const string& seed_generator_node) {
+                                 const std::string& buffer_size_node,
+                                 const std::string& seed_generator_node) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
   new_node.set_op(kShuffleDatasetV2OpName);
@@ -323,10 +323,10 @@ absl::Status AddShuffleDatasetV2(MutableGraphView* graph,
 
 absl::Status AddShuffleDatasetV3(MutableGraphView* graph,
                                  const NodeDef& add_before,
-                                 const string& buffer_size_node,
-                                 const string& seed_node,
-                                 const string& seed2_node,
-                                 const string& seed_generator_node,
+                                 const std::string& buffer_size_node,
+                                 const std::string& seed_node,
+                                 const std::string& seed2_node,
+                                 const std::string& seed_generator_node,
                                  bool reshuffle_each_iteration) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
@@ -373,11 +373,11 @@ bool ReaderOpInFunction(const NodeDef& node,
   return false;
 }
 
-absl::Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
-                                  absl::flat_hash_set<string>* nodes_to_delete,
-                                  string* op_name, string* buffer_size_node,
-                                  string* seed_node, string* seed2_node,
-                                  bool* reshuffle_each_iteration) {
+absl::Status RemoveShuffleDataset(
+    MutableGraphView* graph, const NodeDef& node,
+    absl::flat_hash_set<std::string>* nodes_to_delete, std::string* op_name,
+    std::string* buffer_size_node, std::string* seed_node,
+    std::string* seed2_node, bool* reshuffle_each_iteration) {
   if (node.op() == kShuffleDatasetOpName) {
     *op_name = node.op();
     *buffer_size_node = node.input(1);
@@ -400,8 +400,8 @@ absl::Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
 
 absl::Status RemoveShuffleDatasetV2(
     MutableGraphView* graph, const NodeDef& node,
-    absl::flat_hash_set<string>* nodes_to_delete, string* op_name,
-    string* buffer_size_node, string* seed_generator_node) {
+    absl::flat_hash_set<std::string>* nodes_to_delete, std::string* op_name,
+    std::string* buffer_size_node, std::string* seed_generator_node) {
   if (node.op() == kShuffleDatasetV2OpName) {
     *op_name = node.op();
     *buffer_size_node = node.input(1);
@@ -422,9 +422,10 @@ absl::Status RemoveShuffleDatasetV2(
 
 absl::Status RemoveShuffleDatasetV3(
     MutableGraphView* graph, const NodeDef& node,
-    absl::flat_hash_set<string>* nodes_to_delete, string* op_name,
-    string* buffer_size_node, string* seed_node, string* seed2_node,
-    string* seed_generator_node, bool* reshuffle_each_iteration) {
+    absl::flat_hash_set<std::string>* nodes_to_delete, std::string* op_name,
+    std::string* buffer_size_node, std::string* seed_node,
+    std::string* seed2_node, std::string* seed_generator_node,
+    bool* reshuffle_each_iteration) {
   if (node.op() == kShuffleDatasetV3OpName) {
     *op_name = node.op();
     *buffer_size_node = node.input(1);
@@ -448,13 +449,13 @@ absl::Status RemoveShuffleDatasetV3(
 
 absl::Status ProcessDatasetSourceNode(
     MutableGraphView* graph, const NodeDef& node,
-    absl::flat_hash_set<string>* nodes_to_delete, int64_t num_workers,
+    absl::flat_hash_set<std::string>* nodes_to_delete, int64_t num_workers,
     int64_t index) {
-  string shuffle_op_name = "";
-  string buffer_size_node = "";
-  string seed_node = "";
-  string seed2_node = "";
-  string seed_generator_node = "";
+  std::string shuffle_op_name = "";
+  std::string buffer_size_node = "";
+  std::string seed_node = "";
+  std::string seed2_node = "";
+  std::string seed_generator_node = "";
   bool reshuffle_each_iteration;
 
   TF_RETURN_IF_ERROR(AddShardNode(graph, node, num_workers, index));
@@ -492,7 +493,7 @@ absl::Status ProcessDatasetSourceNode(
 const NodeDef* FindFuncAndTensorSliceDataset(
     const NodeDef* node, int64_t num_workers, int64_t index,
     FunctionLibraryDefinition* flib, MutableGraphView* graph,
-    absl::flat_hash_set<string>* nodes_to_delete) {
+    absl::flat_hash_set<std::string>* nodes_to_delete) {
   if (IsDatasetNodeOfType(*node, kFuncDatasetOps)) {
     const NodeDef* input_node = graph_utils::GetInputNode(*node, *graph, 0);
     if (input_node->op() == kTensorSliceDatasetOpName ||
@@ -550,10 +551,10 @@ DropRemainderValue GetDropRemainder(const MutableGraphView& graph,
                               : DropRemainderValue::kFalse;
 }
 
-absl::Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
-                                 int64_t index, FunctionLibraryDefinition* flib,
-                                 MutableGraphView* graph,
-                                 absl::flat_hash_set<string>* nodes_to_delete) {
+absl::Status RecursivelyHandleOp(
+    const NodeDef& node, int64_t num_workers, int64_t index,
+    FunctionLibraryDefinition* flib, MutableGraphView* graph,
+    absl::flat_hash_set<std::string>* nodes_to_delete) {
   if (node.op() == kAssertCardinalityDatasetOpName) {
     LOG(WARNING) << "The `assert_cardinality` transformation is currently not "
                     "handled by the auto-shard rewrite and will be removed.";
@@ -664,7 +665,7 @@ absl::Status RecursivelyHandleOp(const NodeDef& node, int64_t num_workers,
 absl::Status ShardByFile(const NodeDef& sink_node, int64_t num_workers,
                          int64_t index, FunctionLibraryDefinition* flib,
                          MutableGraphView* graph) {
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   TF_RETURN_IF_ERROR(RecursivelyHandleOp(sink_node, num_workers, index, flib,
                                          graph, &nodes_to_delete));
   return graph->DeleteNodes(nodes_to_delete);
@@ -818,7 +819,7 @@ absl::Status OptimizeGraph(const GrapplerItem& item, int64_t num_workers,
 
   // id for telemetry purpose. item.id is always the same so we use the address
   // of the output as id.
-  string id = absl::StrCat(reinterpret_cast<uint64>(output));
+  std::string id = absl::StrCat(reinterpret_cast<uint64_t>(output));
   // Only record metrics on the first shard to avoid duplication.
   if (index == 0) {
     std::vector<std::string> ineligible_reason;

@@ -46,7 +46,7 @@ typedef Eigen::GpuDevice GPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename Scalar>
 se::DeviceMemory<Scalar> AsDeviceMemory(const Scalar* gpu_memory) {
-  se::DeviceMemoryBase wrapped(const_cast<Scalar*>(gpu_memory));
+  stream_executor::DeviceAddressBase wrapped(const_cast<Scalar*>(gpu_memory));
   se::DeviceMemory<Scalar> typed(wrapped);
   return typed;
 }
@@ -260,8 +260,8 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
                      const MatMulBCast& bcast, Tensor* out) {
     auto* stream = context->op_device_context()->stream();
 
-    const uint64 m = in_x.dim_size(1);
-    const uint64 n = out->dim_size(2);
+    const uint64_t m = in_x.dim_size(1);
+    const uint64_t n = out->dim_size(2);
 
     //  Do a memcpy when we don't need to broadcast.
     if (!bcast.IsBroadcastingRequired() || out->shape() == in_y.shape()) {
@@ -329,10 +329,10 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
 #endif
 
     auto solver = absl::make_unique<GpuSolver>(context);
-    const uint64 leading_dim_matrix = m;
-    const uint64 leading_dim_output = n;
-    const uint64 colmajor_rows = n;
-    const uint64 colmajor_cols = m;
+    const uint64_t leading_dim_matrix = m;
+    const uint64_t leading_dim_output = n;
+    const uint64_t colmajor_rows = n;
+    const uint64_t colmajor_cols = m;
 
     const int64_t batch_size = bcast.output_batch_size();
     std::vector<const Scalar*> a_ptrs;

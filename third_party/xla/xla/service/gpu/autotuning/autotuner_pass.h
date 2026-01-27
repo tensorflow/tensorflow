@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -27,8 +28,9 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla.pb.h"
@@ -36,6 +38,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {
  public:
   // Note: the target_config must outlive the pass.
@@ -43,24 +46,33 @@ class AutotunerPass : public HloModulePass {
       std::vector<std::unique_ptr<CodegenBackend>> backends,
       const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
-      const Compiler::TargetConfig* target_config,
-      se::DeviceMemoryAllocator* allocator = nullptr,
-      bool optimize_scratch_bytes = true);
+      const Compiler::GpuTargetConfig* target_config,
+      se::DeviceAddressAllocator* allocator = nullptr,
+      bool optimize_scratch_bytes = true,
+      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore(),
+      bool allow_reg_spills = false);
 
   absl::string_view name() const override { return "autotuner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   explicit AutotunerPass(std::unique_ptr<Autotuner> autotuner,
-                         InstructionFilterFn should_autotune)
-      : autotuner_(std::move(autotuner)), should_autotune_(should_autotune) {}
+                         InstructionFilterFn should_autotune,
+                         MultiProcessKeyValueStore key_value_store,
+                         bool enable_sharding)
+      : autotuner_(std::move(autotuner)),
+        should_autotune_(std::move(should_autotune)),
+        key_value_store_(std::move(key_value_store)),
+        enable_sharding_(enable_sharding) {}
 
   std::unique_ptr<Autotuner> autotuner_;
   InstructionFilterFn should_autotune_;
+  MultiProcessKeyValueStore key_value_store_;
+  bool enable_sharding_ = false;
 };
 
 }  // namespace gpu

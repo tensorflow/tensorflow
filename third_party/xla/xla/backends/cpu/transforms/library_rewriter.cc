@@ -160,6 +160,10 @@ inline absl::Status InsertConvertIfNecessary(
   return absl::OkStatus();
 }
 
+inline bool IsElementwiseAndNotConstant(const HloInstruction* instr) {
+  return instr->IsElementwise() && !instr->IsConstant();
+}
+
 }  // namespace
 
 absl::StatusOr<LibraryMatcher*> LibraryRewriter::ChooseLibrary(
@@ -298,7 +302,7 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
       fusion_starters.push_back(*it);
     } else if (fuse_reduce_ && (*it)->opcode() == HloOpcode::kReduce) {
       fusion_starters.push_back(*it);
-    } else if (fuse_eltwise_ && (*it)->IsElementwise()) {
+    } else if (fuse_eltwise_ && IsElementwiseAndNotConstant(*it)) {
       eltwise_ops.push_back(*it);
     }
   }
@@ -334,7 +338,7 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
   return !fused_.empty();
 }
 
-absl::StatusOr<bool> LibraryRewriter::Run(
+absl::StatusOr<bool> LibraryRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool module_changed = false;

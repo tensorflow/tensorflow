@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -29,10 +30,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 
 namespace xla {
 
-absl::StatusOr<bool> DynamicIndexSplitter::Run(
+absl::StatusOr<bool> DynamicIndexSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -56,11 +58,11 @@ absl::StatusOr<bool> DynamicIndexSplitter::Run(
         // If the operand rank is 0, directly replace R0 DS/DUS with the
         // operand (for DS) or update (for DUS).
         if (is_update) {
-          TF_CHECK_OK(parent->ReplaceInstruction(
-              dynamic_op, dynamic_op->mutable_operand(1)));
+          CHECK_OK(parent->ReplaceInstruction(dynamic_op,
+                                              dynamic_op->mutable_operand(1)));
         } else {
-          TF_CHECK_OK(parent->ReplaceInstruction(
-              dynamic_op, dynamic_op->mutable_operand(0)));
+          CHECK_OK(parent->ReplaceInstruction(dynamic_op,
+                                              dynamic_op->mutable_operand(0)));
         }
         changed = true;
         continue;
@@ -95,8 +97,8 @@ absl::StatusOr<bool> DynamicIndexSplitter::Run(
                     dynamic_op->shape(), dynamic_op->mutable_operand(0),
                     absl::MakeSpan(index_array),
                     dynamic_op->dynamic_slice_sizes());
-      TF_CHECK_OK(parent->ReplaceWithNewInstruction(dynamic_op,
-                                                    std::move(new_dynamic_op)));
+      CHECK_OK(parent->ReplaceWithNewInstruction(dynamic_op,
+                                                 std::move(new_dynamic_op)));
       changed = true;
     }
   }

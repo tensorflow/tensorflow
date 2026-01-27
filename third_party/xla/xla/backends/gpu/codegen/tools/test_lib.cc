@@ -24,25 +24,31 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/status_macros.h"
 
 namespace xla {
 namespace gpu {
 
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
-    const HloModule& module, SymbolicExprContext& symbolic_expr_context) {
+    const HloModule& module, mlir::MLIRContext& mlir_context) {
   auto data = std::make_unique<EmitterData>();
-  data->fusion = DynCast<HloFusionInstruction>(
-      module.entry_computation()->root_instruction());
+  {
+    auto* inst = module.entry_computation()->root_instruction();
+    while (inst && (inst->opcode() == HloOpcode::kTuple ||
+                    inst->opcode() == HloOpcode::kGetTupleElement)) {
+      inst = inst->mutable_operand(0);
+    }
+    data->fusion = DynCast<HloFusionInstruction>(inst);
+  }
   TF_RET_CHECK(data->fusion != nullptr) << "Root instruction must be a fusion";
   data->device.emplace(TestGpuDeviceInfo::RTXA6000DeviceInfo());
   data->analysis.emplace(
       HloFusionAnalysis::Create(*data->fusion, data->device.value()));
   PreBufferAssignmentFusionInfo info(data->analysis.value());
-  auto fusion_emitter = GetFusionEmitter(info, &symbolic_expr_context);
+  auto fusion_emitter = GetFusionEmitter(info, &mlir_context);
 
   auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
@@ -54,11 +60,6 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 
 mlir::MLIRContext GetMlirContextForTest() {
   return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
-}
-
-SymbolicExprContext GetSymbolicExprContextForTest(
-    mlir::MLIRContext* mlir_context) {
-  return SymbolicExprContext(mlir_context);
 }
 
 }  // namespace gpu

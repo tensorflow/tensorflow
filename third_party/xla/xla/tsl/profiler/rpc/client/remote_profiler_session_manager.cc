@@ -17,24 +17,54 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
-#include "xla/tsl/profiler/utils/time_utils.h"
 
 namespace tsl {
 namespace profiler {
 
+namespace {
+
 using tensorflow::ProfileRequest;
 using tensorflow::RemoteProfilerSessionManagerOptions;
+
+// Parses "override_hostnames" from the configuration to save profile results.
+// Validates that the hostnames match the count and order of `service_addresses`
+// in `options`. The caller needs to ensure that order of `service_addresses`
+// and `override_hostnames` is same.
+absl::StatusOr<std::vector<std::string>> ParseAndValidateOverrideHostnames(
+    const RemoteProfilerSessionManagerOptions& options,
+    ProfileRequest& request) {
+  const auto* override_hostnames = gtl::FindOrNull(
+      request.opts().advanced_configuration(), "override_hostnames");
+  if (override_hostnames == nullptr) {
+    return std::vector<std::string>();
+  }
+  std::vector<std::string> override_hostnames_list =
+      absl::StrSplit(override_hostnames->string_value(), ',');
+  if (override_hostnames_list.size() != options.service_addresses().size()) {
+    return absl::InvalidArgumentError(
+        "The number of override hostnames must match the number of service "
+        "addresses.");
+  }
+  request.mutable_opts()->mutable_advanced_configuration()->erase(
+      "override_hostnames");
+  return override_hostnames_list;
+}
+
+}  // namespace
 
 /*static*/ std::unique_ptr<RemoteProfilerSessionManager>
 RemoteProfilerSessionManager::Create(
@@ -84,12 +114,21 @@ absl::Status RemoteProfilerSessionManager::Init() {
             << session_created_ts << "]";
 
   // Prepare a list of clients.
-  clients_.reserve(options_.service_addresses_size());
+  clients_.reserve(options_.service_addresses().size());
 
-  ProfileRequest request = request_;
-  for (auto& service_address : options_.service_addresses()) {
+  ProfileRequest request_template = request_;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::string> override_hostnames_list,
+      ParseAndValidateOverrideHostnames(options_, request_template));
+
+  for (size_t i = 0; i < options_.service_addresses().size(); ++i) {
+    const std::string& service_address = options_.service_addresses(i);
     std::string resolved_service_address = resolver_(service_address);
+    ProfileRequest request = request_template;
     request.set_host_name(resolved_service_address);
+    if (i < override_hostnames_list.size()) {
+      request.mutable_opts()->set_override_hostname(override_hostnames_list[i]);
+    }
 
     // Creation also issues Profile RPC asynchronously.
     auto client = RemoteProfilerSession::Create(resolved_service_address,

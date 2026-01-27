@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -73,16 +72,17 @@ limitations under the License.
 
 namespace xla::emitters {
 
+using ::mlir::MLIRContext;
+
 constexpr int kDUSUpdateIndex = 1;
 
 DynamicUpdateSliceKernelEmitter::DynamicUpdateSliceKernelEmitter(
-    gpu::SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const HloFusionSpec& fusion_spec,
-    const BufferAssignment* buffer_assignment,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const HloFusionSpec& fusion_spec, const BufferAssignment* buffer_assignment,
     KernelArguments::BufferAlignment buffer_alignment,
     WorkDimensions work_dimensions, absl::string_view entry_function_name,
     BackendKind backend_kind)
-    : symbolic_expr_context_(symbolic_expr_context),
+    : mlir_context_(mlir_context),
       fusion_(fusion),
       fusion_spec_(fusion_spec),
       dus_ops_(
@@ -93,9 +93,9 @@ DynamicUpdateSliceKernelEmitter::DynamicUpdateSliceKernelEmitter(
       entry_function_name_(entry_function_name),
       backend_kind_(backend_kind) {}
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<DynamicUpdateSliceKernelEmitter::KernelDefinition>
 DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
-  mlir::OpBuilder builder(symbolic_expr_context_.GetMLIRContext());
+  mlir::OpBuilder builder(&mlir_context_);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(
       loc, absl::StrCat(fusion_.name(), "_kernel_module"));
@@ -107,12 +107,10 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
       mlir::func::FuncOp entry_func,
       emitters::EmitKernelApi(*module, fusion_, buffer_assignment_,
                               buffer_alignment_, entry_function_name_));
-  SetBackendKind(symbolic_expr_context_.GetMLIRContext(), entry_func,
-                 backend_kind_);
+  SetBackendKind(&mlir_context_, entry_func, backend_kind_);
 
   emitters::PartitionedComputations computations(
-      fusion_.fused_instructions_computation(), &symbolic_expr_context_,
-      GetEpilogues());
+      fusion_.fused_instructions_computation(), &mlir_context_, GetEpilogues());
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              *module, computations));
 
@@ -121,17 +119,17 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
 
   TF_ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(module)));
 }
 
 IndexingMap DynamicUpdateSliceKernelEmitter::ComputeWorkItemIdToInputIndexing(
-    gpu::SymbolicExprContext* symbolic_expr_context) const {
+    MLIRContext* mlir_context) const {
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_, update_shape,
-                                           symbolic_expr_context);
+                                           mlir_context);
 }
 
 Shape DynamicUpdateSliceKernelEmitter::GetIndexingShape(
@@ -143,9 +141,9 @@ Shape DynamicUpdateSliceKernelEmitter::GetIndexingShape(
 
 IndexingMap DynamicUpdateSliceKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& update_shape,
-    gpu::SymbolicExprContext* symbolic_expr_context) {
+    MLIRContext* mlir_context) {
   return GetDefaultWorkItemIndexingMap(work_dimensions, update_shape,
-                                       symbolic_expr_context);
+                                       mlir_context);
 }
 
 absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
@@ -200,7 +198,7 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
-  auto indexing = ComputeWorkItemIdToInputIndexing(&symbolic_expr_context_);
+  auto indexing = ComputeWorkItemIdToInputIndexing(&mlir_context_);
   indexing.Simplify();
   indexing.RemoveUnusedSymbols();
 
@@ -245,10 +243,9 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
           call_targets, entry_function, nested_b);
       // Handle bitcasts under the DUS.
       if (dus_instr->shape() != root.shape()) {
-        update_indices =
-            ApplyIndexing(GetBitcastMap(dus_instr->shape(), root.shape(),
-                                        &symbolic_expr_context_),
-                          update_indices, {}, nested_b);
+        update_indices = ApplyIndexing(
+            GetBitcastMap(dus_instr->shape(), root.shape(), &mlir_context_),
+            update_indices, {}, nested_b);
       }
       results.push_back(nested_b.create<mlir::tensor::InsertOp>(
           updated_value[0], output, update_indices));
@@ -280,7 +277,7 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
       llvm::SmallVector<mlir::OpFoldResult> offsets(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(0));
       llvm::SmallVector<mlir::OpFoldResult> sizes =
-          mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
+          mlir::getAsIndexOpFoldResult(&mlir_context_,
                                        output_tensor.getShape());
       llvm::SmallVector<mlir::OpFoldResult> strides(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(1));
@@ -291,7 +288,7 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
 
   const NumWorkItems& num_work_items = work_dimensions_.num_work_items;
   llvm::SmallVector<mlir::OpFoldResult> upper_bounds =
-      mlir::getAsIndexOpFoldResult(symbolic_expr_context_.GetMLIRContext(),
+      mlir::getAsIndexOpFoldResult(&mlir_context_,
                                    {static_cast<int64_t>(num_work_items.x),
                                     static_cast<int64_t>(num_work_items.y),
                                     static_cast<int64_t>(num_work_items.z)});
@@ -309,7 +306,7 @@ DynamicUpdateSliceKernelEmitter::GetEpilogues() const {
   for (const auto& [dus_op, root] :
        llvm::zip(dus_ops_, fusion_spec_.fusion_roots())) {
     epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        &dus_op.instruction(), &root.instruction(), &symbolic_expr_context_));
+        &dus_op.instruction(), &root.instruction(), &mlir_context_));
   }
   return epilogues;
 }

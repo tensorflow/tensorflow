@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -35,31 +36,28 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
-#include "xla/service/executable.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class CuDnnFusionTest : public GpuCodegenTest {
  public:
@@ -69,6 +67,10 @@ class CuDnnFusionTest : public GpuCodegenTest {
     // autotuning.
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
+    // Only run the CuDNN backend.
+    debug_options.clear_xla_gpu_experimental_autotune_backends();
+    debug_options.add_xla_gpu_experimental_autotune_backends(
+        DebugOptions::AUTOTUNE_BACKEND_CUDNN);
     return debug_options;
   }
   se::CudaComputeCapability get_cuda_cc() const {
@@ -80,12 +82,14 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
-  bool IsAtLeastCuDnn91() {
+  bool IsAtLeastCuDnnVersion(int major, int minor) {
     se::StreamExecutor* executor = backend().default_stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
-    return (version.major_version() == 9 && version.minor_version() >= 1) ||
-           version.major_version() > 9;
+    return (version.major_version() == major &&
+            version.minor_version() >= minor) ||
+           version.major_version() > major;
   }
+  bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
 
  protected:
   void SetUp() override {
@@ -262,12 +266,17 @@ e {
                                      dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
+  // Single dot is not supported by cuDNN, so Triton should be used.
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_TRITON);
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
     b = f32[96,64] parameter(1)
     d = f32[32,64] dot(a, b),
       lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })",
+                                      config, config,
                                       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -457,6 +466,29 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
 }
 
+TEST_F(CuDnnFusionExecutionTest, DotS4BF16ExecutesCorrectly) {
+  if (!IsAtLeastCuDnnVersion(9, 12)) {
+    GTEST_SKIP() << "This test case requires cuDNN 9.12+.";
+  }
+  EXPECT_TRUE(RunAndCompare(R"(
+f {
+  a = s4[3,128,128] parameter(0)
+  c = bf16[3,128,128] convert(a)
+  b = bf16[3,128,128] parameter(1)
+  d = bf16[3,128,128] dot(c, b),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+}
+
+e {
+  a = s4[3,128,128] parameter(0)
+  b = bf16[3,128,128] parameter(1)
+  f = bf16[3,128,128] fusion(a, b), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})",
+                            ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
 TEST_F(CuDnnFusionExecutionTest, DotF32WithOutputSubtractionExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
@@ -533,6 +565,24 @@ ENTRY e {
   p0 = f32[27,23] parameter(0)
   p1 = f32[23,21] parameter(1)
   ROOT r = f32[27,21] fusion(p0, p1), kind=kCustom, calls=t,
+    backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+})"));
+}
+
+TEST_F(CuDnnFusionExecutionTest, NonDefaultDotAlgorithmIsNotSupported) {
+  EXPECT_FALSE(Run(R"(
+fusion1 {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  r = f32[32,64] dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_bf16_bf16_f32
+}
+
+e {
+  a = bf16[32,96] parameter(0)
+  b = bf16[96,64] parameter(1)
+  _ = f32[32,64] fusion(a, b), kind=kCustom, calls=fusion1,
     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })"));
 }
@@ -1168,7 +1218,7 @@ TEST_F(CuDnnFusionRewriteTest,
        DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
   // Dimension size 61 does not satisfy the requirement on alignment
   // (multiple of 2).
-  MatchOptimizedHlo(R"(
+  const std::string hlo = R"(
 ENTRY e {
   p0 = f16[20,40,61] parameter(0)
   p0n = f16[20,40,61] negate(p0)
@@ -1176,14 +1226,17 @@ ENTRY e {
   ROOT r = f16[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
-})",
-                    R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-NOT: cudnn
-)");
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  // Triton backend is disabled meaning that the compilation should fail.
+  auto status = CompileToExecutable(std::move(module)).status();
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.ToString(),
+      ::testing::HasSubstr("Autotuner could not find any supported configs"));
 }
 
 TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {
@@ -1228,15 +1281,18 @@ ENTRY main {
       backend_config={"fusion_backend_config":{kind:"__cudnn$fusion"}}
 })";
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "intermediate_data_type": "FLOAT"
 CHECK: "nodes"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "lhs"
 CHECK: "scale": "lhs_scale"
 CHECK: "Y": "result_lhs_dq"
 CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
 CHECK: {
 CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "compute_data_type": "FLOAT"
 CHECK: "X": "rhs"
 CHECK: "scale": "rhs_scale"
 CHECK: "Y": "result_rhs_dq"

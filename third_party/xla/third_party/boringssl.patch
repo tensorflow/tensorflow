@@ -1,0 +1,13 @@
+diff --git a/BUILD b/BUILD
+index 206786442..3d1624382 100644
+--- a/BUILD
++++ b/BUILD
+@@ -145,7 +145,7 @@ cc_library(
+ 
+ cc_library(
+     name = "ssl",
+-    srcs = ssl_sources + ssl_internal_headers,
++    srcs = ssl_sources + ssl_internal_headers + crypto_internal_headers,
+     hdrs = ssl_headers,
+     copts = boringssl_copts_cxx,
+     includes = ["src/include"],

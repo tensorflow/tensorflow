@@ -39,18 +39,19 @@ class OAuthClient {
   /// with the client's private key.
   virtual absl::Status GetTokenFromServiceAccountJson(
       Json::Value json, absl::string_view oauth_server_uri,
-      absl::string_view scope, string* token, uint64* expiration_timestamp_sec);
+      absl::string_view scope, std::string* token,
+      uint64_t* expiration_timestamp_sec);
 
   /// Retrieves a bearer token using a refresh token.
   virtual absl::Status GetTokenFromRefreshTokenJson(
-      Json::Value json, absl::string_view oauth_server_uri, string* token,
-      uint64* expiration_timestamp_sec);
+      Json::Value json, absl::string_view oauth_server_uri, std::string* token,
+      uint64_t* expiration_timestamp_sec);
 
   /// Parses the JSON response with the token from an OAuth 2.0 server.
   virtual absl::Status ParseOAuthResponse(absl::string_view response,
-                                          uint64 request_timestamp_sec,
-                                          string* token,
-                                          uint64* expiration_timestamp_sec);
+                                          uint64_t request_timestamp_sec,
+                                          std::string* token,
+                                          uint64_t* expiration_timestamp_sec);
 
  private:
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;

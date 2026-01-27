@@ -16,8 +16,19 @@ limitations under the License.
 #include "xla/tsl/lib/io/snappy/snappy_inputbuffer.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "tsl/platform/snappy.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {
@@ -86,7 +97,7 @@ size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
 
 absl::Status SnappyInputBuffer::Inflate() {
   // Read length of compressed block.
-  uint32 compressed_block_length;
+  uint32_t compressed_block_length;
   TF_RETURN_IF_ERROR(ReadCompressedBlockLength(&compressed_block_length));
 
   // If the entire block is not in cache do a read from file.
@@ -94,12 +105,12 @@ absl::Status SnappyInputBuffer::Inflate() {
     TF_RETURN_IF_ERROR(ReadFromFile());
     if (avail_in_ < compressed_block_length) {
       if (compressed_block_length > input_buffer_capacity_) {
-        return errors::ResourceExhausted(
-            "Input buffer(size: ", input_buffer_capacity_,
-            " bytes) too small. Should be larger ", "than ",
-            compressed_block_length, " bytes.");
+        return absl::ResourceExhaustedError(
+            absl::StrCat("Input buffer(size: ", input_buffer_capacity_,
+                         " bytes) too small. Should be larger than ",
+                         compressed_block_length, " bytes."));
       } else {
-        return errors::DataLoss(
+        return absl::DataLossError(
             absl::StrCat("Failed to read ", compressed_block_length,
                          " bytes from file. Possible data corruption."));
       }
@@ -109,7 +120,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   size_t uncompressed_length;
   if (!port::Snappy_GetUncompressedLength(next_in_, compressed_block_length,
                                           &uncompressed_length)) {
-    return errors::DataLoss("Parsing error in Snappy_GetUncompressedLength");
+    return absl::DataLossError("Parsing error in Snappy_GetUncompressedLength");
   }
 
   // Output buffer must have been cleared before uncompressing more input.
@@ -122,7 +133,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,
                                         output_buffer_.get());
   if (!status) {
-    return errors::DataLoss("Snappy_Uncompress failed");
+    return absl::DataLossError("Snappy_Uncompress failed");
   }
   next_in_ += compressed_block_length;
   avail_in_ -= compressed_block_length;
@@ -130,7 +141,7 @@ absl::Status SnappyInputBuffer::Inflate() {
   return absl::OkStatus();
 }
 
-absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
+absl::Status SnappyInputBuffer::ReadCompressedBlockLength(uint32_t* length) {
   *length = 0;
   size_t bytes_to_read = 4;
   while (bytes_to_read > 0) {
@@ -196,7 +207,7 @@ absl::Status SnappyInputBuffer::ReadFromFile() {
   // fill up the buffer in which case file_->ReadNBytes would return an
   // OutOfRange error.
   if (data.empty()) {
-    return errors::OutOfRange("EOF reached");
+    return absl::OutOfRangeError("EOF reached");
   }
   if (absl::IsOutOfRange(s)) {
     return absl::OkStatus();

@@ -19,9 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/kernels/internal/runtime_shape.h"
 
 #include <cstdint>
-#include <functional>
 #include <initializer_list>
-#include <numeric>
 #include <vector>
 
 #include <gmock/gmock.h>

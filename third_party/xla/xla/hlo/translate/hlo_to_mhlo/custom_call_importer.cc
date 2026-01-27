@@ -65,10 +65,9 @@ absl::StatusOr<mlir::Operation*> ImportDynamicBroadcastInDimOp(
         mlir::cast<mlir::IntegerAttr>(broadcast_dimension).getInt();
   }
 
-  return builder
-      ->create<mlir::stablehlo::DynamicBroadcastInDimOp>(
-          loc, result_type, operands[0], operands[1],
-          builder->getDenseI64ArrayAttr(broadcast_dimensions))
+  return mlir::stablehlo::DynamicBroadcastInDimOp::create(
+             *builder, loc, result_type, operands[0], operands[1],
+             builder->getDenseI64ArrayAttr(broadcast_dimensions))
       .getOperation();
 }
 
@@ -78,8 +77,8 @@ absl::StatusOr<mlir::Operation*> ImportDynamicReshapeOp(
   if (!backend_config.empty()) {
     return Internal("backend_config attribute must be empty.");
   }
-  return builder
-      ->create<mlir::stablehlo::DynamicReshapeOp>(loc, result_type, operands)
+  return mlir::stablehlo::DynamicReshapeOp::create(*builder, loc, result_type,
+                                                   operands)
       .getOperation();
 }
 
@@ -89,8 +88,8 @@ absl::StatusOr<mlir::Operation*> ImportRealDynamicSliceOp(
   if (!backend_config.empty()) {
     return Internal("backend_config attribute must be empty.");
   }
-  return builder
-      ->create<mlir::stablehlo::RealDynamicSliceOp>(loc, result_type, operands)
+  return mlir::stablehlo::RealDynamicSliceOp::create(*builder, loc, result_type,
+                                                     operands)
       .getOperation();
 }
 
@@ -185,20 +184,18 @@ absl::StatusOr<mlir::Operation*> ImportCustomCallAsOp(
   }
 
   if (custom_call_target == "mhlo.uniform_quantize") {
-    return builder
-        ->create<mlir::stablehlo::UniformQuantizeOp>(
-            loc,
-            mlir::RankedTensorType::get(
-                mlir::cast<mlir::RankedTensorType>(result_type).getShape(),
-                getQuantizedType(backend_config)),
-            operands)
+    return mlir::stablehlo::UniformQuantizeOp::create(
+               *builder, loc,
+               mlir::RankedTensorType::get(
+                   mlir::cast<mlir::RankedTensorType>(result_type).getShape(),
+                   getQuantizedType(backend_config)),
+               operands)
         .getOperation();
   }
 
   if (custom_call_target == "mhlo.uniform_dequantize") {
-    return builder
-        ->create<mlir::stablehlo::UniformDequantizeOp>(loc, result_type,
-                                                       operands)
+    return mlir::stablehlo::UniformDequantizeOp::create(*builder, loc,
+                                                        result_type, operands)
         .getOperation();
   }
   return InvalidArgument("Unsupported MHLO op custom_call %s",

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -39,11 +41,11 @@ class DeviceIndexOp : public XlaOpKernel {
     // When compiling we are not executing on any physical device, so we return
     // a sentinel value (size of the list of devices).
     ctx->SetOutput(
-        0, xla::ConstantR0<int32>(ctx->builder(), device_names_.size()));
+        0, xla::ConstantR0<int32_t>(ctx->builder(), device_names_.size()));
   }
 
  private:
-  std::vector<string> device_names_;
+  std::vector<std::string> device_names_;
 };
 
 REGISTER_XLA_OP(Name("DeviceIndex"), DeviceIndexOp);

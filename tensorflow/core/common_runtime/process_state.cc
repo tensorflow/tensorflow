@@ -46,7 +46,7 @@ namespace tensorflow {
 ProcessState::ProcessState()
     : numa_enabled_(false), cpu_allocators_cached_(0) {}
 
-string ProcessState::MemDesc::DebugString() {
+std::string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
                          ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }

@@ -38,7 +38,7 @@ namespace tensorflow {
 // Given a graph and the node_name of a ParseExample op,
 // extract the FixedLenFeature/VarLenFeature configurations.
 absl::Status ExtractExampleParserConfiguration(
-    const tensorflow::GraphDef& graph, const string& node_name,
+    const tensorflow::GraphDef& graph, const std::string& node_name,
     tensorflow::Session* session,
     std::vector<FixedLenFeature>* fixed_len_features,
     std::vector<VarLenFeature>* var_len_features);

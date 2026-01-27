@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,66 +28,13 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/metrics_hook_interface.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
-
-Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
-    : device_description(s->GetDeviceDescription()),
-      platform_name(s->GetPlatform()->Name()),
-      device_description_str(s->GetDeviceDescription().name()) {
-  se::dnn::DnnSupport* dnn = s->AsDnn();
-  if (dnn != nullptr) {
-    absl::StatusOr<se::dnn::VersionInfo> dnn_version = dnn->GetVersion();
-    if (dnn_version.ok()) {
-      dnn_version_info = *dnn_version;
-    }
-  }
-}
-
-absl::StatusOr<Compiler::TargetConfig> Compiler::TargetConfig::FromProto(
-    const se::GpuTargetConfigProto& proto) {
-  TargetConfig target_config;
-  TF_ASSIGN_OR_RETURN(
-      target_config.device_description,
-      stream_executor::DeviceDescription::FromProto(proto.gpu_device_info()));
-  target_config.platform_name = proto.platform_name();
-  target_config.dnn_version_info =
-      se::dnn::VersionInfo(proto.dnn_version_info());
-  target_config.device_description_str = proto.device_description_str();
-  se::SemanticVersion runtime_version(proto.runtime_version().major(),
-                                      proto.runtime_version().minor(),
-                                      proto.runtime_version().patch());
-  target_config.device_description.set_runtime_version(runtime_version);
-  se::SemanticVersion dnn_version(
-      static_cast<unsigned>(proto.dnn_version_info().major()),
-      static_cast<unsigned>(proto.dnn_version_info().minor()),
-      static_cast<unsigned>(proto.dnn_version_info().patch()));
-  target_config.device_description.set_dnn_version(dnn_version);
-  return target_config;
-}
-
-se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
-  stream_executor::GpuTargetConfigProto proto;
-  *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
-  proto.set_platform_name(platform_name);
-  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
-  se::RuntimeVersionProto runtime_version_proto;
-  runtime_version_proto.set_major(device_description.runtime_version().major());
-  runtime_version_proto.set_minor(device_description.runtime_version().minor());
-  runtime_version_proto.set_patch(device_description.runtime_version().patch());
-  *proto.mutable_runtime_version() = runtime_version_proto;
-  proto.set_device_description_str(device_description_str);
-  return proto;
-}
 
 std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
@@ -104,7 +50,7 @@ std::unique_ptr<tsl::protobuf::Message> Compiler::ComputeDefaultBackendConfig(
 }
 
 // Define a default version where metadata is not used.
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 Compiler::CompileAheadOfTime(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
@@ -141,16 +87,16 @@ Compiler::GetPlatformCompilers() {
 }
 
 /* static */ absl::StatusOr<std::unique_ptr<Compiler>> Compiler::GetForPlatform(
-    const se::Platform* platform) {
+    se::Platform::Id platform_id) {
   absl::MutexLock lock(platform_compiler_mutex_);
 
-  auto* factories = GetPlatformCompilerFactories();
-  auto it = factories->find(platform->id());
+  absl::flat_hash_map<se::Platform::Id, Compiler::CompilerFactory>* factories =
+      GetPlatformCompilerFactories();
+  auto it = factories->find(platform_id);
   if (it == factories->end()) {
     return NotFound(
-        "could not find registered compiler for platform %s -- was support for "
-        "that platform linked in?",
-        platform->Name());
+        "could not find registered compiler for the platform -- was support "
+        "for that platform linked in?");
   }
   return it->second();
 }

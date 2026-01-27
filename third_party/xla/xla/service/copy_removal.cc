@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 
 using absl::StrAppend;
@@ -320,7 +319,7 @@ bool ComputeRelativeLocation::AddControlDependenceForUnorderedOps() {
         VLOG(3) << "   Adding control dependence between:";
         VLOG(3) << "     predecessor: " << entry2->name();
         VLOG(3) << "       successor: " << entry1->name();
-        TF_CHECK_OK(entry2->AddControlDependencyTo(entry1));
+        CHECK_OK(entry2->AddControlDependencyTo(entry1));
       }
       reachability_map.UpdateReachabilityThroughInstruction(entry1);
       for (HloInstruction* entry2 : instr_it.second) {
@@ -347,8 +346,9 @@ bool ComputeRelativeLocation::ForceRuntimeOrder(
                "kBeforeStart or kAfterEnd";
     return false;
   }
-  auto ModifiesNonCopy = [](HloInstruction* instr, const HloInstruction* op) {
-    auto in_place = HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr);
+  auto ModifiesNonCopy = [this](HloInstruction* instr,
+                                const HloInstruction* op) {
+    auto in_place = alias_info_->GetInPlaceInputOutputPairs(instr);
     if (in_place.empty()) {
       return false;
     }
@@ -436,7 +436,7 @@ bool ComputeRelativeLocation::InstructionCanIntercept(
     // If the instruction only uses the value, it can intercept only if it
     // modifies the buffer in place.
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr)) {
+         alias_info_->GetInPlaceInputOutputPairs(instr)) {
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (region.contains(
               instr->mutable_operand(operand_index.operand_number))) {
@@ -695,9 +695,19 @@ CopyRemover::CopyRemover(
           if (a == b) {
             return false;
           }
-          const bool a_has_smaller_id =
-              instruction_ids.at(a->defining_instruction()->unique_id()) <
-              instruction_ids.at(b->defining_instruction()->unique_id());
+
+          // instrion_ids does not contain entries for instructions in dead
+          // computations.
+          int64_t a_id =
+              a->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(a->defining_instruction()->unique_id());
+          int64_t b_id =
+              b->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(b->defining_instruction()->unique_id());
+
+          const bool a_has_smaller_id = a_id < b_id;
           // Use a_has_smaller_id as a hint for the order between a and b. In
           // case it's right, there is no need for two IsDefinedBefore() tests.
           if (a_has_smaller_id) {
@@ -731,7 +741,7 @@ CopyRemover::CopyRemover(
   CreateCopyMap(module, value_to_node);
 
   XLA_VLOG_LINES(3, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
 }
 
 // Add a list containing the given values to CopyRemover. This
@@ -857,7 +867,13 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
 // and true is returned. Returns false otherwise.
 bool CopyRemover::TryElideCopy(
     const HloInstruction* copy, int64_t* region_analysis_limit,
-    bool insert_post_scheduling_control_dependencies) {
+    bool insert_post_scheduling_control_dependencies,
+    std::function<bool(const HloInstruction* copy)> should_skip_removal) {
+  if (should_skip_removal != nullptr && should_skip_removal(copy)) {
+    VLOG(2) << copy->name()
+            << " is skipped due to should_skip_removal function.";
+    return false;
+  }
   VLOG(3) << "TryElideCopy starting for: " << copy->name();
   CHECK_NE(region_analysis_limit, nullptr);
 
@@ -1193,7 +1209,7 @@ bool CopyRemover::TryElideCopy(
   RemoveCopyValue(copy_node.dest);
 
   XLA_VLOG_LINES(4, ToString());
-  TF_DCHECK_OK(Verify());
+  DCHECK_OK(Verify());
   VLOG(3) << "TryElideCopy succeeded for: " << copy->name();
   return true;
 }
@@ -1294,7 +1310,7 @@ bool CopyRemover::ValuesInterfere(const ValueNode* src, const ValueNode* dest,
   VLOG(5) << "    ValuesInterfere destination live range:\n"
           << dest_live_range.ToString();
 
-  ComputeRelativeLocation relative_location_analysis(ordering_);
+  ComputeRelativeLocation relative_location_analysis(ordering_, alias_info_);
   auto rel1 = relative_location_analysis.ComputeBetweenLiveRangeRegions(
       src_live_range, dest_live_range);
   VLOG(3) << "    ValuesInterfere - location of dest in relation to src: ";

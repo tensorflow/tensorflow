@@ -32,9 +32,9 @@ inline int64_t MultiplyWithoutOverflow(int64_t x, int64_t y) {
   // Multiply in uint64 rather than int64 since signed overflow is undefined.
   // Negative values will wrap around to large unsigned values in the casts
   // (see section 4.7 [conv.integral] of the C++14 standard).
-  const uint64 ux = x;
-  const uint64 uy = y;
-  const uint64 uxy = ux * uy;
+  const uint64_t ux = x;
+  const uint64_t uy = y;
+  const uint64_t uxy = ux * uy;
 
   // Check if we overflow uint64, using a cheap check if both inputs are small
   if (TF_PREDICT_FALSE((ux | uy) >> 32 != 0)) {
@@ -54,9 +54,9 @@ inline int64_t AddWithoutOverflow(int64_t x, int64_t y) {
   // Add in uint64 rather than int64 since signed overflow is undefined.
   // Negative values will wrap around to large unsigned values in the casts
   // (see section 4.7 [conv.integral] of the C++14 standard).
-  const uint64 ux = x;
-  const uint64 uy = y;
-  const uint64 uxy = ux + uy;
+  const uint64_t ux = x;
+  const uint64_t uy = y;
+  const uint64_t uxy = ux + uy;
 
   // Cast back to signed. A negative value signals an overflow.
   return static_cast<int64_t>(uxy);

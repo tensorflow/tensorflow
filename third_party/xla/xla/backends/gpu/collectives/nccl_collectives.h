@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
@@ -38,10 +40,7 @@ class NcclCollectives : public GpuCollectives {
  public:
   bool IsImplemented() const final { return true; }
 
-  bool IsGlobalConfig() const final;
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) final;
+  bool SupportsDeviceComm() const final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 
@@ -49,20 +48,42 @@ class NcclCollectives : public GpuCollectives {
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
                       absl::Span<const DeviceRank> ranks,
-                      const Collectives::Config& config) final;
+                      const Collectives::Config& config) final {
+    return CreateCommunicatorsWithCancel(clique_key, clique_ids, ranks, config,
+                                         nullptr);
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  CreateCommunicatorsWithCancel(
+      const CliqueKey& clique_key, const std::optional<CliqueIds>& clique_ids,
+      absl::Span<const DeviceRank> ranks, const Collectives::Config& config,
+      std::shared_ptr<CancellationToken> cancel) final;
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
+      absl::Span<const Communicator* const> comms, int32_t color,
+      absl::Span<const RankId> keys, const Collectives::Config& config,
+      absl::Span<const DeviceRank> ranks) final {
+    return SplitCommunicatorsWithCancel(comms, color, keys, config, ranks,
+                                        nullptr);
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
+  SplitCommunicatorsWithCancel(absl::Span<const Communicator* const> comms,
+                               int32_t color, absl::Span<const RankId> keys,
+                               const Collectives::Config& config,
+                               absl::Span<const DeviceRank> ranks,
+                               std::shared_ptr<CancellationToken> cancel) final;
 
   absl::StatusOr<std::unique_ptr<Communicator>> CreateCommunicator() final {
     return absl::UnimplementedError("Not implemented.");
   }
-  absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
-      absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Collectives::Config& config) final;
 
   absl::StatusOr<void*> Allocate(uint64_t bytes) final;
 
   absl::Status Deallocate(void* location) final;
 
-  absl::Status InitializeTopology(Topology topology) final;
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final;
 };
 
 }  // namespace xla::gpu

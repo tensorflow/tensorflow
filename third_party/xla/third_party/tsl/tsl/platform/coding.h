@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CODING_H_
 #define TENSORFLOW_TSL_PLATFORM_CODING_H_
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/tstring.h"

@@ -22,23 +22,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -104,7 +105,7 @@ bool ConvolutionVisitor::Run(
     bool convert_batch_groups_only, bool filter_expansion) {
   ConvolutionVisitor visitor(computation, should_expand, is_cost_viable,
                              convert_batch_groups_only, filter_expansion);
-  TF_CHECK_OK(computation->Accept(&visitor));
+  CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
 
@@ -317,7 +318,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
             /*preferred_element_type=*/convolution->shape().element_type())
             .value();
     convolution->SetupDerivedInstruction(new_convolution);
-    TF_CHECK_OK(computation_->ReplaceInstruction(
+    CHECK_OK(computation_->ReplaceInstruction(
         convolution,
         MakeReshapeHlo(convolution->shape(), new_convolution).value()));
     changed_ = true;
@@ -416,7 +417,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     auto reduce_window_converted =
         HloInstruction::CreateConvert(convert_back_shape, reduce_window);
 
-    TF_CHECK_OK(computation_->ReplaceWithNewInstruction(
+    CHECK_OK(computation_->ReplaceWithNewInstruction(
         convolution, std::move(reduce_window_converted)));
     changed_ = true;
   }
@@ -439,7 +440,6 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     return absl::OkStatus();
   }
 
-  changed_ = true;
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
   auto filter = convolution->mutable_operand(1);
@@ -461,7 +461,6 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     // If the code generator handles depthwise separable convolutions
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
-      changed_ = false;
       return absl::OkStatus();
     }
     VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
@@ -494,6 +493,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           convolution->shape(), convolution->mutable_operand(0), new_filter,
           /*feature_group_count=*/1, /*batch_group_count=*/1,
           convolution->window(), dim_numbers, convolution->precision_config());
+      changed_ = true;
       return computation_->ReplaceWithNewInstruction(
           convolution, std::move(new_convolution));
     }
@@ -582,6 +582,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
             new_convolution_output_shape, new_activation, new_filter,
             /*feature_group_count=*/group_count, /*batch_group_count=*/1,
             new_window, dim_numbers, convolution->precision_config()));
+    changed_ = true;
     return computation_->ReplaceWithNewInstruction(
         convolution,
         HloInstruction::CreateReshape(convolution->shape(), new_convolution));
@@ -682,11 +683,11 @@ absl::Status ConvolutionVisitor::HandleConvolution(
 
 }  // namespace
 
-absl::StatusOr<bool> ConvolutionGroupConverter::Run(
+absl::StatusOr<bool> ConvolutionGroupConverter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "ConvolutionGroupConverter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "ConvolutionGroupConverter::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     if (ConvolutionVisitor::Run(comp, should_expand_, is_cost_viable_,
@@ -696,7 +697,7 @@ absl::StatusOr<bool> ConvolutionGroupConverter::Run(
     }
   }
   XLA_VLOG_LINES(
-      2, "ConvolutionGroupConverter::Run(), after:\n" + module->ToString());
+      2, "ConvolutionGroupConverter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

@@ -38,11 +38,11 @@ absl::Status CheckIsValidKey(const Tensor& key);
 bool IsDefaultKey(const Tensor& key);
 
 absl::Status GetComputationCacheEntry(
-    const Tensor& key, string* rendezvous_key_base,
+    const Tensor& key, std::string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target);
 
-absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceAddress>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream);

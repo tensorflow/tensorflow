@@ -35,7 +35,7 @@ namespace tsl {
 namespace monitoring {
 
 void PercentileSamplerCell::Add(double sample) {
-  uint64 nstime = EnvTime::NowNanos();
+  uint64_t nstime = EnvTime::NowNanos();
   absl::MutexLock l(mu_);
   samples_[next_position_] = {nstime, sample};
   ++next_position_;

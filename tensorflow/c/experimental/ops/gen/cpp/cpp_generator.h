@@ -30,8 +30,8 @@ class CppGenerator {
   explicit CppGenerator(cpp::CppConfig cpp_config, PathConfig path_config);
   SourceCode HeaderFileContents() const;
   SourceCode SourceFileContents() const;
-  string HeaderFileName() const;
-  string SourceFileName() const;
+  std::string HeaderFileName() const;
+  std::string SourceFileName() const;
   void WriteHeaderFile() const;
   void WriteSourceFile() const;
 

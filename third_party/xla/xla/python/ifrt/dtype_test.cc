@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/dtype.pb.h"
 #include "xla/python/ifrt/serdes_test_util.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -39,16 +40,24 @@ class DTypeSerDesTest : public testing::TestWithParam<SerDesVersion> {
   SerDesVersion version_;
 };
 
+TEST_P(DTypeSerDesTest, Invalid) {
+  DType dtype(DType::kInvalid);
+  EXPECT_THAT(DType::FromProto(dtype.ToProto(version())),
+              absl_testing::IsOkAndHolds(dtype));
+}
+
 TEST_P(DTypeSerDesTest, FromToFromProto) {
   // Unlike other round-trip tests, this test starts from a proto because it is
   // easier to enumerate `DTypeProto::Kind`. This is not a fundamental
   // restriction, and this test may be rewritten as `ToFromToProto` if needed.
-  for (int i = 0; i < DTypeProto::Kind_descriptor()->value_count(); ++i) {
+  for (int i = 1; i < DTypeProto::Kind_descriptor()->value_count(); ++i) {
+    SCOPED_TRACE(DTypeProto::Kind_descriptor()->value(i)->name());
     DTypeProto proto;
     proto.set_version_number(version().version_number().value());
     proto.set_kind(static_cast<DTypeProto::Kind>(
         DTypeProto::Kind_descriptor()->value(i)->number()));
     TF_ASSERT_OK_AND_ASSIGN(DType dtype, DType::FromProto(proto));
+    EXPECT_NE(dtype.kind(), DType::kInvalid);
     TF_ASSERT_OK_AND_ASSIGN(DType dtype_copy,
                             DType::FromProto(dtype.ToProto(version())));
     EXPECT_EQ(dtype_copy, dtype);

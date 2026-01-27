@@ -24,7 +24,7 @@ namespace xla {
 namespace sdy {
 
 // Creates the pass that converts a `CallOp` calling
-// `@local_xla.sdy.manual_computation_body` with in/out shardings and manual
+// `@xla.sdy.manual_computation_body` with in/out shardings and manual
 // axes as frontend attrs, wrapped with a pair of `CustomCallOp`s that change
 // the shape of the arguments/results, to a `ManualComputationOp`.
 std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapImportPass();

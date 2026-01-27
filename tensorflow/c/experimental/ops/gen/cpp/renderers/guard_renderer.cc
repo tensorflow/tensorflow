@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/guard_renderer.h"
 
 #include <algorithm>
+#include <string>
 
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
@@ -27,10 +28,10 @@ namespace generator {
 namespace cpp {
 
 GuardRenderer::GuardRenderer(RendererContext context) : Renderer(context) {
-  string self_path = io::JoinPath(context_.path_config.tf_root_dir,
-                                  context_.path_config.tf_output_dir,
-                                  context_.cpp_config.unit + "_ops.h");
-  string with_underscores(self_path);
+  std::string self_path = io::JoinPath(context_.path_config.tf_root_dir,
+                                       context_.path_config.tf_output_dir,
+                                       context_.cpp_config.unit + "_ops.h");
+  std::string with_underscores(self_path);
   std::replace(with_underscores.begin(), with_underscores.end(), '/', '_');
   std::replace(with_underscores.begin(), with_underscores.end(), '.', '_');
   guard_ = toUpperSnake(with_underscores) + "_";

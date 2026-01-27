@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace sdy {
@@ -73,10 +74,10 @@ void registerStablehloImportPipeline();
 // - be empty, in which case the default is false for all args/results.
 // - have a single element, in which case the value applies to all args/results.
 // - have the same number of elements as the number of args/results.
-void addStablehloImportPipeline(mlir::OpPassManager& pm,
-                                mlir::ArrayRef<bool> allowPropagationToArgs,
-                                mlir::ArrayRef<bool> allowPropagationToResults,
-                                bool importFuncCalls = true);
+void addStablehloImportPipeline(
+    mlir::OpPassManager& pm, mlir::ArrayRef<bool> allowPropagationToArgs,
+    mlir::ArrayRef<bool> allowPropagationToResults,
+    bool enableStablehloCanonicalizeFromHloImport = true);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.

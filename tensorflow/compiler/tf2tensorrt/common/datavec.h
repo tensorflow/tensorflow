@@ -27,7 +27,7 @@ namespace tensorrt {
 // Input/output data format for OpConverterTest::BuildAndRun().
 struct InputOutputData {
   size_t TotalBytes() const { return tensor.TotalBytes(); }
-  string name;
+  std::string name;
   Tensor tensor;
 };
 

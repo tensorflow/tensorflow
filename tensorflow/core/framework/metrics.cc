@@ -305,7 +305,7 @@ auto* tf_data_pipeline_processing_time = tsl::monitoring::Gauge<double, 1>::New(
     "in microseconds",
     "id");
 
-auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64, 2>::New(
+auto* tf_data_auto_shard = tsl::monitoring::Gauge<int64_t, 2>::New(
     "/tensorflow/data/autoshard", "tf.data autoshard statistics.", "id",
     "name");
 
@@ -490,39 +490,41 @@ std::string GraphOptimizationSourceMapping(GraphOptimizationSource source) {
   }
 }
 
-void RecordTFDataFetchOp(const string& name) {
+void RecordTFDataFetchOp(const std::string& name) {
   tf_data_fetch_op_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataAutotune(const string& name) {
+void RecordTFDataAutotune(const std::string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
 
 tsl::monitoring::CounterCell* GetTFDataBytesConsumedCounter(
-    const string& name) {
+    const std::string& name) {
   return tf_data_bytes_consumed_counter->GetCell(name);
 }
 
 tsl::monitoring::CounterCell* GetTFDataBytesProducedCounter(
-    const string& name) {
+    const std::string& name) {
   return tf_data_bytes_produced_counter->GetCell(name);
 }
 
-tsl::monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataBytesReadCounter(
+    const std::string& name) {
   return tf_data_bytes_read_counter->GetCell(name);
 }
 
-tsl::monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
+tsl::monitoring::CounterCell* GetTFDataElementsCounter(
+    const std::string& name) {
   return tf_data_elements_counter->GetCell(name);
 }
 
 tsl::monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
-    const string& id) {
+    const std::string& id) {
   return tf_data_model_gauge->GetCell(id);
 }
 
 tsl::monitoring::GaugeCell<double>* GetTFDataPipelineProcessingTimeGauge(
-    const string& id) {
+    const std::string& id) {
   return tf_data_pipeline_processing_time->GetCell(id);
 }
 
@@ -530,23 +532,23 @@ void RecordTFDataBytesFetched(int64_t num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
-void RecordTFDataExperiment(const string& name) {
+void RecordTFDataExperiment(const std::string& name) {
   tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataExperimentLive(const string& name) {
+void RecordTFDataExperimentLive(const std::string& name) {
   tf_data_experiment_live_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataExperimentOptIn(const string& name) {
+void RecordTFDataExperimentOptIn(const std::string& name) {
   tf_data_experiment_opt_in_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataExperimentOptOut(const string& name) {
+void RecordTFDataExperimentOptOut(const std::string& name) {
   tf_data_experiment_opt_out_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataFingerprint(const string& name) {
+void RecordTFDataFingerprint(const std::string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
 }
 
@@ -557,18 +559,18 @@ void RecordTFDataServiceRuntimeCompressionDecision(bool compression_disabled) {
       ->IncrementBy(1);
 }
 
-void RecordTFDataServiceCompressionAction(const string& action) {
+void RecordTFDataServiceCompressionAction(const std::string& action) {
   tf_data_service_compression->GetCell(action)->IncrementBy(1);
 }
 
-void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
-                                           uint64 duration_us) {
+void RecordTFDataServiceGetElementDuration(
+    const std::string& data_transfer_protocol, uint64_t duration_us) {
   tf_data_service_get_element_duration_usecs_histogram
       ->GetCell(data_transfer_protocol)
       ->Add(duration_us);
 }
 
-void RecordTFDataGetNextDuration(uint64 duration_us) {
+void RecordTFDataGetNextDuration(uint64_t duration_us) {
   static auto* tf_data_get_next_duration_cell =
       tf_data_get_next_duration_usecs_histogram->GetCell();
   tf_data_get_next_duration_cell->Add(duration_us);
@@ -586,25 +588,25 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio) {
   tf_data_buffered_vs_budget_ratio_histogram_cell->Add(ratio);
 }
 
-void RecordTFDataIteratorBusy(uint64 duration_us) {
+void RecordTFDataIteratorBusy(uint64_t duration_us) {
   static auto* tf_data_iterator_busy_cell =
       tf_data_iterator_busy_counter->GetCell();
   tf_data_iterator_busy_cell->IncrementBy(duration_us);
 }
 
-void RecordTFDataIteratorLifetime(uint64 duration_us) {
+void RecordTFDataIteratorLifetime(uint64_t duration_us) {
   static auto* tf_data_iterator_lifetime_cell =
       tf_data_iterator_lifetime_counter->GetCell();
   tf_data_iterator_lifetime_cell->IncrementBy(duration_us);
 }
 
-void RecordTFDataIteratorGap(uint64 duration_us) {
+void RecordTFDataIteratorGap(uint64_t duration_us) {
   static auto* tf_data_iterator_gap_msec_histogram_cell =
       tf_data_iterator_gap_msec_histogram->GetCell();
   tf_data_iterator_gap_msec_histogram_cell->Add(duration_us * 0.001);
 }
 
-void RecordTFDataOptimization(const string& name, int64_t num_changes) {
+void RecordTFDataOptimization(const std::string& name, int64_t num_changes) {
   tf_data_optimization_counter->GetCell(name)->IncrementBy(num_changes);
 }
 
@@ -641,7 +643,7 @@ void RecordTFDataServiceClientIterators(
 }
 
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol, bool user_specified) {
+    const std::string& data_transfer_protocol, bool user_specified) {
   std::string nature = user_specified ? "specified" : "default";
   tf_data_service_data_transfer_protocol_used_by_nature
       ->GetCell(data_transfer_protocol, nature)
@@ -649,16 +651,16 @@ void RecordTFDataServiceDataTransferProtocolUsed(
 }
 
 void RecordTFDataServiceDataTransferProtocolFallback(
-    const string& data_transfer_protocol, error::Code code,
-    const string& error_message) {
+    const std::string& data_transfer_protocol, error::Code code,
+    const std::string& error_message) {
   tf_data_service_data_transfer_protocol_fallback
       ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
 }
 
 void RecordTFDataServiceDataTransferProtocolError(
-    const string& data_transfer_protocol, error::Code code,
-    const string& error_message) {
+    const std::string& data_transfer_protocol, error::Code code,
+    const std::string& error_message) {
   tf_data_service_data_transfer_protocol_error
       ->GetCell(data_transfer_protocol, error::Code_Name(code), error_message)
       ->IncrementBy(1);
@@ -688,7 +690,8 @@ void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
   tf_data_service_optimal_number_of_workers->GetCell()->Set(number_of_workers);
 }
 
-void RecordTFDataFilename(const string& name, const string& filename) {
+void RecordTFDataFilename(const std::string& name,
+                          const std::string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
@@ -697,7 +700,7 @@ void RecordTFDataFileLoggerAttempts() {
 }
 
 void RecordTFDataFileLoggerErrors(error::Code error_code,
-                                  const string& error_message) {
+                                  const std::string& error_message) {
   tf_data_file_logger_errors_counter
       ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(1);
@@ -710,39 +713,40 @@ void RecordTFDataFileLoggerAttemptedNumFiles(size_t num_files) {
 
 void RecordTFDataFileLoggerErrorsNumFiles(size_t num_files,
                                           error::Code error_code,
-                                          const string& error_message) {
+                                          const std::string& error_message) {
   tf_data_file_logger_errors_num_files_counter
       ->GetCell(error::Code_Name(error_code), error_message)
       ->IncrementBy(num_files);
 }
 
-void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
-                           int64 num_workers, int64 num_replicas) {
+void RecordTFDataAutoShard(const std::string& id, data::AutoShardPolicy policy,
+                           int64_t num_workers, int64_t num_replicas) {
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
   tf_data_auto_shard->GetCell(id, "num_replicas")->Set(num_replicas);
 }
 
 void RecordTFDataAutoShardRewriteBatchSize(
-    bool eligible, const std::vector<string>& ineligible_reason) {
+    bool eligible, const std::vector<std::string>& ineligible_reason) {
   tf_data_auto_shard_rewrite_batch_size_eligible
       ->GetCell(eligible ? "true" : "false")
       ->IncrementBy(1);
-  for (const string& reason : ineligible_reason) {
+  for (const std::string& reason : ineligible_reason) {
     tf_data_auto_shard_rewrite_batch_size_reason->GetCell(reason)->IncrementBy(
         1);
   }
 }
 
-void RecordTFDataAutotuneStoppingCriteria(const string& name) {
+void RecordTFDataAutotuneStoppingCriteria(const std::string& name) {
   tf_data_autotune_stopping_criteria_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataDebug(const string& event) {
+void RecordTFDataDebug(const std::string& event) {
   tf_data_debug->GetCell(event)->IncrementBy(1);
 }
 
-void RecordTFDataError(const string& error_type, const string& status_code) {
+void RecordTFDataError(const std::string& error_type,
+                       const std::string& status_code) {
   tf_data_error->GetCell(error_type, status_code)->IncrementBy(1);
 }
 
@@ -750,7 +754,7 @@ void RecordTFDataFrameworkType(const std::string& framework_type) {
   tf_data_framework_type->GetCell(framework_type)->IncrementBy(1);
 }
 
-void RecordParseDenseFeature(int64 num_features) {
+void RecordParseDenseFeature(int64_t num_features) {
   static auto* parse_dense_feature_counter_cell =
       parse_dense_feature_counter->GetCell();
   parse_dense_feature_counter_cell->IncrementBy(num_features);
@@ -797,7 +801,7 @@ void UpdateAotBefMlirLoadCount() {
   aot_bef_mlir_load_count_cell->IncrementBy(1);
 }
 
-void UpdateGraphExecTime(const uint64 running_time_usecs) {
+void UpdateGraphExecTime(const uint64_t running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* graph_runs_cell = graph_runs->GetCell();
     static auto* graph_run_time_usecs_cell = graph_run_time_usecs->GetCell();
@@ -809,13 +813,13 @@ void UpdateGraphExecTime(const uint64 running_time_usecs) {
   }
 }
 
-void UpdateGraphPendingQueueLength(uint64 len) {
+void UpdateGraphPendingQueueLength(uint64_t len) {
   static auto* graph_pending_queue_length_cell =
       graph_pending_queue_length_histogram->GetCell();
   graph_pending_queue_length_cell->Add(len);
 }
 
-void UpdateGraphBuildTime(const uint64 running_time_usecs) {
+void UpdateGraphBuildTime(const uint64_t running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* build_graph_calls_cell = build_graph_calls->GetCell();
     static auto* build_graph_time_usecs_cell =
@@ -825,7 +829,7 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs) {
   }
 }
 
-void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs) {
+void UpdateFunctionGraphOptimizationTime(const uint64_t running_time_usecs) {
   if (running_time_usecs > 0) {
     static auto* function_graph_optimization_time_usecs_cell =
         function_graph_optimization_time_usecs->GetCell();
@@ -834,7 +838,7 @@ void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs) {
   }
 }
 
-void UpdateFunctionGraphOptimizationSavingTime(const uint64 saving_time_usecs,
+void UpdateFunctionGraphOptimizationSavingTime(const uint64_t saving_time_usecs,
                                                GraphOptimizationSource source) {
   if (saving_time_usecs > 0) {
     std::string mapped_source = GraphOptimizationSourceMapping(source);
@@ -845,7 +849,7 @@ void UpdateFunctionGraphOptimizationSavingTime(const uint64 saving_time_usecs,
   }
 }
 
-uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+uint64_t GetFunctionGraphOptimizationSavingTimeUsecs(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   return graph_optimization_saving_time_usecs->GetCell(mapped_source)->value();
@@ -904,14 +908,14 @@ int64_t GetFunctionGraphOptimizationCacheLoadCount(
   return graph_optimization_cache_load_count->GetCell(mapped_source)->value();
 }
 
-void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {
+void UpdateTpuVariableDistributionTime(const uint64_t distribution_time_usecs) {
   if (distribution_time_usecs > 0) {
     tpu_variable_distribution_time_usecs->GetCell()->IncrementBy(
         distribution_time_usecs);
   }
 }
 
-void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
+void UpdateXlaCompilationTime(const uint64_t compilation_time_usecs) {
   if (compilation_time_usecs > 0) {
     static auto* xla_compilations_cell = xla_compilations->GetCell();
     static auto* xla_compilation_time_usecs_cell =
@@ -921,32 +925,32 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
   }
 }
 
-void RecordUnusedOutput(const string& op_name) {
+void RecordUnusedOutput(const std::string& op_name) {
   graph_unused_outputs->GetCell(op_name)->IncrementBy(1);
 }
 
-void RecordPipelineProcessingTime(const string& id,
+void RecordPipelineProcessingTime(const std::string& id,
                                   double pipeline_processing_time_usec) {
   GetTFDataPipelineProcessingTimeGauge(id)->Set(pipeline_processing_time_usec);
 }
 
-void IncrementTestCounter(const string& name, const string& label) {
+void IncrementTestCounter(const std::string& name, const std::string& label) {
   test_counters->GetCell(name, label)->IncrementBy(1);
 }
 
-const tsl::monitoring::CounterCell* TestCounter(const string& name,
-                                                const string& label) {
+const tsl::monitoring::CounterCell* TestCounter(const std::string& name,
+                                                const std::string& label) {
   return test_counters->GetCell(name, label);
 }
 
-TestDelta::TestDelta(const string& name, const string& label)
+TestDelta::TestDelta(const std::string& name, const std::string& label)
     : cell_(TestCounter(name, label)) {
   Reset();
 }
 
 void TestDelta::Reset() { last_value_ = cell_->value(); }
 
-int64 TestDelta::Get() { return cell_->value() - last_value_; }
+int64_t TestDelta::Get() { return cell_->value() - last_value_; }
 
 void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& bridge_type,
                                          const std::string& bridge_version,
@@ -1020,12 +1024,13 @@ void IncrementPhase2XlaCompilerCounter(Phase2XlaCompilerMetric metric) {
       ->IncrementBy(1);
 }
 
-void UpdateTpuErrorCounter(const string& op, const string& error_type) {
+void UpdateTpuErrorCounter(const std::string& op,
+                           const std::string& error_type) {
   tpu_op_error_counter->GetCell(op, error_type)->IncrementBy(1);
 }
 
-void UpdateEagerClientErrorCounter(const string& error_source,
-                                   const string& error_type) {
+void UpdateEagerClientErrorCounter(const std::string& error_source,
+                                   const std::string& error_type) {
   eager_client_error_counter->GetCell(error_source, error_type)->IncrementBy(1);
 }
 

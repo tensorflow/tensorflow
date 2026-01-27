@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "xla/future.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
 
@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace dtensor {
 
 template <typename T = void>
-using Future = ::xla::PjRtFuture<T>;
+using Future = ::xla::Future<T>;
 
 // ParallelExecutor Interface
 // Note: The interface is under development and APIs are subject to change.

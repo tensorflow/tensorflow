@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/codegen/triton/tma_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/instruction_fusion.h"
@@ -202,11 +203,13 @@ void ExtendConfigsWithTma(
       LOG(ERROR) << "Failed to unpack BlockLevelFusionConfig";
       continue;
     }
-    BlockLevelFusionConfig new_config = original_config;
-    new_config.set_is_tma_allowed(true);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(new_config);
-    configs.push_back(std::move(any));
+    if (IsTmaRecommended(original_config)) {
+      BlockLevelFusionConfig new_config = original_config;
+      new_config.set_is_tma_allowed(true);
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(new_config);
+      configs.push_back(std::move(any));
+    }
   }
 }
 }  // namespace
@@ -222,6 +225,13 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     }
     std::vector<std::unique_ptr<BackendConfig>> configs;
     configs.push_back(std::move(config.value()));
+    // If default config is taken from the existing backend config,
+    // leave it as is. Otherwise, add TMA config if available.
+    if (!instr.has_backend_config() &&
+        stream_executor::gpu::IsTmaAvailableForDevice(
+            target_config().device_description)) {
+      ExtendConfigsWithTma(configs);
+    }
     return configs;
   }
 
@@ -288,12 +298,9 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     configs.push_back(std::move(any));
   }
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma =
-      debug_options().xla_gpu_experimental_enable_triton_tma() &&
-      stream_executor::gpu::IsTmaAvailableForDevice(
-          target_config().device_description);
-  if (autotune_tma) {
+  // Allow TMA tuning for Hopper+ devices.
+  if (stream_executor::gpu::IsTmaAvailableForDevice(
+          target_config().device_description)) {
     ExtendConfigsWithTma(configs);
   }
 
@@ -305,11 +312,10 @@ BlockLevelEmitterBackend::GetCostModelConfig(
     const HloInstruction& instr) const {
   auto device_info = target_config().device_description;
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
-  mlir::MLIRContext ctx;
-  SymbolicExprContext symbolic_expr_context(&ctx);
+  mlir::MLIRContext mlir_context;
+  RegisterSymbolicExprStorage(&mlir_context);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size_fn_,
-      &symbolic_expr_context);
+      &device_info, &fusion_analysis_cache, shape_size_fn_, &mlir_context);
 
   auto fusion_adaptor =
       HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));

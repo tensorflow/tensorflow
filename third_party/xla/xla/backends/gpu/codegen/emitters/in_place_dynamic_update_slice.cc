@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/dynamic_update_slice_kernel_emitter.h"
@@ -38,13 +39,14 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::mlir::MLIRContext;
 
 constexpr int kDUSUpdateIndex = 1;
 
@@ -59,7 +61,7 @@ LaunchDimensions InPlaceDynamicUpdateSliceFusion::launch_dimensions() const {
 
 std::optional<std::vector<IndexingMap>>
 InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* symbolic_expr_context) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   // TODO(b/331355203): Implement thread ID -> operand indexing.
   std::vector<IndexingMap> result(
       analysis_.fusion_hero(root_index).GetOperands().size(),
@@ -68,22 +70,20 @@ InPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   using KernelEmitter = emitters::DynamicUpdateSliceKernelEmitter;
   result[kDUSUpdateIndex] = KernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
-      KernelEmitter::GetIndexingShape(analysis_.fusion_spec()),
-      symbolic_expr_context);
+      KernelEmitter::GetIndexingShape(analysis_.fusion_spec()), mlir_context);
   return result;
 }
 
 std::vector<emitters::EpilogueSpecification>
 InPlaceDynamicUpdateSliceFusion::GetEpilogues(
-    const HloFusionInstruction& fusion,
-    SymbolicExprContext* symbolic_expr_context) const {
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
   // We don't actually support epilogues for DUS, but this is how we tell
   // the base class that we don't want it to generate code for the DUS.
   std::vector<emitters::EpilogueSpecification> epilogues;
   for (const auto& [dus_op, root] :
        llvm::zip(dus_ops_, analysis_.fusion_roots())) {
     epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        &dus_op.instruction(), &root.instruction(), symbolic_expr_context));
+        &dus_op.instruction(), &root.instruction(), mlir_context));
   }
   return epilogues;
 }
@@ -96,17 +96,16 @@ WorkDimensions InPlaceDynamicUpdateSliceFusion::GetWorkDimensions() const {
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 InPlaceDynamicUpdateSliceFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
   emitters::DynamicUpdateSliceKernelEmitter emitter(
-      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status InPlaceDynamicUpdateSliceFusion::EmitEntryFunction(

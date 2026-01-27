@@ -152,7 +152,7 @@ class MetricCollector {
 
   MetricCollector(
       const MetricDef<metric_kind, Value, NumLabels>* const metric_def,
-      const uint64 registration_time_millis,
+      const uint64_t registration_time_millis,
       internal::Collector* const collector, PointSet* const point_set)
       : metric_def_(metric_def),
         registration_time_millis_(registration_time_millis),
@@ -162,7 +162,7 @@ class MetricCollector {
   }
 
   const MetricDef<metric_kind, Value, NumLabels>* const metric_def_;
-  const uint64 registration_time_millis_;
+  const uint64_t registration_time_millis_;
   internal::Collector* const collector_;
   PointSet* const point_set_;
 
@@ -191,14 +191,14 @@ class MetricCollectorGetter {
 
   MetricCollectorGetter(internal::Collector* const collector,
                         const AbstractMetricDef* const allowed_metric_def,
-                        const uint64 registration_time_millis)
+                        const uint64_t registration_time_millis)
       : collector_(collector),
         allowed_metric_def_(allowed_metric_def),
         registration_time_millis_(registration_time_millis) {}
 
   internal::Collector* const collector_;
   const AbstractMetricDef* const allowed_metric_def_;
-  const uint64 registration_time_millis_;
+  const uint64_t registration_time_millis_;
 };
 
 // A collection registry for metrics.
@@ -270,7 +270,7 @@ class CollectionRegistry {
   struct CollectionInfo {
     const AbstractMetricDef* const metric_def;
     CollectionFunction collection_function;
-    uint64 registration_time_millis;
+    uint64_t registration_time_millis;
   };
   std::map<absl::string_view, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
 
@@ -375,14 +375,14 @@ inline void CollectValue(std::function<double()> value_fn, Point* const point) {
 // This class is thread-safe.
 class Collector {
  public:
-  explicit Collector(const uint64 collection_time_millis)
+  explicit Collector(const uint64_t collection_time_millis)
       : collected_metrics_(new CollectedMetrics()),
         collection_time_millis_(collection_time_millis) {}
 
   template <MetricKind metric_kind, typename Value, int NumLabels>
   MetricCollector<metric_kind, Value, NumLabels> GetMetricCollector(
       const MetricDef<metric_kind, Value, NumLabels>* const metric_def,
-      const uint64 registration_time_millis,
+      const uint64_t registration_time_millis,
       internal::Collector* const collector) TF_LOCKS_EXCLUDED(mu_) {
     auto* const point_set = [&]() {
       absl::MutexLock l(mu_);
@@ -395,7 +395,7 @@ class Collector {
         metric_def, registration_time_millis, collector, point_set);
   }
 
-  uint64 collection_time_millis() const { return collection_time_millis_; }
+  uint64_t collection_time_millis() const { return collection_time_millis_; }
 
   void CollectMetricDescriptor(const AbstractMetricDef* const metric_def)
       TF_LOCKS_EXCLUDED(mu_);
@@ -409,7 +409,7 @@ class Collector {
  private:
   mutable absl::Mutex mu_;
   std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
-  const uint64 collection_time_millis_;
+  const uint64_t collection_time_millis_;
 
   Collector(const Collector&) = delete;
   void operator=(const Collector&) = delete;
@@ -423,21 +423,21 @@ class Collector {
 // collection function was registered, while the end timestamp will be set to
 // the collection time.
 template <MetricKind kind>
-void WriteTimestamps(const uint64 registration_time_millis,
-                     const uint64 collection_time_millis, Point* const point);
+void WriteTimestamps(const uint64_t registration_time_millis,
+                     const uint64_t collection_time_millis, Point* const point);
 
 template <>
 inline void WriteTimestamps<MetricKind::kGauge>(
-    const uint64 registration_time_millis, const uint64 collection_time_millis,
-    Point* const point) {
+    const uint64_t registration_time_millis,
+    const uint64_t collection_time_millis, Point* const point) {
   point->start_timestamp_millis = collection_time_millis;
   point->end_timestamp_millis = collection_time_millis;
 }
 
 template <>
 inline void WriteTimestamps<MetricKind::kCumulative>(
-    const uint64 registration_time_millis, const uint64 collection_time_millis,
-    Point* const point) {
+    const uint64_t registration_time_millis,
+    const uint64_t collection_time_millis, Point* const point) {
   point->start_timestamp_millis = registration_time_millis;
   // There's a chance that the clock goes backwards on the same machine, so we
   // protect ourselves against that.

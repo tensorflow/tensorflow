@@ -37,7 +37,8 @@ absl::Status RewriteLayoutWithShardedShape(
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
     xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual()) {
+  if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual() &&
+      !sharding->IsUnreduced()) {
     // After sharding, per core shape might have different layout. For example,
     // before sharding, a shape [128, 128] will be assigned default
     // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
@@ -49,17 +50,7 @@ absl::Status RewriteLayoutWithShardedShape(
     // TODO(endlessroad): for variable input & update, we might have
     // different layouts which will prevent input output aliasing and
     // increase memory usage. Investigate such cases.
-    int64_t device = sharding->tile_assignment().first();
-    std::vector<int64_t> offset =
-        sharding->TileOffsetForDevice(*xla_shape, device);
-    std::vector<int64_t> limit =
-        sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64_t> dimensions(xla_shape->dimensions().size());
-    for (int64_t i = 0; i < xla_shape->dimensions().size(); ++i) {
-      dimensions[i] = limit[i] - offset[i];
-    }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
+    xla::Shape per_device_xla_shape = sharding->TileShape(*xla_shape);
     TF_ASSIGN_OR_RETURN(auto layout_preference,
                         layout_preference_fn
                             ? layout_preference_fn(per_device_xla_shape)

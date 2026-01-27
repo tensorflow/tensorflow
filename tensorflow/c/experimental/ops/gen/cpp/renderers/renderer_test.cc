@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/renderer.h"
 
+#include <string>
+
 #include "tensorflow/c/experimental/ops/gen/common/path_config.h"
 #include "tensorflow/c/experimental/ops/gen/common/source_code.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
@@ -57,7 +59,7 @@ TEST(Renderer, typical_usage) {
   SourceCode code;
   TestRenderer(code).Render();
 
-  string expected = R"(// File level comment.
+  std::string expected = R"(// File level comment.
 #include "header.h"
 
 void TestFunction() {

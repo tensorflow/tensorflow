@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -44,7 +45,7 @@ namespace grappler {
 namespace {
 GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
                         bool use_multiple_devices, bool insert_queue,
-                        const std::vector<string>& device_names) {
+                        const std::vector<std::string>& device_names) {
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -102,7 +103,7 @@ GraphDef CreateGraphDef(int num_stages, int width, int tensor_size,
 
 TrivialTestGraphInputYielder::TrivialTestGraphInputYielder(
     int num_stages, int width, int tensor_size, bool insert_queue,
-    const std::vector<string>& device_names)
+    const std::vector<std::string>& device_names)
     : num_stages_(num_stages),
       width_(width),
       tensor_size_(tensor_size),

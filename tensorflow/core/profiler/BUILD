@@ -31,11 +31,11 @@ tf_proto_library(
     srcs = ["profiler_service_monitor_result.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
     ],
     visibility = ["//visibility:public"],
     exports = [
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
     ],
 )
 
@@ -43,9 +43,9 @@ tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/profiler/protobuf:profiler_options_proto"],
+    protodeps = ["@tsl//tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],
-    exports = ["@local_tsl//tsl/profiler/protobuf:profiler_options_proto"],
+    exports = ["@tsl//tsl/profiler/protobuf:profiler_options_proto"],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
@@ -59,11 +59,11 @@ tf_proto_library(
     srcs = ["profiler_service.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
-    exports = ["@local_tsl//tsl/profiler/protobuf:profiler_service_proto"],
+    exports = ["@tsl//tsl/profiler/protobuf:profiler_service_proto"],
 )
 
 tf_proto_library(
@@ -71,11 +71,11 @@ tf_proto_library(
     srcs = ["profiler_analysis.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_analysis_proto",
     ],
     use_grpc_namespace = True,
     visibility = ["//visibility:public"],
-    exports = ["@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto"],
+    exports = ["@tsl//tsl/profiler/protobuf:profiler_analysis_proto"],
 )
 
 tf_proto_library(
@@ -87,11 +87,11 @@ tf_proto_library(
         "tfprof_output.proto",
     ],
     protodeps = [
-        "@local_tsl//tsl/profiler/protobuf:profile_proto",
+        "@tsl//tsl/profiler/protobuf:profile_proto",
     ] + tf_additional_all_protos(),
     visibility = [":friends"],
     exports = [
-        "@local_tsl//tsl/profiler/protobuf:profile_proto",
+        "@tsl//tsl/profiler/protobuf:profile_proto",
     ],
 )
 
@@ -105,10 +105,10 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
-        "@local_xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
-        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
-        "@local_xla//xla/tsl/profiler/utils:time_utils_impl",
+        "@xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
+        "@xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
+        "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@xla//xla/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -161,7 +161,7 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_no_runtime",
-        "@local_tsl//tsl/profiler/lib:mobile_srcs_no_runtime",
+        "@tsl//tsl/profiler/lib:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -170,7 +170,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
-        "@local_tsl//tsl/profiler/lib:mobile_srcs_only_runtime",
+        "@tsl//tsl/profiler/lib:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

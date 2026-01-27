@@ -50,7 +50,7 @@ class XlaContext : public ResourceBase {
              const Graph* graph);
 
   // Virtual method defined by ResourceBase.
-  string DebugString() const override;
+  std::string DebugString() const override;
 
   XlaCompiler* compiler() const { return compiler_; }
 

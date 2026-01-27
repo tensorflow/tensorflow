@@ -33,6 +33,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -73,7 +74,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/util:saved_tensor_slice_proto_cc",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -104,6 +105,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -144,6 +146,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         "//tensorflow/core/platform:stringprintf",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -154,6 +157,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -235,8 +239,8 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -244,8 +248,8 @@ tf_cc_fuzz_test(
     name = "text_literal_reader_fuzz",
     srcs = ["text_literal_reader_fuzz.cc"],
     deps = [
-        "@local_xla//xla:text_literal_reader",
-        "@local_xla//xla/hlo/parser:hlo_parser",
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla:text_literal_reader",
+        "@xla//xla/hlo/parser:hlo_parser",
+        "@xla//xla/tsl/platform:env",
     ],
 )

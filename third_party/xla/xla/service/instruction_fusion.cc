@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -53,23 +53,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
-
-#if defined(PLATFORM_GOOGLE)
-FusionDecision::FusionDecision(bool decision,
-                               absl::SourceLocation source_location) {
-  if (!decision) {
-    explanation_ =
-        absl::StrCat("Not fusing: due to ", source_location.file_name(), ":",
-                     source_location.line());
-  }
-}
-#endif  // PLATFORM_GOOGLE
-
 namespace {
 
 // These nodes can always be duplicated into consumers, even if
@@ -231,6 +216,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScaledDot:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
@@ -599,7 +585,7 @@ std::unique_ptr<FusionQueue> InstructionFusion::GetFusionQueue(
   return std::make_unique<ReversePostOrderFusionQueue>(computation);
 }
 
-absl::StatusOr<bool> InstructionFusion::Run(
+absl::StatusOr<bool> InstructionFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -800,7 +786,7 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // have the same value as the root of the fused computation. However, we
     // copy the value nontheless to simplify some use cases that involve
     // fusions.
-    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   return fusion_instruction;
 }
@@ -934,6 +920,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
     const HloInstruction* producer, const HloInstruction* consumer,
+    const AliasInfo* alias_info,
     std::optional<const InPlaceFusionOptions> in_place_fusion_options) {
   // Don't fuse if the producer is a non-elementwise op that has the same
   // operand as an in-place operand of the consumer. The consumer will modify
@@ -941,8 +928,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   // allow them to fuse.
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs =
-          HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-              const_cast<HloInstruction*>(consumer));
+          alias_info->GetInPlaceInputOutputPairs(consumer);
   for (auto& pair : in_place_input_output_pairs) {
     int operand_number = pair.first.operand_number;
     VLOG(4) << "in/out pair: " << operand_number << " "
@@ -1106,12 +1092,14 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
-  return ShouldFuse(consumer, operand_index, ShouldFuseInPlaceOp);
+  return ShouldFuse(consumer, operand_index,
+                    InstructionFusion::ShouldFuseInPlaceOp);
 }
 
 FusionDecision InstructionFusion::ShouldFuse(
     HloInstruction* consumer, int64_t operand_index,
     std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
+                                 const AliasInfo* alias_info,
                                  std::optional<const InPlaceFusionOptions>)>
         inplace_op_fusion_decider,
     bool legality_check_only /*=false*/) {
@@ -1131,7 +1119,8 @@ FusionDecision InstructionFusion::ShouldFuse(
                                       ? "expensive producer would be duplicated"
                                       : "fusion pass cannot duplicate");
   }
-  return inplace_op_fusion_decider(producer, consumer, std::nullopt);
+  return inplace_op_fusion_decider(producer, consumer, alias_info_,
+                                   std::nullopt);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

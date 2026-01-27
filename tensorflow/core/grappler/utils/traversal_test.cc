@@ -90,7 +90,7 @@ TEST(TraversalTest, InputsDfsNoLoop) {
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
   const std::vector<string> expected_pre = {"1", "4", "3", "2", "5", "0"};
-  const std::vector<string> expected_post = {"4", "5", "2", "3", "1", "0"};
+  const std::vector<std::string> expected_post = {"4", "5", "2", "3", "1", "0"};
 
   EXPECT_EQ(pre_order, expected_pre);
   EXPECT_EQ(post_order, expected_post);
@@ -142,7 +142,7 @@ TEST(TraversalTest, OutputDfsWithLoop) {
   std::vector<const NodeDef*> start_nodes = {&graph.node(0)};
 
   std::vector<string> pre_order;
-  std::vector<string> post_order;
+  std::vector<std::string> post_order;
   std::vector<string> back_edges;
 
   GraphTopologyView graph_view;
@@ -225,8 +225,8 @@ TEST(TraversalTest, DfsWithAdvancePredicate) {
                DfsPredicates::Advance(advance),
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
-  const std::vector<string> expected_pre = {"1", "4", "5", "6", "2"};
-  const std::vector<string> expected_post = {"6", "5", "4", "2", "1"};
+  const std::vector<std::string> expected_pre = {"1", "4", "5", "6", "2"};
+  const std::vector<std::string> expected_post = {"6", "5", "4", "2", "1"};
 
   EXPECT_EQ(pre_order, expected_pre);
   EXPECT_EQ(post_order, expected_post);

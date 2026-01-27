@@ -21,6 +21,7 @@ https://github.com/bazelbuild/bazel/blob/master/src/main/protobuf/build.proto
 but this is not possible due to XLA's old protobuf version. So we parse by hand
 instead.
 """
+
 import logging
 import sys
 from typing import Set
@@ -29,6 +30,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     # Tags that Bazel recognizes
     "local": "https://bazel.build/reference/be/common-definitions",
     "manual": "https://bazel.build/reference/be/common-definitions",
+    "exclusive-if-local": "https://bazel.build/reference/be/common-definitions",
     "large": "Conventional tag for `test_suites` of large tests",
     "__PYTHON_RULES_MIGRATION_DO_NOT_USE_WILL_BREAK__": "Internal bazel tag",
     # Various disable tags (currently recognized by OpenXLA CI)
@@ -47,6 +49,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "nomsan": "Disabled under msan. Not used on OpenXLA CI.",
     "notsan": "Disabled under tsan. Not used on OpenXLA CI",
     "nobuilder": "Not built internally.",
+    "nofixdeps": "Internal tag. Disables build_cleaner.",
     "nozapfhahn": "Internal tag. Disables gathering coverage",
     "optonly": "Should only be tested with -c opt",
     "nodebug": "Should not be tested in debug builds.",
@@ -93,6 +96,9 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"
         " annotated `xla_test` target. Adding this tag does not synthesize"
         " additional targets."
+    ),
+    "pjrt_migration_candidate": (
+        "Tags the target as a PJRT migration candidate."
     ),
     "multi_gpu": "Used by `xla_test` to signal that multiple GPUs are needed.",
 }

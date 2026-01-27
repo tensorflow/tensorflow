@@ -37,11 +37,11 @@ class Block {
   Iterator* NewIterator();
 
  private:
-  uint32 NumRestarts() const;
+  uint32_t NumRestarts() const;
 
   const char* data_;
   size_t size_;
-  uint32 restart_offset_;  // Offset in data_ of restart array
+  uint32_t restart_offset_;  // Offset in data_ of restart array
   bool owned_;             // Block owns data_[]
 
   // No copying allowed

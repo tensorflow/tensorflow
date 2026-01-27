@@ -15,8 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
+#include "absl/types/span.h"
+#include "xla/tsl/platform/errors.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
@@ -48,8 +61,8 @@ absl::Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   } else if (node->IsIfNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
-    for (const string& attr_name :
-         std::vector<string>{"then_branch", "else_branch"}) {
+    for (const std::string& attr_name :
+         std::vector<std::string>{"then_branch", "else_branch"}) {
       NameAttrList branch_func;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
       (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
@@ -59,7 +72,8 @@ absl::Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
   } else if (node->IsWhileNode()) {
     AttrValue device_ordinal_value;
     device_ordinal_value.set_i(device_ordinal);
-    for (const string& attr_name : std::vector<string>{"cond", "body"}) {
+    for (const std::string& attr_name :
+         std::vector<std::string>{"cond", "body"}) {
       NameAttrList branch_func;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
       (*branch_func.mutable_attr())["_device_ordinal"] = device_ordinal_value;
@@ -80,39 +94,39 @@ absl::Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
   std::set<std::string> results;
   Node* first_side_effecting_node_on_path = nullptr;
-  ReverseDFS(g,
-             [&](Node* n) {
-               std::vector<string> token_input_nodes;
-               if (!GetNodeAttr(n->attrs(), kXlaTokenInputNodesAttrName,
-                                &token_input_nodes)
-                        .ok() ||
-                   token_input_nodes.empty()) {
-                 return;
-               }
+  ReverseDFS(
+      g,
+      [&](Node* n) {
+        std::vector<std::string> token_input_nodes;
+        if (!GetNodeAttr(n->attrs(), kXlaTokenInputNodesAttrName,
+                         &token_input_nodes)
+                 .ok() ||
+            token_input_nodes.empty()) {
+          return;
+        }
 
-               if (first_side_effecting_node_on_path != nullptr) {
-                 return;
-               }
+        if (first_side_effecting_node_on_path != nullptr) {
+          return;
+        }
 
-               first_side_effecting_node_on_path = n;
-               string original_node_name;
-               TF_CHECK_OK(GetNodeAttr(n->def(),
-                                       kXlaOriginalOutsideCompilationNodeName,
-                                       &original_node_name));
-               results.insert(original_node_name);
-             },
-             [&](Node* n) {
-               if (first_side_effecting_node_on_path == n) {
-                 first_side_effecting_node_on_path = nullptr;
-               }
-             },
-             NodeComparatorName());
+        first_side_effecting_node_on_path = n;
+        std::string original_node_name;
+        CHECK_OK(GetNodeAttr(n->def(), kXlaOriginalOutsideCompilationNodeName,
+                             &original_node_name));
+        results.insert(original_node_name);
+      },
+      [&](Node* n) {
+        if (first_side_effecting_node_on_path == n) {
+          first_side_effecting_node_on_path = nullptr;
+        }
+      },
+      NodeComparatorName());
   return results;
 }
 
 bool HasSideEffectingNodes(const Graph& g) {
   for (Node* n : g.nodes()) {
-    std::vector<string> token_input_nodes;
+    std::vector<std::string> token_input_nodes;
     if (GetNodeAttr(n->attrs(), kXlaTokenInputNodesAttrName, &token_input_nodes)
             .ok() &&
         !token_input_nodes.empty()) {
@@ -123,10 +137,10 @@ bool HasSideEffectingNodes(const Graph& g) {
 }
 
 absl::Status ParseHostComputeCoreList(
-    absl::Span<const string> list_from_attr,
-    std::map<string, int>* host_compute_core) {
+    absl::Span<const std::string> list_from_attr,
+    std::map<std::string, int>* host_compute_core) {
   for (const auto& hc_core : list_from_attr) {
-    std::vector<string> parts = str_util::Split(hc_core, ":");
+    std::vector<std::string> parts = str_util::Split(hc_core, ":");
     if (parts.size() != 2) {
       return errors::InvalidArgument(
           "Malformed host_compute_core entry ", hc_core,

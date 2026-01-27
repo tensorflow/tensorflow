@@ -59,12 +59,12 @@ AttributeMap FromPjRtAttributeMap(
 absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtAttributeMap(
     AttributeMap attributes) {
   absl::flat_hash_map<std::string, xla::PjRtValueType> result;
-  result.reserve(attributes.map().size());
-  for (auto& item : attributes.map()) {
+  result.reserve(attributes.size());
+  attributes.ForEach([&](const std::string& key,
+                         const AttributeMap::Value& value) {
     std::visit(
         [&](auto& value) {
           using T = std::decay_t<decltype(value)>;
-          const auto& key = item.first;
           if constexpr (std::is_same_v<T, AttributeMap::StringValue>) {
             result.insert({key, std::move(value.value)});
           } else if constexpr (std::is_same_v<T, AttributeMap::BoolValue>) {
@@ -78,8 +78,8 @@ absl::flat_hash_map<std::string, xla::PjRtValueType> ToPjRtAttributeMap(
             result.insert({key, value.value});
           }
         },
-        item.second);
-  }
+        value);
+  });
   return result;
 }
 

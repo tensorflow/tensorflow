@@ -31,7 +31,6 @@ limitations under the License.
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/compiler.h"
@@ -119,7 +118,7 @@ ENTRY main {
       cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_compilation_result,
+      std::vector<std::unique_ptr<CompiledModule>> aot_compilation_result,
       cpu_compiler.CompileAheadOfTime(std::move(hlo_module),
                                       aot_compilation_options));
   EXPECT_EQ(aot_compilation_result.size(), 1);

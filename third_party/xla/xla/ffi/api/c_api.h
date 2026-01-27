@@ -271,20 +271,6 @@ typedef struct XLA_FFI_ExecutionContext XLA_FFI_ExecutionContext;
 // Primitives
 //===----------------------------------------------------------------------===//
 
-// TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
-typedef struct XLA_FFI_TypeId {
-  int64_t type_id;
-} XLA_FFI_TypeId;
-
-// TypeInfo contains function pointers required by XLA runtime to manipulate
-// user-defined types. For example stateful handlers must tell XLA runtime how
-// to destroy their state when executable is being destroyed.
-typedef struct XLA_FFI_TypeInfo {
-  void (*deleter)(void* object);
-  void (*serialize)();    // placeholder for future use
-  void (*deserialize)();  // placeholder for future use
-} XLA_FFI_TypeInfo;
-
 // We use byte spans to pass strings to handlers because strings might not be
 // null terminated, and even if they are, looking for a null terminator can
 // become very expensive in tight loops.
@@ -305,6 +291,26 @@ typedef struct XLA_FFI_Array {
   size_t size;
   void* data;
 } XLA_FFI_Array;
+
+//===----------------------------------------------------------------------===//
+// Type registry
+//===----------------------------------------------------------------------===//
+
+// TypeId uniquely identifies a user-defined type in a given XLA FFI instance.
+typedef struct XLA_FFI_TypeId {
+  int64_t type_id;
+} XLA_FFI_TypeId;
+
+// TypeInfo contains function pointers required by XLA runtime to manipulate
+// user-defined types. For example stateful handlers must tell XLA runtime how
+// to destroy their state when executable is being destroyed.
+typedef struct XLA_FFI_TypeInfo {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+  void (*deleter)(void* object);
+} XLA_FFI_TypeInfo;
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_TypeInfo, deleter);
 
 //===----------------------------------------------------------------------===//
 // Future
@@ -500,7 +506,7 @@ struct XLA_FFI_Type_Register_Args {
 
   XLA_FFI_ByteSpan name;
   XLA_FFI_TypeId* type_id;  // in-out
-  XLA_FFI_TypeInfo* type_info;
+  const XLA_FFI_TypeInfo* type_info;
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Type_Register_Args, type_id);
@@ -541,10 +547,9 @@ struct XLA_FFI_State_Set_Args {
   XLA_FFI_ExecutionContext* ctx;
   XLA_FFI_TypeId* type_id;
   void* state;
-  void (*deleter)(void* state);
 };
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, deleter);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Set_Args, state);
 
 // Sets execution state to the `state` of type `type_id`. Returns an error if
 // state already set.
@@ -746,7 +751,7 @@ struct XLA_FFI_Api {
   XLA_FFI_Extension_Base* extension_start;
 
   XLA_FFI_Api_Version api_version;
-  XLA_FFI_InternalApi* internal_api;
+  const XLA_FFI_InternalApi* internal_api;
 
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_Create);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Error_GetMessage);

@@ -191,6 +191,50 @@ TEST(SendQueue, SendAndRecvQueuesEarlyClose) {
   }
 }
 
+TEST(SendQueue, SendAndRecvQueuesRecvEarlyClose) {
+  size_t packet_size = 1024 * 8;
+  SlabAllocator uallocator(AllocateAlignedMemory(packet_size * 4).value(),
+                           packet_size);
+  auto recv_thread = RecvThreadState::Create(std::nullopt, uallocator);
+
+  int send_fd, recv_fd;
+  auto status = SetupSocketPairUsingEventLoop(send_fd, recv_fd);
+  ASSERT_TRUE(status.ok()) << status;
+
+  close(recv_fd);
+  auto work_queue = SharedSendWorkQueue::Start();
+  auto msg_queue = std::make_shared<SharedSendMsgQueue>();
+
+  SharedSendMsgQueue::StartSubConnectionSender(WrapSocket(send_fd), 0,
+                                               msg_queue, work_queue, 64);
+
+  std::string txt_msg;
+
+  while (txt_msg.size() < packet_size) {
+    txt_msg += "hello world";
+  }
+  absl::Mutex mu;
+  size_t send_count = 10;
+
+  for (size_t i = 0; i < 10; ++i) {
+    txt_msg.resize(packet_size);
+    BulkTransportInterface::SendMessage msg;
+    msg.data = txt_msg.data();
+    msg.size = txt_msg.size();
+    msg.on_send = [](absl::StatusOr<int> id, size_t size) {};
+    msg.on_done = [&mu, &send_count]() {
+      absl::MutexLock l(mu);
+      --send_count;
+    };
+    msg_queue->ScheduleSendWork(std::move(msg));
+  }
+  {
+    absl::MutexLock l(mu);
+    auto cond = [&]() { return send_count == 0; };
+    mu.Await(absl::Condition(&cond));
+  }
+}
+
 TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
   size_t packet_size = 1024 * 8;
   SlabAllocator allocator(AllocateNetworkPinnedMemory(packet_size * 4).value(),

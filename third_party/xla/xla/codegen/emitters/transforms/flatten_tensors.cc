@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -46,12 +46,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/layout_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -62,7 +64,6 @@ namespace {
 #define GEN_PASS_DEF_FLATTENTENSORSPASS
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
-using gpu::SymbolicExprContext;
 using mlir::Attribute;
 using mlir::Location;
 using mlir::LogicalResult;
@@ -119,8 +120,8 @@ bool HasOnlyFlatTensorsFlatVectorsOrScalars(TypeRange types) {
 Value Flatten(Value value, PatternRewriter& rewriter) {
   if (IsScalarOrFlat(value.getType())) return value;
   auto flat_type = GetFlattenedType(value.getType());
-  return rewriter
-      .create<UnrealizedConversionCastOp>(value.getLoc(), flat_type, value)
+  return UnrealizedConversionCastOp::create(rewriter, value.getLoc(), flat_type,
+                                            value)
       .getResult(0);
 }
 
@@ -158,8 +159,8 @@ struct RewriteFunctionSignatures : OpRewritePattern<FuncOp> {
     for (auto&& [index, operand_type] : llvm::enumerate(new_operand_types)) {
       if (IsScalarOrFlat(operand_type)) continue;
       mlir::BlockArgument func_argument = op.getArgument(index);
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, operand_type, func_argument);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, operand_type, func_argument);
       func_argument.replaceAllUsesExcept(cast_to_orig_type.getResult(0),
                                          cast_to_orig_type);
       operand_type = GetFlattenedType(operand_type);
@@ -201,8 +202,8 @@ struct RewritePureCall : OpRewritePattern<PureCallOp> {
       flat_result_types.push_back(GetFlattenedType(result_type));
     }
     Location loc = op.getLoc();
-    auto new_call_op = rewriter.create<PureCallOp>(
-        loc, flat_result_types, op.getCalleeAttr(), flat_operands);
+    auto new_call_op = PureCallOp::create(rewriter, loc, flat_result_types,
+                                          op.getCalleeAttr(), flat_operands);
     SmallVector<Value> new_results;
     new_results.reserve(op.getNumResults());
     for (auto [index, new_result] : llvm::enumerate(new_call_op.getResults())) {
@@ -210,8 +211,8 @@ struct RewritePureCall : OpRewritePattern<PureCallOp> {
         new_results.push_back(new_result);
         continue;
       }
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, op.getResult(index).getType(), new_result);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, op.getResult(index).getType(), new_result);
       new_results.push_back(cast_to_orig_type.getResult(0));
     }
     rewriter.replaceOp(op, new_results);
@@ -229,10 +230,9 @@ Value LinearizeIndex(Location loc, ShapedType type, ValueRange indices,
   }
   auto linear_shape =
       ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
-  // TODO(b/446856820): Get SymbolicExprContext from a different source..
-  SymbolicExprContext symbolic_expr_context(rewriter.getContext());
+  // TODO(b/446856820): Get MLIRContext from a different source..
   auto linearized_map =
-      GetBitcastMap(byte_shape, linear_shape, &symbolic_expr_context);
+      GetBitcastMap(byte_shape, linear_shape, rewriter.getContext());
   mlir::SmallVector<Value> result;
   rewriter.createOrFold<ApplyIndexingOp>(result, loc, indices, ValueRange{},
                                          linearized_map);
@@ -251,9 +251,9 @@ struct RewriteAllocateShared : OpRewritePattern<gpu::AllocateSharedOp> {
     auto flat_type = GetFlattenedType(tensor_type);
     Location loc = op.getLoc();
     Value new_op =
-        rewriter.create<gpu::AllocateSharedOp>(op.getLoc(), flat_type);
+        gpu::AllocateSharedOp::create(rewriter, op.getLoc(), flat_type);
     auto cast_to_orig_type =
-        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+        UnrealizedConversionCastOp::create(rewriter, loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -270,10 +270,10 @@ struct RewriteCpuLoad : OpRewritePattern<cpu::LoadOp> {
     }
     auto flat_type = GetFlattenedType(tensor_type);
     Location loc = op.getLoc();
-    Value new_op = rewriter.create<cpu::LoadOp>(
-        op.getLoc(), flat_type, op.getCallFrame(), op.getIndex());
+    Value new_op = cpu::LoadOp::create(rewriter, op.getLoc(), flat_type,
+                                       op.getCallFrame(), op.getIndex());
     auto cast_to_orig_type =
-        rewriter.create<UnrealizedConversionCastOp>(loc, tensor_type, new_op);
+        UnrealizedConversionCastOp::create(rewriter, loc, tensor_type, new_op);
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -290,8 +290,8 @@ struct RewriteConstant : OpRewritePattern<mlir::arith::ConstantOp> {
     }
     auto dense_attr = mlir::dyn_cast<mlir::DenseElementsAttr>(op.getValue());
     auto new_type = GetFlattenedType(op.getType());
-    Value new_constant = rewriter.create<mlir::arith::ConstantOp>(
-        op.getLoc(), dense_attr.reshape(new_type));
+    Value new_constant = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(), dense_attr.reshape(new_type));
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
                                                             new_constant);
     return mlir::success();
@@ -311,9 +311,8 @@ struct RewriteTensorExtract : OpRewritePattern<ExtractOp> {
     auto loc = op.getLoc();
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
-    auto tensor_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             loc, GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         rewriter, loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<ExtractOp>(op, tensor_1D, linear_index);
     return mlir::success();
@@ -339,9 +338,8 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
     auto loc = op.getLoc();
     auto linear_index =
         LinearizeIndex(loc, tensor_type, op.getIndices(), rewriter);
-    auto tensor_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             loc, GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         rewriter, loc, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     rewriter.replaceOpWithNewOp<mv::TransferReadOp>(
         op, vector_type, tensor_1D, linear_index, op.getPadding(),
@@ -363,10 +361,10 @@ struct RewriteVectorExtract : OpRewritePattern<mv::ExtractOp> {
         mv::getAsValues(rewriter, op.getLoc(), op.getMixedPosition());
     auto linear_index =
         LinearizeIndex(op.getLoc(), vector_type, indices, rewriter);
-    auto vector_1D = rewriter
-                         .create<UnrealizedConversionCastOp>(
-                             op.getLoc(), GetFlattenedType(vector_type), vector)
-                         .getResult(0);
+    auto vector_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(vector_type), vector)
+            .getResult(0);
     rewriter.replaceOpWithNewOp<mv::ExtractOp>(op, vector_1D, linear_index);
     return mlir::success();
   }
@@ -386,13 +384,13 @@ struct RewriteTensorInsert : OpRewritePattern<InsertOp> {
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto tensor_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
     auto new_insert =
-        b.create<InsertOp>(op.getScalar(), tensor_1D, linear_index);
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        tensor_type, new_insert.getResult());
+        InsertOp::create(b, op.getScalar(), tensor_1D, linear_index);
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, tensor_type, new_insert.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -412,13 +410,13 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
     auto indices = mv::getAsValues(rewriter, loc, op.getMixedPosition());
     auto linear_index = LinearizeIndex(loc, vector_type, indices, rewriter);
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto vector_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(vector_type), vector)
+    auto vector_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(vector_type), vector)
                          .getResult(0);
     auto new_insert =
-        b.create<mv::InsertOp>(op.getValueToStore(), vector_1D, linear_index);
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        vector_type, new_insert.getResult());
+        mv::InsertOp::create(b, op.getValueToStore(), vector_1D, linear_index);
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, vector_type, new_insert.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -436,10 +434,10 @@ struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
     }
     auto loc = op.getLoc();
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto new_from_elements = b.create<mv::FromElementsOp>(
-        GetFlattenedType(vector_type), op.getElements());
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        vector_type, new_from_elements.getResult());
+    auto new_from_elements = mv::FromElementsOp::create(
+        b, GetFlattenedType(vector_type), op.getElements());
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, vector_type, new_from_elements.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -459,14 +457,14 @@ struct RewriteAtomicRMW : OpRewritePattern<AtomicRMWOp> {
     auto linear_index = LinearizeIndex(loc, tensor_type, op.getIndices(),
                                        rewriter, tensor_type.getEncoding());
     mlir::ImplicitLocOpBuilder b(loc, rewriter);
-    auto tensor_1D = b.create<UnrealizedConversionCastOp>(
-                          GetFlattenedType(tensor_type), tensor)
+    auto tensor_1D = UnrealizedConversionCastOp::create(
+                         b, GetFlattenedType(tensor_type), tensor)
                          .getResult(0);
-    auto new_atomic_rmw = b.create<AtomicRMWOp>(tensor_1D, linear_index);
+    auto new_atomic_rmw = AtomicRMWOp::create(b, tensor_1D, linear_index);
     rewriter.inlineRegionBefore(op.getRegion(),
                                 &new_atomic_rmw.getRegion().front());
-    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
-        tensor_type, new_atomic_rmw.getResult());
+    auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+        b, tensor_type, new_atomic_rmw.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
     return mlir::success();
   }
@@ -523,8 +521,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     // Create new ForOp with updated init args.
     Location loc = op.getLoc();
     auto new_for_op =
-        rewriter.create<ForOp>(loc, op.getLowerBound(), op.getUpperBound(),
-                               op.getStep(), new_init_args);
+        ForOp::create(rewriter, loc, op.getLowerBound(), op.getUpperBound(),
+                      op.getStep(), new_init_args);
     new_for_op->setAttrs(op->getAttrs());
 
     // Insert casts for the block arguments.
@@ -537,9 +535,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
          llvm::enumerate(new_body->getArguments().drop_front())) {
       if (!args_to_update.test(index)) continue;
       updated_block_args[index + 1] =
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, old_body->getArgument(index + 1).getType(), arg)
+          UnrealizedConversionCastOp::create(
+              rewriter, loc, old_body->getArgument(index + 1).getType(), arg)
               .getResult(0);
     }
 
@@ -553,11 +550,10 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     for (auto&& [index, yielded_value] :
          llvm::enumerate(new_terminator.getResultsMutable())) {
       if (!args_to_update.test(index)) continue;
-      yielded_value.assign(
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, new_init_args[index].getType(), yielded_value.get())
-              .getResult(0));
+      yielded_value.assign(UnrealizedConversionCastOp::create(
+                               rewriter, loc, new_init_args[index].getType(),
+                               yielded_value.get())
+                               .getResult(0));
     }
 
     // Cast back the results.
@@ -565,9 +561,8 @@ struct RewriteFor : public OpRewritePattern<ForOp> {
     SmallVector<Value> new_results(new_for_op.getResults());
     for (auto&& [index, result] : llvm::enumerate(new_results)) {
       if (!args_to_update.test(index)) continue;
-      result = rewriter
-                   .create<UnrealizedConversionCastOp>(
-                       loc, op->getResult(index).getType(), result)
+      result = UnrealizedConversionCastOp::create(
+                   rewriter, loc, op->getResult(index).getType(), result)
                    .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -611,14 +606,14 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       for (auto&& [result, type] :
            llvm::zip(else_yield->getOpOperands(), new_result_types)) {
         if (result.get().getType() == type) continue;
-        result.set(
-            rewriter.create<UnrealizedConversionCastOp>(loc, type, result.get())
-                .getResult(0));
+        result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
+                                                      result.get())
+                       .getResult(0));
       }
     }
     // Create new IfOp and move the old op's regions to the new one.
-    auto new_if_op = rewriter.create<IfOp>(loc, new_result_types,
-                                           op.getCondition(), has_else_region);
+    auto new_if_op = IfOp::create(rewriter, loc, new_result_types,
+                                  op.getCondition(), has_else_region);
     rewriter.inlineRegionBefore(op.getThenRegion(),
                                 &new_if_op.getThenRegion().back());
     rewriter.eraseBlock(&new_if_op.getThenRegion().back());
@@ -635,7 +630,7 @@ struct RewriteIf : public OpRewritePattern<IfOp> {
       Type old_type = op->getResult(index).getType();
       if (result.getType() == old_type) continue;
       result =
-          rewriter.create<UnrealizedConversionCastOp>(loc, old_type, result)
+          UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -680,14 +675,15 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       for (auto&& [result, type] :
            llvm::zip(yield->getOpOperands(), new_result_types)) {
         if (result.get().getType() == type) continue;
-        result.set(
-            rewriter.create<UnrealizedConversionCastOp>(loc, type, result.get())
-                .getResult(0));
+        result.set(UnrealizedConversionCastOp::create(rewriter, loc, type,
+                                                      result.get())
+                       .getResult(0));
       }
     }
     // Create new IndexSwitchOp and move the old op's regions to the new one.
-    auto new_index_switch = rewriter.create<IndexSwitchOp>(
-        loc, new_result_types, op.getArg(), op.getCases(), op.getNumCases());
+    auto new_index_switch =
+        IndexSwitchOp::create(rewriter, loc, new_result_types, op.getArg(),
+                              op.getCases(), op.getNumCases());
     for (auto&& [old_region, new_region] :
          llvm::zip(op.getRegions(), new_index_switch.getRegions())) {
       rewriter.inlineRegionBefore(*old_region, *new_region, new_region->end());
@@ -699,7 +695,7 @@ struct RewriteIndexSwitch : public OpRewritePattern<IndexSwitchOp> {
       Type old_type = op->getResult(index).getType();
       if (result.getType() == old_type) continue;
       result =
-          rewriter.create<UnrealizedConversionCastOp>(loc, old_type, result)
+          UnrealizedConversionCastOp::create(rewriter, loc, old_type, result)
               .getResult(0);
     }
     rewriter.replaceOp(op, new_results);
@@ -727,13 +723,12 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
       if (tensor_type.getRank() < 2) continue;
       results_to_update.set(operand.getOperandNumber());
       new_operands.push_back(
-          rewriter
-              .create<UnrealizedConversionCastOp>(
-                  loc, GetFlattenedType(tensor_type), operand.get())
+          UnrealizedConversionCastOp::create(
+              rewriter, loc, GetFlattenedType(tensor_type), operand.get())
               .getResult(0));
     }
-    auto new_op = rewriter.create<gpu::SyncThreadsOp>(
-        loc, TypeRange(new_operands), new_operands);
+    auto new_op = gpu::SyncThreadsOp::create(
+        rewriter, loc, TypeRange(new_operands), new_operands);
     SmallVector<Value> new_results;
     new_results.reserve(op.getNumResults());
     for (auto [index, result] : llvm::enumerate(new_op.getResults())) {
@@ -741,11 +736,33 @@ struct RewriteSyncThreads : OpRewritePattern<gpu::SyncThreadsOp> {
         new_results.push_back(result);
         continue;
       }
-      auto cast_to_orig_type = rewriter.create<UnrealizedConversionCastOp>(
-          loc, result.getType(), result);
+      auto cast_to_orig_type = UnrealizedConversionCastOp::create(
+          rewriter, loc, result.getType(), result);
       new_results.push_back(cast_to_orig_type.getResult(0));
     }
     rewriter.replaceOp(op, new_results);
+    return mlir::success();
+  }
+};
+
+struct RewriteGetDynamicDimSizeOp : OpRewritePattern<GetDynamicDimSizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(GetDynamicDimSizeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto tensor = op.getTensor();
+    auto tensor_type = tensor.getType();
+    if (tensor_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the tensor is already flat");
+    }
+
+    auto tensor_1D =
+        UnrealizedConversionCastOp::create(
+            rewriter, op.getLoc(), GetFlattenedType(tensor_type), tensor)
+            .getResult(0);
+    rewriter.replaceOpWithNewOp<GetDynamicDimSizeOp>(op, tensor_1D,
+                                                     op.getDim());
+
     return mlir::success();
   }
 };
@@ -756,14 +773,17 @@ class FlattenTensorsPass
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     MLIRContext* mlir_context = &getContext();
+    RegisterSymbolicExprStorage(mlir_context);
     mlir::RewritePatternSet patterns(mlir_context);
     // clang-format off
     patterns.add<
         RewriteAllocateShared,
         RewriteAtomicRMW,
         RewriteConstant,
+        RewriteCpuLoad,
         RewriteFor,
         RewriteFunctionSignatures,
+        RewriteGetDynamicDimSizeOp,
         RewriteIf,
         RewriteIndexSwitch,
         RewritePureCall,
@@ -773,8 +793,7 @@ class FlattenTensorsPass
         RewriteVectorExtract,
         RewriteVectorFromElements,
         RewriteVectorInsert,
-        RewriteVectorTransferRead,
-        RewriteCpuLoad
+        RewriteVectorTransferRead
     >(mlir_context);
     // clang-format on
     ApplyIndexingOp::getCanonicalizationPatterns(patterns, mlir_context);

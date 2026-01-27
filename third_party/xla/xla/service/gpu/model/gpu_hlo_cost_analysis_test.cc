@@ -22,20 +22,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuHloCostAnalysisTest : public HloTestBase {
+class GpuHloCostAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   HloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   GpuHloCostAnalysis analysis_{options_};
-  GpuHloCostAnalysisTest() : HloTestBase() {}
 };
 
 TEST_F(GpuHloCostAnalysisTest, ConvCustomCall) {
@@ -69,6 +69,42 @@ ENTRY entry {
   EXPECT_EQ(analysis_.bytes_accessed(*conv1),
             op0_size + op1_size + op2_size + out_size);
   EXPECT_EQ(analysis_.flop_count(*conv1), 159694848);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CublasCustomCall) {
+  absl::string_view hlo_string = R"(
+  HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
+
+  ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
+    %arg0 = f32[100,100]{1,0} parameter(0)
+    %arg1 = f32[100,100]{1,0} parameter(1)
+    %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
+    custom_call_target="__cublas$gemm",
+    backend_config={
+      "gemm_backend_config":{
+        "dot_dimension_numbers":
+          {
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+        }
+      }
+    }
+    ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  HloComputation* comp = module->entry_computation();
+  const HloInstruction* instr = comp->GetInstructionWithName("custom-call.1");
+  int op0_size = sizeof(float) * 100 * 100;
+  int op1_size = sizeof(float) * 100 * 100;
+  int out_size = sizeof(float) * 100 * 100;
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*instr, 0), op0_size);
+  EXPECT_EQ(analysis_.operand_bytes_accessed(*instr, 1), op1_size);
+  EXPECT_EQ(analysis_.output_bytes_accessed(*instr), out_size);
+  EXPECT_EQ(analysis_.bytes_accessed(*instr), op0_size + op1_size + out_size);
 }
 
 TEST_F(GpuHloCostAnalysisTest, ReduceWindowWithOverlapsRepeatedReads) {
@@ -667,6 +703,40 @@ ENTRY entry_computation {
                                                    2 * init_bytes_accessed +
                                                    output_bytes_accessed);
   EXPECT_EQ(analysis_.flop_count(*reduce), 32 * 39 * 6);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CollectivePermute) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  ROOT cp = f32[4096] collective-permute(p0), source_target_pairs={{0,1},{1,0}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cp = module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis_.BytesTransferred(*cp), 4096 * 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, CollectivePermuteStart) {
+  absl::string_view hlo_string = R"(
+HloModule m, num_partitions=2
+
+ENTRY entry {
+  p0 = f32[4096] parameter(0)
+  cps = (f32[4096], f32[4096]) collective-permute-start(p0), source_target_pairs={{0,1},{1,0}}
+  ROOT r = f32[4096] collective-permute-done(cps)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+  const HloInstruction* cps =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_EQ(analysis_.BytesTransferred(*cps), 4096 * 4);
 }
 
 TEST_F(GpuHloCostAnalysisTest, AsyncAllReduce) {

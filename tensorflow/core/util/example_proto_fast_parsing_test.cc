@@ -41,8 +41,8 @@ constexpr char kSparseInt64Key[] = "sparse_int64";
 constexpr char kSparseFloatKey[] = "sparse_float";
 constexpr char kSparseStringKey[] = "sparse_string";
 
-string SerializedToReadable(string serialized) {
-  string result;
+std::string SerializedToReadable(std::string serialized) {
+  std::string result;
   result += '"';
   for (char c : serialized)
     absl::StrAppend(&result, "\\x", absl::Hex(c, absl::kZeroPad2));
@@ -51,15 +51,15 @@ string SerializedToReadable(string serialized) {
 }
 
 template <class T>
-string Serialize(const T& example) {
-  string serialized;
+std::string Serialize(const T& example) {
+  std::string serialized;
   example.SerializeToString(&serialized);
   return serialized;
 }
 
 // Tests that serialized gets parsed identically by TestFastParse(..)
 // and the regular Example.ParseFromString(..).
-void TestCorrectness(const string& serialized) {
+void TestCorrectness(const std::string& serialized) {
   Example example;
   Example fast_example;
   EXPECT_TRUE(example.ParseFromString(serialized));
@@ -150,7 +150,7 @@ TEST(FastParse, DenseInt64WithContext) {
       .mutable_int64_list()
       ->add_value(15);
 
-  string serialized = Serialize(example) + Serialize(context);
+  std::string serialized = Serialize(example) + Serialize(context);
 
   {
     Example deserialized;
@@ -183,10 +183,10 @@ TEST(FastParse, EmptyFeatures) {
   TestCorrectness(Serialize(example));
 }
 
-void TestCorrectnessJson(const string& json) {
+void TestCorrectnessJson(const std::string& json) {
   auto resolver = protobuf::util::NewTypeResolverForDescriptorPool(
       "type.googleapis.com", protobuf::DescriptorPool::generated_pool());
-  string serialized;
+  std::string serialized;
   auto s = protobuf::util::JsonToBinaryString(
       resolver, "type.googleapis.com/tensorflow.Example", json, &serialized);
   EXPECT_TRUE(s.ok()) << s;
@@ -220,7 +220,7 @@ TEST(FastParse, SingleInt64) {
   TestCorrectness(Serialize(example));
 }
 
-static string ExampleWithSomeFeatures() {
+static std::string ExampleWithSomeFeatures() {
   Example example;
 
   (*example.mutable_features()->mutable_feature())[""];
@@ -328,13 +328,13 @@ TEST(FastParse, StatsCollection) {
   }
 }
 
-string RandStr(random::SimplePhilox* rng) {
+std::string RandStr(random::SimplePhilox* rng) {
   static const char key_char_lookup[] =
       "0123456789{}~`!@#$%^&*()"
       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       "abcdefghijklmnopqrstuvwxyz";
   auto len = 1 + rng->Rand32() % 200;
-  string str;
+  std::string str;
   str.reserve(len);
   while (len-- > 0) {
     str.push_back(
@@ -347,18 +347,18 @@ string RandStr(random::SimplePhilox* rng) {
 void Fuzz(random::SimplePhilox* rng) {
   // Generate keys.
   auto num_keys = 1 + rng->Rand32() % 100;
-  std::unordered_set<string> unique_keys;
+  std::unordered_set<std::string> unique_keys;
   for (auto i = 0; i < num_keys; ++i) {
     unique_keys.emplace(RandStr(rng));
   }
 
   // Generate serialized example.
   Example example;
-  string serialized_example;
+  std::string serialized_example;
   auto num_concats = 1 + rng->Rand32() % 4;
   std::vector<Feature::KindCase> feat_types(
       {Feature::kBytesList, Feature::kFloatList, Feature::kInt64List});
-  std::vector<string> all_keys(unique_keys.begin(), unique_keys.end());
+  std::vector<std::string> all_keys(unique_keys.begin(), unique_keys.end());
   while (num_concats--) {
     example.Clear();
     auto num_active_keys = 1 + rng->Rand32() % all_keys.size();
@@ -410,7 +410,7 @@ void Fuzz(random::SimplePhilox* rng) {
 }
 
 TEST(FastParse, FuzzTest) {
-  const uint64 seed = 1337;
+  const uint64_t seed = 1337;
   random::PhiloxRandom philox(seed);
   random::SimplePhilox rng(&philox);
   auto num_runs = 200;

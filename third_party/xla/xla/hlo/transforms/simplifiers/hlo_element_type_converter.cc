@@ -116,11 +116,11 @@ HloElementTypeConverter::HloElementTypeConverter(
 
 // This routine converts the arithmetic operations in the given module that use
 // eliminate_type_ to operations that use replace_with_type_.
-absl::StatusOr<bool> HloElementTypeConverter::Run(
+absl::StatusOr<bool> HloElementTypeConverter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
-      3, "HloElementTypeConverter::Run(), before:\n" + module->ToString());
+      3, "HloElementTypeConverter::RunImpl(), before:\n" + module->ToString());
 
   if (eliminate_type_ == replace_with_type_) {
     return false;
@@ -232,7 +232,7 @@ absl::StatusOr<bool> HloElementTypeConverter::Run(
     }
   }
   XLA_VLOG_LINES(
-      2, "HloElementTypeConverter::Run(), after:\n" + module->ToString());
+      2, "HloElementTypeConverter::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

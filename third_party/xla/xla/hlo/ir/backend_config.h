@@ -118,7 +118,7 @@ class BackendConfigWrapper {
   template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
   absl::Status ApplyFnOnProto(
       const std::function<absl::Status(ConfigProto*)>& fn) {
-    absl::WriterMutexLock lock{&mutex_};
+    absl::WriterMutexLock lock{mutex_};
     if (proto_ == nullptr) {
       if (raw_string_.empty()) {
         return absl::InvalidArgumentError(

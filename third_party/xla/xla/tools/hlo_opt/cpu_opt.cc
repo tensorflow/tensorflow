@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/change_op_data_type.h"
@@ -125,8 +125,7 @@ class CpuOptProvider : public CompiledOptProvider {
         cpu::IrCompiler::InferTargetMachine(
             CompilerTargetOptions(module_config),
             CodeGenOptLevel(module_config),
-            cpu::CpuFeatureFromString(
-                module_config.debug_options().xla_cpu_max_isa()));
+            cpu::TargetMachineOptions(module_config.debug_options()));
     if (!jit_target_machine.ok()) {
       LOG(ERROR) << "Failed to infer target machine: "
                  << jit_target_machine.status();
@@ -185,7 +184,7 @@ class CpuOptProvider : public CompiledOptProvider {
     RegisterPass<cpu::ParallelTaskAssigner>(max_parallelism,
                                             cpu::CpuExecutable::ShapeSizeBytes,
                                             &target_machine_features);
-    RegisterPass<cpu::CpuInstructionFusion>();
+    RegisterPass<cpu::CpuInstructionFusion>(alias_info_.get());
     RegisterPass<CopyInsertion>(alias_info_.get());
   }
 

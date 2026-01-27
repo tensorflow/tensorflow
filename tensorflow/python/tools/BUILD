@@ -399,6 +399,7 @@ py_strict_test(
     ],
     tags = [
         "noasan",  # TODO(b/222716501)
+        "notap",  # b/456542868
     ],
     deps = [
         ":saved_model_cli_lib",
@@ -583,7 +584,6 @@ tf_cc_test(
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
-        "@local_xla//xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
         "@eigen_archive//:eigen3",
@@ -595,6 +595,7 @@ tf_py_test(
     size = "small",
     srcs = ["saved_model_cli_sanitize_list_test.py"],
     python_version = "PY3",
+    tags = ["notap"],  # b/456542868
     deps = [
         ":saved_model_cli",
         "//tensorflow/python/platform:client_testlib",

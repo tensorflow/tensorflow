@@ -241,7 +241,6 @@ Worker::ParallelizeContext<ParallelWork>::ParallelizeContext(
       parallel_work(std::forward<ParallelWork>(parallel_work)) {}
 
 template <typename ParallelWork>
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelWork>> ctx,
                          uint16_t start_index, uint16_t end_index) {
   DCHECK_LT(start_index, end_index) << "Invalid worker index range";

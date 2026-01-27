@@ -22,6 +22,14 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 
 namespace tensorflow {
+
+// Returns a string that uniquely identifies the device model based on the
+// device identifier string from the stream executor. There are cases where
+// the same device model may have different identifiers (e.g. different RAM).
+// This function normalizes the identifier to make it comparable to other
+// autotuning results.
+std::string DeviceIdentifierForAutotuning(absl::string_view device_identifier);
+
 // Uniquely identifies a convolution operation that runs on a particular device
 // model.
 //
@@ -82,16 +90,16 @@ class ConvParameters {
   bool operator!=(const ConvParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const ConvParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   ConvParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 class MatmulParameters {
@@ -119,16 +127,16 @@ class MatmulParameters {
   bool operator!=(const MatmulParameters& other) const {
     return !(*this == other);
   }
-  uint64 hash() const { return hash_code_; }
+  uint64_t hash() const { return hash_code_; }
 
-  string ToString() const;
+  std::string ToString() const;
 
   const MatmulParametersProto& proto() const { return proto_; }
 
  private:
   int device_id_;
   MatmulParametersProto proto_;
-  uint64 hash_code_;
+  uint64_t hash_code_;
 };
 
 }  // namespace tensorflow

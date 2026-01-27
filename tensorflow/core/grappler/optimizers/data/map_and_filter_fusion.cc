@@ -168,7 +168,7 @@ absl::Status MapAndFilterFusion::OptimizeAndCollectStats(
   *output = sorted_old_graph;
 
   MutableGraphView graph(output);
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {

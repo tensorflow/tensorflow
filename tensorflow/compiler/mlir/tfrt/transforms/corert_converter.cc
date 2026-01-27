@@ -149,8 +149,8 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
 
   func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   mlir::Value in_chain = func_op.getArgument(0);
-  auto get_op_handler_op = rewriter->create<tfrt::corert::GetOpHandler>(
-      block->getParent()->getLoc(), op_handler_type(), in_chain,
+  auto get_op_handler_op = tfrt::corert::GetOpHandler::create(
+      *rewriter, block->getParent()->getLoc(), op_handler_type(), in_chain,
       op_handler_name);
   op_handler_by_name_[op_handler_name] = get_op_handler_op.getResult();
   return get_op_handler_op.getResult();
@@ -208,8 +208,8 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
   // kernel and return the merged chain.
   ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
   rewriter->setInsertionPoint(op);
-  return rewriter->create<tfrt::compiler::MergeChainsOp>(op->getLoc(),
-                                                         chain_type(), chains);
+  return tfrt::compiler::MergeChainsOp::create(*rewriter, op->getLoc(),
+                                               chain_type(), chains);
 }
 
 mlir::Value CoreRTConverter::GetTaskHandle(

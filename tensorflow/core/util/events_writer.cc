@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-EventsWriter::EventsWriter(const string& file_prefix)
+EventsWriter::EventsWriter(const std::string& file_prefix)
     // TODO(jeff,sanjay): Pass in env and use that here instead of Env::Default
     : env_(Env::Default()),
       file_prefix_(file_prefix),
@@ -44,7 +44,7 @@ EventsWriter::~EventsWriter() {
 
 absl::Status EventsWriter::Init() { return InitWithSuffix(""); }
 
-absl::Status EventsWriter::InitWithSuffix(const string& suffix) {
+absl::Status EventsWriter::InitWithSuffix(const std::string& suffix) {
   file_suffix_ = suffix;
   return InitIfNeeded();
 }
@@ -99,7 +99,7 @@ absl::Status EventsWriter::InitIfNeeded() {
   return absl::OkStatus();
 }
 
-string EventsWriter::FileName() {
+std::string EventsWriter::FileName() {
   if (filename_.empty()) {
     InitIfNeeded().IgnoreError();
   }
@@ -120,7 +120,7 @@ void EventsWriter::WriteSerializedEvent(absl::string_view event_str) {
 // NOTE(touts); This is NOT the function called by the Python code.
 // Python calls WriteSerializedEvent(), see events_writer.i.
 void EventsWriter::WriteEvent(const Event& event) {
-  string record;
+  std::string record;
   event.AppendToString(&record);
   WriteSerializedEvent(record);
 }

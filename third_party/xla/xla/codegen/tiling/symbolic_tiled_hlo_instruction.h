@@ -52,7 +52,8 @@ class SymbolicTiledHloInstruction {
     symbolic_tile_ = std::move(symbolic_tile);
   }
   const SymbolicTile& symbolic_tile() const {
-    CHECK(symbolic_tile_.has_value()) << "Symbolic tile was not computed";
+    CHECK(symbolic_tile_.has_value())
+        << "Symbolic tile was not computed for " << hlo_->ToString();
     return *symbolic_tile_;
   }
 
@@ -98,32 +99,6 @@ class SymbolicTiledHloInstruction {
   // Tiling of runtime variables of `indexing_map_`.
   std::vector<SymbolicTiledHloInstruction*> runtime_variables_;
 };
-
-inline bool operator==(const SymbolicTiledHloInstruction& lhs,
-                       const SymbolicTiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map() &&
-         lhs.runtime_variables() == rhs.runtime_variables() &&
-         lhs.operands() == rhs.operands();
-}
-
-inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
-                       const SymbolicTiledHloInstruction& rhs) {
-  return !(lhs == rhs);
-}
-
-template <typename H>
-H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
-  h = H::combine(std::move(h), tiled_hlo_instruction.hlo(),
-                 tiled_hlo_instruction.indexing_map());
-  for (const auto& runtime_variable :
-       tiled_hlo_instruction.runtime_variables()) {
-    h = H::combine(std::move(h), runtime_variable);
-  }
-  for (const auto& operand : tiled_hlo_instruction.operands()) {
-    h = H::combine(std::move(h), operand);
-  }
-  return h;
-}
 
 }  // namespace xla
 

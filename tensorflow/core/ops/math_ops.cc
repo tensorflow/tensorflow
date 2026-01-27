@@ -1029,7 +1029,7 @@ absl::Status ArgOpShape(shape_inference::InferenceContext* c) {
 
   int64_t dimension_val;
   if (dim_t->dtype() == DT_INT32) {
-    dimension_val = dim_t->scalar<int32>()();
+    dimension_val = dim_t->scalar<int32_t>()();
   } else {
     dimension_val = dim_t->scalar<int64_t>()();
   }
@@ -1142,7 +1142,7 @@ absl::Status SparseSegmentReductionGradShapeFnImpl(
     // shape is unknown.
     dim0_shape = c->Vector(InferenceContext::kUnknownDim);
   } else {
-    auto dim0_value = dim0->scalar<int32>()();
+    auto dim0_value = dim0->scalar<int32_t>()();
     if (dim0_value < 0) {
       return errors::InvalidArgument(
           "Cannot specify a negative value for output_dim0");
@@ -1198,7 +1198,7 @@ absl::Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
     TF_RETURN_IF_ERROR(c->Concatenate(c->Vector(InferenceContext::kUnknownDim),
                                       subshape, &out));
   } else {
-    auto dim0_value = dim0->scalar<int32>()();
+    auto dim0_value = dim0->scalar<int32_t>()();
     if (dim0_value < 0) {
       return errors::InvalidArgument(
           "Cannot specify a negative value for num_segments");
@@ -1573,19 +1573,19 @@ REGISTER_OP("Range")
         return absl::OkStatus();
       }
       if (dtype == DT_INT32) {
-        return RangeSize<int32>(start_t, limit_t, delta_t, c);
+        return RangeSize<int32_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT16) {
-        return RangeSize<int16>(start_t, limit_t, delta_t, c);
+        return RangeSize<int16_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT8) {
-        return RangeSize<int8>(start_t, limit_t, delta_t, c);
+        return RangeSize<int8_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT16) {
-        return RangeSize<uint16>(start_t, limit_t, delta_t, c);
+        return RangeSize<uint16_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
-        return RangeSize<uint32>(start_t, limit_t, delta_t, c);
+        return RangeSize<uint32_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT64) {
-        return RangeSize<uint64>(start_t, limit_t, delta_t, c);
+        return RangeSize<uint64_t>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
         return RangeSize<float>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_DOUBLE) {
@@ -1621,7 +1621,7 @@ REGISTER_OP("LinSpace")
 
       int64_t num;
       if (num_t->dtype() == DT_INT32) {
-        num = num_t->scalar<int32>()();
+        num = num_t->scalar<int32_t>()();
       } else {
         num = num_t->scalar<int64_t>()();
       }
@@ -1760,7 +1760,7 @@ REGISTER_OP("Bincount")
       }
 
       // Return `[size]` shape if size is known.
-      int32_t size_val = size_tensor->scalar<int32>()();
+      int32_t size_val = size_tensor->scalar<int32_t>()();
       if (size_val < 0) {
         return errors::InvalidArgument("size (", size_val,
                                        ") must be non-negative");
@@ -1801,7 +1801,7 @@ REGISTER_OP("DenseBincount")
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32_t>()());
       } else if (dtype == DT_INT64) {
         size_val = size_tensor->scalar<int64_t>()();
       } else {
@@ -1846,7 +1846,7 @@ REGISTER_OP("SparseBincount")
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("Tidx", &dtype));
       if (dtype == DT_INT32) {
-        size_val = static_cast<int64_t>(size_tensor->scalar<int32>()());
+        size_val = static_cast<int64_t>(size_tensor->scalar<int32_t>()());
       } else if (dtype == DT_INT64) {
         size_val = size_tensor->scalar<int64_t>()();
       } else {
@@ -2136,11 +2136,11 @@ REGISTER_OP("SobolSample")
       const Tensor* num_results_t = c->input_tensor(1);
 
       int32_t dim = dim_t == nullptr ? InferenceContext::kUnknownDim
-                                     : dim_t->scalar<int32>()();
+                                     : dim_t->scalar<int32_t>()();
 
       int32_t num_results = num_results_t == nullptr
                                 ? InferenceContext::kUnknownDim
-                                : num_results_t->scalar<int32>()();
+                                : num_results_t->scalar<int32_t>()();
 
       c->set_output(0, c->Matrix(num_results, dim));
       return absl::OkStatus();

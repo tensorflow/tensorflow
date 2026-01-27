@@ -36,7 +36,8 @@ namespace {
 
 // Returns string attribute value for the node if the attribute is present,
 // otherwise returns empty optional value.
-std::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
+std::optional<std::string> GetStringAttr(const Node& n,
+                                         const std::string& attr_name) {
   auto attr = n.attrs().Find(attr_name);
   if (!attr) {
     return std::nullopt;
@@ -47,8 +48,8 @@ std::optional<string> GetStringAttr(const Node& n, const string& attr_name) {
 
 // Adds a value to the node's list attribute.
 template <typename T>
-absl::Status AppendToListAttr(Node* n, const string& attr_name,
-                              const string& value) {
+absl::Status AppendToListAttr(Node* n, const std::string& attr_name,
+                              const std::string& value) {
   std::vector<T> attr_value;
   absl::Status s = GetNodeAttr(n->attrs(), attr_name, &attr_value);
   if (!s.ok() && s.code() != error::NOT_FOUND) {
@@ -63,7 +64,7 @@ absl::Status AppendToListAttr(Node* n, const string& attr_name,
 
 // Replaces attribute value.
 template <typename T>
-void ReplaceAttr(Node* n, const string& attr_name, const T& value) {
+void ReplaceAttr(Node* n, const std::string& attr_name, const T& value) {
   n->ClearAttr(attr_name);
   n->AddAttr(attr_name, value);
 }
@@ -71,7 +72,7 @@ void ReplaceAttr(Node* n, const string& attr_name, const T& value) {
 // Step 1 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
 // `PreprocessEdgesBetweenOutsideCompilations` for details.
 absl::Status PreprocessControlEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   // Gather edges to remove. We should not remove the edge while iterating.
   std::vector<const Edge*> edges_to_remove;
   for (const Edge* e : g->edges()) {
@@ -89,7 +90,7 @@ absl::Status PreprocessControlEdgesBetweenOutsideCompilations(
         // Case 1a: outside compilation to outside compilation control edge.
         edges_to_remove.push_back(e);
 
-        TF_RETURN_IF_ERROR(AppendToListAttr<string>(
+        TF_RETURN_IF_ERROR(AppendToListAttr<std::string>(
             e->dst(), kXlaControlDependenciesWithinXlaClusterAttrName,
             e->src()->name()));
       }
@@ -111,7 +112,7 @@ absl::Status PreprocessControlEdgesBetweenOutsideCompilations(
 // Step 2 for `PreprocessEdgesBetweenOutsideCompilations`. See comments of
 // `PreprocessEdgesBetweenOutsideCompilations` for details.
 absl::Status PreprocessDataEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   // Gather edges between outside compilation and host computation. Notice that
   // we do not store `Edge*` directly because we remove some nodes while adding
   // Identity nodes, and those Edge pointers might be invalidated.
@@ -138,7 +139,7 @@ absl::Status PreprocessDataEdgesBetweenOutsideCompilations(
 
   // Remove the edge from host to outside compilation. Add a placeholder as
   // outside compilation node input.
-  std::map<std::pair<string, int>, Node*> placeholders;
+  std::map<std::pair<std::string, int>, Node*> placeholders;
   for (int i = 0, end = edges.size(); i < end; i++) {
     Node* dst = g->FindNodeId(edges[i].dst_node_id);
     const Edge* e;
@@ -148,7 +149,7 @@ absl::Status PreprocessDataEdgesBetweenOutsideCompilations(
     g->RemoveEdge(e);
 
     // Find or create placeholder node.
-    string new_name =
+    std::string new_name =
         absl::StrCat(src->name(), "_oc_to_oc_placeholder_", src_output);
     auto placeholder_index = std::make_pair(src->name(), src_output);
     auto iter = placeholders.find(placeholder_index);
@@ -156,7 +157,7 @@ absl::Status PreprocessDataEdgesBetweenOutsideCompilations(
     if (iter == placeholders.end()) {
       NodeDefBuilder placeholder_builder(new_name, "Placeholder");
       placeholder_builder.Attr("dtype", src->output_type(src_output));
-      string outside_compilation_attr;
+      std::string outside_compilation_attr;
       TF_RETURN_IF_ERROR(GetNodeAttr(dst->attrs(),
                                      outside_compilation_attr_name,
                                      &outside_compilation_attr));
@@ -195,7 +196,7 @@ absl::Status PreprocessDataEdgesBetweenOutsideCompilations(
 // Step 1 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
 // `PostprocessEdgesBetweenOutsideCompilations` for details.
 absl::Status PostprocessDataEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   // Gather all outside compilation to outside compilation nodes.
   std::vector<Node*> placeholder_nodes;
   for (Node* n : g->nodes()) {
@@ -208,7 +209,7 @@ absl::Status PostprocessDataEdgesBetweenOutsideCompilations(
   // Remove the placeholder nodes, and reconnect original edge.
   auto node_name_index = g->BuildNodeNameIndex();
   for (auto n : placeholder_nodes) {
-    string node_name;
+    std::string node_name;
     int node_src_output;
     TF_RETURN_IF_ERROR(GetNodeAttr(
         n->attrs(), kOutsideCompilationOriginalNodeAttrName, &node_name));
@@ -271,12 +272,12 @@ absl::Status PostprocessDataEdgesBetweenOutsideCompilations(
 // Step 2 for `PostprocessEdgesBetweenOutsideCompilations`. See comments of
 // `PostprocessEdgesBetweenOutsideCompilations` for details.
 absl::Status PostprocessControlEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   auto node_name_index = g->BuildNodeNameIndex();
 
   // Reconnect outside compilation to outside compilation control edge.
   for (Node* n : g->nodes()) {
-    std::vector<string> control_deps;
+    std::vector<std::string> control_deps;
     absl::Status s =
         GetNodeAttr(n->attrs(), kXlaControlDependenciesWithinXlaClusterAttrName,
                     &control_deps);
@@ -288,7 +289,7 @@ absl::Status PostprocessControlEdgesBetweenOutsideCompilations(
       }
     } else {
       n->ClearAttr(kXlaControlDependenciesWithinXlaClusterAttrName);
-      for (const string& control_input : control_deps) {
+      for (const std::string& control_input : control_deps) {
         auto iter = node_name_index.find(control_input);
         if (iter == node_name_index.end()) {
           return errors::Internal("Cannot find original node for ",
@@ -342,11 +343,11 @@ absl::Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
 }
 
 absl::StatusOr<
-    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+    std::unique_ptr<absl::flat_hash_map<std::string, std::vector<std::string>>>>
 OutsideCompilationClusterDependencies(
-    const Graph* g, const string& outside_compilation_attr_name) {
+    const Graph* g, const std::string& outside_compilation_attr_name) {
   auto cluster_deps = std::make_unique<
-      absl::flat_hash_map<string, absl::flat_hash_set<string>>>();
+      absl::flat_hash_map<std::string, absl::flat_hash_set<std::string>>>();
 
   for (const Edge* e : g->edges()) {
     auto src_outside_compilation =
@@ -360,18 +361,18 @@ OutsideCompilationClusterDependencies(
       if (dst_deps_it == cluster_deps->end()) {
         cluster_deps->insert(std::make_pair(
             *dst_outside_compilation,
-            absl::flat_hash_set<string>({*src_outside_compilation})));
+            absl::flat_hash_set<std::string>({*src_outside_compilation})));
       } else {
         dst_deps_it->second.insert(*src_outside_compilation);
       }
     }
   }
 
-  auto cluster_deps_ordered =
-      std::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
+  auto cluster_deps_ordered = std::make_unique<
+      absl::flat_hash_map<std::string, std::vector<std::string>>>();
 
   for (auto it = cluster_deps->begin(); it != cluster_deps->end(); it++) {
-    std::vector<string> ordered_deps(it->second.begin(), it->second.end());
+    std::vector<std::string> ordered_deps(it->second.begin(), it->second.end());
     std::sort(ordered_deps.begin(), ordered_deps.end());
     cluster_deps_ordered->insert(std::make_pair(it->first, ordered_deps));
   }
@@ -380,7 +381,7 @@ OutsideCompilationClusterDependencies(
 }
 
 absl::Status PreprocessEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   // Remove edges from source node to outside compilation nodes, and edges
   // from outside compilation nodes to sink node.
   std::vector<const Edge*> edges_to_remove;
@@ -406,7 +407,7 @@ absl::Status PreprocessEdgesBetweenOutsideCompilations(
 }
 
 absl::Status PostprocessEdgesBetweenOutsideCompilations(
-    Graph* g, const string& outside_compilation_attr_name) {
+    Graph* g, const std::string& outside_compilation_attr_name) {
   TF_RETURN_IF_ERROR(PostprocessDataEdgesBetweenOutsideCompilations(
       g, outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(PostprocessControlEdgesBetweenOutsideCompilations(

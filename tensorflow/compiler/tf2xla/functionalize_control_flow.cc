@@ -51,8 +51,9 @@ namespace tensorflow {
 // Maps function name to
 // - new function name, if the function body was functionalized
 // - std::nullopt, if not
-using FuncMap = std::map<string, std::optional<string>>;
-using FuncMapIter = std::map<string, std::optional<string>>::const_iterator;
+using FuncMap = std::map<std::string, std::optional<std::string>>;
+using FuncMapIter =
+    std::map<std::string, std::optional<std::string>>::const_iterator;
 
 // Returns whether function has been processed before.
 bool FunctionHasBeenProcessed(FuncMapIter func_iter, const FuncMap* func_map) {
@@ -65,8 +66,8 @@ bool FunctionHasBeenModified(FuncMapIter func_iter) {
 }
 
 // Returns a name for the new functionalized version of a function.
-string GetNewFunctionName(
-    const string& func_name, Node* n,
+std::string GetNewFunctionName(
+    const std::string& func_name, Node* n,
     AssociatedFunctionInfo::AssociatedFunctionType func_type,
     FunctionLibraryDefinition* fld) {
   // For SymbolicGradient, `func_name` is always "SymbolicGradient" which
@@ -79,14 +80,15 @@ string GetNewFunctionName(
 }
 
 // Returns name to which a modified function has been mapped.
-const string& GetMappedFunctionName(FuncMapIter func_iter) {
+const std::string& GetMappedFunctionName(FuncMapIter func_iter) {
   DCHECK(func_iter->second.has_value());
   return func_iter->second.value();
 }
 
 // Updates `func_map` with function given by `canonicalized_name`.
-void UpdateFunctionMap(FuncMap* func_map, const string& canonicalized_name,
-                       const string& new_func_name, bool function_modified) {
+void UpdateFunctionMap(FuncMap* func_map, const std::string& canonicalized_name,
+                       const std::string& new_func_name,
+                       bool function_modified) {
   // If function was modified store its new name, otherwise add empty entry to
   // record that function has been processed and does not need to be rewritten.
   (*func_map)[canonicalized_name] =
@@ -95,8 +97,9 @@ void UpdateFunctionMap(FuncMap* func_map, const string& canonicalized_name,
 
 // Adds new function def to graph's function library if necessary.
 absl::Status AddFunctionDefToGraphLibrary(
-    const string& func_name, const AssociatedFunctionInfo& associated_function,
-    Graph* graph, FunctionLibraryDefinition* fld) {
+    const std::string& func_name,
+    const AssociatedFunctionInfo& associated_function, Graph* graph,
+    FunctionLibraryDefinition* fld) {
   const OpRegistrationData* op_reg_data;
   // We have to be careful with adding the function def since there are three
   // different `OpRegistryInterface`s involved here:
@@ -129,8 +132,8 @@ absl::Status AddFunctionDefToGraphLibrary(
 
 // Functionalizes function given by `func_name`. Update `func_map` accordingly.
 absl::Status FunctionalizeControlFlowForFunction(
-    const string& func_name, const string& new_func_name,
-    const protobuf::Map<string, tensorflow::AttrValue>& attrs,
+    const std::string& func_name, const std::string& new_func_name,
+    const protobuf::Map<std::string, tensorflow::AttrValue>& attrs,
     FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
     FuncMap* func_map, bool* function_modified,
     const NodeFilter& node_filter = {});
@@ -165,11 +168,11 @@ absl::Status FunctionalizeControlFlowForNodeAssociatedFunctions(
              associated_functions.size() == 1);
 
       // Process one node-function-pair.
-      string func_name = associated_function.func_name();
-      string canonicalized_name =
+      std::string func_name = associated_function.func_name();
+      std::string canonicalized_name =
           Canonicalize(func_name, AttrSlice(&associated_function.attrs()));
       auto func_iter = func_map->find(canonicalized_name);
-      string new_func_name;
+      std::string new_func_name;
       if (FunctionHasBeenProcessed(func_iter, func_map)) {
         if (FunctionHasBeenModified(func_iter)) {
           *any_function_modified = true;
@@ -202,8 +205,8 @@ absl::Status FunctionalizeControlFlowForNodeAssociatedFunctions(
 }
 
 absl::Status FunctionalizeControlFlowForFunction(
-    const string& func_name, const string& new_func_name,
-    const protobuf::Map<string, tensorflow::AttrValue>& attrs,
+    const std::string& func_name, const std::string& new_func_name,
+    const protobuf::Map<std::string, tensorflow::AttrValue>& attrs,
     FunctionLibraryDefinition* fld, FunctionLibraryRuntime* flr,
     FuncMap* func_map, bool* function_modified, const NodeFilter& node_filter) {
   *function_modified = false;
@@ -341,8 +344,8 @@ absl::Status FunctionalizeControlFlowForXlaPass::Run(
   // Find XLA compile ops and its corresponding FunctionDef.
   // TPUCompile op is not in the map because graph rewriting might happen
   // multiple times, and we want to avoid functionalize it again.
-  static std::map<string, string>* kNodeTypeToFunctionAttrMapping =
-      new std::map<string, string>{
+  static std::map<std::string, std::string>* kNodeTypeToFunctionAttrMapping =
+      new std::map<std::string, std::string>{
           // _TPUReplicate ops are generated by EncapsulateTPUComputationsPass.
           {"_TPUReplicate", "computation"},
           // XlaLaunch ops are generated by EncapsulateXlaComputationsPass.
@@ -355,12 +358,12 @@ absl::Status FunctionalizeControlFlowForXlaPass::Run(
     if (it == kNodeTypeToFunctionAttrMapping->end()) {
       continue;
     }
-    const string func_attr = it->second;
+    const std::string func_attr = it->second;
     NameAttrList func;
     TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
     VLOG(2) << "Graph has node " << n->type_string()
             << ". Corresponding function: " << func.name();
-    string new_func_name = options.flib_def->UniqueFunctionName(
+    std::string new_func_name = options.flib_def->UniqueFunctionName(
         absl::StrCat(func.name(), "_f15n_"));
     bool modified;
     TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(

@@ -89,7 +89,7 @@ TEST_F(SqliteTest, Json1Extension) {
 #endif //DSQLITE_ENABLE_JSON1
 
 TEST_F(SqliteTest, NulCharsInString) {
-  string s;  // XXX: Want to write {2, '\0'} but not sure why not.
+  std::string s;  // XXX: Want to write {2, '\0'} but not sure why not.
   s.append(static_cast<size_t>(2), '\0');
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a, b) VALUES (?, ?)");
   stmt.BindBlob(1, s);
@@ -108,7 +108,7 @@ TEST_F(SqliteTest, NulCharsInString) {
 }
 
 TEST_F(SqliteTest, Unicode) {
-  string s = "要依法治国是赞美那些谁是公义的和惩罚恶人。 - 韩非";
+  std::string s = "要依法治国是赞美那些谁是公义的和惩罚恶人。 - 韩非";
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a, b) VALUES (?, ?)");
   stmt.BindBlob(1, s);
   stmt.BindText(2, s);
@@ -134,7 +134,7 @@ TEST_F(SqliteTest, StepAndResetClearsBindings) {
 }
 
 TEST_F(SqliteTest, SafeBind) {
-  string s = "hello";
+  std::string s = "hello";
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a, b) VALUES (?, ?)");
   stmt.BindBlob(1, s);
   stmt.BindText(2, s);
@@ -147,7 +147,7 @@ TEST_F(SqliteTest, SafeBind) {
 }
 
 TEST_F(SqliteTest, UnsafeBind) {
-  string s = "hello";
+  std::string s = "hello";
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a, b) VALUES (?, ?)");
   stmt.BindBlobUnsafe(1, s);
   stmt.BindTextUnsafe(2, s);
@@ -216,7 +216,7 @@ TEST_F(SqliteTest, PrepareFailed) {
   SqliteStatement stmt;
   absl::Status s = db_->Prepare("SELECT", &stmt);
   ASSERT_FALSE(s.ok());
-  EXPECT_NE(string::npos, s.message().find("SELECT"));
+  EXPECT_NE(std::string::npos, s.message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
 }
 
@@ -224,7 +224,8 @@ TEST_F(SqliteTest, BindFailed) {
   auto stmt = db_->PrepareOrDie("INSERT INTO T (a) VALUES (123)");
   stmt.BindInt(1, 123);
   absl::Status s = stmt.StepOnce();
-  EXPECT_NE(string::npos, s.message().find("INSERT INTO T (a) VALUES (123)"))
+  EXPECT_NE(std::string::npos,
+            s.message().find("INSERT INTO T (a) VALUES (123)"))
       << s.message();
 }
 

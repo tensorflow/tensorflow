@@ -1,0 +1,5 @@
+# proto-file: third_party/tensorflow/compiler/xla/service/cpu/executable.proto
+# proto-message: xla.cpu.TargetMachineOptionsProto
+
+cpu: "haswell"
+features: "+avx2,+fma"

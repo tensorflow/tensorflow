@@ -34,10 +34,8 @@ class Defuser : public HloModulePass {
   ~Defuser() override {}
   absl::string_view name() const override { return "defuser"; }
 
-  // Run defusion on the given module. Returns whether the module was
-  // changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

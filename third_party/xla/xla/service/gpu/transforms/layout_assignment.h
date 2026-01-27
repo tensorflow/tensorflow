@@ -35,15 +35,12 @@ namespace gpu {
 // layout constraints for operands and results of library calls.
 class GpuLayoutAssignment : public LayoutAssignment {
  public:
-  explicit GpuLayoutAssignment(
-      ComputationLayout* entry_computation_layout,
-      const se::GpuComputeCapability& gpu_version,
-      const se::dnn::VersionInfo& dnn_version,
-      const se::DeviceDescription& device_description,
-      ChannelLayoutConstraints* channel_constraints = nullptr)
+  GpuLayoutAssignment(ComputationLayout* entry_computation_layout,
+                      const se::GpuComputeCapability& gpu_version,
+                      const se::DeviceDescription& device_description,
+                      ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout, channel_constraints),
         gpu_version_(gpu_version),
-        dnn_version_(dnn_version),
         device_description_(device_description) {}
   ~GpuLayoutAssignment() override = default;
 
@@ -85,7 +82,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
                                         HloDotInstruction* instruction);
 
   const se::GpuComputeCapability gpu_version_;
-  const se::dnn::VersionInfo dnn_version_;
   const se::DeviceDescription& device_description_;
 };
 

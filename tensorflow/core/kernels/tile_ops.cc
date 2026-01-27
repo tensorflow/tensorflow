@@ -585,23 +585,23 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_CPU)
                             .HostMemory("multiples")
-                            .TypeConstraint<int32>("Tmultiples"),
-                        TileOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("Tmultiples"),
+                        TileOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Tile")
                             .Device(DEVICE_CPU)
                             .HostMemory("multiples")
                             .TypeConstraint<int64_t>("Tmultiples"),
-                        TileOp<CPUDevice, int64>);
+                        TileOp<CPUDevice, int64_t>);
 REGISTER_KERNEL_BUILDER(Name("TileGrad")
                             .Device(DEVICE_CPU)
                             .HostMemory("multiples")
-                            .TypeConstraint<int32>("Tmultiples"),
-                        TileGradientOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("Tmultiples"),
+                        TileGradientOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("TileGrad")
                             .Device(DEVICE_CPU)
                             .HostMemory("multiples")
                             .TypeConstraint<int64_t>("Tmultiples"),
-                        TileGradientOp<CPUDevice, int64>);
+                        TileGradientOp<CPUDevice, int64_t>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_TILE(type)                                      \

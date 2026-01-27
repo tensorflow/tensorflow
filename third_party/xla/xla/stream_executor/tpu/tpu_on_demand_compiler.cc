@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -35,9 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executable.h"
 #include "xla/stream_executor/tpu/tpu_executor.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
-#include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
-#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -116,13 +113,14 @@ class TpuCompiler : public Compiler {
       std::unique_ptr<HloModule> hlo_module,
       std::vector<stream_executor::StreamExecutor*> stream_exec,
       const CompileOptions& options) override {
-    HloModuleGroup module_group(std::move(hlo_module));
+    HloModuleGroupProto proto;
+    proto.set_name(hlo_module->name());
+    *proto.add_hlo_modules() = hlo_module->ToProto();
+
     XLA_HloModuleGroup se_module_group;
-    se_module_group.proto =
-        stream_executor::tpu::SerializeProto(module_group.ToProto());
+    se_module_group.proto = stream_executor::tpu::SerializeProto(proto);
     se_module_group.module_config = new XLA_HloModuleConfig[1];
-    se_module_group.module_config[0] =
-        ApiConverter::ToC(module_group.module(0).config());
+    se_module_group.module_config[0] = ApiConverter::ToC(hlo_module->config());
 
     auto cleanup_config = absl::MakeCleanup([&se_module_group]() {
       ApiConverter::Destroy(&se_module_group.module_config[0]);
@@ -140,7 +138,7 @@ class TpuCompiler : public Compiler {
               ->se_executor();
     }
 
-    SE_DeviceMemoryAllocator allocator =
+    SE_DeviceAddressAllocator allocator =
         ApiConverter::ToC(options.device_allocator);
 
     SE_Executable** se_executables = new SE_Executable*[1];
@@ -179,7 +177,7 @@ class TpuCompiler : public Compiler {
 
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override {
     return Unimplemented("This compiler does not support CompileAheadOfTime.");

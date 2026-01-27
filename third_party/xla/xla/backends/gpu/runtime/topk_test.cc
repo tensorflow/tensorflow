@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/substitute.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/kernel_serialization_check.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -95,11 +97,11 @@ TEST_P(TopKKernelTest, TopKFloat) {
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
-  se::DeviceMemory<T> input_buffer =
+  se::DeviceAddress<T> input_buffer =
       executor->AllocateArray<T>(n * batch_size, 0);
-  se::DeviceMemory<T> output_values =
+  se::DeviceAddress<T> output_values =
       executor->AllocateArray<T>(k * batch_size, 0);
-  se::DeviceMemory<uint32_t> output_indices =
+  se::DeviceAddress<uint32_t> output_indices =
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVec<T>(n * batch_size);
@@ -109,15 +111,17 @@ TEST_P(TopKKernelTest, TopKFloat) {
   TF_ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
-                                     batch_size, platform->Name(), 32);
+  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  auto custom_kernel =
+      GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
+                    platform->Name(), desc->threads_per_warp());
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel,
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
-      std::vector<se::DeviceMemoryBase>(
+  stream_executor::KernelArgsDeviceAddressArray arr(
+      std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
@@ -149,11 +153,11 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   const auto [n_kb, k, batch_size, offset] = GetParam();
   const size_t n = n_kb * 1024 + offset;
 
-  se::DeviceMemory<T> input_buffer =
+  se::DeviceAddress<T> input_buffer =
       executor->AllocateArray<T>(n * batch_size, 0);
-  se::DeviceMemory<T> output_values =
+  se::DeviceAddress<T> output_values =
       executor->AllocateArray<T>(k * batch_size, 0);
-  se::DeviceMemory<uint32_t> output_indices =
+  se::DeviceAddress<uint32_t> output_indices =
       executor->AllocateArray<uint32_t>(k * batch_size, 0);
 
   auto source = RandomVecNegative<T>(n * batch_size);
@@ -163,15 +167,17 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
   TF_ASSERT_OK(
       stream->MemZero(&output_indices, k * batch_size * sizeof(uint32_t)));
 
-  auto custom_kernel = GetTopKKernel("topk", PrimitiveType::F32, n, k,
-                                     batch_size, platform->Name(), 32);
+  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  auto custom_kernel =
+      GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
+                    platform->Name(), desc->threads_per_warp());
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel,
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
-      std::vector<se::DeviceMemoryBase>(
+  stream_executor::KernelArgsDeviceAddressArray arr(
+      std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
   TF_ASSERT_OK(kernel->Launch(custom_kernel->thread_dims(),
@@ -188,6 +194,23 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
     EXPECT_THAT(got, ::testing::ElementsAreArray(slice))
         << " k=" << k << ", batch_size=" << batch_size << " i=" << i;
   }
+}
+
+TEST_P(TopKKernelTest, EnsureSerializable) {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  se::Platform* platform = se::PlatformManager::PlatformWithName(name).value();
+
+  const auto [n_kb, k, batch_size, offset] = GetParam();
+  const size_t n = n_kb * 1024 + offset;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto desc, platform->DescriptionForDevice(0));
+  auto custom_kernel =
+      GetTopKKernel("topk", PrimitiveType::F32, n, k, batch_size,
+                    platform->Name(), desc->threads_per_warp());
+
+  stream_executor::gpu::VerifyKernelIsSerializable(custom_kernel->kernel_spec(),
+                                                   platform->id());
 }
 
 INSTANTIATE_TEST_SUITE_P(TopKTests, TopKKernelTest,

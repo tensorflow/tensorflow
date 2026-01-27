@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -73,7 +75,7 @@ int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
 
 int64_t RangeCardinality(int64_t start, int64_t stop, int64_t step) {
   // `enumerate` uses int max to simulate an infinite range dataset.
-  if (stop >= tsl::kint64max) {
+  if (stop >= std::numeric_limits<int64_t>::max()) {
     return kInfiniteCardinality;
   }
 

@@ -20,9 +20,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -36,9 +40,11 @@ using ::tsl::MakeConstructedAsyncValueRef;
 using ::tsl::thread::ThreadPool;
 
 TEST(TrackedCpuDeviceBufferTest, Basic) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
-                          CpuDeviceMemory::Allocate(expected.size()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, CpuRawBuffer::Allocate(memory_space, expected.size()));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -46,12 +52,12 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
                          /*num_threads=*/4);
 
   thread_pool.Schedule([&]() {
-    std::memcpy(buffer->untyped_data(), expected.data(), expected.size());
+    std::memcpy(buffer->buffer()->untyped_data(), expected.data(),
+                expected.size());
     definition_event.SetStateConcrete();
   });
 
-  TrackedCpuDeviceBuffer tracked_buffer(
-      /*owns_buffers=*/true, buffer, definition_event);
+  TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
 
   BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
 
@@ -63,7 +69,10 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
 }
 
 TEST(TrackedCpuDeviceBufferTest, BasicError) {
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer, CpuDeviceMemory::Allocate(64));
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
+                          CpuRawBuffer::Allocate(memory_space, 64));
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
 
@@ -75,8 +84,7 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
         Internal("tracked_cpu_device_buffer_test error."));
   });
 
-  TrackedCpuDeviceBuffer tracked_buffer(
-      /*owns_buffers=*/true, buffer, definition_event);
+  TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
 
   BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
 
@@ -86,6 +94,8 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 }
 
 TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  PjRtMemorySpace* memory_space = client->memory_spaces()[0];
   std::string expected = "tracked_cpu_device_buffer_test";
 
   auto buffer = CpuDeviceMemory::CreateDelayedMemory();
@@ -95,8 +105,10 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
   });
 
   auto definition_event = MakeConstructedAsyncValueRef<CpuEvent>();
-  TrackedCpuDeviceBuffer tracked_buffer(/*owns_buffers=*/true, buffer,
-                                        expected.size(), definition_event);
+  TrackedCpuDeviceBuffer tracked_buffer(
+      tsl::MakeRef<CpuRawBuffer>(memory_space, buffer, expected.size(),
+                                 /*is_mutable=*/true),
+      definition_event);
   auto result = tracked_buffer.buffer();
   ASSERT_FALSE(result.IsAvailable());
   ASSERT_EQ(tracked_buffer.BufferSize(), expected.size());

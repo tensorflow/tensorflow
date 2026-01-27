@@ -105,6 +105,11 @@ struct DiffSummary {
 
   // Converts the diff summary to a proto.
   DiffSummaryProto ToProto() const;
+
+  // Constructs the diff summary from a proto.
+  static DiffSummary FromProto(const DiffSummaryProto& proto,
+                               const HloModule& left_module,
+                               const HloModule& right_module);
 };
 
 // Constructs the diff summary from the diff result.

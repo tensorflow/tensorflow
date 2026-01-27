@@ -47,11 +47,9 @@ cc_library(
 ifrt_proxy_cc_test(
     name = "grpc_server_test",
     srcs = ["grpc_server_test.cc"],
-    tags = ["not_run:arm"],  # TODO(b/326080238): Fix this.
     deps = [
         ":grpc_server",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
@@ -89,8 +87,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -98,18 +96,16 @@ ifrt_proxy_cc_test(
     name = "grpc_service_impl_test",
     size = "small",
     srcs = ["grpc_service_impl_test.cc"],
-    tags = ["not_run:arm"],  # TODO(b/326080238): Fix this.
     deps = [
         ":grpc_server",
         ":grpc_service_impl",
         ":host_buffer",
-        ":version",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt_proxy/client:grpc_host_buffer",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
-        "//xla/tsl/platform:status_matchers",
+        "//xla/python/ifrt_proxy/common:versions",
         "//xla/tsl/platform:test",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/log",
@@ -129,19 +125,24 @@ cc_library(
     deps = [
         ":host_buffer",
         ":host_callback",
-        ":version",
+        ":ifrt_backend_user_context",
+        "//xla:future",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt/profiling:device_time_measurement",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
+        "//xla/python/ifrt:mpmd_executable",
         "//xla/python/ifrt:program_serdes",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_any_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt:user_context",
+        "//xla/python/ifrt:with_user_context",
         "//xla/python/ifrt_proxy/common:array_util",
         "//xla/python/ifrt_proxy/common:common_serdes",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
@@ -157,6 +158,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_to_from_proto",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -183,7 +185,6 @@ ifrt_proxy_cc_test(
         ":host_buffer",
         ":host_callback",
         ":ifrt_backend",
-        ":version",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -191,7 +192,9 @@ ifrt_proxy_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/pjrt:host_callback",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
+        "//xla/pjrt/profiling:device_time_measurement",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
@@ -229,10 +232,13 @@ ifrt_proxy_cc_test(
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -246,6 +252,31 @@ cc_library(
         "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
+    name = "ifrt_backend_user_context",
+    srcs = ["ifrt_backend_user_context.cc"],
+    hdrs = ["ifrt_backend_user_context.h"],
+    deps = [
+        "//xla/python/ifrt:user_context",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+ifrt_proxy_cc_test(
+    name = "ifrt_backend_user_context_test",
+    srcs = ["ifrt_backend_user_context_test.cc"],
+    deps = [
+        ":ifrt_backend_user_context",
+        "//xla/python/ifrt:user_context",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -266,7 +297,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -317,7 +348,6 @@ ifrt_proxy_cc_test(
     deps = [
         ":version",
         "//xla/python/ifrt:serdes_version",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
@@ -331,7 +361,6 @@ ifrt_proxy_cc_test(
         ":host_buffer",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/synchronization",

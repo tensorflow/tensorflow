@@ -27,9 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/backends/gpu/runtime/thunk_buffer_id.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/buffer_debug_log.h"
 #include "xla/stream_executor/gpu/buffer_debug_xor_checksum_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -50,9 +48,8 @@ namespace stream_executor::cuda {
 namespace {
 
 using xla::gpu::BufferDebugLogEntry;
+using xla::gpu::BufferDebugLogEntryId;
 using xla::gpu::BufferDebugLogHeader;
-using xla::gpu::ThunkBufferId;
-using xla::gpu::ThunkId;
 
 class ChecksumKernelTest : public ::testing::Test {
  protected:
@@ -62,7 +59,7 @@ class ChecksumKernelTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_->parent());
+        std::make_unique<StreamExecutorAddressAllocator>(stream_->parent());
 
     if (!executor_->GetDeviceDescription()
              .cuda_compute_capability()
@@ -74,8 +71,8 @@ class ChecksumKernelTest : public ::testing::Test {
   }
 
   template <typename T>
-  absl::StatusOr<se::DeviceMemory<T>> CheckNotNull(
-      se::DeviceMemory<T> device_memory, absl::string_view name) {
+  absl::StatusOr<se::DeviceAddress<T>> CheckNotNull(
+      se::DeviceAddress<T> device_memory, absl::string_view name) {
     if (device_memory.is_null()) {
       return absl::InternalError(
           absl::StrFormat("Device memory for %s is null", name));
@@ -85,8 +82,8 @@ class ChecksumKernelTest : public ::testing::Test {
 
   template <typename T>
   absl::Status AppendChecksumOnDevice(
-      ThunkBufferId entry_id, const T& input,
-      se::gpu::BufferDebugLog& buffer_debug_log,
+      BufferDebugLogEntryId entry_id, const T& input,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>& buffer_debug_log,
       stream_executor::ThreadDim dim = stream_executor::ThreadDim(1, 1, 1)) {
     // Load kernel
     gpu::GpuKernelRegistry registry =
@@ -96,7 +93,7 @@ class ChecksumKernelTest : public ::testing::Test {
         registry.LoadKernel<gpu::BufferDebugXorChecksumKernel>(executor_));
 
     // Setup device buffers
-    TF_ASSIGN_OR_RETURN(se::DeviceMemory<uint8_t> device_input,
+    TF_ASSIGN_OR_RETURN(se::DeviceAddress<uint8_t> device_input,
                         CheckNotNull(executor_->AllocateArray<uint8_t>(
                                          input.size() * sizeof(input[0])),
                                      "input"));
@@ -120,11 +117,11 @@ class ChecksumKernelTest : public ::testing::Test {
   se::Platform* platform_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
-  std::unique_ptr<se::StreamExecutorMemoryAllocator> allocator_;
+  std::unique_ptr<StreamExecutorAddressAllocator> allocator_;
 };
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint8_t> input = std::vector<uint8_t>(1024, 0x55);
   // Xor with the expected checksum value.
   // Assumes the device uses little-endian byte order.
@@ -135,120 +132,128 @@ TEST_F(ChecksumKernelTest, ComputesCorrectChecksumForMultipleOf32Bit) {
   constexpr uint32_t kExpectedChecksum = 0x12345678;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log));
+  TF_EXPECT_OK(
+      AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest,
        PadsMostSignifantBitsOfIncomplete32BitInputWordWithZeros) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   const std::vector<uint8_t> kInput = std::vector<uint8_t>(1023, 0x55);
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), kInput, device_log));
+  TF_EXPECT_OK(
+      AppendChecksumOnDevice(BufferDebugLogEntryId{0}, kInput, device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
   // Assumes the device uses little-endian byte order.
-  EXPECT_EQ(host_log[0].checksum, 0x55000000);
+  EXPECT_EQ(host_log[0].value, 0x55000000);
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallel) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log,
-                                      se::ThreadDim(2, 4, 8)));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input,
+                                      device_log, se::ThreadDim(2, 4, 8)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest, ComputesCorrectChecksumInParallelWithMaxThreads) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   std::vector<uint32_t> input =
       std::vector<uint32_t>(64 * 1024 / sizeof(uint32_t), 0x55aa55aa);
   // Xor with the expected checksum value.
   input[1000] ^= 0x12345678;
   constexpr uint32_t kExpectedChecksum = 0x12345678;
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(ThunkBufferId(), input, device_log,
-                                      se::ThreadDim(128, 4, 2)));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{0}, input,
+                                      device_log, se::ThreadDim(128, 4, 2)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 1);
-  EXPECT_EQ(host_log[0].checksum, kExpectedChecksum);
+  EXPECT_EQ(host_log[0].value, kExpectedChecksum);
 }
 
 TEST_F(ChecksumKernelTest, AppendsChecksumsToLog) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
-  ThunkBufferId kId123 = ThunkBufferId::Create(ThunkId(123), 0).value();
-  ThunkBufferId kId456 = ThunkBufferId::Create(ThunkId(456), 0).value();
-  ThunkBufferId kId789 = ThunkBufferId::Create(ThunkId(789), 0).value();
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(1024);
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId789, kInput789, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{123}, kInput123,
+                                      device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{456}, kInput456,
+                                      device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{789}, kInput789,
+                                      device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 3);
-  EXPECT_EQ(host_log[0].entry_id, kId123);
-  EXPECT_EQ(host_log[0].checksum, 0x01230123);
-  EXPECT_EQ(host_log[1].entry_id, kId456);
-  EXPECT_EQ(host_log[1].checksum, 0x04560456);
-  EXPECT_EQ(host_log[2].entry_id, kId789);
-  EXPECT_EQ(host_log[2].checksum, 0x07890789);
+  EXPECT_EQ(host_log[0].entry_id, 123);
+  EXPECT_EQ(host_log[0].value, 0x01230123);
+  EXPECT_EQ(host_log[1].entry_id, 456);
+  EXPECT_EQ(host_log[1].value, 0x04560456);
+  EXPECT_EQ(host_log[2].entry_id, 789);
+  EXPECT_EQ(host_log[2].value, 0x07890789);
 }
 
 TEST_F(ChecksumKernelTest, DiscardsOverflowingChecksums) {
-  se::DeviceMemory<uint8_t> mem = executor_->AllocateArray<uint8_t>(
+  se::DeviceAddress<uint8_t> mem = executor_->AllocateArray<uint8_t>(
       sizeof(BufferDebugLogHeader) + sizeof(BufferDebugLogEntry) * 2);
-  ThunkBufferId kId123 = ThunkBufferId::Create(ThunkId(123), 0).value();
-  ThunkBufferId kId456 = ThunkBufferId::Create(ThunkId(456), 0).value();
-  ThunkBufferId kId789 = ThunkBufferId::Create(ThunkId(789), 0).value();
   constexpr std::array<uint32_t, 1> kInput123 = {0x01230123};
   constexpr std::array<uint32_t, 1> kInput456 = {0x04560456};
   constexpr std::array<uint32_t, 1> kInput789 = {0x07890789};
   TF_ASSERT_OK_AND_ASSIGN(
-      se::gpu::BufferDebugLog device_log,
-      se::gpu::BufferDebugLog::CreateOnDevice(*stream_, mem));
+      auto device_log,
+      se::gpu::BufferDebugLog<BufferDebugLogEntry>::CreateOnDevice(*stream_,
+                                                                   mem));
 
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId123, kInput123, device_log));
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId456, kInput456, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{123}, kInput123,
+                                      device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{456}, kInput456,
+                                      device_log));
   // This entry will be discarded.
-  TF_EXPECT_OK(AppendChecksumOnDevice(kId789, kInput789, device_log));
+  TF_EXPECT_OK(AppendChecksumOnDevice(BufferDebugLogEntryId{789}, kInput789,
+                                      device_log));
 
   TF_ASSERT_OK_AND_ASSIGN(auto host_log, device_log.ReadFromDevice(*stream_));
   ASSERT_GE(host_log.size(), 2);
-  EXPECT_EQ(host_log[0].entry_id, kId123);
-  EXPECT_EQ(host_log[0].checksum, 0x01230123);
-  EXPECT_EQ(host_log[1].entry_id, kId456);
-  EXPECT_EQ(host_log[1].checksum, 0x04560456);
+  EXPECT_EQ(host_log[0].entry_id, 123);
+  EXPECT_EQ(host_log[0].value, 0x01230123);
+  EXPECT_EQ(host_log[1].entry_id, 456);
+  EXPECT_EQ(host_log[1].value, 0x04560456);
 }
 
 }  // namespace

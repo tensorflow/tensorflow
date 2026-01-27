@@ -34,7 +34,7 @@ namespace tensorflow {
 class CropAndResizeOpTest : public OpsTestBase {
  protected:
   template <typename T>
-  void MakeOp(float extrapolation_value, const string& method) {
+  void MakeOp(float extrapolation_value, const std::string& method) {
     TF_EXPECT_OK(NodeDefBuilder("crop_and_resize_op", "CropAndResize")
                      .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DT_FLOAT))
@@ -76,24 +76,24 @@ class CropAndResizeOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
-REGISTER_TEST(uint8)
-REGISTER_TEST(uint16)
-REGISTER_TEST(int8)
-REGISTER_TEST(int16)
-REGISTER_TEST(int32)
+REGISTER_TEST(uint8_t)
+REGISTER_TEST(uint16_t)
+REGISTER_TEST(int8_t)
+REGISTER_TEST(int16_t)
+REGISTER_TEST(int32_t)
 REGISTER_TEST(int64_t)
 
 #undef REGISTER_TEST
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8) {
-  MakeOp<uint8>(0, "bilinear");
+  MakeOp<uint8_t>(0, "bilinear");
   // Input:
   //  1, 2
   //  3, 4
-  AddInputFromArray<uint8>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<uint8_t>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -102,14 +102,14 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8NearestNeibor) {
-  MakeOp<uint8>(0, "nearest");
+  MakeOp<uint8_t>(0, "nearest");
   // Input:
   //  1, 2
   //  3, 4
-  AddInputFromArray<uint8>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<uint8_t>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -124,8 +124,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Flipped) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -140,8 +140,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1FlippedNearestNeighbor) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {1, 1});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
@@ -156,8 +156,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -177,8 +177,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NearestNeighbor) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -198,8 +198,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Flipped) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -219,8 +219,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3FlippedNearestNeighbor) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {1, 1, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -242,8 +242,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<float>(TensorShape({2, 4}), {0, 0, 1, 1, 0, 0, 0.5, 0.5});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
@@ -267,8 +267,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2NearestNeighbor) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<float>(TensorShape({2, 4}), {0, 0, 1, 1, 0, 0, 0.5, 0.5});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
@@ -292,8 +292,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<float>(TensorShape({2, 4}), {1, 1, 0, 0, 0.5, 0.5, 0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
@@ -317,8 +317,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2FlippedNearestNeighbor) {
   AddInputFromArray<float>(TensorShape({1, 3, 3, 1}),
                            {1, 2, 3, 4, 5, 6, 7, 8, 9});
   AddInputFromArray<float>(TensorShape({2, 4}), {1, 1, 0, 0, 0.5, 0.5, 0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {2, 2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {2, 2});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 2, 2, 1}));
@@ -341,8 +341,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {-1, -1, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 3, 3, 1}));
@@ -362,8 +362,8 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
   //  3, 4
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({0, 4}), {});
-  AddInputFromArray<int32>(TensorShape({0}), {});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({0}), {});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_FLOAT, TensorShape({0, 3, 3, 1}));
@@ -377,8 +377,8 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {0});
-  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  AddInputFromArray<int32_t>(TensorShape({1}), {0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {4, 4});
   absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "input image must be 4-D")) << s;
@@ -388,8 +388,8 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {4, 4});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {4, 4});
   absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
@@ -401,8 +401,8 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   MakeOp<float>(0, "bilinear");
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<int32>(TensorShape({1}), {1});
-  AddInputFromArray<int32>(TensorShape({2}), {3, 3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {3, 3});
   absl::Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(),
@@ -425,8 +425,8 @@ TEST_F(CropAndResizeOpTest, TestWithSharding) {
                   [=](int i) -> float { return i % kLength; });
   AddInputFromArray<float>(TensorShape({2, 4}),
                            {0, 0, 0.5, 0.5, 0.5, 0.5, 1, 1});
-  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
-  AddInputFromArray<int32>(TensorShape({2}), {kHalf, kHalf});
+  AddInputFromArray<int32_t>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32_t>(TensorShape({2}), {kHalf, kHalf});
 
   TF_ASSERT_OK(RunOpKernel());
 

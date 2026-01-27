@@ -20,13 +20,13 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -39,12 +39,12 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -79,20 +79,28 @@ bool ShouldRewriteLoopTransposeFusion(
   // is neither the minormost nor the second minormost dimension in the output,
   // and the output minormost dimension is swapped with the new minormost
   // dimension.
-  int64_t rank = root->shape().dimensions().size();
 
-  // The transpose dimension grouper has run, so it should be enough to check
-  // that the minormost dimension's index within the result is smaller than
-  // rank - 2, and that the new minormost dimension is swapped with it.
+  // We use the normalized logical transpose shape so it should be enough to
+  // check that the minormost dimension's index within the result is smaller
+  // than rank - 2, and that the new minormost dimension is swapped with it.
+  absl::InlinedVector<int64_t, 3> permutation;
+  auto normalized_dims_or = ShapeUtil::GetNormalizedLogicalTransposeShape(
+      root->operand(0)->shape(), root->shape(), root->dimensions(),
+      permutation);
+  if (!normalized_dims_or.ok()) {
+    return false;
+  }
+  auto normalized_dims = normalized_dims_or.value();
+  int64_t rank = normalized_dims.size();
+
   // This only triggers for transposes with major-to-minor layout.
   bool has_major_to_minor_layout =
       LayoutUtil::IsMonotonicWithDim0Major(root->shape().layout());
-  absl::Span<int64_t const> transpose_dimensions = root->dimensions();
-  int64_t result_minormost_dim_in_operand = transpose_dimensions.back();
+  int64_t result_minormost_dim_in_operand = permutation.back();
 
   if (!(has_major_to_minor_layout &&
-        transpose_dimensions[result_minormost_dim_in_operand] == rank - 1 &&
-        transpose_dimensions[rank - 1] < rank - 2)) {
+        permutation[result_minormost_dim_in_operand] == rank - 1 &&
+        permutation[rank - 1] < rank - 2)) {
     return false;
   }
 
@@ -164,7 +172,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
-    SymbolicExprContext* symbolic_expr_context) {
+    mlir::MLIRContext* mlir_context) {
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
@@ -195,7 +203,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
   HloFusionAnalysisCache fusion_analysis_cache(device_info);
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
-      &device_info, &fusion_analysis_cache, shape_size, symbolic_expr_context);
+      &device_info, &fusion_analysis_cache, shape_size, mlir_context);
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
       Cast<HloFusionInstruction>(fusion_instruction));
@@ -237,7 +245,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
 
 }  // anonymous namespace
 
-absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
+absl::StatusOr<bool> FusionBlockLevelRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(EnsureTritonSupportsComputeCapability(
@@ -252,9 +260,9 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
     }
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-    TF_ASSIGN_OR_RETURN(bool changed, ProcessFusionInstruction(
-                                          fusion_instruction, device_info_,
-                                          shape_size_, symbolic_expr_context_));
+    TF_ASSIGN_OR_RETURN(
+        bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
+                                               shape_size_, mlir_context_));
 
     has_changed |= changed;
   }

@@ -52,7 +52,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   // of 'fetch' node into the output Tensor. Optional `fetch_node` parameter
   // allows to define a fetch node directly using a NodeDef for the ops that are
   // not supported by the C++ Api.
-  void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
+  void RunAndFetch(const tensorflow::Scope& root, const std::string& fetch,
                    Tensor* output, bool allow_gpu_device,
                    const NodeDef* fetch_node = nullptr,
                    absl::Status* last_status = nullptr) {
@@ -97,7 +97,8 @@ class FusedMatMulOpTest : public OpsTestBase {
     // to compare GPU vs CPU numbers, so place all nodes on CPU in this case.
     const bool place_all_on_gpu = allow_gpu_device && has_gpu_device;
 
-    const string device = place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
+    const std::string device =
+        place_all_on_gpu ? "/device:GPU:0" : "/device:CPU:0";
     for (NodeDef& mutable_node : *graph.mutable_node()) {
       mutable_node.set_device(device);
     }
@@ -137,7 +138,7 @@ class FusedMatMulOpTest : public OpsTestBase {
 
   void RunMatMulWithBiasAndActivation(
       const Tensor& lhs_data, const Tensor& rhs_data, const Tensor& bias_data,
-      bool transpose_a, bool transpose_b, const string& activation_type,
+      bool transpose_a, bool transpose_b, const std::string& activation_type,
       Tensor* output, bool allow_gpu_device = false) {
     Scope root = tensorflow::Scope::NewRootScope();
 
@@ -175,8 +176,8 @@ class FusedMatMulOpTest : public OpsTestBase {
 
   void RunFusedMatMulOp(const Tensor& lhs_data, const Tensor& rhs_data,
                         const std::vector<Tensor>& args_data,
-                        const std::vector<string>& fused_ops, bool transpose_a,
-                        bool transpose_b, Tensor* output,
+                        const std::vector<std::string>& fused_ops,
+                        bool transpose_a, bool transpose_b, Tensor* output,
                         bool allow_gpu_device = false,
                         bool* test_skipped = nullptr) {
     Scope root = tensorflow::Scope::NewRootScope();
@@ -295,7 +296,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   // to FusedMatMul.
   void VerifyConv2DWithBiasAndActivation(int m, int k, int n, bool transpose_a,
                                          bool transpose_b,
-                                         const string& activation) {
+                                         const std::string& activation) {
     bool use_gpu_device =
         activation == "Relu" || (this->kTValueType == DT_HALF);
     const BiasAddGraphRunner run_default =
@@ -372,7 +373,7 @@ static auto GetActivations(DataType dtype) {
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
-  for (const string& activation : GetActivations(this->kTValueType)) {
+  for (const std::string& activation : GetActivations(this->kTValueType)) {
     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
                                             activation);
     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
@@ -385,21 +386,21 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
-  for (const string& activation : GetActivations(this->kTValueType)) {
+  for (const std::string& activation : GetActivations(this->kTValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 256, false, false,
                                             activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
-  for (const string& activation : GetActivations(this->kTValueType)) {
+  for (const std::string& activation : GetActivations(this->kTValueType)) {
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
                                             activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
-  for (const string& activation : GetActivations(this->kTValueType)) {
+  for (const std::string& activation : GetActivations(this->kTValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
                                             activation);
   }

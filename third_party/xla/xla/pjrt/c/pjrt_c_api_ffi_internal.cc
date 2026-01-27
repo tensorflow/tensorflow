@@ -69,7 +69,7 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
 
   xla::ffi::TypeRegistry::TypeId type_id(args->user_data.type_id);
   PJRT_RETURN_IF_ERROR(args->context->execute_context->ffi_context().Insert(
-      type_id, args->user_data.data, args->user_data.deleter));
+      type_id, args->user_data.data));
   return nullptr;
 }
 

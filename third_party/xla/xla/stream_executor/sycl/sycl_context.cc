@@ -30,9 +30,7 @@ absl::StatusOr<uint64_t> SyclContext::GetDeviceTotalMemory(
 }
 
 absl::Status SyclContext::Synchronize() {
-  // TODO(intel-tf): Add this feature once SyclStreamPool class is implemented.
-  return absl::UnimplementedError(
-      "SyclContext::Synchronize is not implemented for SYCL platform.");
+  return SyclStreamPool::SynchronizeStreamPool(device_ordinal_);
 }
 
 }  // namespace stream_executor::sycl

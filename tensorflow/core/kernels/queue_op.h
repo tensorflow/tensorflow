@@ -39,7 +39,7 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
 
  protected:
   // Variables accessible by subclasses
-  int32 capacity_;
+  int32_t capacity_;
   DataTypeVector component_types_;
 
  private:

@@ -23,6 +23,9 @@ limitations under the License.
 namespace xla {
 namespace codegen {
 
+// WARNING: This file exists right now purely as a proof-of-concept showing how
+// to hand-code portable llvm ir intrinsics using C++.
+
 template <typename T>
 T FastTanhf(T x) {
   T abs_x = BitwiseAbs<T>(x);

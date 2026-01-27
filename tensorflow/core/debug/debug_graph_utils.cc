@@ -30,8 +30,8 @@ namespace tensorflow {
 namespace {
 
 // TODO(cais): Switch to safe_strtob when available.
-absl::Status ParseBoolString(const string& bool_str, bool* bool_val) {
-  const string lower_bool_str = absl::AsciiStrToLower(bool_str);
+absl::Status ParseBoolString(const std::string& bool_str, bool* bool_val) {
+  const std::string lower_bool_str = absl::AsciiStrToLower(bool_str);
   if (lower_bool_str == "false" || lower_bool_str == "f" ||
       lower_bool_str == "0") {
     *bool_val = false;
@@ -60,15 +60,15 @@ absl::Status DebugNodeInserter::InsertNodes(
   }
 
   // Debug ops and URLs for wildcard node names (if any).
-  std::vector<string> default_debug_ops;
-  std::vector<string> default_debug_urls;
+  std::vector<std::string> default_debug_ops;
+  std::vector<std::string> default_debug_urls;
 
   // A map from tensor name (e.g., "node_a:0") to list of debug op names
   // (e.g., {"DebugIdentity", "DebugNanCount"})
-  std::unordered_map<string, std::vector<string>> tensor_watches;
+  std::unordered_map<std::string, std::vector<std::string>> tensor_watches;
   // A map from tensor name to debug_url.
-  std::unordered_map<string, std::vector<string>> tensor_watch_urls;
-  std::unordered_map<string, bool> tensor_tolerate_failures;
+  std::unordered_map<std::string, std::vector<std::string>> tensor_watch_urls;
+  std::unordered_map<std::string, bool> tensor_tolerate_failures;
 
   // Cache the proto content for fast lookup later
   for (const DebugTensorWatch& watch : watches) {
@@ -105,11 +105,11 @@ absl::Status DebugNodeInserter::InsertNodes(
       }
     }
 
-    string tensor_name =
+    std::string tensor_name =
         absl::StrCat(watch.node_name(), ":", watch.output_slot());
 
-    std::vector<string> debug_ops;
-    for (const string& debug_op : watch.debug_ops()) {
+    std::vector<std::string> debug_ops;
+    for (const std::string& debug_op : watch.debug_ops()) {
       debug_ops.push_back(debug_op);
     }
 
@@ -117,8 +117,8 @@ absl::Status DebugNodeInserter::InsertNodes(
     tensor_tolerate_failures[tensor_name] =
         watch.tolerate_debug_op_creation_failures();
 
-    std::vector<string> urls;
-    for (const string& url : watch.debug_urls()) {
+    std::vector<std::string> urls;
+    for (const std::string& url : watch.debug_urls()) {
       urls.push_back(url);
     }
     tensor_watch_urls[tensor_name] = urls;
@@ -148,7 +148,7 @@ absl::Status DebugNodeInserter::InsertNodes(
     // Iterate through all output slots of the node.
     for (int src_output_slot = 0; src_output_slot < src_node->num_outputs();
          ++src_output_slot) {
-      const string tensor_name =
+      const std::string tensor_name =
           absl::StrCat(src_node->name(), ":", src_output_slot);
       const bool explicit_tensor_match =
           tensor_watches.find(tensor_name) != tensor_watches.end();
@@ -176,10 +176,10 @@ absl::Status DebugNodeInserter::InsertNodes(
                                              src_output_slot, &memory_type));
 
       // Create the copy node for the watched tensor.
-      const std::vector<string> debug_ops = explicit_tensor_match
-                                                ? tensor_watches[tensor_name]
-                                                : default_debug_ops;
-      const std::vector<string> debug_urls =
+      const std::vector<std::string> debug_ops =
+          explicit_tensor_match ? tensor_watches[tensor_name]
+                                : default_debug_ops;
+      const std::vector<std::string> debug_urls =
           explicit_tensor_match ? tensor_watch_urls[tensor_name]
                                 : default_debug_urls;
       Node* copy_node;
@@ -200,7 +200,7 @@ absl::Status DebugNodeInserter::InsertNodes(
       // Create all requested debug nodes and their edges to the Copy node.
       std::vector<Node*> debug_nodes;
       for (size_t i = 0; i < debug_ops.size(); ++i) {
-        const string& debug_op_name = debug_ops[i];
+        const std::string& debug_op_name = debug_ops[i];
 
         Node* debug_node;
         absl::Status debug_s = CreateDebugNode(
@@ -280,17 +280,17 @@ void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
 }
 
 // static
-const string DebugNodeInserter::GetCopyNodeName(const string& node_name,
-                                                const int output_slot) {
+const std::string DebugNodeInserter::GetCopyNodeName(
+    const std::string& node_name, const int output_slot) {
   // For example, if the watched node is named "node1" and the output slot
   // is 0, the debug node will be called: __copy_node1_0
   return absl::StrCat("__copy_", node_name, "_", output_slot);
 }
 
 // static
-const string DebugNodeInserter::GetDebugNodeName(const string& tensor_name,
-                                                 const int debug_op_num,
-                                                 const string& debug_op_name) {
+const std::string DebugNodeInserter::GetDebugNodeName(
+    const std::string& tensor_name, const int debug_op_num,
+    const std::string& debug_op_name) {
   // For example, if the watched node is named "node1" and the debug op that
   // watches the output slot of node1 is of the type "DebugNanCount", the
   // debug node will be called: __dbg_node1_0_0_DebugNanCount.
@@ -301,23 +301,24 @@ const string DebugNodeInserter::GetDebugNodeName(const string& tensor_name,
 // static
 absl::Status DebugNodeInserter::CreateCopyNode(
     Graph* graph, const DeviceType device_type, const bool is_host_memory,
-    const string& src_node_name, const int src_output, const DataType src_dt,
-    const string& tensor_name, const std::vector<string>& debug_ops,
-    const std::vector<string>& debug_urls, Node** copy_node) {
-  const string kGatedGrpcAttributeKey = "gated_grpc";
+    const std::string& src_node_name, const int src_output,
+    const DataType src_dt, const std::string& tensor_name,
+    const std::vector<std::string>& debug_ops,
+    const std::vector<std::string>& debug_urls, Node** copy_node) {
+  const std::string kGatedGrpcAttributeKey = "gated_grpc";
 
   NodeDef node_def;
   const KernelDef* kdef;
 
-  const string copy_op_name = is_host_memory ? "CopyHost" : "Copy";
-  const string copy_node_name = GetCopyNodeName(src_node_name, src_output);
+  const std::string copy_op_name = is_host_memory ? "CopyHost" : "Copy";
+  const std::string copy_node_name = GetCopyNodeName(src_node_name, src_output);
 
   // Cross debug_ops and debug_urls to get the list of debug ops and watches.
-  std::vector<string> debug_ops_spec;
-  for (const string& debug_op : debug_ops) {
-    for (const string& debug_url : debug_urls) {
-      string debug_op_name_proper;
-      std::unordered_map<string, string> custom_attributes;
+  std::vector<std::string> debug_ops_spec;
+  for (const std::string& debug_op : debug_ops) {
+    for (const std::string& debug_url : debug_urls) {
+      std::string debug_op_name_proper;
+      std::unordered_map<std::string, std::string> custom_attributes;
       TF_RETURN_IF_ERROR(ParseDebugOpName(debug_op, &debug_op_name_proper,
                                           &custom_attributes));
 
@@ -363,24 +364,25 @@ absl::Status DebugNodeInserter::CreateCopyNode(
 
 // static
 absl::Status DebugNodeInserter::ParseDebugOpName(
-    const string& debug_op_name, string* debug_op_name_proper,
-    std::unordered_map<string, string>* attributes) {
+    const std::string& debug_op_name, std::string* debug_op_name_proper,
+    std::unordered_map<std::string, std::string>* attributes) {
   const size_t l_index = debug_op_name.find('(');
   const size_t r_index = debug_op_name.find(')');
-  if (l_index == string::npos && r_index == string::npos) {
+  if (l_index == std::string::npos && r_index == std::string::npos) {
     *debug_op_name_proper = debug_op_name;
   } else {
-    if (l_index == string::npos || l_index == 0 ||
+    if (l_index == std::string::npos || l_index == 0 ||
         r_index != debug_op_name.size() - 1) {
       return absl::InvalidArgumentError(
           absl::StrCat("Malformed debug op name \"", debug_op_name, "\""));
     }
 
     *debug_op_name_proper = debug_op_name.substr(0, l_index);
-    string arguments = debug_op_name.substr(l_index + 1, r_index - l_index - 1);
+    std::string arguments =
+        debug_op_name.substr(l_index + 1, r_index - l_index - 1);
 
-    std::vector<string> attribute_segs = str_util::Split(arguments, ";");
-    for (const string& attribute_seg : attribute_segs) {
+    std::vector<std::string> attribute_segs = str_util::Split(arguments, ";");
+    for (const std::string& attribute_seg : attribute_segs) {
       absl::string_view seg(attribute_seg);
       str_util::RemoveWhitespaceContext(&seg);
       if (seg.empty()) {
@@ -388,13 +390,13 @@ absl::Status DebugNodeInserter::ParseDebugOpName(
       }
 
       const size_t eq_index = seg.find('=');
-      if (eq_index == string::npos) {
+      if (eq_index == std::string::npos) {
         return absl::InvalidArgumentError(absl::StrCat(
             "Malformed attributes in debug op name \"", debug_op_name, "\""));
       }
 
-      const string key(seg.substr(0, eq_index));
-      const string value(
+      const std::string key(seg.substr(0, eq_index));
+      const std::string value(
           seg.substr(eq_index + 1, attribute_seg.size() - eq_index - 1));
       if (key.empty() || value.empty()) {
         return absl::InvalidArgumentError(absl::StrCat(
@@ -415,17 +417,18 @@ absl::Status DebugNodeInserter::ParseDebugOpName(
 
 // static
 absl::Status DebugNodeInserter::SetDebugNodeAttributes(
-    Node* debug_node, const std::unordered_map<string, string>& attributes) {
-  std::unordered_set<string> unfulfilled_keys;
+    Node* debug_node,
+    const std::unordered_map<std::string, std::string>& attributes) {
+  std::unordered_set<std::string> unfulfilled_keys;
   for (const auto& item : attributes) {
     unfulfilled_keys.insert(item.first);
   }
 
   for (const auto& attr : debug_node->op_def().attr()) {
     if (attributes.find(attr.name()) != attributes.end()) {
-      const string& attr_value = attributes.at(attr.name());
+      const std::string& attr_value = attributes.at(attr.name());
       if (attr.type() == "string") {
-        debug_node->AddAttr<string>(attr.name(), attr_value);
+        debug_node->AddAttr<std::string>(attr.name(), attr_value);
       } else if (attr.type() == "float") {
         float float_value = 0.0;
         if (!absl::SimpleAtof(attr_value, &float_value)) {
@@ -472,19 +475,19 @@ absl::Status DebugNodeInserter::SetDebugNodeAttributes(
 
 // static
 absl::Status DebugNodeInserter::CreateDebugNode(
-    Graph* graph, const Device& device, const string& src_copy_node_name,
-    const DataType src_dt, const string& tensor_name,
-    const std::vector<string>& debug_urls, const int debug_op_num,
-    const string& debug_op_name, Node** debug_node) {
+    Graph* graph, const Device& device, const std::string& src_copy_node_name,
+    const DataType src_dt, const std::string& tensor_name,
+    const std::vector<std::string>& debug_urls, const int debug_op_num,
+    const std::string& debug_op_name, Node** debug_node) {
   NodeDef node_def;
   const KernelDef* kdef;
 
-  string debug_op_name_proper;
-  std::unordered_map<string, string> custom_attributes;
+  std::string debug_op_name_proper;
+  std::unordered_map<std::string, std::string> custom_attributes;
   TF_RETURN_IF_ERROR(ParseDebugOpName(debug_op_name, &debug_op_name_proper,
                                       &custom_attributes));
 
-  const string debug_node_name =
+  const std::string debug_node_name =
       GetDebugNodeName(tensor_name, debug_op_num, debug_op_name_proper);
   auto builder = NodeDefBuilder(debug_node_name, debug_op_name_proper)
                      .Input(src_copy_node_name, 0, src_dt)

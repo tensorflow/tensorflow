@@ -26,9 +26,11 @@ const char* const DebugNodeKey::kMetadataFilePrefix = "_tfdbg_";
 
 const char* const DebugNodeKey::kDeviceTag = "device_";
 
-DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
-                           const int32_t output_slot, const string& debug_op,
-                           const string& io_of_node, const bool is_input,
+DebugNodeKey::DebugNodeKey(const std::string& device_name,
+                           const std::string& node_name,
+                           const int32_t output_slot,
+                           const std::string& debug_op,
+                           const std::string& io_of_node, const bool is_input,
                            const int32_t io_index)
     : device_name(device_name),
       node_name(node_name),
@@ -52,7 +54,8 @@ bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
   return !((*this) == other);
 }
 
-const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
+const std::string DebugNodeKey::DeviceNameToDevicePath(
+    const std::string& device_name) {
   return absl::StrCat(kMetadataFilePrefix, kDeviceTag,
                       str_util::StringReplace(
                           str_util::StringReplace(device_name, ":", "_", true),

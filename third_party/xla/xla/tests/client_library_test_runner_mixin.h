@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_CLIENT_LIBRARY_TEST_RUNNER_MIXIN_H_
 #define XLA_TESTS_CLIENT_LIBRARY_TEST_RUNNER_MIXIN_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,9 +33,12 @@ limitations under the License.
 #include "xla/execution_options_util.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/shape.h"
@@ -51,6 +55,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -113,6 +118,24 @@ class ClientLibraryTestRunnerMixin : public T {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         BuildAndVerifyHloModule(computation, argument_shapes,
                                                 &execution_options));
+    const int64_t num_partitions =
+        std::max(1, execution_options.num_partitions());
+    if (const int64_t num_devices =
+            execution_options.num_replicas() * num_partitions;
+        num_devices > 1) {
+      std::optional<DeviceAssignment> device_assignment;
+      DeviceAssignment* device_assignment_ptr = nullptr;
+      if (execution_options.has_device_assignment()) {
+        device_assignment = module->config().static_device_assignment();
+        device_assignment_ptr = &*device_assignment;
+      }
+      ASSIGN_OR_RETURN(std::vector<Literal> results,
+                       this->ExecuteReplicated(
+                           std::move(module), arguments, num_devices,
+                           device_assignment_ptr, /*run_hlo_passes=*/true,
+                           /*use_threads=*/true));
+      return std::move(results.front());
+    }
     return this->Execute(std::move(module), arguments);
   }
 
@@ -135,9 +158,8 @@ class ClientLibraryTestRunnerMixin : public T {
         ExecuteAndTransfer(builder, arguments);
     if (!result.ok()) {
       return result.status().ToString();
-    } else {
-      return result.value().ToString();
     }
+    return result->ToString();
   }
 
   // Compare with reference.
@@ -384,6 +406,10 @@ class ClientLibraryTestRunnerMixin : public T {
   DebugOptions* mutable_debug_options() {
     return execution_options_.mutable_debug_options();
   }
+  const ExecutionOptions& execution_options() const {
+    return execution_options_;
+  }
+  ExecutionOptions* mutable_execution_options() { return &execution_options_; }
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> BuildAndVerifyHloModule(

@@ -21,20 +21,22 @@ limitations under the License.
 // Metadata parameter which is passed to the collective kernel.
 // The metadata allows to compute the address of a peer's buffer in the
 // collective kernel and get the current rank of a peer device.
-// Right now two root pointers are getting passed. One is used for buffers
-// allocated by the buffer assignment and allows kernel to address input and
-// output buffers. The second one is used for buffers allocated within the
-// collective kernel thunk.
-// TODO(patrios): Unify two root pointers once symmetric memory allocator will
-// be implemented.
+// For each kernel parameter `param_to_peers` contains the N peer pointers to
+// the same parameter at the peer device, where N is the number of devices
+// participating in the collective kernel.
+// This information is structured as the
+// single dimentional array with the following layout:
+// [
+//   param0_peer0, param0_peer1, ..., param0_peerN,
+//   param1_peer0, param1_peer1, ..., param1_peerN,
+//   ...
+// ]
 struct CollectiveKernelMetadata {
-  constexpr static int kMaxNumDevices = 8;
-  int64_t rank;
-  // Root pointer for buffers allocated by the buffer assignment.
-  int64_t buffer_root_ptrs[kMaxNumDevices];
+  uint64_t rank;
+  void** param_to_peers;
 
-  // Root pointer for buffers allocated by the collective kernel thunk.
-  int64_t local_buffer_root_ptrs[kMaxNumDevices];
+  // Root pointer for multicast buffer for current device.
+  void* multicast_buffer_ptr;
 };
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_

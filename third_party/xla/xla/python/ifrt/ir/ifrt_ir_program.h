@@ -19,11 +19,13 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
@@ -35,12 +37,15 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -102,9 +107,16 @@ struct SerializeIfrtIRProgramOptions
 // deserialization will use the provided MLIR context and the returned program
 // will not own a MLIR context.
 struct DeserializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                        DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
+  DeserializeIfrtIRProgramOptions(
+      mlir::MLIRContext* context,
+      std::optional<xla::ifrt::DeviceListRef> device_list)
+      : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                          DeserializeExecutableOptions>(device_list),
+        context(context) {}
 
   static char ID;  // NOLINT
 
@@ -122,16 +134,15 @@ struct IfrtIRCompileOptions
       std::shared_ptr<absl::flat_hash_map<
           std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
           compile_options_overrides = {},
-      bool propagate_shardings = false, std::string mlir_dump_to = "",
-      std::string mlir_dump_pass_re = "", std::string mlir_dump_func_re = ".*",
-      bool mlir_enable_timing = false, std::string dot_graph_dump_to = "",
+      std::string mlir_dump_to = "", std::string mlir_dump_pass_re = "",
+      std::string mlir_dump_func_re = ".*", bool mlir_enable_timing = false,
+      std::string dot_graph_dump_to = "",
       int64_t dot_graph_min_executable_peak_memory_bytes = 0,
       float dot_graph_min_executable_flops = 0.0,
       int64_t dot_graph_min_per_device_transfer_size_bytes = 0)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)),
-        propagate_shardings(propagate_shardings),
         mlir_dump_to(std::move(mlir_dump_to)),
         mlir_dump_pass_re(std::move(mlir_dump_pass_re)),
         mlir_dump_func_re(std::move(mlir_dump_func_re)),
@@ -163,13 +174,18 @@ struct IfrtIRCompileOptions
   static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
       const IfrtIrCompileOptionsProto& proto);
 
-  // Returns a `IfrtIrCompileOptionsProto` representation.
-  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
+  // Converts the compile options to a protobuf.
+  absl::Status ToProto(
+      IfrtIrCompileOptionsProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
-  // Whether to propagate shardings from atom program executables for
-  // unspecified shardings.
-  bool propagate_shardings;
+  // Returns a `IfrtIrCompileOptionsProto` representation.
+  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IfrtIrCompileOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   std::string mlir_dump_to;
   std::string mlir_dump_pass_re;

@@ -82,7 +82,7 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 
@@ -104,6 +104,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -111,6 +112,15 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "llvm_command_line_options_test",
+    srcs = ["llvm_command_line_options_test.cc"],
+    deps = [
+        ":llvm_command_line_options",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -127,7 +137,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -213,8 +222,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:parallel_loop_emitter",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
@@ -224,32 +231,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
-    name = "sort_util",
-    srcs = ["sort_util.cc"],
-    hdrs = ["sort_util.h"],
-    deps = [
-        ":ir_array",
-        ":kernel_support_library",
-        ":llvm_util",
-        ":loop_emitter",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:parallel_loop_emitter",
-        "//xla/service/gpu:target_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -282,7 +263,7 @@ cc_library(
         ":llvm_util",
         "//xla/service:hlo_module_config",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -335,11 +316,13 @@ xla_cc_test(
 xla_cc_test(
     name = "llvm_util_test",
     srcs = ["llvm_util_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":llvm_util",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",

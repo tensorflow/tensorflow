@@ -34,7 +34,7 @@ namespace xla {
 
 BroadcastCanonicalizer::BroadcastCanonicalizer() {}
 
-absl::StatusOr<bool> BroadcastCanonicalizer::Run(
+absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

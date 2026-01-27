@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
@@ -106,8 +106,8 @@ TEST(PathTest, CleanPath) {
 
 #define EXPECT_PARSE_URI(uri, scheme, host, path)  \
   do {                                             \
-    StringPiece u(uri);                            \
-    StringPiece s, h, p;                           \
+    absl::string_view u(uri);                      \
+    absl::string_view s, h, p;                     \
     ParseURI(u, &s, &h, &p);                       \
     EXPECT_EQ(scheme, s);                          \
     EXPECT_EQ(host, h);                            \

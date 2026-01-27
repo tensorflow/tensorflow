@@ -55,6 +55,33 @@ static void BM_TransposeAndCopy(benchmark::State& state,
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
 
+// It is useful to also have a benchmark where the minor dimension is a power of
+// two as it suffers from cache aliasing which then shows different performance
+// characteristics.
+static void BM_TransposeAndCopySquare(benchmark::State& state,
+                                      HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule transpose_and_copy_square_$d0
+
+    ENTRY e {
+      p0 = f32[$d0,$d0] parameter(0)
+      transpose = f32[$d0,$d0] transpose(p0), dimensions={1,0}
+      ROOT copy = f32[$d0,$d0] copy(transpose)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto input_shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  auto p0 =
+      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 #define REGISTER_BENCHMARK(NAME) \
   XLA_CPU_BENCHMARK(NAME)        \
       ->MeasureProcessCPUTime()  \
@@ -65,5 +92,6 @@ static void BM_TransposeAndCopy(benchmark::State& state,
       ->Arg(4096);
 
 REGISTER_BENCHMARK(BM_TransposeAndCopy);
+REGISTER_BENCHMARK(BM_TransposeAndCopySquare);
 
 }  // namespace xla::cpu

@@ -101,3 +101,27 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "free_chunks_manager",
+    srcs = ["free_chunks_manager.cc"],
+    hdrs = ["free_chunks_manager.h"],
+    deps = [
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+xla_cc_test(
+    name = "free_chunks_manager_test",
+    size = "large",
+    srcs = ["free_chunks_manager_test.cc"],
+    deps = [
+        ":free_chunks_manager",
+        "//xla/tsl/platform:test_benchmark",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

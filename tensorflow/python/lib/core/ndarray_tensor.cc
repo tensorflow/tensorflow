@@ -100,7 +100,7 @@ absl::Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
     if (!key_string) {
       return errors::Internal("Corrupt numpy type descriptor");
     }
-    tensorflow::string key = key_string;
+    std::string key = key_string;
     // The typenames here should match the field names in the custom struct
     // types constructed in test_util.py.
     // TODO(mrry,keveman): Investigate Numpy type registration to replace this
@@ -225,6 +225,9 @@ absl::Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       } else if (pyarray_type == custom_dtypes.float8_e5m2fnuz) {
         *out_tf_datatype = TF_FLOAT8_E5M2FNUZ;
         break;
+      } else if (pyarray_type == custom_dtypes.float4_e2m1fn) {
+        *out_tf_datatype = TF_FLOAT4_E2M1FN;
+        break;
       } else if (pyarray_type == custom_dtypes.int4) {
         *out_tf_datatype = TF_INT4;
         break;
@@ -317,7 +320,8 @@ absl::Status EncodePyBytesArray(PyArrayObject* array, int64_t nelems,
   return absl::OkStatus();
 }
 
-absl::Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
+absl::Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src,
+                                           uint64_t nelems,
                                            PyArrayObject* dst) {
   const void* tensor_data = TF_TensorData(src);
   DCHECK(tensor_data != nullptr);

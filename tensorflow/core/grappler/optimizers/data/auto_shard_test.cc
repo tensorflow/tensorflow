@@ -44,7 +44,7 @@ using ::testing::UnorderedElementsAre;
 
 // Adds a MapDataset, a RebatchDataset, a PrefetchDataset and a fake sink that
 // are common to all graphs; and sets the fetch node to the fake sink.
-void FinishItem(GrapplerItem* item, const string& input_node_name) {
+void FinishItem(GrapplerItem* item, const std::string& input_node_name) {
   *item->graph.add_node() =
       NDef("map_before_rebatch", "MapDataset", {input_node_name},
            {{"f", "__inference_Dataset_map_normalize_8232"},

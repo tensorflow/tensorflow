@@ -29,7 +29,9 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -46,17 +48,19 @@ namespace {
 
 TEST(WhileThunkTest, BufferUses) {
   BufferAllocation alloc(0, 1024, 0);
+  Shape pred_shape = ShapeUtil::MakeShape(PRED, {1});
   BufferAllocation::Slice pred_slice(&alloc, 0, sizeof(char));
-  BufferAllocation::Slice cond_read_slice(&alloc, 10, 10);
-  BufferAllocation::Slice body_read_slice(&alloc, 20, 10);
+  Shape read_slice_shape = ShapeUtil::MakeShape(F32, {4});
+  BufferAllocation::Slice cond_read_slice(&alloc, 10, 12);
+  BufferAllocation::Slice body_read_slice(&alloc, 22, 12);
 
   ThunkSequence cond_sequence;
-  cond_sequence.push_back(
-      std::make_unique<BufferUseThunk>(BufferUse::Read(cond_read_slice)));
+  cond_sequence.push_back(std::make_unique<BufferUseThunk>(
+      BufferUse::Read(cond_read_slice, read_slice_shape)));
 
   ThunkSequence body_sequence;
-  body_sequence.push_back(
-      std::make_unique<BufferUseThunk>(BufferUse::Read(body_read_slice)));
+  body_sequence.push_back(std::make_unique<BufferUseThunk>(
+      BufferUse::Read(body_read_slice, read_slice_shape)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
@@ -64,9 +68,11 @@ TEST(WhileThunkTest, BufferUses) {
                          std::move(body_sequence)));
 
   EXPECT_EQ(thunk->buffer_uses().size(), 3);
-  EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Write(pred_slice));
-  EXPECT_EQ(thunk->buffer_uses()[1], BufferUse::Read(cond_read_slice));
-  EXPECT_EQ(thunk->buffer_uses()[2], BufferUse::Read(body_read_slice));
+  EXPECT_EQ(thunk->buffer_uses()[0], BufferUse::Write(pred_slice, pred_shape));
+  EXPECT_EQ(thunk->buffer_uses()[1],
+            BufferUse::Read(cond_read_slice, read_slice_shape));
+  EXPECT_EQ(thunk->buffer_uses()[2],
+            BufferUse::Read(body_read_slice, read_slice_shape));
 }
 
 TEST(WhileThunkTest, ResourceUses) {
@@ -109,7 +115,7 @@ class CondThunk : public Thunk {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase predicate_mem,
+        se::DeviceAddressBase predicate_mem,
         params.buffer_allocations->GetDeviceAddress(pred_slice_));
     bool* predicate = reinterpret_cast<bool*>(predicate_mem.opaque());
 
@@ -123,7 +129,7 @@ class CondThunk : public Thunk {
   }
 
   BufferUses buffer_uses() const final {
-    return {BufferUse::Write(pred_slice_)};
+    return {BufferUse::Write(pred_slice_, ShapeUtil::MakeShape(PRED, {1}))};
   }
 
  private:
@@ -140,7 +146,7 @@ class BodyThunk : public Thunk {
     auto event = tsl::MakeConstructedAsyncValueRef<ExecuteEvent>();
 
     TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase counter_mem,
+        se::DeviceAddressBase counter_mem,
         params.buffer_allocations->GetDeviceAddress(counter_slice_));
 
     int32_t* counter = reinterpret_cast<int32_t*>(counter_mem.opaque());

@@ -45,8 +45,9 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
-                          "gpu_specs", absl::StrCat(file_name, ".txtpb")),
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                          "backends/gpu/target_config/specs",
+                          absl::StrCat(file_name, ".txtpb")),
         &spec_string));
     ASSERT_TRUE(
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));

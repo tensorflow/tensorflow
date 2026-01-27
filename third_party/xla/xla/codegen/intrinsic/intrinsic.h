@@ -40,6 +40,7 @@ enum class DeviceType {
   kAmdCpu,
   kIntelCpu,
   kArmCpu,
+  kSystemZCpu,
   kNvidiaGpu,
   kAmdGpu,
 };
@@ -48,8 +49,8 @@ struct IntrinsicOptions {
   // CPU features available on the target machine.
   std::string features;
 
-  // The type of device the target machine is running on.
-  DeviceType device_type;
+  // The type of device the target machine is running on. Defaults to Intel CPU.
+  DeviceType device_type = DeviceType::kIntelCpu;
   // Disables math functions that do not have the same results across e.g.
   // AMD vs. Intel CPUs.
   bool disable_platform_dependent_math = false;
@@ -137,7 +138,7 @@ class Intrinsic {
     mlir::OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(module.getBody());
 
-    auto decl = b.create<mlir::func::FuncOp>(module.getLoc(), name, type);
+    auto decl = mlir::func::FuncOp::create(b, module.getLoc(), name, type);
     decl.setPrivate();
     return decl;
   }

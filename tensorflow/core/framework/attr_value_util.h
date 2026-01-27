@@ -76,12 +76,12 @@ void SetAttrValue(const Tensor& value, AttrValue* out);
 void SetAttrValue(const TensorProto& value, AttrValue* out);
 void SetAttrValue(const NameAttrList& value, AttrValue* out);
 
-void SetAttrValue(absl::Span<const string> value, AttrValue* out);
+void SetAttrValue(absl::Span<const std::string> value, AttrValue* out);
 void SetAttrValue(absl::Span<const tstring> value, AttrValue* out);
 void SetAttrValue(absl::Span<const char* const> value, AttrValue* out);
 void SetAttrValue(absl::Span<const absl::string_view> value, AttrValue* out);
 void SetAttrValue(absl::Span<const int64_t> value, AttrValue* out);
-void SetAttrValue(absl::Span<const int32> value, AttrValue* out);
+void SetAttrValue(absl::Span<const int32_t> value, AttrValue* out);
 void SetAttrValue(absl::Span<const float> value, AttrValue* out);
 void SetAttrValue(absl::Span<const double> value, AttrValue* out);
 void SetAttrValue(absl::Span<const bool> value, AttrValue* out);
@@ -97,7 +97,7 @@ void SetAttrValue(absl::Span<const NameAttrList> value, AttrValue* out);
 
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
-void MoveAttrValue(std::vector<string>&& value, AttrValue* out);
+void MoveAttrValue(std::vector<std::string>&& value, AttrValue* out);
 
 // Returns a hash of `a` that is consistent with AreAttrValuesEqual. In other
 // words, if two AttrValues compare equal according to AreAttrValuesEqual,
@@ -105,7 +105,7 @@ void MoveAttrValue(std::vector<string>&& value, AttrValue* out);
 // Similarly to protobuf deterministic serialization, hash value is
 // guaranteed to be stable only for a given binary. In particular, one should
 // probably not persist the returned value.
-uint64 AttrValueHash(const AttrValue& a);
+uint64_t AttrValueHash(const AttrValue& a);
 
 // WARNING: Equality check might return false-negative for large (> 32mb)
 // tensors defined with different TensorProto representations.
@@ -117,7 +117,7 @@ uint64 AttrValueHash(const AttrValue& a);
 // bool_val), they will have different hash code and equals will return false.
 // Small (less than 32mb) tensors with different TensorProto representations
 // hashed/compared by their tensor content.
-uint64 FastAttrValueHash(const AttrValue& a);
+uint64_t FastAttrValueHash(const AttrValue& a);
 // Returns true if a and b have the same value. If false negatives are allowed,
 // then compares proto representation to avoid construction of large (> 32mb)
 // tensors.
@@ -134,7 +134,7 @@ bool HasPlaceHolder(const AttrValue& val);
 // SubstituteFunc is given a placeholder string. If the placeholder is
 // unknown, SubstituteFunc returns false. Otherwise, overwrites the
 // attr value and returns true.
-using SubstituteFunc = std::function<bool(const string&, AttrValue*)>;
+using SubstituteFunc = std::function<bool(const std::string&, AttrValue*)>;
 bool SubstitutePlaceholders(const SubstituteFunc& substitute, AttrValue* value);
 
 }  // namespace tensorflow

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -33,18 +33,21 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/fingerprint.h"
 
-using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
+using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
 
 namespace xla {
 
 struct AutotuneConfig {
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
+  // Correctness check is only performed when a trustable reference output is
+  // available.
   bool check_buffers = true;
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
@@ -57,7 +60,7 @@ struct AutotuneConfig {
   // scratch_bytes_window_size_us window.
   bool optimize_scratch_bytes = true;
   // Window size in microseconds to consider for scratch bytes optimization.
-  int scratch_bytes_window_size_us = 4;
+  int scratch_bytes_window_size_us = 2;
   // If true, the autotuner will return an error if the best config for a
   // certain instruction is not in the cache.
   bool expect_all_instructions_in_cache = false;
@@ -66,9 +69,9 @@ struct AutotuneConfig {
   std::string dump_logs_to = "";
   // TODO b/446618161 - Remove this when old triton emitter is
   // deprecated.
-  // If true, autotuner will not select cublas configs. We still try cublas
-  // configs as they can be used to check numerical issues with triton but they
-  // are not considered for selection, unless there are no other options.
+  // If true, autotuner will not select cublas configs for fusions. We still try
+  // the configs as they can be used to check numerical issues with triton but
+  // they are not considered for selection, unless there are no other options.
   bool exclude_cublas_config = false;
   // TODO b/446870267- Remove this option and use default configs rather than
   // the first config.
@@ -81,6 +84,13 @@ struct AutotuneConfig {
   // Note: If cache is provided, the cached config will be used instead of the
   // default config.
   bool use_default_config = false;
+  // If true, dump the autotuned instructions to the modules's xla_dump_to or
+  // to stdout if not set.
+  bool dump_hlos = false;
+  // Whether to allow or discard configs that ptxas warns will spill registers.
+  bool allow_reg_spills = false;
+
+  std::string ToString() const;
 };
 
 class Autotuner {
@@ -102,6 +112,13 @@ class Autotuner {
   // ignored.
   absl::Status Autotune(HloModule* module,
                         const InstructionFilterFn& should_autotune);
+
+  // Same as above, but also takes a sharding KV store which helps to shard
+  // the autotuning work across multiple processes.
+  // This is used for distributed autotuning.
+  absl::Status Autotune(HloModule* module,
+                        const InstructionFilterFn& should_autotune,
+                        MultiProcessKeyValueStore& sharding_kv_store);
 
  private:
   using InstructionsByFingerprint =
@@ -186,17 +203,21 @@ class Autotuner {
   absl::StatusOr<ConfigResult> PickBestConfig(
       std::vector<ConfigResult>& results);
 
-  absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
+  std::optional<ScopedShapedBuffer> GetReferenceOutput(
       std::vector<ExecutableCandidate>& candidates,
       InputBuffers& input_buffers);
 
   std::optional<Failure> CheckBuffers(InputBuffers& input_buffers,
                                       ScopedShapedBuffer& output,
                                       ScopedShapedBuffer& reference);
+  absl::Status IsValidExecutable(
+      const absl::StatusOr<std::unique_ptr<Executable>>& executable) const;
 
   void LogConfigResults(const HloInstruction& instr,
                         const std::vector<ConfigResult>& results);
   absl::Status DumpLogsToFile();
+  // Dumps HLO before and after applying the config.
+  absl::Status DumpHlo(HloInstruction* instr, const Config& config);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   std::unique_ptr<Profiler> profiler_;
@@ -204,6 +225,7 @@ class Autotuner {
   std::unique_ptr<AutotunerCacheInterface> cache_;
   tsl::thread::ThreadPool* thread_pool_;
   AutotuningLogs logs_;
+  int dump_counter_ = 0;
 };
 }  // namespace xla
 

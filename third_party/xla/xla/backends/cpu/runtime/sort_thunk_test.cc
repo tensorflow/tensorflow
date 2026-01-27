@@ -327,7 +327,9 @@ void BM_Sort1D(benchmark::State& state) {
   // Use sort direction to activate the most efficient sorting function, or fall
   // back on the comparator functor.
   std::optional<SortThunk::SortDirection> direction;
-  if (sort_ascending) direction = SortThunk::SortDirection::kAscending;
+  if (sort_ascending) {
+    direction = SortThunk::SortDirection::kAscending;
+  }
 
   auto [alloc, dummy_alloc] = CreateBufferAllocation(*data, *dummy_data);
   auto [slice, dummy_slice] = CreateBufferAllocationSlice(alloc, dummy_alloc);

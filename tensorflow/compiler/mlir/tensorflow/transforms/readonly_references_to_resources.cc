@@ -163,8 +163,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
     if (variable_name.empty()) {
       return signalPassFailure();
     }
-    VarHandleOp var_handle_op = builder.create<VarHandleOp>(
-        variable_v2_op.getLoc(),
+    VarHandleOp var_handle_op = VarHandleOp::create(
+        builder, variable_v2_op.getLoc(),
         ArrayRef<Type>{RankedTensorType::get(
             {}, TF::ResourceType::get(ArrayRef<TensorType>{tensor_type},
                                       builder.getContext()))},
@@ -178,8 +178,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
     for (Operation *user :
          make_early_inc_range(variable_v2_op.getResult().getUsers())) {
       builder.setInsertionPoint(user);
-      ReadVariableOp read_variable_op = builder.create<ReadVariableOp>(
-          user->getLoc(), ArrayRef<Type>{tensor_type},
+      ReadVariableOp read_variable_op = ReadVariableOp::create(
+          builder, user->getLoc(), ArrayRef<Type>{tensor_type},
           ArrayRef<Value>{var_handle_op});
       user->getResult(0).replaceAllUsesWith(read_variable_op.getResult());
       user->erase();

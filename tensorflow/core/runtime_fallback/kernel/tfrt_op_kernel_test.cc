@@ -56,7 +56,7 @@ TEST(TFRTOpKernelTest, TestGetBoolAttr) {
 
 TEST(TFRTOpKernelTest, TestGetIntAttr) {
   tfrt::OpAttrs attrs;
-  attrs.Set<int32>("foo", -2);
+  attrs.Set<int32_t>("foo", -2);
   tfrt::OpAttrsRef attrsref(attrs);
 
   TFRTOpKernelConstruction ctx(attrsref);
@@ -68,18 +68,18 @@ TEST(TFRTOpKernelTest, TestGetIntAttr) {
 
 TEST(TFRTOpKernelTest, TestGetIntListAttr) {
   tfrt::OpAttrs attrs;
-  attrs.SetArray<int32>("foo", {});
-  attrs.SetArray<int32>("bar", {1});
-  attrs.SetArray<int32>("baz", {1, 2, 3});
+  attrs.SetArray<int32_t>("foo", {});
+  attrs.SetArray<int32_t>("bar", {1});
+  attrs.SetArray<int32_t>("baz", {1, 2, 3});
   attrs.SetString("bar", "test");
   tfrt::OpAttrsRef attrsref(attrs);
 
   TFRTOpKernelConstruction ctx(attrsref);
 
-  std::vector<int32> v1, v2, v3;
-  std::vector<int32> expected_v1;
-  std::vector<int32> expected_v2 = {1};
-  std::vector<int32> expected_v3 = {1, 2, 3};
+  std::vector<int32_t> v1, v2, v3;
+  std::vector<int32_t> expected_v1;
+  std::vector<int32_t> expected_v2 = {1};
+  std::vector<int32_t> expected_v3 = {1, 2, 3};
   TF_ASSERT_OK(ctx.GetAttr("foo", &v1));
   ASSERT_EQ(v1, expected_v1);
   TF_ASSERT_OK(ctx.GetAttr("bar", &v2));
@@ -217,7 +217,7 @@ TEST(TFRTOpKernelTest, TestAllocateTemp) {
   ASSERT_EQ(out.AllocatedBytes(), 0);
   TF_EXPECT_OK(ctx.allocate_temp(DT_INT32, {}, &out));
   ASSERT_GT(out.AllocatedBytes(), 0);
-  out.scalar<int32>()() = 123;
+  out.scalar<int32_t>()() = 123;
   ASSERT_EQ(out.dtype(), DT_INT32);
   ASSERT_EQ(out.shape().dims(), 0);
 }

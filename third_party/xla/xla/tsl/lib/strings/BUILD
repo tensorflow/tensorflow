@@ -18,8 +18,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

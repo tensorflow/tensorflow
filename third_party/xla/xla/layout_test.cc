@@ -165,6 +165,12 @@ TEST(Layout, Equality) {
   EXPECT_TRUE(Layout::Equal().IgnoreSplitConfigs()(
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
       Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {3}))));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
+                      Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().MinorToMajorOnly()(
+      Layout({0, 1, 2}).add_split_configs(SplitConfig(0, {2})),
+      Layout({0, 1, 2})));
 }
 
 TEST(Layout, LayoutToFromProto) {
@@ -174,6 +180,31 @@ TEST(Layout, LayoutToFromProto) {
     const auto from_proto_result = Layout::FromProto(layout_proto);
     TF_ASSERT_OK(from_proto_result);
     EXPECT_EQ(layout, from_proto_result.value());
+  };
+
+  expect_unchanged(Layout());
+  expect_unchanged(Layout({1, 3, 2, 0}));
+  expect_unchanged(Layout({0, 1}).set_element_size_in_bits(42));
+  expect_unchanged(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})}));
+  expect_unchanged(Layout({1, 0}, {}));
+  expect_unchanged(Layout(
+      {1, 0}, {}, PRIMITIVE_TYPE_INVALID, PRIMITIVE_TYPE_INVALID, 1, 0, 0, {},
+      std::make_unique<Shape>(ShapeUtil::MakeShape(S32, {10, 10}))));
+  expect_unchanged(Layout({0, 1}, {Tile({123})})
+                       .add_split_configs(SplitConfig(0, {3}))
+                       .add_split_configs(SplitConfig(1, {0, 4})));
+}
+
+TEST(Layout, LayoutToFromProtoInplace) {
+  // Round-trips a Layout through proto de/serialization. Start from a
+  // non-empty proto to verify that `ToProto` clears the given proto first.
+  auto expect_unchanged = [](const Layout& layout) {
+    LayoutProto layout_proto;
+    layout_proto.add_tiles();
+    layout.ToProto(layout_proto);
+    const auto from_proto_result = Layout::FromProto(layout_proto);
+    TF_ASSERT_OK(from_proto_result);
+    EXPECT_EQ(layout, *from_proto_result) << layout_proto.DebugString();
   };
 
   expect_unchanged(Layout());

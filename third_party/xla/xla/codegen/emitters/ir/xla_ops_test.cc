@@ -39,9 +39,9 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -70,8 +70,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 
 class XLAOpsTest : public HloPjRtTestBase {
  public:
+  XLAOpsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 std::string VariableConstraintsToString(const IndexingMap& map) {
@@ -129,7 +129,7 @@ TEST_F(XLAOpsTest, GetConstraintsForVariables) {
     s0 mod 4 in [0, 1],
     w mod 4 in [0, 2],
   )",
-                               &symbolic_expr_context_);
+                               &mlir_context_);
   EXPECT_EQ(VariableConstraintsToString(map),
             R"(x: no constraints
 y: y + w in [0, 4], y mod 32 in [0, 6]
@@ -146,7 +146,7 @@ TEST_F(XLAOpsTest, GetConstraintsForVariablesEmpty) {
     s0 in [0, 32],
     s1 in [0, 1024],
   )",
-                               &symbolic_expr_context_);
+                               &mlir_context_);
   EXPECT_EQ(VariableConstraintsToString(map),
             R"(d0: no constraints
 d1: no constraints

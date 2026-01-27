@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/gpu/codegen/tools/test_lib.h"
 #include "xla/codegen/tools/test_lib.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/statusor.h"
 
@@ -29,13 +29,12 @@ namespace gpu {
 absl::Status Run(const std::string& filename) {
   auto mlir_context = GetMlirContextForTest();
   mlir_context.loadAllAvailableDialects();
-  SymbolicExprContext symbolic_expr_context(&mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  TF_ASSIGN_OR_RETURN(auto emitter_data,
-                      GetEmitter(*module, symbolic_expr_context));
+  TF_ASSIGN_OR_RETURN(auto emitter_data, GetEmitter(*module, mlir_context));
   TF_ASSIGN_OR_RETURN(auto mlir_module,
                       emitter_data->emitter->CreateMLIRModule(
-                          symbolic_expr_context, *emitter_data->fusion, "main",
+                          mlir_context, *emitter_data->fusion, "main",
                           /*buffer_assignment=*/nullptr));
   llvm::outs() << *mlir_module;
   return absl::OkStatus();

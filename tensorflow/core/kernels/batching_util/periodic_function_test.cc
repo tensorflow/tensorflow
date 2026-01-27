@@ -46,7 +46,7 @@ using test_util::FakeClockEnv;
 
 void StopPeriodicFunction(PeriodicFunction* periodic_function,
                           FakeClockEnv* fake_clock_env,
-                          const uint64 pf_interval_micros) {
+                          const uint64_t pf_interval_micros) {
   fake_clock_env->BlockUntilThreadsAsleep(1);
   internal::PeriodicFunctionTestAccess(periodic_function).NotifyStop();
   fake_clock_env->AdvanceByMicroseconds(pf_interval_micros);

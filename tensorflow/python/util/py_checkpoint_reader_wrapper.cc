@@ -101,7 +101,7 @@ struct type_caster<tensorflow::DataType> {
 namespace tensorflow {
 
 static py::object CheckpointReader_GetTensor(
-    tensorflow::checkpoint::CheckpointReader* reader, const string& name) {
+    tensorflow::checkpoint::CheckpointReader* reader, const std::string& name) {
   Safe_TF_StatusPtr status = make_safe(TF_NewStatus());
   PyObject* py_obj = Py_None;
   std::unique_ptr<tensorflow::Tensor> tensor;

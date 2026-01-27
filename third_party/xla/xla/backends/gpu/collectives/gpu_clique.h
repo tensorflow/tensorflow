@@ -19,10 +19,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/communicator.h"
@@ -39,11 +44,21 @@ class GpuClique : public Clique {
   GpuClique(
       GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel);
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
   bool peer_access_enabled() const { return peer_access_enabled_; }
+
+  // Returns a device communicator for a given rank and requirements if it's in
+  // a clique.
+  std::optional<GpuDeviceCommunicator*> device_comm(
+      RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  // Adds a device communicator to the clique.
+  absl::Status AddDeviceComm(
+      RankId rank, GpuDeviceCommunicator::Requirements reqs,
+      std::unique_ptr<GpuDeviceCommunicator> communicator);
 
   std::string DebugString() const final;
 
@@ -52,6 +67,16 @@ class GpuClique : public Clique {
 
   // Aborts all communicators in the clique.
   absl::Status Abort();
+
+  // Cancels all communicators in the clique.
+  //
+  // Cancellation signals all communicators in the clique that they will be
+  // aborted next, and that they should gracefully cancel all pending collective
+  // operations and not start any new ones.
+  void Cancel();
+
+  // Returns true if the clique was cancelled.
+  bool IsCancelled() const;
 
  private:
   friend LockableGpuClique;
@@ -67,6 +92,16 @@ class GpuClique : public Clique {
   // True if peer device memory access is possible between all local devices in
   // the clique.
   bool peer_access_enabled_;
+
+  // Cancellation token shared with all communicators in the clique.
+  std::shared_ptr<CancellationToken> cancel_;
+
+  // We keep device communicators in a sorted container to guarantee that they
+  // are destroyed in determenistic order.
+  mutable absl::Mutex mu_;
+  absl::btree_map<std::pair<RankId, GpuDeviceCommunicator::Requirements>,
+                  std::unique_ptr<GpuDeviceCommunicator>>
+      device_communicators_ ABSL_GUARDED_BY(mu_);
 };
 
 // A lockable version of GpuClique that guarantees exclusive access to the
@@ -76,7 +111,7 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
   LockableGpuClique(
       GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel);
 
   std::string DebugString() const;
 
@@ -87,6 +122,9 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
 
   // Aborts all communicators in the clique without taking the lock.
   absl::Status Abort();
+
+  // Cancels all communicators in the clique without taking the lock.
+  void Cancel();
 };
 
 }  // namespace xla::gpu

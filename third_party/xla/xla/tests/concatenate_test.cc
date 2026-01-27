@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -134,10 +134,10 @@ TEST_F(ConcatenateTest, TwoR3Axis1Parallel) {
                           ParseAndReturnVerifiedModule(hlo_text_module));
 
   Literal x_input = LiteralUtil::CreateFromDimensions(S32, {64, 64, 64});
-  TF_CHECK_OK(x_input.Populate<int32_t>(MakeIotaForShape(x_input.shape())));
+  CHECK_OK(x_input.Populate<int32_t>(MakeIotaForShape(x_input.shape())));
 
   Literal y_input = LiteralUtil::CreateFromDimensions(S32, {64, 64, 64});
-  TF_CHECK_OK(
+  CHECK_OK(
       y_input.Populate<int32_t>(MakeNegativeIotaForShape(y_input.shape())));
 
   TF_ASSERT_OK_AND_ASSIGN(Literal result,

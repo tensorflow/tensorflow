@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/convolution_type_canonicalizer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
@@ -122,7 +123,7 @@ absl::StatusOr<std::tuple<std::vector<Literal*>, std::unique_ptr<Literal>>>
 ExtractInterpreterInputLiteralsFromBuffers(
     const absl::Span<PjRtBuffer* const> buffers,
     const HloComputation& entry_computation,
-    const bool parameter_is_tupled_arguments, const bool arguments_are_tupled) {
+    const bool parameter_is_tupled_arguments) {
   std::vector<Literal*> literals;
   for (PjRtBuffer* const buffer : buffers) {
     InterpreterLiteralWrapperBuffer* interpreter_buffer =
@@ -135,7 +136,7 @@ ExtractInterpreterInputLiteralsFromBuffers(
   }
 
   // Return early if arguments don't need to be re-tupled.
-  if (!parameter_is_tupled_arguments || arguments_are_tupled) {
+  if (!parameter_is_tupled_arguments) {
     return std::make_tuple(std::move(literals), nullptr);
   }
 
@@ -248,8 +249,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   TF_ASSIGN_OR_RETURN(const auto literals_and_storage,
                       ExtractInterpreterInputLiteralsFromBuffers(
                           argument_handles, computation,
-                          compile_options_.parameter_is_tupled_arguments,
-                          options.arguments_are_tupled));
+                          compile_options_.parameter_is_tupled_arguments));
   const absl::Span<const Literal* const> literals =
       std::get<0>(literals_and_storage);
   if (computation.num_parameters() != literals.size()) {
@@ -283,8 +283,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Transform the result literal back into a one or more
   // InterpreterLiteralWrapperBuffer.
   std::vector<std::unique_ptr<PjRtBuffer>> result;
-  // Untuple result if requested.
-  if (options.untuple_result && result_literal.shape().IsTuple()) {
+  if (result_literal.shape().IsTuple()) {
     const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
@@ -492,6 +491,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> InterpreterClient::RunHloPasses(
       /*rewrite_grad_op=*/true);
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
+  pipeline.AddPass<ConvolutionTypeCanonicalizer>();
 
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get()).status());
   return hlo_module;

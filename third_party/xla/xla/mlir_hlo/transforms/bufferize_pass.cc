@@ -93,7 +93,7 @@ static Value materializeToTensor(OpBuilder& builder, TensorType type,
                                  ValueRange inputs, Location loc) {
   assert(inputs.size() == 1);
   assert(mlir::isa<BaseMemRefType>(inputs[0].getType()));
-  return builder.create<bufferization::ToTensorOp>(loc, type, inputs[0]);
+  return bufferization::ToTensorOp::create(builder, loc, type, inputs[0]);
 }
 
 // TODO(pifon): Remove as soon as https://reviews.llvm.org/D93126 is landed.
@@ -129,7 +129,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
       }
       if (isa<TensorType>(inputs[0].getType())) {
         // Tensor to MemRef cast.
-        return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
+        return bufferization::ToBufferOp::create(builder, loc, type, inputs[0]);
       }
       llvm_unreachable("only tensor/memref input types supported");
     });
@@ -146,7 +146,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
         return inputs[0];
       }
       assert(mlir::isa<TensorType>(inputs[0].getType()));
-      return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
+      return bufferization::ToBufferOp::create(builder, loc, type, inputs[0]);
     });
   }
 };
@@ -245,7 +245,19 @@ struct ComputeOpAndFuncBufferizePass
         .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
             isLegalOp);
 
-    return applyPartialConversion(getOperation(), target, std::move(patterns));
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      return failure();
+
+    // All to_buffer ops on constants can be safely marked as read only since
+    // constants are immutable. This fix is for
+    // https://github.com/llvm/llvm-project/pull/172595.
+    getOperation()->walk([](bufferization::ToBufferOp toBuffer) {
+      if (toBuffer.getTensor().getDefiningOp<arith::ConstantOp>()) {
+        toBuffer.setReadOnly(true);
+      }
+    });
+    return success();
   }
 };
 

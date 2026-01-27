@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -143,10 +143,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis,
-    SymbolicExprContext* symbolic_expr_context) {
+    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* mlir_context) {
   auto emitter = GetFusionEmitter(
-      PreBufferAssignmentFusionInfo{fusion_analysis}, symbolic_expr_context);
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
@@ -346,8 +345,35 @@ int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
       std::min<int64_t>(num_blocks, gpu_device_info.core_count());
   int64_t fpu_count = n_active_core * n_active_fpus_per_core;
 
-  int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
+  double flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
   return flop_per_ns_per_fpu * fpu_count;
+}
+
+/*static*/
+int64_t GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+    const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype) {
+  const se::ExecutionUnitDescription* caps =
+      gpu_device_info.matrix_unit_description();
+  std::optional<se::ExecutionUnitDescription::RateInfo> dtype_rates;
+
+  if (caps != nullptr) {
+    dtype_rates = caps->GetRateInfo(dtype);
+  }
+
+  if (!dtype_rates.has_value()) {
+    // Fallback to default flops if matrix unit description is not available
+    // or does not support the given dtype.
+    return CalculateEffectiveFlopsPerNs(
+        gpu_device_info, /*num_blocks=*/gpu_device_info.core_count(),
+        /*num_threads_per_block=*/gpu_device_info.fpus_per_core());
+  }
+
+  // FMA is counted as 2 ops.
+  double flops_per_ns_per_unit =
+      dtype_rates->clock_rate_ghz * dtype_rates->ops_per_clock * 2;
+  int64_t n_compute_units =
+      gpu_device_info.core_count() * dtype_rates->units_per_core;
+  return flops_per_ns_per_unit * n_compute_units;
 }
 
 /*static*/

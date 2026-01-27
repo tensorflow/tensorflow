@@ -22,8 +22,8 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -50,7 +50,7 @@ class ScratchAllocator {
   //
   // This is a temporary allocation, and the caller is responsible for
   // deallocating at some known-safe point. See the class comment above.
-  virtual absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  virtual absl::StatusOr<DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) = 0;
 };
 
@@ -62,7 +62,7 @@ class ScratchAllocator {
 template <size_t N = 1>
 class OwningScratchAllocator : public ScratchAllocator {
  public:
-  OwningScratchAllocator(int device_ordinal, DeviceMemoryAllocator* allocator)
+  OwningScratchAllocator(int device_ordinal, DeviceAddressAllocator* allocator)
       : device_ordinal_(device_ordinal), allocator_(allocator) {}
 
   OwningScratchAllocator(OwningScratchAllocator&&) = default;
@@ -70,9 +70,9 @@ class OwningScratchAllocator : public ScratchAllocator {
 
   int64_t GetMemoryLimitInBytes() override { return -1; }
 
-  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  absl::StatusOr<DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
-    TF_ASSIGN_OR_RETURN(OwningDeviceMemory buffer,
+    TF_ASSIGN_OR_RETURN(ScopedDeviceAddress<uint8_t> buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
                                              /*retry_on_failure=*/false));
     buffers_.push_back(std::move(buffer));
@@ -81,8 +81,8 @@ class OwningScratchAllocator : public ScratchAllocator {
 
  private:
   int device_ordinal_;
-  DeviceMemoryAllocator* allocator_;
-  absl::InlinedVector<OwningDeviceMemory, N> buffers_;
+  DeviceAddressAllocator* allocator_;
+  absl::InlinedVector<ScopedDeviceAddress<uint8_t>, N> buffers_;
 };
 
 }  // namespace stream_executor

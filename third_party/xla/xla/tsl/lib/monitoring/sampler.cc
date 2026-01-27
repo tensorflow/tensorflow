@@ -82,6 +82,7 @@ class ExponentialBuckets : public Buckets {
                                                  int bucket_count) {
     CHECK_GT(bucket_count, 0);
     std::vector<double> bucket_limits;
+    bucket_limits.reserve(bucket_count);
     double bound = scale;
     for (int i = 0; i < bucket_count; i++) {
       bucket_limits.push_back(bound);

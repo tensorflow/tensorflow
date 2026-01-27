@@ -13,10 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/cpp/tanh_ll.h"
 
 namespace xla {
@@ -26,18 +32,17 @@ using ::testing::ContainsRegex;
 namespace {
 
 TEST(TanhTest, FloatTanhVectorized) {
-#ifdef __x86_64__
-  std::string ir = llvm_ir::kTanhLlAvx2Ir;
+  llvm::LLVMContext context;
+  std::unique_ptr<llvm::Module> module =
+      ParseEmbeddedBitcode(context, llvm_ir::kTanhLlIr);
+
+  std::string ir;
+  llvm::raw_string_ostream stream(ir);
+  module->print(stream, nullptr);
+
   EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
   EXPECT_THAT(
       ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
-#endif
-#ifdef __aarch64__
-  std::string ir = llvm_ir::kTanhLlNeonIr;
-  EXPECT_THAT(ir, ContainsRegex("fmul <4 x float>"));
-  EXPECT_THAT(
-      ir, ContainsRegex("fcmp olt <4 x float>.*float 0x3F3A36E2E0000000.*"));
-#endif
 }
 }  // namespace
 }  // namespace codegen

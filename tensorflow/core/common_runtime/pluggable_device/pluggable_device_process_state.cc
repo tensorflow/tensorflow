@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -57,9 +58,9 @@ limitations under the License.
 namespace tensorflow {
 
 /*static*/ PluggableDeviceProcessState* PluggableDeviceProcessState::singleton(
-    const string& device_type, const string& platform_name) {
+    const std::string& device_type, const std::string& platform_name) {
   using ProcessStateMap =
-      std::unordered_map<string, PluggableDeviceProcessState*>;
+      std::unordered_map<std::string, PluggableDeviceProcessState*>;
   static ProcessStateMap* process_state_map = new ProcessStateMap;
   auto iter = process_state_map->find(platform_name);
   if (iter != process_state_map->end()) {
@@ -71,7 +72,7 @@ namespace tensorflow {
 }
 
 PluggableDeviceProcessState::PluggableDeviceProcessState(
-    const string& device_type, const string& platform_name)
+    const std::string& device_type, const std::string& platform_name)
     : pluggable_device_enabled_(false),
       device_type_(device_type),
       platform_name_(platform_name) {
@@ -93,7 +94,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
 Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     const GPUOptions& options, TfDeviceId tf_device_id, size_t total_bytes) {
   DCHECK(process_state_);
-  const string& allocator_type = options.allocator_type();
+  const std::string& allocator_type = options.allocator_type();
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   mutex_lock lock(mu_);
   tsl::CheckValidTfDeviceId(DeviceType(device_type_),
@@ -126,11 +127,11 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
       auto unified_memory_allocator =
           platform->ExecutorForDevice(platform_device_id.value())
               .value()
-              ->CreateMemoryAllocator(stream_executor::MemoryType::kUnified)
+              ->CreateMemoryAllocator(stream_executor::MemorySpace::kUnified)
               .value();
       sub_allocator = new stream_executor::StreamExecutorAllocator(
           std::move(unified_memory_allocator),
-          stream_executor::MemoryType::kUnified, platform_device_id.value());
+          stream_executor::MemorySpace::kUnified, platform_device_id.value());
     } else {
       sub_allocator = new DeviceMemAllocator(
           platform->ExecutorForDevice(platform_device_id.value()).value(),
@@ -198,9 +199,9 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
   while (static_cast<int>(pluggable_device_host_allocators_.size()) <=
          numa_node) {
     auto host_memory_allocator =
-        se->CreateMemoryAllocator(stream_executor::MemoryType::kHost).value();
+        se->CreateMemoryAllocator(stream_executor::MemorySpace::kHost).value();
     tsl::SubAllocator* sub_allocator = new se::StreamExecutorAllocator(
-        std::move(host_memory_allocator), stream_executor::MemoryType::kHost,
+        std::move(host_memory_allocator), stream_executor::MemorySpace::kHost,
         numa_node);
     int64_t pluggable_device_host_mem_limit_in_mb = -1;
     absl::Status status = ReadInt64FromEnvVar(

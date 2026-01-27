@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -55,14 +56,24 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 1 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 2 };
   uint64_t version;
-  uint8_t xnnpack_build_identifier[32];
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
 };
 
+// Checks if the file at the given path is compatible with the current XNNPack
+// weight cache.
 bool IsCompatibleCacheFile(const char* path);
+
+// Checks if the opened file is compatible with the current XNNPack weight
+// cache.
+//
+// Position in the file may be changed during the function execution but is
+// restored upon exiting.
+//
+// Note: the file descriptor must be open and valid.
+bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
@@ -149,8 +160,8 @@ class WeightCacheBuilder {
   // The buffer space must have been reserved before using `Reserve`. If not, a
   // new call to `Reserve` will be done and the data will be copied over.
   [[nodiscard /*The location to the appended data should be saved.*/]]
-  BufferLocation Append(PackIdentifier pack_id, const void* data,
-                        uint64_t size);
+  BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
+                        int fingerprint_id);
 
   // Writes the flatbuffer to disk.
   [[nodiscard /*Writing the weight cache can fail.*/]]
@@ -205,7 +216,7 @@ class WeightCacheBuilder {
   FileDescriptorView fd_;
   std::string file_path_;
 
-  bool is_build_step_ = false;
+  std::atomic<bool> is_build_step_ = false;
 };
 
 // Allows XNNPack to directly load packed weights from disk instead of having to
@@ -247,6 +258,11 @@ class MMapWeightCacheProvider {
 
   [[nodiscard /*Starting to build a cache file may fail.*/]]
   bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
+
+  // If the cache is still being built, this signals that all of the building
+  // operations are done and that `CanStartBuildStep()` should now return
+  // `false`.
+  void StopBuild() { building_run_ = false; }
 
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]

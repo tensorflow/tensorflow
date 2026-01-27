@@ -259,8 +259,8 @@ class WhereGPUOp : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const int input_dims = input.dims();
 
-    if (input.NumElements() < std::numeric_limits<int32>::max()) {
-      ComputeAsyncType<int32>(input, input_dims, context, done);
+    if (input.NumElements() < std::numeric_limits<int32_t>::max()) {
+      ComputeAsyncType<int32_t>(input, input_dims, context, done);
     } else {
       ComputeAsyncType<int64_t>(input, input_dims, context, done);
     }
@@ -282,7 +282,7 @@ class WhereGPUOp : public AsyncOpKernel {
 
     // Push kernel to stream to get number of true elements.
     const GPUDevice& d = context->eigen_device<GPUDevice>();
-    Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
+    absl::Status s = functor::NumTrue<GPUDevice, T, Tindex>::Compute(
         context, d, input.flat<T>(), num_true_t);
     OP_REQUIRES_OK_ASYNC(context, s, done);
 
@@ -374,9 +374,9 @@ TF_CALL_WHERE_GPU_TYPES(REGISTER_GPU_WHERE_OP);
 
 REGISTER_KERNEL_BUILDER(Name("Where")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("index"),
-                        WhereCPUOp<int32>);
+                        WhereCPUOp<int32_t>);
 
 }  // namespace tensorflow

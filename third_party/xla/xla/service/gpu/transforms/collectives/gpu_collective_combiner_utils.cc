@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -76,17 +77,17 @@ bool EnableHeuristicCollectiveCombining(
   if (!cc.IsAtLeastAmpere()) {
     return false;
   }
-  int hlo_device_count = config.num_partitions() * config.replica_count();
-  if (hlo_device_count <= nvlink_slice_size) {
+  if (IsIntraNVLinkDomain(config, nvlink_slice_size)) {
     VLOG(1) << "Disabled heuristic collective combining for intra-NVLink "
                "domain communication: HLO device count "
-            << hlo_device_count << " <= NVLink slice size "
-            << nvlink_slice_size;
+            << (config.num_partitions() * config.replica_count())
+            << " <= NVLink slice size " << nvlink_slice_size;
     return false;
   }
   VLOG(1) << "Enabled heuristic collective combining for inter-NVLink domain "
              "communication: HLO device count "
-          << hlo_device_count << " > NVLink slice size " << nvlink_slice_size;
+          << (config.num_partitions() * config.replica_count())
+          << " > NVLink slice size " << nvlink_slice_size;
   return true;
 }
 

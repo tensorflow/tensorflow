@@ -222,7 +222,7 @@ absl::StatusOr<XlaSerializedCacheEntry> ReadCacheEntryFromFile(
 }
 
 XlaSerializedCacheKey CreateCacheKey(
-    uint64 signature_hash,
+    uint64_t signature_hash,
     const XlaCompiler::CompilationResult& compilation_result,
     const DeviceType& device_type, const std::string& persistence_prefix,
     bool compiled_using_pjrt = false) {

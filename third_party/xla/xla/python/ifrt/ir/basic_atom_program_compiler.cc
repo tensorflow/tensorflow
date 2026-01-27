@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -32,15 +31,16 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/random.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,8 +63,7 @@ BasicAtomProgramCompiler::BasicAtomProgramCompiler(
       device_assignments_(device_assignments.begin(),
                           device_assignments.end()) {}
 
-absl::StatusOr<xla::ifrt::AtomProgramCompileResult>
-BasicAtomProgramCompiler::CompileXla(
+tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
     std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
     xla::CompileOptions options) {
   // Rewrite device assignment from logical ids to IFRT device ids.
@@ -87,19 +86,12 @@ BasicAtomProgramCompiler::CompileXla(
   TF_ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       xla::ifrt::GetDeviceListFromXlaCompileOptions(client_, options));
-  TF_ASSIGN_OR_RETURN(result.executable,
-                      client_->GetDefaultCompiler()->CompileAndLoad(
-                          std::move(hlo_program),
-                          std::make_unique<xla::ifrt::XlaCompileOptions>(
-                              std::move(options), std::move(devices))));
-  result.name = absl::StrCat(result.executable->name(), ".",
-                             tsl::random::ThreadLocalNew64());
-
-  return result;
+  return client_->GetDefaultCompiler()->CompileAndLoad(
+      std::move(hlo_program), std::make_unique<xla::ifrt::XlaCompileOptions>(
+                                  std::move(options), std::move(devices)));
 }
 
-absl::StatusOr<xla::ifrt::AtomProgramCompileResult>
-BasicAtomProgramCompiler::CompileMpmdReshard(
+tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(
     std::vector<xla::ifrt::DType> dtypes, std::vector<xla::ifrt::Shape> shapes,
     std::vector<xla::ifrt::IfrtArrayType> in_array_types,
     std::vector<xla::ifrt::IfrtArrayType> out_array_types) {

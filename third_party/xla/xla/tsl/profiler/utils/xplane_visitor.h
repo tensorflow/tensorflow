@@ -64,13 +64,14 @@ class XStatVisitor {
 
   int64_t IntValue() const { return stat_->int64_value(); }
 
-  uint64 UintValue() const { return stat_->uint64_value(); }
+  uint64_t UintValue() const { return stat_->uint64_value(); }
 
   absl::string_view BytesValue() const { return stat_->bytes_value(); }
 
-  uint64 IntOrUintValue() const {
-    return ValueCase() == XStat::kUint64Value ? UintValue()
-                                              : static_cast<uint64>(IntValue());
+  uint64_t IntOrUintValue() const {
+    return ValueCase() == XStat::kUint64Value
+               ? UintValue()
+               : static_cast<uint64_t>(IntValue());
   }
 
   double DoubleValue() const { return stat_->double_value(); }
@@ -167,6 +168,8 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   int64_t Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
+
+  absl::string_view LineName() const { return line_->name(); }
 
   std::optional<int64_t> Type() const { return type_; }
 

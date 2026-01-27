@@ -197,7 +197,7 @@ class GcsFileSystem : public FileSystem {
   absl::Status CreateDir(const string& dirname,
                          TransactionToken* token) override;
 
-  absl::Status DeleteDir(const string& dirname,
+  absl::Status DeleteDir(const std::string& dirname,
                          TransactionToken* token) override;
 
   absl::Status GetFileSize(const string& fname, TransactionToken* token,

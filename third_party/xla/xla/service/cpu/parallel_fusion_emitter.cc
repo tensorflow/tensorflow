@@ -31,14 +31,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -46,7 +44,6 @@ namespace xla::cpu {
 
 struct ParallelFusionEmitter::CompilerInstance {
   std::unique_ptr<mlir::MLIRContext> mlir_context;
-  std::unique_ptr<gpu::SymbolicExprContext> symbolic_expr_context;
   std::unique_ptr<FusionCompiler> compiler;
 };
 
@@ -102,14 +99,10 @@ auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
   std::unique_ptr<mlir::MLIRContext> mlir_context =
       FusionCompiler::CreateContext();
 
-  auto symbolic_expr_context =
-      std::make_unique<gpu::SymbolicExprContext>(mlir_context.get());
-
   auto compiler = std::make_unique<FusionCompiler>(mlir_context.get(), options_,
                                                    GetNestedHooks());
 
   return CreateSharedInstance({std::move(mlir_context),
-                               std::move(symbolic_expr_context),
                                std::move(compiler)});
 }
 
@@ -150,12 +143,14 @@ ParallelFusionEmitter::FusionCompilerPool::GetNestedHooks() const {
 ParallelFusionEmitter::ParallelFusionEmitter(
     tsl::thread::ThreadPool& thread_pool, FusionCompiler::Options options,
     FusionCompiler::CompilationHooks hooks,
-    const BufferAssignment* buffer_assignment, bool use_unique_c_name)
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name,
+    bool enable_tiled_emitter)
     : thread_pool_(thread_pool),
       fusion_compiler_pool_(
           std::make_unique<FusionCompilerPool>(options, std::move(hooks))),
       buffer_assignment_(buffer_assignment),
-      use_unique_c_name_(use_unique_c_name) {}
+      use_unique_c_name_(use_unique_c_name),
+      enable_tiled_emitter_(enable_tiled_emitter) {}
 
 ParallelFusionEmitter::~ParallelFusionEmitter() {
   absl::MutexLock lock(kernels_mutex_);
@@ -172,9 +167,10 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   // fixed but will require a rework of the ThunkEmitter.
   auto compiler_instance = fusion_compiler_pool_->GetInstance();
   TF_ASSIGN_OR_RETURN(
-      MlirKernelDefinition mlir_kernel_definition,
-      EmitFusionKernel(*compiler_instance->symbolic_expr_context, *fusion,
-                       buffer_assignment_, use_unique_c_name_));
+      KernelDefinition mlir_kernel_definition,
+      EmitFusionKernel(*compiler_instance->mlir_context, *fusion,
+                       buffer_assignment_, use_unique_c_name_,
+                       enable_tiled_emitter_));
 
   {
     absl::MutexLock lock(kernels_mutex_);
@@ -182,8 +178,8 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   }
 
   KernelSpec spec = mlir_kernel_definition.spec();
-  auto shared_source =
-      std::make_shared<MlirKernelDefinition>(std::move(mlir_kernel_definition));
+  auto shared_source = std::make_shared<KernelDefinition<MlirKernelSource>>(
+      std::move(mlir_kernel_definition));
 
   thread_pool_.Schedule(absl::bind_front(&ParallelFusionEmitter::CompileFusion,
                                          this, std::move(shared_source),
@@ -192,7 +188,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
   return spec;
 }
 
-absl::StatusOr<std::vector<LlvmKernelDefinition>>
+absl::StatusOr<std::vector<KernelDefinition<LlvmKernelSource>>>
 ParallelFusionEmitter::ConsumeKernels() {
   absl::MutexLock lock(kernels_mutex_);
 
@@ -205,8 +201,8 @@ ParallelFusionEmitter::ConsumeKernels() {
   }
 
   // Sort the kernels by name to ensure a deterministic order.
-  absl::c_sort(kernels_, [](const LlvmKernelDefinition& lhs,
-                            const LlvmKernelDefinition& rhs) {
+  absl::c_sort(kernels_, [](const KernelDefinition<LlvmKernelSource>& lhs,
+                            const KernelDefinition<LlvmKernelSource>& rhs) {
     return lhs.spec().name() < rhs.spec().name();
   });
 
@@ -214,11 +210,12 @@ ParallelFusionEmitter::ConsumeKernels() {
 }
 
 void ParallelFusionEmitter::CompileFusion(
-    std::shared_ptr<MlirKernelDefinition> mlir_kernel_definition,
+    std::shared_ptr<KernelDefinition<MlirKernelSource>> mlir_kernel,
     std::shared_ptr<CompilerInstance> compiler_instance) {
-  auto [spec, source] = std::move(*mlir_kernel_definition).ReleaseStorage();
-  absl::StatusOr<LlvmIrKernelSource> llvm_kernel_source =
-      compiler_instance->compiler->Compile(std::move(source));
+  KernelSpec spec = mlir_kernel->spec();
+  absl::StatusOr<LlvmKernelSource> llvm_kernel_source =
+      compiler_instance->compiler->Compile(
+          std::move(*mlir_kernel).TakeSource());
 
   absl::MutexLock lock(kernels_mutex_);
   outstanding_kernels_--;

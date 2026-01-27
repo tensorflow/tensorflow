@@ -15,15 +15,23 @@ limitations under the License.
 
 #include "xla/tsl/util/reporter.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/types.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
 
-TestReportFile::TestReportFile(const string& fname, const string& test_name)
+TestReportFile::TestReportFile(const std::string& fname,
+                               const std::string& test_name)
     : closed_(true), fname_(fname), test_name_(test_name) {}
 
-absl::Status TestReportFile::Append(const string& content) {
+absl::Status TestReportFile::Append(const std::string& content) {
   if (closed_) {
     return absl::OkStatus();
   }
@@ -42,12 +50,12 @@ absl::Status TestReportFile::Initialize() {
   if (fname_.empty()) {
     return absl::OkStatus();
   }
-  string mangled_fname = absl::StrCat(
+  std::string mangled_fname = absl::StrCat(
       fname_, absl::StrJoin(str_util::Split(test_name_, '/'), "__"));
   Env* env = Env::Default();
   if (env->FileExists(mangled_fname).ok()) {
-    return errors::InvalidArgument(
-        "Cannot create TestReportFile, file exists: ", mangled_fname);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot create TestReportFile, file exists: ", mangled_fname));
   }
   TF_RETURN_IF_ERROR(env->NewWritableFile(mangled_fname, &log_file_));
   TF_RETURN_IF_ERROR(log_file_->Flush());
@@ -56,7 +64,8 @@ absl::Status TestReportFile::Initialize() {
   return absl::OkStatus();
 }
 
-TestReporter::TestReporter(const string& fname, const string& test_name)
+TestReporter::TestReporter(const std::string& fname,
+                           const std::string& test_name)
     : report_file_(fname, test_name) {
   benchmark_entry_.set_name(test_name);
 }
@@ -86,8 +95,8 @@ absl::Status TestReporter::Benchmark(int64_t iters, double cpu_time,
   return absl::OkStatus();
 }
 
-absl::Status TestReporter::SetProperty(const string& name,
-                                       const string& value) {
+absl::Status TestReporter::SetProperty(const std::string& name,
+                                       const std::string& value) {
   if (report_file_.IsClosed()) {
     return absl::OkStatus();
   }
@@ -95,7 +104,7 @@ absl::Status TestReporter::SetProperty(const string& name,
   return absl::OkStatus();
 }
 
-absl::Status TestReporter::SetProperty(const string& name, double value) {
+absl::Status TestReporter::SetProperty(const std::string& name, double value) {
   if (report_file_.IsClosed()) {
     return absl::OkStatus();
   }
@@ -103,7 +112,7 @@ absl::Status TestReporter::SetProperty(const string& name, double value) {
   return absl::OkStatus();
 }
 
-absl::Status TestReporter::AddMetric(const string& name, double value) {
+absl::Status TestReporter::AddMetric(const std::string& name, double value) {
   if (report_file_.IsClosed()) {
     return absl::OkStatus();
   }

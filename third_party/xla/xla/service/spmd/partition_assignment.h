@@ -101,17 +101,17 @@ class PartitionAssignment : public HloModulePass {
   virtual std::unique_ptr<PartitioningAlgorithm> ChoosePartitioningAlgorithm(
       const HloModule& module) const;
 
-  // Runs the pass.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Returns the algorithm being used.
   const PartitioningAlgorithm* algorithm();
 
   // Returns the number of partitions.
   int64_t num_partitions() const;
+
+ protected:
+  // Runs the pass.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // The partitioning algorithm to be used. For now, it is determined by a flag.

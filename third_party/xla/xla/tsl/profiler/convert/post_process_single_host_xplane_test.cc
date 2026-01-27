@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -124,6 +125,30 @@ TEST(ConvertXPlaneToTraceEvents, Convert) {
   // The line with id 10 is merged from the python plane line with id 10 and the
   // cupti plane line with id 10, so it should have 3 (= 2 + 1) events.
   EXPECT_EQ(host_plane.lines(0).events_size(), 3);
+}
+
+TEST(MergePlanesTest, Merge) {
+  XSpace xspace;
+  CreateXSpace(&xspace);
+  EXPECT_EQ(xspace.planes().size(), 3);
+  const XPlane* original_python_plane =
+      FindPlaneWithName(xspace, kPythonTracerPlaneName);
+  EXPECT_EQ(original_python_plane->lines().size(), 2);
+
+  XPlaneBuilder duplicate_python_plane(xspace.add_planes());
+  duplicate_python_plane.SetName(kPythonTracerPlaneName);
+  XLineBuilder py_thread3 = duplicate_python_plane.GetOrCreateLine(762);
+  py_thread3.SetName("thread/42");
+
+  EXPECT_EQ(xspace.planes().size(), 4);
+
+  MergePlanesWithSameNames(&xspace);
+
+  EXPECT_EQ(xspace.planes_size(), 3);
+  const XPlane* python_plane =
+      FindPlaneWithName(xspace, kPythonTracerPlaneName);
+  ASSERT_NE(python_plane, nullptr);
+  EXPECT_EQ(python_plane->lines().size(), 3);
 }
 
 }  // namespace

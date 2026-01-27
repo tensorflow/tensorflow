@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -31,7 +30,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/codegen/hlo_fusion_spec.h"
-#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -72,7 +70,9 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
     }
   }
 
-  if (!tiled_transpose_hero) return std::nullopt;
+  if (!tiled_transpose_hero) {
+    return std::nullopt;
+  }
 
   for (auto* root : non_transpose_roots) {
     // Roots that don't have a transpose hero, should have a shape compatible
@@ -89,13 +89,21 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
 
 bool UseConcatenateFusion(absl::Span<const HloInstructionAdaptor> roots,
                           absl::Span<const HloInstructionAdaptor> heroes) {
-  if (heroes.size() != 1) return false;
-  if (heroes.front().opcode() != HloOpcode::kConcatenate) return false;
+  if (heroes.size() != 1) {
+    return false;
+  }
+  if (heroes.front().opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
   // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
-  if (roots.front().shape().IsTuple()) return false;
+  if (roots.front().shape().IsTuple()) {
+    return false;
+  }
   // Limit the number of operands because the concat emitter produces code for
   // each operand, hurting occupancy.
-  if (heroes.front().instruction().operand_count() > 4) return false;
+  if (heroes.front().instruction().operand_count() > 4) {
+    return false;
+  }
   // The loop emitter is faster when warp divergence and occupancy are both low.
   // TODO(csigg): exclude this case.
   return true;
@@ -114,7 +122,7 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
   if (fusion_backend_config.kind() == kTritonFusionKind ||
       fusion_backend_config.kind() == kTritonGemmFusionKind ||
       fusion_backend_config.kind() == kTritonNestedGemmFusionKind ||
-      fusion_backend_config.kind() == kTritonScaledDotFusionKind) {
+      fusion_backend_config.kind() == kTritonCollectiveFusionKind) {
     return HloFusionAnalysis::EmitterFusionKind::kTriton;
   }
 
@@ -172,6 +180,10 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
 
   if (fusion_roots[0].opcode() == HloOpcode::kScatter) {
     return HloFusionAnalysis::EmitterFusionKind::kScatter;
+  }
+
+  if (fusion_roots[0].opcode() == HloOpcode::kSort) {
+    return HloFusionAnalysis::EmitterFusionKind::kSort;
   }
 
   if (UseConcatenateFusion(fusion_roots, fusion_heroes)) {

@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace profiler {
 namespace {
+
+using ::testing::AllOf;
+using ::testing::Field;
+using ::testing::Property;
 
 TEST(XlaOpUtilsTest, HloModuleNameWithProgramId) {
   EXPECT_EQ("module(123)", HloModuleNameWithProgramId("module", 123));
@@ -72,6 +78,22 @@ TEST(XlaOpUtilsTest, IsXlaArgsOrRetvals) {
   EXPECT_TRUE(IsXlaArgsOrRetvals("XLA_Retvals"));
   EXPECT_FALSE(IsXlaArgsOrRetvals("op_type"));
   EXPECT_FALSE(IsXlaArgsOrRetvals("op_name"));
+}
+
+// Tests that OpSourceInfo members are std::string and capable of owning
+// the string data. If the members were absl::string_view, this test would
+// fail due to dangling references.
+TEST(XlaOpUtilsTest, OpSourceInfo) {
+  OpSourceInfo op_source_info = {
+      .source_file = absl::StrCat("file", ".cc"),
+      .source_line = 10,
+      .stack_frame = absl::StrCat("frame1", "\n", "frame2"),
+  };
+  EXPECT_THAT(op_source_info,
+              AllOf(Field(&OpSourceInfo::source_file, "file.cc"),
+                    Field(&OpSourceInfo::stack_frame, "frame1\nframe2"),
+                    Property(&OpSourceInfo::GetSourceTopLine, "file.cc:10"),
+                    Property(&OpSourceInfo::GetSourceStack, "frame1\nframe2")));
 }
 
 }  // namespace

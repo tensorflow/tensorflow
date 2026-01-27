@@ -22,7 +22,7 @@ namespace tsl {
 
 /// Parses the timestamp in RFC 3339 format and returns it
 /// as nanoseconds since epoch.
-absl::Status ParseRfc3339Time(const string& time, int64_t* mtime_nsec);
+absl::Status ParseRfc3339Time(const std::string& time, int64_t* mtime_nsec);
 
 }  // namespace tsl
 

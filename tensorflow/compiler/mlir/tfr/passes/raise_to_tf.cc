@@ -148,7 +148,7 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
         mlir::cast<TypeAttr>(cast_op.getInputElementType()).getValue();
     if (result_elt_type != original_input_type) {
       UnrankedTensorType result_type = UnrankedTensorType::get(result_elt_type);
-      return rewriter.create<TF::CastOp>(loc, result_type, cast_op.getArg());
+      return TF::CastOp::create(rewriter, loc, result_type, cast_op.getArg());
     }
     return cast_op.getArg();
   }
@@ -167,7 +167,7 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
       Type current_input_type = mlir::cast<TypeAttr>(input_types[i]).getValue();
       if (current_input_type != target_input_type) {
         input_values[i] =
-            rewriter.create<TF::CastOp>(loc, result_type, input_values[i]);
+            TF::CastOp::create(rewriter, loc, result_type, input_values[i]);
       }
     }
   }
@@ -397,7 +397,7 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
     Type res_type = res.value();
     if (mlir::dyn_cast<TFRTensorType>(res_type)) {
       Value new_res = new_op->getResult(res.index());
-      auto casted = rewriter.create<CastOp>(loc, res_type, new_res);
+      auto casted = CastOp::create(rewriter, loc, res_type, new_res);
       new_results.push_back(casted.getOut());
     } else if (auto list_type =
                    mlir::dyn_cast<TFRTensorListType>(res.value())) {
@@ -405,10 +405,10 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       for (int i = res.index(); i < new_op->getNumResults(); i++) {
         Value new_res = new_op->getResult(i);
         auto casted =
-            rewriter.create<CastOp>(loc, unconstrainted_type, new_res);
+            CastOp::create(rewriter, loc, unconstrainted_type, new_res);
         tensor_list.push_back(casted.getOut());
       }
-      auto list_op = rewriter.create<BuildListOp>(loc, res_type, tensor_list);
+      auto list_op = BuildListOp::create(rewriter, loc, res_type, tensor_list);
       new_results.push_back(list_op.getOut());
     }
   }

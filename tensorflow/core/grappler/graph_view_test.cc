@@ -161,16 +161,16 @@ TEST_F(GraphViewTest, BasicGraph) {
   const NodeDef* add_node = graph.GetNode("AddN");
   EXPECT_NE(add_node, nullptr);
 
-  absl::flat_hash_set<string> fanouts;
-  absl::flat_hash_set<string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
+  absl::flat_hash_set<std::string> fanouts;
+  absl::flat_hash_set<std::string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
   for (const auto& fo : graph.GetFanouts(*add_node, false)) {
     fanouts.insert(absl::StrCat(fo.node->name(), ":", fo.port_id));
   }
   EXPECT_EQ(graph.NumFanouts(*add_node, false), 2);
   EXPECT_EQ(fanouts, expected_fanouts);
 
-  absl::flat_hash_set<string> fanins;
-  absl::flat_hash_set<string> expected_fanins = {"Sign_1:0", "Sign:0"};
+  absl::flat_hash_set<std::string> fanins;
+  absl::flat_hash_set<std::string> expected_fanins = {"Sign_1:0", "Sign:0"};
   for (const auto& fi : graph.GetFanins(*add_node, false)) {
     fanins.insert(absl::StrCat(fi.node->name(), ":", fi.port_id));
   }

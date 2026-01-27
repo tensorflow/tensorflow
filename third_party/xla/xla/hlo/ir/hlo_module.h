@@ -448,6 +448,8 @@ class HloModule {
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
+  void PrintStackFrameIndex(Printer* printer,
+                            const HloPrintOptions& options) const;
 
  public:
   // Prints a string representation of the module.
@@ -517,7 +519,13 @@ class HloModule {
           computation_id_to_id_remap_map);
 
   // Convert an HloModule to a proto.
-  HloModuleProto ToProto() const;
+  void ToProto(HloModuleProto* proto) const;
+
+  HloModuleProto ToProto() const {
+    HloModuleProto proto;
+    ToProto(&proto);
+    return proto;
+  }
 
   // Converts an HloModuleProto to an HloModule. If preserve_instruction_ids is
   // true, the instruction ids in the proto will be preserved. Otherwise, the
@@ -539,7 +547,13 @@ class HloModule {
       bool preserve_instruction_ids = true);
 
   // Convert an HloModule to or from a proto that includes module configuration
-  HloModuleProtoWithConfig ToProtoWithConfig() const;
+  void ToProtoWithConfig(HloModuleProtoWithConfig* proto) const;
+
+  HloModuleProtoWithConfig ToProtoWithConfig() const {
+    HloModuleProtoWithConfig proto;
+    ToProtoWithConfig(&proto);
+    return proto;
+  }
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProtoWithConfig(
       const HloModuleProtoWithConfig& proto, bool prohibit_empty_literal = true,
       std::unique_ptr<CompilationEnvironments> comp_envs = nullptr,
@@ -732,8 +746,7 @@ class HloModule {
   HloModuleMetadata* metadata() { return &metadata_; }
 
   // Moves (not copies) metadata from this HloModule to `module`. To be used
-  // in cases like HloModuleGroup::ReplaceModule when metadata should be
-  // transferred out of a module before it's destroyed.
+  // when metadata should be transferred out of a module before it's destroyed.
   void MoveMetadataToModule(HloModule* module) {
     module->metadata_ = std::move(metadata_);
   }
@@ -799,24 +812,20 @@ class HloModule {
                                     HloPrintOptions::ModuleFingerprint()) const;
 
   // Describes a stack frame.
-  struct StackFrame {
-    absl::string_view file_name;
-    absl::string_view function_name;
-    int line = 0;
-    int column = 0;
-
-    // 1-based index of the parent frame.
-    // 0 value indicates that the current frame is the root.
-    int parent_frame_id = 0;
-
-    bool empty() const {
-      return line == 0 && column == 0 && file_name.empty() &&
-             function_name.empty();
-    }
-  };
+  using StackFrame = HloStackFrame;
 
   // Getter for the specific stack frame. Argument is a 1-based index.
-  StackFrame get_stack_frame(int id) const;
+  HloStackFrame get_stack_frame(int id) const;
+
+  // Setter for the stack frame index.
+  void set_stack_frame_index(StackFrameIndexProto stack_frame_index) {
+    stack_frame_index_ = std::move(stack_frame_index);
+  }
+
+  // Getter for the stack frame index.
+  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
+    return stack_frame_index_;
+  }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
@@ -1010,8 +1019,8 @@ class HloModule {
     // `std::optional<std::unique_ptr<HloModule>>(
     //     const ShapeIndex& index,
     //     const OriginalArray& old_original_array,
-    //     const xla::Shape& old_array_shape,
-    //     const xla::Shape& new_array_shape)`
+    //     const xla::Shape& old_shape,
+    //     const xla::Shape& new_shape)`
     //
     // It is called for each `OriginalArray` in `old_inst` and should
     // return one of the following:
@@ -1042,9 +1051,8 @@ class HloModule {
         const HloInstruction* old_inst, HloInstruction* new_inst,
         std::function<std::optional<std::unique_ptr<HloModule>>(
             const ShapeIndex& index, const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation =
-            nullptr);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation = nullptr);
 
     // Similar to `AddRecoveryComputation`, but the callback is provided an
     // HLO module builder so that caller can directly build the recovery
@@ -1054,8 +1062,8 @@ class HloModule {
         std::function<std::optional<HloInstruction*>(
             xla::HloComputation::Builder& builder, const ShapeIndex& index,
             const OriginalArray& old_original_array,
-            const xla::Shape& old_array_shape,
-            const xla::Shape& new_array_shape)>&& build_recovery_computation);
+            const xla::Shape& old_shape, const xla::Shape& new_shape)>&&
+            build_recovery_computation);
 
     bool empty() const { return table_.empty(); }
 
@@ -1069,6 +1077,8 @@ class HloModule {
     iterator end() { return table_.end(); }
     const_iterator begin() const { return table_.begin(); }
     const_iterator end() const { return table_.end(); }
+
+    size_t size() const { return table_.size(); }
 
    private:
     friend class HloModule;

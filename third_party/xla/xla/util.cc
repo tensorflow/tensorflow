@@ -24,7 +24,6 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -50,6 +49,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
@@ -286,7 +287,7 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
       absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += absl::StrCat(op_prefix, "OP/s");
+  absl::StrAppend(&throughput, op_prefix, "OP/s");
   return throughput;
 }
 
@@ -338,8 +339,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
                                      absl::Span<const int64_t> b) {
   CHECK_EQ(a.size(), b.size());
   std::vector<int64_t> result;
-  std::transform(a.begin(), a.end(), b.begin(), std::back_inserter(result),
-                 std::multiplies<int64_t>());
+  absl::c_transform(a, b, std::back_inserter(result),
+                    std::multiplies<int64_t>());
   return result;
 }
 
@@ -536,27 +537,6 @@ std::string PrintAllFields(const tsl::protobuf::Message& message) {
     }
   }
   return result.str();
-}
-
-std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
-                                                std::size_t size) {
-  CHECK_GT(alignment, 0) << "alignment must be positive";
-  CHECK(IsPowerOf2(alignment))
-      << "alignment must be a power of 2, but got " << alignment;
-  CHECK_GT(size, 0) << "size must be positive";
-#ifdef _WIN32
-  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
-#elif defined(__ANDROID__) && __ANDROID_API__ < 28
-  // Use posix_memalign as a fallback for older Android APIs
-  void* raw_ptr;
-  int result = posix_memalign(&raw_ptr, alignment, size);
-  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
-#else
-  void* raw_ptr = std::aligned_alloc(alignment, size);
-#endif
-  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
-  // Return unique_ptr managing the memory.
-  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
 int64_t Product(absl::Span<const int64_t> xs) { return Product<int64_t>(xs); }

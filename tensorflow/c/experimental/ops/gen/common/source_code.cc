@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/source_code.h"
 
+#include <string>
+
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -25,20 +28,20 @@ limitations under the License.
 namespace tensorflow {
 namespace generator {
 
-string SourceCode::Render() const {
-  string code;
+std::string SourceCode::Render() const {
+  std::string code;
   for (const Line& line : lines_) {
-    absl::StrAppend(&code, string(line.indent * spaces_per_indent_, ' '),
+    absl::StrAppend(&code, std::string(line.indent * spaces_per_indent_, ' '),
                     line.text, "\n");
   }
   return code;
 }
 
-void SourceCode::AddLineWithIndent(const string& line) {
+void SourceCode::AddLineWithIndent(const std::string& line) {
   ValidateAndAddLine(current_indent_, line);
 }
 
-void SourceCode::AddLineWithoutIndent(const string& line) {
+void SourceCode::AddLineWithoutIndent(const std::string& line) {
   ValidateAndAddLine(0, line);
 }
 
@@ -48,7 +51,7 @@ void SourceCode::IncreaseIndent() { current_indent_++; }
 
 void SourceCode::DecreaseIndent() { current_indent_--; }
 
-void SourceCode::ValidateAndAddLine(int indent, const string& raw_line) {
+void SourceCode::ValidateAndAddLine(int indent, const std::string& raw_line) {
   absl::string_view line(raw_line);
   bool had_trailing_newline = absl::ConsumeSuffix(&line, "\n");
 
@@ -57,7 +60,8 @@ void SourceCode::ValidateAndAddLine(int indent, const string& raw_line) {
   } else if (had_trailing_newline) {
     LOG(WARNING) << "Superfluous trailing newline in '" << line << "'";
   }
-  lines_.push_back({indent, string(absl::StripTrailingAsciiWhitespace(line))});
+  lines_.push_back(
+      {indent, std::string(absl::StripTrailingAsciiWhitespace(line))});
 }
 
 }  // namespace generator

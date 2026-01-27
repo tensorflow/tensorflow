@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <functional>
 
-#include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,20 +32,13 @@ class CpuFloatSupport : public FloatSupport {
   using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
 
   explicit CpuFloatSupport(PrimitiveType low_precision_type,
-                           DotStrategyChecker call_library_for_dot,
-                           TargetMachineFeatures* cpu_features)
+                           DotStrategyChecker library_supports_dot)
       : FloatSupport(low_precision_type),
-        call_library_for_dot_(call_library_for_dot),
-        cpu_features_(cpu_features) {}
+        library_supports_dot_(library_supports_dot) {}
 
-  // Skip trying to upcast the dot if XNNPACK is enabled and the dot is
-  // supported by XNNPACK.
+  // Skip trying to upcast the dot if the dot is supported by a library.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo) &&
-           IsDotSupportedByXnn(hlo.dot_dimension_numbers(),
-                               hlo.operand(0)->shape(), hlo.operand(1)->shape(),
-                               hlo.shape(), cpu_features_)
-               .value_or(false);
+    return hlo.opcode() == HloOpcode::kDot && library_supports_dot_(hlo);
   }
 
   // Makes FloatNormalization skip custom fusion computations for CPU backend.
@@ -58,8 +49,7 @@ class CpuFloatSupport : public FloatSupport {
   }
 
  private:
-  DotStrategyChecker call_library_for_dot_;
-  TargetMachineFeatures* cpu_features_;
+  DotStrategyChecker library_supports_dot_;
 };
 
 }  // namespace cpu

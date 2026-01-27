@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -58,9 +58,9 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   int64_t byte_length = sizeof(float) * length;
 
   // Prepare arguments: a=2, b=2, c=0
-  se::DeviceMemory<float> a = executor->AllocateArray<float>(length, 0);
-  se::DeviceMemory<float> b = executor->AllocateArray<float>(length, 0);
-  se::DeviceMemory<float> c = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> a = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> b = executor->AllocateArray<float>(length, 0);
+  se::DeviceAddress<float> c = executor->AllocateArray<float>(length, 0);
 
   float value = 2.0;
   uint32_t pattern;
@@ -71,8 +71,8 @@ TEST(CutlassGemmKernelTest, SimpleGemm) {
   TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
   // Launch gemm kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
-      std::vector<se::DeviceMemoryBase>({a, b, c}),
+  stream_executor::KernelArgsDeviceAddressArray arr(
+      std::vector<se::DeviceAddressBase>({a, b, c}),
       custom_kernel.shared_memory_bytes());
   TF_ASSERT_OK(gemm->Launch(custom_kernel.thread_dims(),
                             custom_kernel.block_dims(), stream.get(), arr));

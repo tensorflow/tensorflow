@@ -117,8 +117,8 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
   builder.setInsertionPointAfter(compile_op);
   for (int i = 0; i < num_tpu_devices; ++i) {
     const std::string& tensor_name = device_key_map[i];
-    auto send = builder.create<mlir::TF::_HostSendOp>(
-        compile_op->getLoc(), compilation_key, tensor_name,
+    auto send = mlir::TF::_HostSendOp::create(
+        builder, compile_op->getLoc(), compilation_key, tensor_name,
         compile_op_launch.getDevice(),
         /*send_device_incarnation=*/0, local_devices[i]);
     send->setAttr("device", compile_op_launch.getDeviceAttr());
@@ -148,15 +148,15 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
 
     mlir::Block* fn_block = recv_select_fn.addEntryBlock();
     mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockEnd(fn_block);
-    auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
-        compile_op->getLoc(),
+    auto recv = mlir::TF::_HostRecvOp::create(
+        fn_builder, compile_op->getLoc(),
         mlir::cast<mlir::TensorType>(compilation_key.getType()),
         device_key_map[i], compile_op_launch.getDevice(),
         /*send_device_incarnation=*/0, local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
-    fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),
-                                            recv.getTensor());
+    mlir::func::ReturnOp::create(fn_builder, recv_select_fn.getLoc(),
+                                 recv.getTensor());
 
     compilation_key_functions.emplace_back(recv_select_fn);
   }
@@ -172,8 +172,8 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     symbols.push_back(mlir::SymbolRefAttr::get(func));
 
   // Create a TF::Case op that selects `values` based on `id`.
-  auto program_key = builder.create<mlir::TF::CaseOp>(
-      compile_op.getLoc(),
+  auto program_key = mlir::TF::CaseOp::create(
+      builder, compile_op.getLoc(),
       /*output=*/llvm::SmallVector<mlir::Type, 4>{compilation_key.getType()},
       /*branch_index=*/*device_id,
       /*input=*/llvm::ArrayRef<mlir::Value>{},
@@ -288,15 +288,16 @@ mlir::LogicalResult HandleCompilationOps(
           llvm::formatv("error while creating TPU compilation logic. {0}",
                         device_ordinal_host.status().message()));
 
-    mlir::Value predicate_host = builder.create<mlir::TF::EqualOp>(
-        compile_op.getLoc(), *device_ordinal_host,
+    mlir::Value predicate_host = mlir::TF::EqualOp::create(
+        builder, compile_op.getLoc(), *device_ordinal_host,
         CreateIntScalarConst(0, builder, compile_op.getLoc()),
         /*incompatible_shape_error=*/builder.getBoolAttr(true));
 
     // If op here contains send/recv and TPUCompile op that should not be pruned
     // away. Therefore, we explicitly set the op to be stateful.
-    auto if_host = builder.create<mlir::TF::IfRegionOp>(
-        compile_op.getLoc(), llvm::SmallVector<mlir::Type, 4>{}, predicate_host,
+    auto if_host = mlir::TF::IfRegionOp::create(
+        builder, compile_op.getLoc(), llvm::SmallVector<mlir::Type, 4>{},
+        predicate_host,
         /*is_stateless=*/builder.getBoolAttr(false),
         GetUniqueControlflowFnName("compilation_host_then", builder),
         GetUniqueControlflowFnName("compilation_host_else", builder));
@@ -305,18 +306,17 @@ mlir::LogicalResult HandleCompilationOps(
     auto& host_else_branch = if_host.getElseBranch();
     host_else_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_else_branch.front());
-    builder.create<mlir::TF::YieldOp>(
-        compile_op.getLoc(),
-        /*operands=*/llvm::ArrayRef<mlir::Value>{});
+    mlir::TF::YieldOp::create(builder, compile_op.getLoc(),
+                              /*operands=*/llvm::ArrayRef<mlir::Value>{});
 
     // Create then branch region with logic to compile TPU program and send
     // program key to all TPU devices.
     auto& host_then_branch = if_host.getThenBranch();
     host_then_branch.push_back(new mlir::Block);
     builder.setInsertionPointToEnd(&host_then_branch.front());
-    auto yield = builder.create<mlir::TF::YieldOp>(
-        compile_op.getLoc(),
-        /*operands=*/llvm::ArrayRef<mlir::Value>{});
+    auto yield =
+        mlir::TF::YieldOp::create(builder, compile_op.getLoc(),
+                                  /*operands=*/llvm::ArrayRef<mlir::Value>{});
     compilation_move_before = yield;
 
     builder.setInsertionPointAfter(if_host);

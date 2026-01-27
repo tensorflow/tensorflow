@@ -30,7 +30,7 @@ class ZlibCompressionOptions {
   static ZlibCompressionOptions GZIP();
 
   // Defaults to Z_NO_FLUSH
-  int8 flush_mode;
+  int8_t flush_mode;
 
   // Size of the buffer used for caching the data read from source file.
   int64_t input_buffer_size = 256 << 10;
@@ -74,7 +74,7 @@ class ZlibCompressionOptions {
   // error code Z_DATA_ERROR instead of trying to allocate a larger window.
   //
   // Defaults to MAX_WBITS
-  int8 window_bits;
+  int8_t window_bits;
 
   // From the zlib manual (http://www.zlib.net/manual.html):
   // The compression level must be Z_DEFAULT_COMPRESSION, or between 0 and 9:
@@ -82,17 +82,17 @@ class ZlibCompressionOptions {
   // (the input data is simply copied a block at a time). Z_DEFAULT_COMPRESSION
   // requests a default compromise between speed and compression (currently
   // equivalent to level 6).
-  int8 compression_level;
+  int8_t compression_level;
 
   // Only Z_DEFLATED is supported at this time.
-  int8 compression_method;
+  int8_t compression_method;
 
   // From the zlib manual (http://www.zlib.net/manual.html):
   // The mem_level parameter specifies how much memory should be allocated for
   // the internal compression state. mem_level=1 uses minimum memory but is slow
   // and reduces compression ratio; mem_level=9 uses maximum memory for optimal
   // speed. The default value is 8.
-  int8 mem_level = 9;
+  int8_t mem_level = 9;
 
   // From the zlib manual (http://www.zlib.net/manual.html):
   // The strategy parameter is used to tune the compression algorithm. Use the
@@ -109,7 +109,7 @@ class ZlibCompressionOptions {
   // but not the correctness of the compressed output even if it is not set
   // appropriately. Z_FIXED prevents the use of dynamic Huffman codes, allowing
   // for a simpler decoder for special applications.
-  int8 compression_strategy;
+  int8_t compression_strategy;
 
   // When this is set to true and we are unable to find the header to correctly
   // decompress a file, we return an error when `ReadNBytes` is called instead

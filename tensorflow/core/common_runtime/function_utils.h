@@ -34,7 +34,7 @@ class OpDef;
 
 // Debugging facility.  Returns a debug string for a graph
 // representing an instantiated function.
-string DebugString(const Graph* g);
+std::string DebugString(const Graph* g);
 
 // Dump the contents of the "graph" to log files if the logging level is
 // sufficiently high.

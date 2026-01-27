@@ -20,10 +20,13 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -559,5 +562,46 @@ TEST_F(HloCreationUtilsTest, DynamicBroadcastShape) {
   EXPECT_TRUE(one_constant->shape().is_static());
 }
 
+TEST_F(HloCreationUtilsTest, NewModuleWithFusion) {
+  static constexpr absl::string_view kModuleStr = R"(
+    HloModule test
+    apply_op {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT apply_op = f32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      param_0 = f32[65536] parameter(0)
+      all-reduce-start = f32[65536] all-reduce-start(param_0), to_apply=apply_op, replica_groups={{0,1}}
+      ROOT all-reduce-done = f32[65536] all-reduce-done(all-reduce-start)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  const HloInstruction* all_reduce_start =
+      module->entry_computation()->GetInstructionWithName("all-reduce-start");
+  std::unique_ptr<HloModule> fusion_module =
+      NewModuleWithFusion(all_reduce_start, HloInstruction::FusionKind::kLoop);
+  EXPECT_EQ(fusion_module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kFusion);
+  auto* fusion_instruction = Cast<HloFusionInstruction>(
+      fusion_module->entry_computation()->root_instruction());
+  EXPECT_EQ(fusion_instruction->fusion_kind(),
+            HloInstruction::FusionKind::kLoop);
+  EXPECT_EQ(fusion_instruction->fused_instructions_computation()
+                ->root_instruction()
+                ->opcode(),
+            HloOpcode::kAllReduceStart);
+  HloAllReduceInstruction* all_reduce = Cast<HloAllReduceInstruction>(
+      fusion_instruction->fused_instructions_computation()->root_instruction());
+  EXPECT_EQ(all_reduce->replica_groups().size(), 1);
+  EXPECT_EQ(all_reduce->replica_groups()[0].replica_ids().size(), 2);
+  // Check that all-reduce has the correct to_apply.
+  HloComputation* to_apply = all_reduce->to_apply();
+  EXPECT_EQ(to_apply->name(), "apply_op");
+  EXPECT_EQ(to_apply->num_parameters(), 2);
+  EXPECT_EQ(to_apply->root_instruction()->opcode(), HloOpcode::kAdd);
+}
 }  // namespace
 }  // namespace xla

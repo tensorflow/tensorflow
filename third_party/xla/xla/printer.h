@@ -26,6 +26,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "highwayhash/arch_specific.h"
+#include "highwayhash/hh_types.h"
+#include "highwayhash/highwayhash.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -37,7 +41,16 @@ namespace xla {
 // implement "streamed printing" if needed.
 class Printer {
  public:
+  // is_hasher can be set to true in printers that are only interested
+  // in computing a hash value or a fingerprint and don't need the
+  // result to be pretty-printed or parseable.
+  explicit Printer(bool is_hasher) : is_hasher_(is_hasher) {}
+
+  Printer() : Printer(false) {}
+
   virtual ~Printer() = default;
+
+  bool is_hasher() const { return is_hasher_; }
 
   // Appends the given string to the printer.
   virtual void Append(const absl::AlphaNum& a) = 0;
@@ -48,6 +61,9 @@ class Printer {
   // May be overridden in some Printer implementations.
   virtual void AppendInt64List(absl::Span<const int64_t> list,
                                bool leading_comma);
+
+ private:
+  bool is_hasher_;
 };
 
 // A printer implementation that accumulates printed strings into `std::string`.
@@ -74,6 +90,22 @@ class CordPrinter : public Printer {
 
   absl::CordBuffer buffer_;
   absl::Cord result_;
+};
+
+// HighwayHashPrinter is a Printer that computes the fingerprint of the added
+// data using a HighwayHash hasher.
+class HighwayHashPrinter : public Printer {
+ public:
+  HighwayHashPrinter();
+
+  void Append(const absl::AlphaNum& a) override;
+  void AppendInt64List(absl::Span<const int64_t> list,
+                       bool _ /*leading_comma*/) override;
+  uint64_t ToFingerprint();
+  ::tsl::Fprint128 ToFingerprint128();
+
+ private:
+  highwayhash::HighwayHashCatT<HH_TARGET_PREFERRED> hasher_;
 };
 
 // Utility functions that appends a list of elements to a Printer as if by

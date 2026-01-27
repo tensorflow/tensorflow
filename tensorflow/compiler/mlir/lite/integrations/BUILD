@@ -55,11 +55,11 @@ pybind_extension(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//third_party/python_runtime:headers",
         "@nanobind",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/types/fp16.h"
+#include "tensorflow/lite/types/half.h"
 
 #ifdef __ARM_NEON
 #include <arm_neon.h>
@@ -99,17 +101,9 @@ void copyCast(const std::complex<float>* in, std::complex<float>* out,
 }
 
 template <typename ToT>
-void copyCast(const Eigen::half* in, ToT* out, int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) {
-    return static_cast<ToT>(Eigen::half_impl::half_to_float(a));
-  });
-}
-
-template <>
-void copyCast(const Eigen::half* in, std::complex<float>* out,
-              int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) {
-    return std::complex<float>(Eigen::half_impl::half_to_float(a));
+void copyCast(const half* in, ToT* out, int num_elements) {
+  std::transform(in, in + num_elements, out, [](half a) {
+    return static_cast<ToT>(fp16_ieee_to_fp32_value(a));
   });
 }
 
@@ -122,33 +116,26 @@ void copyCast(const Eigen::bfloat16* in, std::complex<float>* out,
 }
 
 template <typename FromT>
-void copyCastToFloat16(const FromT* in, Eigen::half* out, int num_elements) {
+void copyCastToFloat16(const FromT* in, half* out, int num_elements) {
   std::transform(in, in + num_elements, out, [](FromT a) {
-    return Eigen::half_impl::float_to_half_rtne(static_cast<float>(a));
+    return half::from_bits(fp16_ieee_from_fp32_value(static_cast<float>(a)));
   });
 }
 
 template <>
-void copyCastToFloat16(const std::complex<float>* in, Eigen::half* out,
+void copyCastToFloat16(const std::complex<float>* in, half* out,
                        int num_elements) {
   std::transform(in, in + num_elements, out, [](std::complex<float> a) {
-    return Eigen::half_impl::float_to_half_rtne(std::real(a));
+    return half::from_bits(fp16_ieee_from_fp32_value(std::real(a)));
   });
 }
 
 template <>
-void copyCastToFloat16(const Eigen::half* in, Eigen::half* out,
-                       int num_elements) {
-  std::transform(in, in + num_elements, out, [](Eigen::half a) { return a; });
-}
-
-template <>
-void copyCastToFloat16(const Eigen::bfloat16* in, Eigen::half* out,
-                       int num_elements) {
+void copyCastToFloat16(const Eigen::bfloat16* in, half* out, int num_elements) {
   // bfloat16 -> float -> half (fp16)
   std::transform(in, in + num_elements, out, [](Eigen::bfloat16 a) {
-    return Eigen::half_impl::float_to_half_rtne(
-        Eigen::bfloat16_impl::bfloat16_to_float(a));
+    return half::from_bits(
+        fp16_ieee_from_fp32_value(Eigen::bfloat16_impl::bfloat16_to_float(a)));
   });
 }
 
@@ -256,6 +243,20 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
   return kTfLiteOk;
 }
 
+TfLiteStatus castUInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
+                              TfLiteTensor* out, int num_elements) {
+  const int8_t* in_data = (const int8_t*)in->data.data;
+  float* out_data = (float*)out->data.data;
+  for (int i = 0; i < (num_elements + 1) / 2; ++i) {
+    uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    out_data[2 * i] = static_cast<float>(byte & 0x0F);
+    if (2 * i + 1 < num_elements) {
+      out_data[2 * i + 1] = static_cast<float>(byte >> 4);
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus castFloatToInt4(const float* in, TfLiteTensor* out,
                              int num_elements) {
   const float min_val = -8.0f;
@@ -281,6 +282,20 @@ TfLiteStatus castFloatToInt2(const float* in, TfLiteTensor* out,
   }
   tensor_utils::PackInt8IntoDenseInt(unpacked_temp.data(), num_elements,
                                      /*bit_width=*/2, (int8_t*)out->data.data);
+  return kTfLiteOk;
+}
+
+TfLiteStatus castFloatToUint4(const float* in, TfLiteTensor* out,
+                              int num_elements) {
+  const float min_val = 0.0f;
+  const float max_val = 15.0f;
+  std::vector<int8_t> unpacked_temp(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    unpacked_temp[i] =
+        static_cast<int8_t>(std::max(min_val, std::min(max_val, in[i])));
+  }
+  tensor_utils::PackInt8IntoDenseInt(unpacked_temp.data(), num_elements,
+                                     /*bit_width=*/4, (int8_t*)out->data.data);
   return kTfLiteOk;
 }
 
@@ -310,7 +325,7 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       copyCast(in, out->data.int8, num_elements);
       break;
     case kTfLiteFloat16:
-      copyCastToFloat16(in, reinterpret_cast<Eigen::half*>(out->data.f16),
+      copyCastToFloat16(in, reinterpret_cast<half*>(out->data.f16),
                         num_elements);
       break;
     case kTfLiteBFloat16:
@@ -341,6 +356,13 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       if (std::is_same<FromT, float>::value) {
         return castFloatToInt2(reinterpret_cast<const float*>(in), out,
                                num_elements);
+      } else {
+        TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
+      }
+    case kTfLiteUInt4:
+      if (std::is_same<FromT, float>::value) {
+        return castFloatToUint4(reinterpret_cast<const float*>(in), out,
+                                num_elements);
       } else {
         TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
       }
@@ -397,6 +419,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
         TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
       }
       return castInt2ToFloat(context, input, output, num_elements);
+    case kTfLiteUInt4:
+      if (output->type != kTfLiteFloat32) {
+        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      }
+      return castUInt4ToFloat(context, input, output, num_elements);
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

@@ -35,11 +35,12 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
 struct Flags {
   std::string input_file = "";
@@ -55,7 +56,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using CorrectnessTest = HloTestBase;
+using CorrectnessTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 const Shape& GetFirstArrayShape(const Shape& shape) {
   if (shape.IsArray()) {
@@ -72,7 +73,9 @@ absl::Status TestBijection(const IndexingMap& map,
     intervals.push_back({0, size - 1});
   }
   auto status = VerifyBijection(map, intervals);
-  if (status.ok()) return status;
+  if (status.ok()) {
+    return status;
+  }
   return absl::FailedPreconditionError(
       absl::StrCat(status.message(), " in map ", ToString(map)));
 }
@@ -108,15 +111,14 @@ std::pair<std::string, std::vector<int64_t>> ParseHeroAndIds(
 
 TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
-  auto symbolic_expr_context = GetSymbolicExprContextForTest(&mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data,
-                          GetEmitter(*module, symbolic_expr_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToInputIndexing(
-        hero_index, &symbolic_expr_context);
+        hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());
     for (int64_t id : ids) {
       TF_ASSERT_OK(TestBijection(indexing.value()[id],
@@ -132,15 +134,14 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
 
 TEST_F(CorrectnessTest, OutputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
-  auto symbolic_expr_context = GetSymbolicExprContextForTest(&mlir_context);
+  RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data,
-                          GetEmitter(*module, symbolic_expr_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
   for (const auto& hero_name : flags.bijection_outputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));
     auto indexing = emitter_data->emitter->ComputeThreadIdToOutputIndexing(
-        hero_index, &symbolic_expr_context);
+        hero_index, &mlir_context);
     ASSERT_TRUE(indexing.has_value());
     TF_ASSERT_OK(TestBijection(
         *indexing, GetFirstArrayShape(
@@ -164,7 +165,9 @@ int main(int argc, char* argv[]) {
       tsl::Flag(
           "bijection_inputs",
           [](std::string name_and_ids) {
-            if (name_and_ids.empty()) return false;
+            if (name_and_ids.empty()) {
+              return false;
+            }
             flags.bijection_inputs.push_back(
                 xla::gpu::ParseHeroAndIds(name_and_ids));
             return true;
@@ -176,7 +179,9 @@ int main(int argc, char* argv[]) {
       tsl::Flag(
           "bijection_outputs",
           [](std::string name) {
-            if (name.empty()) return false;
+            if (name.empty()) {
+              return false;
+            }
             flags.bijection_outputs.push_back(name);
             return true;
           },

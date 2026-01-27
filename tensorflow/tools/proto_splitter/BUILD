@@ -75,7 +75,7 @@ pytype_strict_library(
         ":versions_proto_py",
         "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl/logging",
-        "@riegeli_py//python/riegeli",
+        "@riegeli//python/riegeli",
     ],
 )
 
@@ -99,7 +99,7 @@ py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
         "@absl_py//absl/testing:parameterized",
-        "@riegeli_py//python/riegeli",
+        "@riegeli//python/riegeli",
     ],
 )
 
@@ -171,11 +171,11 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/base:object",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
+        "@tsl//tsl/platform:protobuf",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),
@@ -196,9 +196,9 @@ cc_library(
         ":merge_impl",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
         "@riegeli//riegeli/bytes:fd_reader",
         "@riegeli//riegeli/records:record_reader",
+        "@tsl//tsl/platform:protobuf",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),
@@ -242,10 +242,10 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/tsl/platform:env",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/tsl/platform:env",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
     ]),

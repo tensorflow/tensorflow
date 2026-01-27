@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/cpp_generator.h"
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/c/experimental/ops/gen/common/path_config.h"
@@ -52,11 +53,11 @@ SourceCode CppGenerator::SourceFileContents() const {
   return GenerateOneFile(cpp::RendererContext::kSource);
 }
 
-string CppGenerator::HeaderFileName() const {
+std::string CppGenerator::HeaderFileName() const {
   return io::JoinPath(path_config_.output_path, cpp_config_.unit + "_ops.h");
 }
 
-string CppGenerator::SourceFileName() const {
+std::string CppGenerator::SourceFileName() const {
   return io::JoinPath(path_config_.output_path, cpp_config_.unit + "_ops.cc");
 }
 

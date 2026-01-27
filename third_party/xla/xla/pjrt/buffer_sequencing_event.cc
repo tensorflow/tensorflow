@@ -65,7 +65,7 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
   if (std::find(streams_defined_on_.begin(), streams_defined_on_.end(),
@@ -103,7 +103,7 @@ bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return absl::c_find(streams_defined_on_, stream) != streams_defined_on_.end();
 }
 
@@ -133,7 +133,7 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
   // Execute the `task` when definition event becomes available. If it's already
   // available, the task will be executed immediately.
   event_.AndThen([this, traced_task = std::move(traced_task)]() mutable {
-    thread_pool_->Schedule(std::move(traced_task));
+    async_work_runner_->Schedule(std::move(traced_task));
   });
 }
 

@@ -42,8 +42,6 @@ namespace {
 struct SkipInstructionTestSpec {
   HloOpcode op;
   bool call_library_for_dot;
-  std::string cpu_name;
-  std::string features;
   bool upcast;
 };
 
@@ -56,10 +54,7 @@ class SkipInstructionTest
     absl::string_view op = HloOpcodeString(info.param.op);
     absl::string_view dot_strategy =
         info.param.call_library_for_dot ? "LibDot" : "NoLibDot";
-    absl::string_view bf16_strategy =
-        absl::StrContains(info.param.features, "+avx512bf16") ? "Bf16"
-                                                              : "NoBf16";
-    return absl::StrCat(op, "_", dot_strategy, "_", bf16_strategy);
+    return absl::StrCat(op, "_", dot_strategy);
   }
 
   void SetUp() override { TargetMachineTestBase::SetUp(); }
@@ -105,9 +100,7 @@ TEST_P(SkipInstructionTest, Bf16InF32Out) {
   // Create CpuFloatSupport.
   CpuFloatSupport::DotStrategyChecker call_library_for_dot =
       [&spec](const HloInstruction& hlo) { return spec.call_library_for_dot; };
-  std::unique_ptr<TargetMachineFeatures> features = CreateTargetMachineFeatures(
-      "x86_64-unknown-linux-gnu", spec.cpu_name, spec.features);
-  CpuFloatSupport cpu_float_support(BF16, call_library_for_dot, features.get());
+  CpuFloatSupport cpu_float_support(BF16, call_library_for_dot);
 
   // Run FloatNormalization and check the results.
   FloatNormalization float_normalization(&cpu_float_support);
@@ -122,27 +115,16 @@ std::vector<SkipInstructionTestSpec> GetSkipInstructionTestSpecs() {
       // Add op, always upcast.
       SkipInstructionTestSpec{HloOpcode::kAdd,
                               /*call_library_for_dot=*/true,
-                              /*cpu_name=*/"sapphirerapids",
-                              /*features=*/"+avx512bf16",
                               /*upcast=*/true},
-      // CPU has BF16, but library dot is disabled.
+      // Library dot is disabled.
       SkipInstructionTestSpec{HloOpcode::kDot,
                               /*call_library_for_dot=*/false,
-                              /*cpu_name=*/"sapphirerapids",
-                              /*features=*/"+avx512bf16",
                               /*upcast=*/true},
-      // Library dot is enabled, but CPU does not have BF16.
+      // Library dot is enabled.
       SkipInstructionTestSpec{HloOpcode::kDot,
                               /*call_library_for_dot=*/true,
-                              /*cpu_name=*/"znver3",
-                              /*features=*/"+avx2",
-                              /*upcast=*/true},
-      // Library dot is enabled and CPU has BF16. Use mixed precision.
-      SkipInstructionTestSpec{HloOpcode::kDot,
-                              /*call_library_for_dot=*/true,
-                              /*cpu_name=*/"sapphirerapids",
-                              /*features=*/"+avx512bf16",
-                              /*upcast=*/false}};
+                              /*upcast=*/false},
+  };
 }
 
 INSTANTIATE_TEST_SUITE_P(SkipInstructionTestSuite, SkipInstructionTest,

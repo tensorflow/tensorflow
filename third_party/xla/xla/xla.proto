@@ -26,6 +26,24 @@ message CompilationEnvironmentsProto {
   repeated google.protobuf.Any environments = 1;
 }
 
+// A [first; last] range of integers, inclusive on both ends.
+message IntRangeInclusive {
+  int64 first = 1;
+  int64 last = 2;
+}
+
+// Set of filters for limiting the thunk buffer debug instrumentation to
+// specific thunks. Only meaningful in combination with either
+// `xla_gpu_experimental_enable_checksum_tracing_on_thunks` or
+// `xla_gpu_experimental_enable_checksum_validation_on_thunks`.
+message ThunkBufferDebugFilter {
+  // If set, only thunk IDs matching one or more of the ranges will be included.
+  repeated IntRangeInclusive thunk_id_ranges = 1;
+  // If set, only thunks with profile annotations matching one or more of the
+  // regexes will be included.
+  repeated string profile_annotation_regexes = 2;
+}
+
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields with
 // the exception of few stable GPU feature flags (see `GetFlagStatus` in
@@ -43,6 +61,18 @@ message CompilationEnvironmentsProto {
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
 message DebugOptions {
+  // Enum to define all backends that can be autotuned.
+  enum AutotuneBackend {
+    AUTOTUNE_BACKEND_ALL = 0;
+    AUTOTUNE_BACKEND_CUDNN = 1;
+    AUTOTUNE_BACKEND_TRITON = 2;
+    AUTOTUNE_BACKEND_CUBLAS = 3;
+    AUTOTUNE_BACKEND_CUBLASLT = 4;
+    AUTOTUNE_BACKEND_ROCBLAS = 5;
+    AUTOTUNE_BACKEND_HIPBLASLT = 6;
+    AUTOTUNE_BACKEND_MIOPEN = 7;
+  }
+
   // Enum to define all collective ops
   // that xla supports.
   enum CollectiveOpType {
@@ -127,9 +157,17 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Allow host-to-host copy even when automatic host compute offload is
+  // disabled, i.e. when xla_disable_automatic_host_compute_offload is set.
+  optional bool
+      xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled = 439;
   // Return an error if HostOffloader would have automatically offloaded some
   // compute to the host.
   optional bool xla_disable_automatic_host_compute_offload = 408;
+  // Setting xla_enable_scoped_logging_timers to false will disable some of the
+  // timers (not all places support this). This is useful during autotuning
+  // compilation, where we want to avoid the overhead of the timers.
+  optional bool xla_enable_scoped_logging_timers = 436;
   // Perform hash-based cycle detection in fixed-point loops.
   optional bool xla_hlo_pass_fix_detect_cycles = 370;
   // Keep shardings after SPMD.
@@ -141,8 +179,6 @@ message DebugOptions {
   // Crash if a pass reports that it did not change the HLO but in fact it did.
   optional bool xla_unsupported_crash_on_hlo_pass_silent_hlo_change = 380;
   // go/keep-sorted end
-
-  reserved 346;  // xla_experimental_exec_time_optimization_effort
 
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
@@ -156,6 +192,7 @@ message DebugOptions {
     LIBRARY_FUSION_TYPE_ELTWISE = 2;
     LIBRARY_FUSION_TYPE_REDUCE = 3;
     LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT = 4;
+    LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION = 5;
   }
 
   enum XnnGraphFusionMode {
@@ -171,6 +208,9 @@ message DebugOptions {
   // The number of seconds to wait before warning about a rendezvous call that
   // has not yet timed out.
   optional int32 xla_cpu_collective_call_warn_stuck_seconds = 418;
+
+  // The number of seconds to wait before terminating a collective.
+  optional int32 xla_cpu_collective_timeout_seconds = 438;
 
   // Use region analysis in copy insertion pass.
   optional bool xla_cpu_copy_insertion_use_region_analysis = 337;
@@ -202,6 +242,11 @@ message DebugOptions {
   // Note, this does not correspond to the exact same behavior as the gpu flag
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
+
+  // When xla_enable_platform_dependent_math is true, we allow operations to use
+  // calculations that produce different results depending on the current
+  // machine.
+  optional bool xla_cpu_enable_platform_dependent_math = 425;
 
   // Call oneDNN custom call thunks in the CPU backend
   optional bool xla_cpu_experimental_onednn_custom_call = 412;
@@ -269,18 +314,12 @@ message DebugOptions {
 
   // go/keep-sorted end
 
-  reserved 298;  // Was xla_cpu_use_thunk_runtime
-
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","reserved","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend"] // NOLINT
   // clang-format on
-
-  reserved 160;  // Was xla_gpu_enable_cudnn_frontend
-
-  reserved 352;  // xla_gpu_dump_hlo_unoptimized_snapshots
 
   // Command buffer scheduling mode.
   // SERIALIZE: Serialize all commands in a command buffer.
@@ -294,27 +333,6 @@ message DebugOptions {
     LHS = 2;
   }
 
-  // Options for the generic Triton emitter.
-  // Set with xla_gpu_unsupported_generic_triton_emitter_features.
-  enum GenericTritonEmitterFeature {
-    // No specfic meaning, zero value for protobuf best practices.
-    GENERIC_TRITON_EMITTER_UNSPECIFIED = 0;
-    // Enable nest_gemm_fusion pass to convert gemms to be emitted by the
-    // generic Triton emitter.
-    GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM = 1;
-    // Disable legacy GEMM emitter, that might lead to crashes if GEMM is not
-    // supported by the generic emitter.
-    GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM = 2;
-    // Do not restrict which ops can be present in the GEMM fusion.
-    GENERIC_TRITON_EMITTER_ALLOW_ALL_OPS_IN_GEMM_FUSION = 3;
-    // Do not restrict the shapes of the operands and the result of the dot
-    // instruction.
-    GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES = 4;
-    // Fail in autotuner if any of the configs are not supported.
-    // Otherwise, the autotuner will silenly ignore configs that are regected.
-    GENERIC_TRITON_EMITTER_MUST_ACCEPT_ALL_AUTOTUNER_CONFIGS = 5;
-  }
-
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
   enum PipelineParallelismOptLevel {
     PIPELINE_PARALLELISM_OPT_LEVEL_DISABLE = 0;
@@ -325,14 +343,23 @@ message DebugOptions {
     // Additionally, enable collective-permute cycle decomposer. This set of
     // optimizations will lead to best overlap for trivial pipeline parallelism
     // implementation.
-    reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
+    reserved "PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER";
+    reserved 2;
   }
+
+  // Limits the thunk buffer debug instrumentation to specific thunks.
+  optional ThunkBufferDebugFilter
+      xla_gpu_experimental_thunk_buffer_debug_filter = 424;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
   // its inputs) to the --xla_dump_to directory. This flag is currently
   // supported on XLA:GPU and XLA:CPU.
   optional bool xla_dump_hlo_unoptimized_snapshots = 405;
+
+  // Enable communication optimization patterns specified in Enzyme. More
+  // details in http://shortn/_jXJ2VFoyMN.
+  optional bool xla_enable_enzyme_comms_opt = 429;
 
   // Denylist for cuDNN convolutions.
   optional string xla_gpu_algorithm_denylist_path = 128;
@@ -402,13 +429,6 @@ message DebugOptions {
   // transformation.
   optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
-  // Do not lock collective cliques for each XLA:GPU execution, and instead
-  // use per-process cliques that are never unlocked. This disables deadlock
-  // prevention mechanism in XLA:GPU and should be used at you own risk. If
-  // collective operations from concurrent executions are not correcctly ordered
-  // it may lead to deadlocks, crashes or will produce garbage.
-  optional bool xla_gpu_collectives_use_persistent_cliques = 354;
-
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
@@ -442,6 +462,14 @@ message DebugOptions {
   // but potentially higher the performance.
   optional int32 xla_gpu_cudnn_gemm_max_plans = 318;
 
+  // Allows using the dot precision algorithm `ALG_DOT_BF16_BF16_F32 for f32 dot
+  // ops by default. This is expected to improve performance at the expense of
+  // numerical accuracy.
+  //
+  // At this point, XLA may still choose a higher precision dot algorithm, but
+  // we expect this to change at a later point.
+  optional bool xla_gpu_default_to_alg_dot_bf16_bf16_f32 = 441;
+
   // Guarantees run-to-run determinism.
   // This flag implies --xla_gpu_exclude_nondeterministic_ops and in addition
   // disables autotuning.
@@ -453,6 +481,9 @@ message DebugOptions {
   optional bool xla_gpu_disable_gpuasm_optimizations = 103;
 
   // DotMerger pass threshold size to be used in MB.
+  // This pass merges dots that are too small to achieve good occupancy with
+  // other dots. Dots are considered for merging when the size of their
+  // inputs+output is within the threshold.
   optional int32 xla_gpu_dot_merger_threshold_mb = 331;
 
   // File to write autotune logs to. It will stored in txt format.
@@ -463,7 +494,12 @@ message DebugOptions {
   // compilation, possibly multiple times per process. This only works on CUDA.
   optional string xla_gpu_dump_autotune_results_to = 222;
 
-  optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
+  // This flag will be deleted soon. Please use
+  // xla_gpu_dump_autotuned_instructions instead.
+  optional bool xla_gpu_dump_autotuned_gemm_fusions = 232 [deprecated = true];
+
+  // Whether to dump instructions before/after autotuning.
+  optional bool xla_gpu_dump_autotuned_instructions = 445;
 
   // Whether to dump llvm ir when compiling to ptx.
   optional bool xla_gpu_dump_llvmir = 155;
@@ -533,6 +569,8 @@ message DebugOptions {
 
   optional bool xla_gpu_enable_pipelined_collectives = 239 [deprecated = true];
 
+  optional bool xla_gpu_enable_pipelined_host_offloading = 440;
+
   optional bool xla_gpu_enable_pipelined_p2p = 246;
 
   optional bool xla_gpu_enable_pipelined_reduce_scatter = 231;
@@ -548,11 +586,14 @@ message DebugOptions {
   // Whether reduction epilogue fusion is enabled in fusion passes.
   optional bool xla_gpu_enable_reduction_epilogue_fusion = 243;
 
-  // Enable the scatter determinism expander, an optimized pass that
-  // rewrites scatter operations to ensure deterministic behavior with high
-  // performance.
+  // Makes scatter ops deterministic and enables the use of the scatter
+  // determinism expander. This is an optimized pass that rewrites scatter
+  // operations to ensure deterministic behavior with high performance. If the
+  // optimization pass does not support a particular scater op, it will be made
+  // deterministic using a slower implementation.
   // Note that even when this flag is disabled, scatter operations may still
-  // be deterministic, although with additional overhead.
+  // be deterministic, with the slower implemntation. This is the case when
+  // 'xla_gpu_exclude_nondeterministic_ops' is enabled.
   optional bool xla_gpu_enable_scatter_determinism_expander = 345;
 
   // Enables shared constants for XLA/GPU. This allows large constants to be
@@ -579,6 +620,8 @@ message DebugOptions {
   // a deterministic implementation.
   optional bool xla_gpu_exclude_nondeterministic_ops = 297;
 
+  optional bool xla_gpu_executable_embed_debug_info = 437;
+
   // Timeout to terminate on stuck rendez-vous.
   optional int32 xla_gpu_executable_terminate_timeout_seconds = 328;
 
@@ -586,6 +629,23 @@ message DebugOptions {
   optional int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
 
   optional bool xla_gpu_exhaustive_tiling_search = 219;
+
+  // If true, autotune all fusions with block level emitter.
+  optional bool xla_gpu_experimental_all_fusions_with_triton = 444;
+
+  // If true, allows unroll factor 8 on Blackwell architectures. This is also
+  // guarded with a heuristic, but the heuristic is not perfect, so enabling
+  // this flag can cause both performance improvements and performance
+  // regressions.
+  optional bool xla_gpu_experimental_allow_unroll_factor_eight = 430;
+
+  // Enables an Ahead-of-Time (AOT) compilation flow where the compiled binary
+  // includes the generated Thunks. In contrast, the legacy flow only compiles
+  // up to the HLO optimization stage, before Thunk generation.
+  optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
+
+  // List of autotuner backends to enable. If empty, all backends are enabled.
+  repeated AutotuneBackend xla_gpu_experimental_autotune_backends = 442;
 
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
@@ -605,17 +665,27 @@ message DebugOptions {
   // Dump FDO profiles in a binary format to a separate file.
   optional bool xla_gpu_experimental_dump_fdo_profiles = 338;
 
+  // Dump the serialized GPU executables to 'gpu_executable' suffixed
+  // files in the directory specified by `xla_dump_to`.
+  // No-op if `xla_dump_to` isn't set, or during autotuning compilations.
+  //
+  // The dumped files are serialized `xla.ExecutableAndOptionsProto` messages,
+  // which contain the binary serialized `xla.gpu.GpuExecutableProto`, in the
+  // `serialized_executable` field.
+  optional bool xla_gpu_experimental_dump_gpu_executable = 427;
+
   // Enable windowed einsum(collective matmul) rewrite for all-to-all + gemm
   // This feature is still experimental and effective only
   // xla_gpu_multi_streamed_windowed_einsum is set to true.
   optional bool xla_gpu_experimental_enable_alltoall_windowed_einsum = 360;
 
+  // Enables an experimental feature to record outputs of selected thunks.
+  // Writes to --xla_dump_to.
+  optional bool xla_gpu_experimental_enable_buffer_saver_on_thunks = 431;
+
   // Enables an experimental feature to record checksums of selected thunk
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
-
-  // Enables an experimental feature for command buffer conversion on thunks.
-  optional bool xla_gpu_experimental_enable_command_buffer_on_thunks = 394;
 
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
@@ -661,9 +731,6 @@ message DebugOptions {
   // supported by XLA's Triton emitter. Tile sizes are assigned automatically.
   optional bool xla_gpu_experimental_enable_triton_heroless_priority_fusion =
       340;
-
-  // When possible, XLA will use Triton's TMA loads/stores.
-  optional bool xla_gpu_experimental_enable_triton_tma = 355;
 
   // When possible, XLA will use Triton's auto warp specialization feature.
   optional bool xla_gpu_experimental_enable_triton_warp_specialization = 421;
@@ -726,6 +793,11 @@ message DebugOptions {
   optional bool xla_gpu_ftz = 62;
 
   optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
+
+  // Does not work anymore.
+  // TODO(446874531): Delete this and add a generalized override mechanism.
+  optional string xla_gpu_gemm_autotuner_override_file = 434
+      [deprecated = true];
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -811,7 +883,9 @@ message DebugOptions {
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   optional int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
 
-  optional string xla_gpu_override_gemm_autotuner = 295;
+  // Does not work anymore.
+  // TODO(446874531): Delete this and add a generalized override mechanism.
+  optional string xla_gpu_override_gemm_autotuner = 295 [deprecated = true];
 
   optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
@@ -854,10 +928,6 @@ message DebugOptions {
   // it's done.
   optional bool xla_gpu_shard_autotuning = 304;
 
-  // If true, abort immediately when conv algorithm picker fails, rather than
-  // logging a warning and proceeding with fallback.
-  optional bool xla_gpu_strict_conv_algorithm_picker = 156;
-
   // Description of the target platform in GpuTargetConfigProto format; if
   // provided, deviceless compilation is assumed, and the current device is
   // ignored.
@@ -882,10 +952,9 @@ message DebugOptions {
   // memory, or have bugs.
   optional bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
 
-  // If true, XLA will annotate instructions in the dumps with emitter code
-  // location (source:line) annotations. This helps to identify the source of
-  // the code that emits a particular instruction.
-  optional bool xla_gpu_unsupported_annotate_with_emitter_loc = 358;
+  // Internal testing flag to enable new tile nesting pipeline that removes
+  // nested fusions at HLO level.
+  optional bool xla_gpu_unsupported_disable_nested_gemm_fusions = 443;
 
   // Internal testing flag to switch AllReduceDecomposer on or off.
   optional bool xla_gpu_unsupported_enable_all_reduce_decomposer = 384;
@@ -904,14 +973,6 @@ message DebugOptions {
   // Enable experimental triton multi-output fusion.
   // TODO(b/390559452): Remove the flag once the feature is stable.
   optional bool xla_gpu_unsupported_enable_triton_multi_output_fusion = 382;
-
-  // Controls smaller knobs of the generic Triton emitter.
-  // Do not rely on this flag currently supported values as they are subject to
-  // change. Check 'debug_option_flags' for description.
-  // TODO(b/393299275): remove the flag once we fully switched to the new
-  // emitter.
-  repeated GenericTritonEmitterFeature
-      xla_gpu_unsupported_generic_triton_emitter_features = 398;
 
   // Internal debug/testing flag to override the number of devices in the fast
   // interconnect domain. Default is 0, which means the number of devices is not
@@ -946,14 +1007,6 @@ message DebugOptions {
   optional bool xla_gpu_verify_triton_fusion_numerics = 291;
 
   // go/keep-sorted end
-
-  reserved 167;  // xla_gpu_redzone_scratch_max_megabytes
-  reserved 266;  // xla_gpu_enable_triton_hopper
-  reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
-  reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
-  reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
-  reserved "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms";
-  reserved 367;
 
   //--------------------------------------------------------------------------//
   // XLA:TPU options.
@@ -1003,9 +1056,6 @@ message DebugOptions {
   // mode.
   optional bool xla_cpu_multi_thread_eigen = 60;
 
-  reserved 63;   // Was xla_gpu_disable_multi_streaming
-  reserved 134;  // Was xla_gpu_use_random_streams
-
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
   optional bool xla_llvm_enable_alias_scope_metadata = 70;
@@ -1020,8 +1070,6 @@ message DebugOptions {
 
   // If true, a set of expensive LLVM optimization passes will not be run.
   optional bool xla_llvm_disable_expensive_passes = 73;
-
-  reserved 80;  // Was hlo_reduce_precision_options
 
   // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
   // computation will run n! times with all permunations of layouts for the
@@ -1039,15 +1087,8 @@ message DebugOptions {
   // HLO graph.
   optional bool xla_hlo_graph_sharding_color = 92;
 
-  reserved 93;  // Was xla_hlo_tfgraph_device_scopes
-  reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
-
   // Call oneDNN thunks for matmul and convolution fusions in the CPU backend.
   optional bool xla_cpu_use_onednn = 97;
-
-  reserved 177;  // Was xla_cpu_use_xla_runtime
-  reserved 98;   // Was xla_gpu_max_kernel_unroll_factor
-  reserved 207;  // Was xla_cpu_sparse_cuda_threads
 
   // Allows xla to increase the output precision of floating point operations
   // and all floating-point conversions to be simplified, including those
@@ -1065,10 +1106,6 @@ message DebugOptions {
   // switching but we let the user override this behavior to help run tests on
   // the host that run models in parallel across multiple devices.
   optional int32 xla_force_host_platform_device_count = 102;
-
-  reserved 171;  // Was xla_cpu_enable_mlir_lowering
-  reserved 173;  // Was xla_gpu_enable_mlir_lowering
-  reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
   // Enable fast math with eigen in the HLO evaluator.
   optional bool xla_hlo_evaluator_use_fast_path = 106;
@@ -1124,6 +1161,10 @@ message DebugOptions {
   // match this regular expression.  Set to .* to dump before/after all passes.
   optional string xla_dump_hlo_pass_re = 111;
 
+  // If specified, dumps debug logs (e.g. IR like LLVM or MLIR) before and
+  // after emitters that match this regular expression.
+  optional string xla_dump_emitter_re = 433;
+
   // Specifies the format that HLO is dumped in.  Multiple of these may be
   // specified.
   optional bool xla_dump_hlo_as_text = 112;
@@ -1167,8 +1208,6 @@ message DebugOptions {
   // Whether to dump mlir using pretty print form.
   optional bool xla_dump_full_hlo_config = 381;
 
-  reserved 130;  // Was xla_gpu_deterministic_reductions
-
   // Debug options that trigger execution errors when NaN or Inf are detected.
   optional bool xla_tpu_detect_nan = 135;
   optional bool xla_tpu_detect_inf = 136;
@@ -1176,13 +1215,9 @@ message DebugOptions {
   // True if TraceMe annotations are enabled for XLA:CPU.
   optional bool xla_cpu_enable_xprof_traceme = 137;
 
-  reserved 141;  // was xla_gpu_asm_extra_flags
-
   // Per-heap size constraint. New heaps will be created if per-heap max size is
   // reached.
   optional int32 xla_multiheap_size_constraint_per_heap = 142;
-
-  reserved 143;  // Was xla_detailed_logging_and_dumping
 
   // Enable detailed logging into vlog. If this is disabled, no
   // compilation summary will be printed in the end of computation.
@@ -1190,18 +1225,6 @@ message DebugOptions {
 
   // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
   optional bool xla_enable_dumping = 253;
-
-  // Used to be xla_gpu_enable_async_all_reduce
-  // xla_gpu_enable_async_collective_broadcast
-  // xla_gpu_enable_async_collective_permute
-  // xla_gpu_enable_async_all_gather
-  // xla_gpu_enable_async_reduce_scatter
-  // xla_gpu_enable_async_all_to_all
-  // xla_gpu_enable_async_collectives
-  reserved 152, 278, 183, 199, 200, 201, 238;
-
-  // Was xla_gpu_all_reduce_contiguous, xla_gpu_enable_all_reduce_splitter
-  reserved 158, 299;
 
   // Whether to force inline before llvm module split to get a more balanced
   // splits for parallel compilation.
@@ -1215,18 +1238,6 @@ message DebugOptions {
   // enables dumping in all pipelines.
   optional string xla_dump_hlo_pipeline_re = 154;
 
-  reserved 161;  // Was xla_gpu_bef_executable
-  reserved 162;  // Was xla_gpu_bef_thunk
-  reserved 169;  // Was xla_gpu_enable_xla_runtime_executable
-  reserved 233;  // was xla_gpu_enable_gpu2_runtime
-  reserved 234;  // was xla_gpu_enable_gpu2_hal
-  reserved 202;  // Was xla_gpu_graph_num_runs_to_instantiate
-  reserved 230;  // Was xla_gpu_graph_eviction_timeout_seconds
-  reserved 168;  // Was xla_gpu_simplify_all_fp_conversions.
-  reserved 172;  // Was xla_gpu_normalize_layouts.
-  reserved 263;  // Was xla_gpu_enable_custom_fusions
-  reserved 264;  // Was xla_gpu_enable_custom_fusions_re
-
   // Generate calls to Arm Compute Library in the CPU backend.
   optional bool xla_cpu_use_acl = 174;
 
@@ -1234,20 +1245,7 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   optional bool xla_cpu_strict_dot_conv_math = 175;
 
-  reserved 402;  // Was xla_cpu_dump_unoptimized_hlo_snapshots
-
   optional bool xla_dump_latency_hiding_schedule = 182;
-
-  reserved 184;  // Was xla_cpu_enable_mlir_tiling_and_fusion.
-  reserved 192;  // Was xla_cpu_enable_mlir_fusion_outlining.
-  reserved 191;  // Was xla_cpu_enable_experimental_deallocation.
-  reserved 195;  // Was xla_cpu_enable_custom_matmul_tiling.
-  reserved 196;  // Was xla_cpu_matmul_tiling_m_dim.
-  reserved 197;  // Was xla_cpu_matmul_tiling_n_dim.
-  reserved 198;  // Was xla_cpu_matmul_tiling_k_dim.
-
-  reserved 204;  // Was xla_gpu_lhs_enable_gpu_async_tracker.
-  reserved 313;  // Was xla_gpu_run_post_layout_collective_pipeliner.
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -1258,25 +1256,28 @@ message DebugOptions {
   // The partitioning algorithm to be used in the PartitionAssignment pass.
   optional PartitioningAlgorithm xla_partitioning_algorithm = 187;
 
-  reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
-  reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
-  reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
-
   // Maximum number of buffers to print when debugging buffer assignment.
   optional int64 xla_debug_buffer_assignment_show_max = 251;
 
-  enum UnstableReductionDetectionMode {
-    UNSTABLE_REDUCTION_DETECTION_MODE_NONE = 0;
-    UNSTABLE_REDUCTION_DETECTION_MODE_WARNING = 1;
-    UNSTABLE_REDUCTION_DETECTION_MODE_FAIL = 2;
+  enum DetectionMode {
+    DETECTION_MODE_NONE = 0;
+    DETECTION_MODE_WARNING = 1;
+    DETECTION_MODE_FAIL = 2;
   }
-  // Whether to enable checks for unstable reductions in computations.
-  optional UnstableReductionDetectionMode xla_detect_unstable_reductions = 403;
+  // Whether to enable checks for unstable reductions in computations
+  // pre-optimizations.
+  optional DetectionMode xla_detect_unstable_reductions = 403;
 
-  reserved 275;  // was xla_gpu_enable_mlir_emitters
-  reserved 281;  // was xla_gpu_max_mlir_kernels
-  reserved 282;  // was xla_gpu_skip_mlir_kernels
-  reserved 303;  // was xla_gpu_mlir_emitter_level
+  // Whether to enable checks for unstable reductions in computations
+  // post-optimizations.
+  optional DetectionMode xla_detect_unstable_reductions_post_optimizations =
+      432;
+
+  // Whether to enable checks for NaN values in computations.
+  optional DetectionMode xla_gpu_detect_nan = 426;
+
+  // Whether to enable checks for Inf values in computations.
+  optional DetectionMode xla_gpu_detect_inf = 428;
 
   // If true, large constants will be printed out when dumping HLOs.
   optional bool xla_dump_large_constants = 290;
@@ -1284,14 +1285,10 @@ message DebugOptions {
   // Base length to rewrite the reduce window to, no rewrite if set to 0.
   optional int64 xla_reduce_window_rewrite_base_length = 293;
 
-  reserved 302;  // was xla_use_shardy
-
   // The command buffer trace cache size, increasing the cache size may
   // sometimes reduces the chances of doing command buffer tracing for
   // updating command buffer instance.
   optional int64 xla_cmd_buffer_trace_cache_size = 311;
-
-  reserved 314;  // was legacy_command_buffer_custom_call_targets
 
   // This flag is used for controlling HLO dumping and NVTX marker. If turned
   // on, both HLO dumping and NVTX marker will use syntactic sugar wrappers
@@ -1324,8 +1321,6 @@ message DebugOptions {
   // When disabled, execute in op-by-op mode.
   // TODO(b/355487968): Remove this option when validation complete.
   optional bool xla_enable_command_buffers_during_profiling = 317;
-
-  reserved 319;  // was xla_gpu_enable_libnvjitlink with boolean type.
 
   enum AutotuneCacheMode {
     AUTOTUNE_CACHE_MODE_UNSPECIFIED = 0;
@@ -1366,39 +1361,117 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 423
+  // Next id: 446
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  // Reserved tags were xla_hlo_dump_as_graphdef, xla_dump_to,
-  // xla_gpu_use_horizontal_fusion,
-  // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
-  // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
-  // xla_gpu_enable_cuda_graphs
-  // xla_gpu_allow_all_reduce_kernel
-  // xla_gpu_enable_experimental_block_size
-  // xla_gpu_graph_level
-  // xla_gpu_single_wave_autotuning
-  // xla_gpu_enable_persistent_temp_buffers
-  // xla_gpu_enable_triton_gemm_int4
-  // xla_gpu_experimental_enable_triton_i4_rewrites
-  // xla_gpu_enable_priority_fusion
-  // xla_gpu_experimental_enable_triton_softmax_priority_fusion
-  // xla_gpu_pgle_accuracy_checker
-  // xla_gpu_enable_heuristic_pass_configuration
-  // xla_gpu_enable_dot_strength_reduction
-  // xla_gpu_triton_fusion_level
-  // xla_gpu_enable_bf16_3way_gemm
-  // xla_gpu_enable_bf16_6way_gemm
-  // xla_gpu_enable_cudnn_fmha
-  // xla_gpu_unsupported_force_triton_gemm
-  // xla_allow_get_default_platform
-  // xla_gpu_ensure_minor_dot_contraction_dims
-  // xla_gpu_unsafe_pipelined_loop_annotator
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
-      325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249, 309;
+  reserved "hlo_reduce_precision_options";
+  reserved "legacy_command_buffer_custom_call_targets";
+  reserved "xla_allow_get_default_platform";
+  reserved "xla_cpu_dump_unoptimized_hlo_snapshots";
+  reserved "xla_cpu_enable_custom_matmul_tiling";
+  reserved "xla_cpu_enable_experimental_deallocation";
+  reserved "xla_cpu_enable_mlir_fusion_outlining";
+  reserved "xla_cpu_enable_mlir_lowering";
+  reserved "xla_cpu_enable_mlir_tiling_and_fusion";
+  reserved "xla_cpu_matmul_tiling_k_dim";
+  reserved "xla_cpu_matmul_tiling_m_dim";
+  reserved "xla_cpu_matmul_tiling_n_dim";
+  reserved "xla_cpu_sparse_cuda_threads";
+  reserved "xla_cpu_use_thunk_runtime";
+  reserved "xla_cpu_use_xla_runtime";
+  reserved "xla_detailed_logging_and_dumping";
+  reserved "xla_dump_ir";
+  reserved "xla_experimental_exec_time_optimization_effort";
+  reserved "xla_gpu_all_reduce_contiguous";
+  reserved "xla_gpu_allow_all_reduce_kernel";
+  reserved "xla_gpu_asm_extra_flags";
+  reserved "xla_gpu_bef_executable";
+  reserved "xla_gpu_bef_thunk";
+  reserved "xla_gpu_collectives_use_persistent_cliques";
+  reserved "xla_gpu_deterministic_reductions";
+  reserved "xla_gpu_disable_multi_streaming";
+  reserved "xla_gpu_dump_hlo_unoptimized_snapshots";
+  reserved "xla_gpu_enable_all_reduce_splitter";
+  reserved "xla_gpu_enable_async_all_gather";
+  reserved "xla_gpu_enable_async_all_reduce";
+  reserved "xla_gpu_enable_async_all_to_all";
+  reserved "xla_gpu_enable_async_collective_broadcast";
+  reserved "xla_gpu_enable_async_collective_permute";
+  reserved "xla_gpu_enable_async_collectives";
+  reserved "xla_gpu_enable_async_reduce_scatter";
+  reserved "xla_gpu_enable_bf16_3way_gemm";
+  reserved "xla_gpu_enable_bf16_6way_gemm";
+  reserved "xla_gpu_enable_cuda_graphs";
+  reserved "xla_gpu_enable_cudnn_fmha";
+  reserved "xla_gpu_enable_cudnn_frontend";
+  reserved "xla_gpu_enable_custom_fusions_re";
+  reserved "xla_gpu_enable_custom_fusions";
+  reserved "xla_gpu_enable_dot_strength_reduction";
+  reserved "xla_gpu_enable_experimental_block_size";
+  reserved "xla_gpu_enable_gpu2_hal";
+  reserved "xla_gpu_enable_gpu2_runtime";
+  reserved "xla_gpu_enable_heuristic_pass_configuration";
+  reserved "xla_gpu_enable_libnvjitlink";
+  reserved "xla_gpu_enable_mlir_emitters";
+  reserved "xla_gpu_enable_mlir_lowering";
+  reserved "xla_gpu_enable_nccl_per_stream_comms";
+  reserved "xla_gpu_enable_persistent_temp_buffers";
+  reserved "xla_gpu_enable_pgle_accuracy_checker";
+  reserved "xla_gpu_enable_priority_fusion";
+  reserved "xla_gpu_enable_softmax_fusion";
+  reserved "xla_gpu_enable_triton_gemm_int4";
+  reserved "xla_gpu_enable_triton_hopper";
+  reserved "xla_gpu_enable_triton_softmax_fusion";
+  reserved "xla_gpu_enable_triton_softmax_priority_fusion";
+  reserved "xla_gpu_enable_xla_runtime_executable";
+  reserved "xla_gpu_ensure_minor_dot_contraction_dims";
+  reserved "xla_gpu_experimental_enable_dynamic_dot_search_space";
+  reserved "xla_gpu_experimental_enable_nan_counter_on_thunks";
+  reserved "xla_gpu_experimental_enable_triton_i4_rewrites";
+  reserved "xla_gpu_experimental_enable_triton_softmax_priority_fusion";
+  reserved "xla_gpu_graph_eviction_timeout_seconds";
+  reserved "xla_gpu_graph_level";
+  reserved "xla_gpu_graph_num_runs_to_instantiate";
+  reserved "xla_gpu_lhs_enable_gpu_async_tracker";
+  reserved "xla_gpu_max_kernel_unroll_factor";
+  reserved "xla_gpu_max_mlir_kernels";
+  reserved "xla_gpu_mlir_emitter_level";
+  reserved "xla_gpu_normalize_layouts";
+  reserved "xla_gpu_redzone_scratch_max_megabytes";
+  reserved "xla_gpu_run_post_layout_collective_pipeliner";
+  reserved "xla_gpu_simplify_all_fp_conversions";
+  reserved "xla_gpu_simplify_gathers";
+  reserved "xla_gpu_simplify_scatters";
+  reserved "xla_gpu_single_wave_autotuning";
+  reserved "xla_gpu_skip_mlir_kernels";
+  reserved "xla_gpu_triton_fusion_level";
+  reserved "xla_gpu_triton_gemm_disable_reduced_precision_reduction";
+  reserved "xla_gpu_unsafe_fallback_to_driver_on_ptxas_error";
+  reserved "xla_gpu_unsafe_pipelined_loop_annotator";
+  reserved "xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms";
+  reserved "xla_gpu_unsupported_force_triton_gemm";
+  reserved "xla_gpu_unsupported_generic_triton_emitter_features";
+  reserved "xla_gpu_use_cudnn_batchnorm";
+  reserved "xla_gpu_use_horizontal_fusion";
+  reserved "xla_gpu_use_random_streams";
+  reserved "xla_hlo_dump_as_graphdef";
+  reserved "xla_hlo_tfgraph_device_scopes";
+  reserved "xla_use_shardy";
+  reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
+  reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
+  reserved "xla_gpu_experimental_enable_triton_tma";
+  reserved "xla_gpu_strict_conv_algorithm_picker";
+
+  reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
+      158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
+      183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204,
+      206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249,
+      263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302,
+      303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361,
+      367, 369, 371, 385, 394, 398, 402, 423;
 }
 
 // Contains flags which affects the GPU compilation result.
@@ -1527,7 +1600,8 @@ message ExecutionOptions {
   // works on TPU.
   bool deduplicate_hlo = 12;
 
-  reserved 13;  // Was broadcast_replicated_parameters_via_collectives
+  reserved "broadcast_replicated_parameters_via_collectives";
+  reserved 13;
 
   // Allows sharding propagation to propagate to the parameters. This changes
   // the input shape of the computation (which is undesirable), but it can be
@@ -1584,7 +1658,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 42.
+// Next id: 43.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1639,7 +1713,8 @@ message HloModuleConfigProto {
   repeated uint64 memory_space_assignment_config = 23;
   repeated BoolList phase_ordering_config = 24;
   int32 phase_index = 25;
-  reserved 26;  // Was flag_config
+  reserved "flag_config";
+  reserved 26;
   repeated bool allow_spmd_sharding_propagation_to_parameters = 33;
   repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
@@ -1649,6 +1724,8 @@ message HloModuleConfigProto {
   bool use_shardy_partitioner = 34;
   ShardingConfigProto sharding_config = 38;
   ScheduleConfigProto schedule_config = 41;
+  // Number of devices in a fast-interconnect domain.
+  int64 partition_size = 42;
 }
 
 message HloModuleProtoWithConfig {

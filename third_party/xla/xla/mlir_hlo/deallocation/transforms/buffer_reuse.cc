@@ -394,8 +394,8 @@ bool hoistAllocs(Block& block) {
 void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
-  auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
+  auto alloca = memref::AllocaOp::create(
+      b, alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();
@@ -452,7 +452,9 @@ bool simplifyLoopDeallocs(Block& block) {
 
     getAliases(RegionBranchPoint::parent());
     for (auto& region : rbi->getRegions()) {
-      getAliases(region);
+      if (region.empty()) continue;
+      getAliases(RegionBranchPoint(cast<RegionBranchTerminatorOpInterface>(
+          region.front().getTerminator())));
     }
 
     for (auto it = eq.begin(), e = eq.end(); it != e; ++it) {

@@ -94,14 +94,14 @@ class TensorProtoFieldHelper : public std::false_type {};
 // values in TensorProto. See tensorflow/core/framework/tensor.proto.
 DEFINE_PROTO_FIELD_HELPER(float, float);
 DEFINE_PROTO_FIELD_HELPER(double, double);
-DEFINE_PROTO_FIELD_HELPER(int8, int);
-DEFINE_PROTO_FIELD_HELPER(uint8, int);
-DEFINE_PROTO_FIELD_HELPER(int16, int);
-DEFINE_PROTO_FIELD_HELPER(uint16, int);
-DEFINE_PROTO_FIELD_HELPER(int32, int);
-DEFINE_PROTO_FIELD_HELPER(uint32, uint32);
+DEFINE_PROTO_FIELD_HELPER(int8_t, int);
+DEFINE_PROTO_FIELD_HELPER(uint8_t, int);
+DEFINE_PROTO_FIELD_HELPER(int16_t, int);
+DEFINE_PROTO_FIELD_HELPER(uint16_t, int);
+DEFINE_PROTO_FIELD_HELPER(int32_t, int);
+DEFINE_PROTO_FIELD_HELPER(uint32_t, uint32);
 DEFINE_PROTO_FIELD_HELPER(int64_t, int64);
-DEFINE_PROTO_FIELD_HELPER(uint64, uint64);
+DEFINE_PROTO_FIELD_HELPER(uint64_t, uint64);
 DEFINE_PROTO_FIELD_HELPER(bool, bool);
 DEFINE_PROTO_FIELD_HELPER(qint8, int);
 DEFINE_PROTO_FIELD_HELPER(quint8, int);
@@ -142,13 +142,13 @@ struct CopyHelper<Eigen::half> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, Eigen::half* dst) {
     std::transform(begin, end, dst, [](int x) -> Eigen::half {
-      return Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16>(x));
+      return Eigen::numext::bit_cast<Eigen::half>(static_cast<uint16_t>(x));
     });
   }
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
     std::transform(begin, end, dst, [](Eigen::half h) -> int {
-      return static_cast<int>(Eigen::numext::bit_cast<uint16>(h));
+      return static_cast<int>(Eigen::numext::bit_cast<uint16_t>(h));
     });
   }
 };
@@ -158,13 +158,13 @@ struct CopyHelper<bfloat16> {
   template <typename SrcIter>
   static void ToArray(SrcIter begin, SrcIter end, bfloat16* dst) {
     std::transform(begin, end, dst, [](int x) -> bfloat16 {
-      return Eigen::numext::bit_cast<bfloat16>(static_cast<uint16>(x));
+      return Eigen::numext::bit_cast<bfloat16>(static_cast<uint16_t>(x));
     });
   }
   template <typename SrcIter, typename DstIter>
   static void FromArray(SrcIter begin, SrcIter end, DstIter dst) {
     std::transform(begin, end, dst, [](bfloat16 bf16) -> int {
-      return static_cast<int>(Eigen::numext::bit_cast<uint16>(bf16));
+      return static_cast<int>(Eigen::numext::bit_cast<uint16_t>(bf16));
     });
   }
 };
@@ -245,10 +245,10 @@ class TensorProtoHelper : public std::true_type {
 
 // Specialization for string.
 template <>
-class TensorProtoHelper<string> : public std::true_type {
+class TensorProtoHelper<std::string> : public std::true_type {
  public:
   static DataType GetDataType() { return DataType::DT_STRING; }
-  static void AddValue(const string& value, TensorProto* proto) {
+  static void AddValue(const std::string& value, TensorProto* proto) {
     *proto->mutable_string_val()->Add() = value;
   }
   template <typename IterType>

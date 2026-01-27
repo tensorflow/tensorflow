@@ -152,8 +152,8 @@ struct ChloLegalizeToHighLevelMhloPass
             return !qualifiesForDirectMhloLoweringAsinh(op);
           });
     }
-    conversionTarget
-        .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
+    conversionTarget.addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp,
+                                  chlo::ScanOp>();
 
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
@@ -189,6 +189,28 @@ struct ChloLegalizeToHloPass
     }
   }
 };
+
+LogicalResult convertScanChloToMhlo(chlo::ScanOp op,
+                                    PatternRewriter& rewriter) {
+  auto mhloOp = mhlo::ScanOp::create(
+      rewriter, op.getLoc(), op.getOutputs().getTypes(),
+      op.getInits().getTypes(), op.getInputs(), op.getInits(),
+      op.getDimensionAttr(), op.getIsReverseAttr(), op.getIsAssociativeAttr());
+
+  rewriter.inlineRegionBefore(op.getBody(), mhloOp.getBody(),
+                              mhloOp.getBody().end());
+
+  // Convert terminator to mhlo.return
+  for (auto& block : mhloOp.getBody()) {
+    Operation* terminator = block.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    rewriter.replaceOpWithNewOp<mhlo::ReturnOp>(terminator,
+                                                terminator->getOperands());
+  }
+
+  rewriter.replaceOp(op, mhloOp.getResults());
+  return success();
+}
 
 LogicalResult convertRaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
                                          PatternRewriter& rewriter) {
@@ -363,6 +385,7 @@ void populateChloToHighLevelMhloOpPatterns(
     patterns->add(mhlo::convertAsinhChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
+  patterns->add(mhlo::convertScanChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);
 }
 

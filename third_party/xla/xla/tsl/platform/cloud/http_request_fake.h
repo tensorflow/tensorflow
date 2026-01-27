@@ -65,7 +65,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   ///  and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
-  FakeHttpRequest(const string& request, const string& response,
+  FakeHttpRequest(const std::string& request, const string& response,
                   absl::Status response_status, string* captured_post_body,
                   const std::map<string, string>& response_headers,
                   uint64 response_code)

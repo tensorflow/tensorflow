@@ -27,12 +27,12 @@ class IncludeRenderer : public Renderer {
  public:
   explicit IncludeRenderer(RendererContext context);
 
-  string SelfHeaderPath() const;
+  std::string SelfHeaderPath() const;
   void SelfHeader();
   void Headers();
 
  private:
-  void Include(const string &tf_file_path);
+  void Include(const std::string& tf_file_path);
 };
 
 }  // namespace cpp

@@ -40,7 +40,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_protobuf//:protobuf",
         "@flatbuffers",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -69,7 +69,7 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
 )
 

@@ -1,4 +1,4 @@
-load("@local_xla//xla/tsl:tsl.bzl", "if_macos")
+load("@xla//xla/tsl:tsl.bzl", "if_macos")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -65,7 +65,7 @@ cc_library(
     deps = [
         # Required for custom threadpool usage:
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 

@@ -95,8 +95,9 @@ LocalService::CompileExecutables(
       build_options.device_allocator(),
       build_options.compile_thread_pool(),
       build_options.layout_canonicalization_callback(),
-      false,
-      {},
+      /*gpu_target_config=*/{},
+      /*cpu_target_config=*/{},
+      /*key_value_store=*/
       {build_options.key_value_store(), build_options.process_index(),
        build_options.process_count()},
       build_options.slice_size()};
@@ -121,7 +122,7 @@ LocalService::CompileExecutables(
   }
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 LocalService::CompileAotResults(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,

@@ -53,12 +53,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFuseBiasTFPass();
 // `enabledPatterns` is a set of labels used to filter out input patterns that
 //  do not have one of the labels in this set.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
-    ArrayRef<std::string> disabled_patterns = std::nullopt,
-    ArrayRef<std::string> enabled_patterns = std::nullopt);
+    ArrayRef<std::string> disabled_patterns = {},
+    ArrayRef<std::string> enabled_patterns = {});
 
 std::unique_ptr<OperationPass<ModuleOp>> createRetainCallOnceFuncsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createStripModuleMetadataPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass();
+std::unique_ptr<OperationPass<func::FuncOp>>
+createConvertTFLUnsignedIntToSignedPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 createConvertFunctionMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createDequantizeTFLSoftmaxPass();
@@ -70,12 +71,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVerifyFullyConvertedPass();
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFLStatefulPass();
 
 #define GEN_PASS_REGISTRATION
-#define GEN_PASS_CLASSES
 #define GEN_PASS_DECL_TOSALEGALIZETFPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFLPASS
 #define GEN_PASS_DECL_TOSALEGALIZETFTFLPASS
 #define GEN_PASS_DECL_TOSAFUSEBIASTFPASS
-#define GEN_PASS_DECL_TOSACONVERTTFLUINT8PASS
+#define GEN_PASS_DECL_TOSACONVERTTFLUNSIGNEDINTTOSIGNEDPASS
 #define GEN_PASS_DECL_TOSASTRIPQUANTTYPESPASS
 #define GEN_PASS_DECL_TOSALOWERCOMPLEXTYPESPASS
 #define GEN_PASS_DECL_TOSADEQUANTIZETFLSOFTMAXPASS

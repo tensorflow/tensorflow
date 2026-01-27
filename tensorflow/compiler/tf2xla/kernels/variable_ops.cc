@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <functional>
 #include <utility>
 
@@ -165,7 +166,7 @@ class ResourceGatherOp : public XlaOpKernel {
   }
 
  private:
-  int32 batch_dims_;
+  int32_t batch_dims_;
 };
 REGISTER_XLA_OP(Name("ResourceGather"), ResourceGatherOp);
 

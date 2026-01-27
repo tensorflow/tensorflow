@@ -47,7 +47,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -59,6 +59,7 @@ namespace {
 
 namespace LLVM = ::mlir::LLVM;
 namespace arith = ::mlir::arith;
+namespace se = stream_executor;
 namespace vector = ::mlir::vector;
 
 template <typename SourceOp>
@@ -217,13 +218,12 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
 
     llvm::transform(inputs, inputs.begin(), [&](mlir::Value v) -> mlir::Value {
       if (v.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
-        return b.create<arith::ExtFOp>(f32_ty, v);
+        return arith::ExtFOp::create(b, f32_ty, v);
       }
       if (v.getType() != f32_ty) {
-        return b.create<arith::TruncFOp>(f32_ty, v);
-      } else {
-        return v;
+        return arith::TruncFOp::create(b, f32_ty, v);
       }
+      return v;
     });
 
     mlir::StringAttr cvtIntr = b.getStringAttr(
@@ -237,17 +237,17 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
     size_t num_chunks = (num_elements + 2) / 4;
 
     mlir::Type chunks_ty = mlir::VectorType::get(num_chunks, i32_ty);
-    mlir::Value chunks = b.create<LLVM::UndefOp>(chunks_ty);
+    mlir::Value chunks = LLVM::UndefOp::create(b, chunks_ty);
     bool pos = false;
     for (size_t i = 0; i < inputs.size() / 2; i++) {
-      mlir::Value chunk_pos = b.create<LLVM::ConstantOp>(i32_ty, 2 * i / 4);
-      mlir::Value chunk = b.create<LLVM::ExtractElementOp>(chunks, chunk_pos);
-      LLVM::CallIntrinsicOp cvtOp = b.create<LLVM::CallIntrinsicOp>(
-          i32_ty, cvtIntr,
+      mlir::Value chunk_pos = LLVM::ConstantOp::create(b, i32_ty, 2 * i / 4);
+      mlir::Value chunk = LLVM::ExtractElementOp::create(b, chunks, chunk_pos);
+      LLVM::CallIntrinsicOp cvtOp = LLVM::CallIntrinsicOp::create(
+          b, i32_ty, cvtIntr,
           mlir::ValueRange{inputs[2 * i], inputs[2 * i + 1], chunk,
-                           b.create<LLVM::ConstantOp>(i1_ty, pos)});
-      chunks = b.create<LLVM::InsertElementOp>(chunks, cvtOp.getResult(0),
-                                               chunk_pos);
+                           LLVM::ConstantOp::create(b, i1_ty, pos)});
+      chunks = LLVM::InsertElementOp::create(b, chunks, cvtOp.getResult(0),
+                                             chunk_pos);
       pos ^= true;
     }
 
@@ -255,19 +255,20 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
       return b
           .create<mlir::UnrealizedConversionCastOp>(
               to_ty,
-              mlir::ValueRange{b.create<LLVM::BitcastOp>(
-                  mlir::VectorType::get(num_elements, i8_ty),
-                  b.create<LLVM::ExtractElementOp>(
-                      b.create<LLVM::BitcastOp>(
-                          mlir::VectorType::get(2, b.getI16Type()), chunks),
-                      b.create<LLVM::ConstantOp>(i32_ty, 0)))})
+              mlir::ValueRange{LLVM::BitcastOp::create(
+                  b, mlir::VectorType::get(num_elements, i8_ty),
+                  LLVM::ExtractElementOp::create(
+                      b,
+                      LLVM::BitcastOp::create(
+                          b, mlir::VectorType::get(2, b.getI16Type()), chunks),
+                      LLVM::ConstantOp::create(b, i32_ty, 0)))})
           .getResult(0);
     }
 
     return b
         .create<mlir::UnrealizedConversionCastOp>(
-            to_ty, mlir::ValueRange{b.create<LLVM::BitcastOp>(
-                       mlir::VectorType::get(num_elements, i8_ty), chunks)})
+            to_ty, mlir::ValueRange{LLVM::BitcastOp::create(
+                       b, mlir::VectorType::get(num_elements, i8_ty), chunks)})
         .getResult(0);
   }
 
@@ -278,22 +279,22 @@ struct RewriteFp8TruncFPattern : public Fp8OpRewritePattern<arith::TruncFOp> {
     mlir::FloatType f32_ty = b.getF32Type();
     mlir::IntegerType i32_ty = b.getI32Type();
     if (value.getType().getIntOrFloatBitWidth() < f32_ty.getWidth()) {
-      value = b.create<arith::ExtFOp>(f32_ty, value);
+      value = arith::ExtFOp::create(b, f32_ty, value);
     } else if (value.getType() != f32_ty) {
-      value = b.create<arith::TruncFOp>(f32_ty, value);
+      value = arith::TruncFOp::create(b, f32_ty, value);
     }
 
     mlir::StringAttr cvtIntr =
         b.getStringAttr(isFp8(to_ty) ? "llvm.amdgcn.cvt.pk.fp8.f32"
                                      : "llvm.amdgcn.cvt.pk.bf8.f32");
 
-    LLVM::CallIntrinsicOp cvtOp = b.create<LLVM::CallIntrinsicOp>(
-        i32_ty, cvtIntr,
-        mlir::ValueRange{value, b.create<LLVM::UndefOp>(f32_ty),
-                         b.create<LLVM::UndefOp>(i32_ty),
-                         b.create<LLVM::ConstantOp>(b.getI1Type(), 0)});
+    LLVM::CallIntrinsicOp cvtOp = LLVM::CallIntrinsicOp::create(
+        b, i32_ty, cvtIntr,
+        mlir::ValueRange{value, LLVM::UndefOp::create(b, f32_ty),
+                         LLVM::UndefOp::create(b, i32_ty),
+                         LLVM::ConstantOp::create(b, b.getI1Type(), 0)});
     mlir::Value res =
-        b.create<LLVM::TruncOp>(b.getI8Type(), cvtOp.getResults());
+        LLVM::TruncOp::create(b, b.getI8Type(), cvtOp.getResults());
     return b
         .create<mlir::UnrealizedConversionCastOp>(to_ty, mlir::ValueRange{res})
         .getResult(0);
@@ -365,7 +366,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
       return std::nullopt;
     }
 
-    mlir::Value vector = extract.getVector();
+    mlir::Value vector = extract.getSource();
 
     size_t element_count =
         mlir::cast<FixedVectorValue>(vector).getType().getNumElements();
@@ -389,7 +390,7 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
 
     for (const mlir::OpOperand& use : vector.getUses()) {
       extract = mlir::dyn_cast<vector::ExtractOp>(use.getOwner());
-      if (!extract || !extract->hasOneUse() || extract.getVector() != vector ||
+      if (!extract || !extract->hasOneUse() || extract.getSource() != vector ||
           !matchPos(extract, &pos)) {
         return std::nullopt;
       }
@@ -419,20 +420,20 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
     }
 
     if (to_ty.getWidth() > f32_ty.getWidth()) {
-      return b.create<arith::ExtFOp>(to_ty, v);
+      return arith::ExtFOp::create(b, to_ty, v);
     }
 
     if (to_ty.isBF16()) {
-      return b.create<LLVM::BitcastOp>(
-          to_ty,
-          b.create<LLVM::TruncOp>(
-              b.getI16Type(),
-              b.create<LLVM::LShrOp>(b.create<LLVM::BitcastOp>(i32_ty, v),
-                                     b.create<LLVM::ConstantOp>(i32_ty, 16))));
+      return LLVM::BitcastOp::create(
+          b, to_ty,
+          LLVM::TruncOp::create(
+              b, b.getI16Type(),
+              LLVM::LShrOp::create(b, LLVM::BitcastOp::create(b, i32_ty, v),
+                                   LLVM::ConstantOp::create(b, i32_ty, 16))));
     }
 
     assert(to_ty.getWidth() < f32_ty.getWidth());
-    return b.create<arith::TruncFOp>(to_ty, v);
+    return arith::TruncFOp::create(b, to_ty, v);
   }
 
   llvm::SmallVector<mlir::Value, 4> EmitVectorizedExtFromF8Intrinsic(
@@ -443,8 +444,8 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
     mlir::IntegerType i16_ty = b.getI16Type();
     mlir::IntegerType i8_ty = b.getI8Type();
     mlir::IntegerType i1_ty = b.getI1Type();
-    mlir::Value zero_cst = b.create<LLVM::ConstantOp>(i32_ty, 0);
-    mlir::Value one_cst = b.create<LLVM::ConstantOp>(i32_ty, 1);
+    mlir::Value zero_cst = LLVM::ConstantOp::create(b, i32_ty, 0);
+    mlir::Value one_cst = LLVM::ConstantOp::create(b, i32_ty, 1);
 
     size_t num_elements = value.getType().getNumElements();
     assert(num_elements == 2 || num_elements % 4 == 0);
@@ -454,22 +455,24 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
     mlir::Value chunks;
 
     if (num_elements == 2) {
-      chunks = b.create<LLVM::BitcastOp>(
-          chunks_ty,
-          b.create<LLVM::InsertElementOp>(
-              b.create<LLVM::UndefOp>(mlir::VectorType::get(2, i16_ty)),
-              b.create<LLVM::BitcastOp>(
-                  i16_ty, b.create<mlir::UnrealizedConversionCastOp>(
-                               mlir::VectorType::get(num_elements, i8_ty),
-                               mlir::ValueRange{value})
-                              .getResult(0)),
+      chunks = LLVM::BitcastOp::create(
+          b, chunks_ty,
+          LLVM::InsertElementOp::create(
+              b, LLVM::UndefOp::create(b, mlir::VectorType::get(2, i16_ty)),
+              LLVM::BitcastOp::create(
+                  b, i16_ty,
+                  mlir::UnrealizedConversionCastOp::create(
+                      b, mlir::VectorType::get(num_elements, i8_ty),
+                      mlir::ValueRange{value})
+                      .getResult(0)),
               zero_cst));
     } else {
-      chunks = b.create<LLVM::BitcastOp>(
-          chunks_ty, b.create<mlir::UnrealizedConversionCastOp>(
-                          mlir::VectorType::get(num_elements, i8_ty),
-                          mlir::ValueRange{value})
-                         .getResult(0));
+      chunks = LLVM::BitcastOp::create(
+          b, chunks_ty,
+          mlir::UnrealizedConversionCastOp::create(
+              b, mlir::VectorType::get(num_elements, i8_ty),
+              mlir::ValueRange{value})
+              .getResult(0));
     }
 
     llvm::SmallVector<mlir::Value, 4> results;
@@ -480,32 +483,32 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
     LLVM::FastmathFlagsAttr flags =
         LLVM::FastmathFlagsAttr::get(b.getContext(), LLVM::FastmathFlags::ninf);
     for (size_t i = 0; i < num_elements / 2; i++) {
-      mlir::Value chunk_pos = b.create<LLVM::ConstantOp>(i32_ty, (2 * i) / 4);
-      mlir::Value chunk = b.create<LLVM::ExtractElementOp>(chunks, chunk_pos);
-      LLVM::CallIntrinsicOp cvtOp = b.create<LLVM::CallIntrinsicOp>(
-          result_ty, cvtIntr,
+      mlir::Value chunk_pos = LLVM::ConstantOp::create(b, i32_ty, (2 * i) / 4);
+      mlir::Value chunk = LLVM::ExtractElementOp::create(b, chunks, chunk_pos);
+      LLVM::CallIntrinsicOp cvtOp = LLVM::CallIntrinsicOp::create(
+          b, result_ty, cvtIntr,
           mlir::ValueRange{
-              chunk, b.create<LLVM::ConstantOp>(i1_ty, ((2 * i) % 4) != 0)},
+              chunk, LLVM::ConstantOp::create(b, i1_ty, ((2 * i) % 4) != 0)},
           flags);
 
       results.push_back(
-          b.create<LLVM::ExtractElementOp>(cvtOp.getResult(0), zero_cst));
+          LLVM::ExtractElementOp::create(b, cvtOp.getResult(0), zero_cst));
       results.push_back(
-          b.create<LLVM::ExtractElementOp>(cvtOp.getResult(0), one_cst));
+          LLVM::ExtractElementOp::create(b, cvtOp.getResult(0), one_cst));
     }
 
     if (to_ty.isF16()) {
       result_ty = mlir::VectorType::get(2, b.getF16Type());
       cvtIntr = b.getStringAttr("llvm.amdgcn.cvt.pkrtz");
       for (size_t i = 0; i < num_elements / 2; i++) {
-        LLVM::CallIntrinsicOp cvtOp = b.create<LLVM::CallIntrinsicOp>(
-            result_ty, cvtIntr,
+        LLVM::CallIntrinsicOp cvtOp = LLVM::CallIntrinsicOp::create(
+            b, result_ty, cvtIntr,
             mlir::ValueRange{results[2 * i], results[2 * i + 1]}, flags);
 
         results[2 * i] =
-            b.create<LLVM::ExtractElementOp>(cvtOp.getResult(0), zero_cst);
+            LLVM::ExtractElementOp::create(b, cvtOp.getResult(0), zero_cst);
         results[2 * i + 1] =
-            b.create<LLVM::ExtractElementOp>(cvtOp.getResult(0), one_cst);
+            LLVM::ExtractElementOp::create(b, cvtOp.getResult(0), one_cst);
       }
     } else if (to_ty != f32_ty) {
       llvm::transform(results, results.begin(),
@@ -524,23 +527,24 @@ struct RewriteFp8ExtFPattern : public Fp8OpRewritePattern<arith::ExtFOp> {
     mlir::FloatType f32_ty = b.getF32Type();
     mlir::IntegerType i32_ty = b.getI32Type();
     mlir::IntegerType i8_ty = b.getI8Type();
-    mlir::Value zero_cst = b.create<LLVM::ConstantOp>(i32_ty, 0);
+    mlir::Value zero_cst = LLVM::ConstantOp::create(b, i32_ty, 0);
     // Emulate anyext
-    mlir::Value input = b.create<LLVM::BitcastOp>(
-        i32_ty, b.create<LLVM::InsertElementOp>(
-                    b.create<LLVM::UndefOp>(mlir::VectorType::get(4, i8_ty)),
-                    b.create<mlir::UnrealizedConversionCastOp>(
-                         i8_ty, mlir::ValueRange{value})
-                        .getResult(0),
-                    zero_cst));
+    mlir::Value input = LLVM::BitcastOp::create(
+        b, i32_ty,
+        LLVM::InsertElementOp::create(
+            b, LLVM::UndefOp::create(b, mlir::VectorType::get(4, i8_ty)),
+            mlir::UnrealizedConversionCastOp::create(b, i8_ty,
+                                                     mlir::ValueRange{value})
+                .getResult(0),
+            zero_cst));
     mlir::StringAttr cvtIntr =
         b.getStringAttr(isFp8(value.getType()) ? "llvm.amdgcn.cvt.f32.fp8"
                                                : "llvm.amdgcn.cvt.f32.bf8");
     LLVM::FastmathFlagsAttr flags =
         LLVM::FastmathFlagsAttr::get(b.getContext(), LLVM::FastmathFlags::ninf);
-    LLVM::CallIntrinsicOp cvtOp = b.create<LLVM::CallIntrinsicOp>(
-        mlir::TypeRange{f32_ty}, cvtIntr, mlir::ValueRange{input, zero_cst},
-        flags);
+    LLVM::CallIntrinsicOp cvtOp =
+        LLVM::CallIntrinsicOp::create(b, mlir::TypeRange{f32_ty}, cvtIntr,
+                                      mlir::ValueRange{input, zero_cst}, flags);
 
     return ConvertFromFloat(cvtOp.getResult(0), to_ty, b);
   }
@@ -557,11 +561,11 @@ class ConvertFloatAMDPass
   void runOnOperation() override {
     if (!gpu_device_info_.empty()) {
       se::GpuDeviceInfoProto device_info;
-      CHECK(tsl::protobuf::TextFormat::ParseFromString(gpu_device_info_,
-                                                       &device_info));
+      CHECK(
+          google::protobuf::TextFormat::ParseFromString(gpu_device_info_, &device_info));
       absl::StatusOr<se::DeviceDescription> device_description =
           se::DeviceDescription::FromProto(device_info);
-      TF_CHECK_OK(device_description.status());
+      CHECK_OK(device_description.status());
       cc_ = device_description->rocm_compute_capability();
     }
     mlir::RewritePatternSet patterns(&getContext());

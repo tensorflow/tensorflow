@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -118,6 +119,17 @@ TEST(ComparisonsTest, EqualFloat) {
                           BuiltinOperator_EQUAL);
   model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, EqualFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_EQUAL);
+  model.PopulateTensor<half>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.PopulateTensor<half>(model.input2(), {0.1, 0.2, 0.6, 0.5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, false));
@@ -219,6 +231,17 @@ TEST(ComparisonsTest, NotEqualFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(ComparisonsTest, NotEqualFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_NOT_EQUAL);
+  model.PopulateTensor<half>(model.input1(), {0.1, 0.9, 0.7, 0.3});
+  model.PopulateTensor<half>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, NotEqualInt) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT32,
                           BuiltinOperator_NOT_EQUAL);
@@ -292,6 +315,17 @@ TEST(ComparisonsTest, GreaterFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
 }
 
+TEST(ComparisonsTest, GreaterFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_GREATER);
+  model.PopulateTensor<half>(model.input1(), {0.1f, 0.9f, 0.7f, 0.3f});
+  model.PopulateTensor<half>(model.input2(), {0.1f, 0.2f, 0.6f, 0.5f});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(false, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
 TEST(ComparisonsTest, GreaterInt) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_INT32,
                           BuiltinOperator_GREATER);
@@ -331,6 +365,17 @@ TEST(ComparisonsTest, GreaterEqualFloat) {
                           BuiltinOperator_GREATER_EQUAL);
   model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, true, false));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, GreaterEqualFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_GREATER_EQUAL);
+  model.PopulateTensor<half>(model.input1(), {0.1f, 0.9f, 0.7f, 0.3f});
+  model.PopulateTensor<half>(model.input2(), {0.1f, 0.2f, 0.6f, 0.5f});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, true, true, false));
@@ -396,12 +441,10 @@ TEST(ComparisonsTest, LessFloat) {
 TEST(ComparisonsTest, LessFloat16) {
   ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
                           BuiltinOperator_LESS);
-  model.PopulateTensor<Eigen::half>(
-      model.input1(),
-      {Eigen::half(0.1), Eigen::half(0.9), Eigen::half(0.7), Eigen::half(0.3)});
-  model.PopulateTensor<Eigen::half>(
-      model.input2(),
-      {Eigen::half(0.1), Eigen::half(0.2), Eigen::half(0.6), Eigen::half(0.5)});
+  model.PopulateTensor<half>(model.input1(),
+                             {half(0.1f), half(0.9f), half(0.7f), half(0.3f)});
+  model.PopulateTensor<half>(model.input2(),
+                             {half(0.1f), half(0.2f), half(0.6f), half(0.5f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(false, false, false, true));
@@ -473,6 +516,19 @@ TEST(ComparisonsTest, LessEqualFloat) {
                           BuiltinOperator_LESS_EQUAL);
   model.PopulateTensor<float>(model.input1(), {0.1, 0.9, 0.7, 0.3});
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.6, 0.5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 1, 1, 4));
+}
+
+TEST(ComparisonsTest, LessEqualFloat16) {
+  ComparisonOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, TensorType_FLOAT16,
+                          BuiltinOperator_LESS_EQUAL);
+  model.PopulateTensor<half>(model.input1(),
+                             {half(0.1f), half(0.9f), half(0.7f), half(0.3f)});
+  model.PopulateTensor<half>(model.input2(),
+                             {half(0.1f), half(0.2f), half(0.6f), half(0.5f)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput(), ElementsAre(true, false, false, true));

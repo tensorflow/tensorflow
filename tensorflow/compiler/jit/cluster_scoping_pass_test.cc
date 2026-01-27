@@ -45,10 +45,11 @@ absl::Status ClusterScoping(std::unique_ptr<Graph>* graph) {
   return pass.Run(opt_options);
 }
 
-absl::flat_hash_map<string, string> GetXlaInternalScopes(const Graph& graph) {
-  absl::flat_hash_map<string, string> scopes;
+absl::flat_hash_map<std::string, std::string> GetXlaInternalScopes(
+    const Graph& graph) {
+  absl::flat_hash_map<std::string, std::string> scopes;
   for (Node* node : graph.nodes()) {
-    string scope;
+    std::string scope;
     if (GetNodeAttr(node->attrs(), kXlaInternalScopeAttr, &scope).ok()) {
       scopes[node->name()] = scope;
     }
@@ -63,7 +64,7 @@ absl::flat_hash_map<string, string> GetXlaInternalScopes(const Graph& graph) {
   return scopes;
 }
 
-Node* BuildStageNode(GraphDefBuilder& builder, string name,
+Node* BuildStageNode(GraphDefBuilder& builder, std::string name,
                      std::initializer_list<DataType> dtypes,
                      absl::Span<const ops::NodeOut> values) {
   auto opts = builder.opts()

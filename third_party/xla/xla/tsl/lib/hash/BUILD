@@ -38,8 +38,8 @@ cc_library(
         "@com_google_absl//absl/crc:crc32c",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:cord",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:cord",
     ],
 )
 

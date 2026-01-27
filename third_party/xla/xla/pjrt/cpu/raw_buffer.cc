@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/raw_buffer.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -76,7 +79,7 @@ void CpuTrackedDeviceEventPromise::SetReady() {
 }
 
 Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   event_.AndThen([promise = std::move(promise), event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
       promise.Set(*error);
@@ -102,18 +105,40 @@ Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
       });
 }
 
+/*static*/ tsl::AsyncValueRef<CpuEvent> CpuTrackedDeviceEvent::AfterAll(
+    absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events) {
+  tsl::AsyncValueRef<CpuEvent> definition_event;
+  if (events.empty()) {
+    return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
+  }
+  if (events.size() == 1) {
+    return tsl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
+  }
+
+  tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
+  for (auto& ev : events) {
+    tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event().AndThen(
+        [after_all](absl::Status status) mutable {
+          after_all.CountDown(std::move(status));
+        });
+  }
+  return std::move(after_all).AsRef();
+}
+
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
                        const CpuDeviceMemory::Allocator& allocator) {
   TF_ASSIGN_OR_RETURN(auto memory,
                       CpuDeviceMemory::Allocate(size_bytes, allocator));
-  return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
+  return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory), size_bytes,
+                                    /*is_mutable=*/true);
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::ImportForeignMemory(
     void* data, absl::AnyInvocable<void() &&> on_delete_callback,
-    size_t on_device_bytes_count, PjRtMemorySpace* memory_space) {
+    size_t on_device_bytes_count, PjRtMemorySpace* memory_space,
+    bool is_mutable) {
   if ((absl::bit_cast<std::uintptr_t>(data) & (cpu::MinAlign() - 1)) != 0) {
     return InvalidArgument(
         "Can't create a view of buffer with unaligned data, ptr: %#x is not "
@@ -123,12 +148,11 @@ CpuRawBuffer::ImportForeignMemory(
   return tsl::MakeRef<CpuRawBuffer>(
       memory_space,
       CpuDeviceMemory::CreateForeignMemory(data, on_device_bytes_count,
-                                           std::move(on_delete_callback)));
+                                           std::move(on_delete_callback)),
+      on_device_bytes_count, is_mutable);
 }
 
-size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const {
-  return buffer_->size_bytes();
-}
+size_t CpuRawBuffer::GetOnDeviceSizeInBytes() const { return buffer_size_; }
 
 void* CpuRawBuffer::GetHostPointer() const { return buffer_->untyped_data(); }
 
@@ -199,7 +223,8 @@ CpuRawBuffer::CopyFromHostBuffer(
     PjRtClient::HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
-    TransposePlanCache* transpose_cache) {
+    TransposePlanCache* transpose_cache, tsl::thread::ThreadPool* thread_pool,
+    int max_transpose_threads) {
   tsl::AsyncValueRef<CpuDeviceMemory> device_buffer = buffer_;
   bool has_default_layout =
       !byte_strides || HasMajorToMinorLayout(type, dims, *byte_strides);
@@ -228,20 +253,30 @@ CpuRawBuffer::CopyFromHostBuffer(
       options.dims = dims;
       options.permutation = permutation;
       if (byte_strides) {
-        options.input_layout = TransposePlan::Striding{*byte_strides};
+        options.input_striding = TransposePlan::Striding{*byte_strides};
+      }
+      if (thread_pool) {
+        options.num_threads =
+            std::min(thread_pool->NumThreads(), max_transpose_threads);
       }
       absl::MutexLock lock(*transpose_mu);
       TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
     }
+    std::optional<std::function<void(std::function<void(void)>)>> schedule_work;
+    if (thread_pool && max_transpose_threads > 1) {
+      schedule_work = [thread_pool](std::function<void(void)> work) {
+        thread_pool->Schedule(std::move(work));
+      };
+    }
     if (!is_packed) {
-      transpose->Execute(data, dst_data_ptr);
+      transpose->Execute(data, dst_data_ptr, schedule_work);
     } else {
       // First transpose the unpacked data into a new temporary buffer, then
       // pack the data.
       // TODO(reedwm): Fuse the transpose and packing by having TransposePlan
       // support packing.
       auto data_transposed = std::make_unique<char[]>(byte_size);
-      transpose->Execute(data, data_transposed.get());
+      transpose->Execute(data, data_transposed.get(), schedule_work);
       absl::Span<const char> src_data_span(data_transposed.get(), byte_size);
       absl::Span<char> dst_data_span(static_cast<char*>(dst_data_ptr),
                                      dst_byte_size);

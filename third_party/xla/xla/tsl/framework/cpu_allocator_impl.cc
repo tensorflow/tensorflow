@@ -23,8 +23,6 @@ limitations under the License.
 #include "xla/tsl/framework/tracking_allocator.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringprintf.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -75,7 +73,7 @@ class CPUAllocator : public Allocator {
 
   ~CPUAllocator() override = default;
 
-  string Name() override { return "cpu"; }
+  std::string Name() override { return "cpu"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     if (num_bytes > static_cast<size_t>(LargeAllocationWarningBytes()) &&
@@ -86,7 +84,8 @@ class CPUAllocator : public Allocator {
                    << "% of free system memory.";
     }
 
-    void* p = port::AlignedMalloc(num_bytes, alignment);
+    void* p = port::AlignedMalloc(num_bytes,
+                                  static_cast<std::align_val_t>(alignment));
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       absl::MutexLock l(mu_);
@@ -130,7 +129,8 @@ class CPUAllocator : public Allocator {
       stats_.bytes_in_use -= alloc_size;
       AddTraceMe("MemoryDeallocation", ptr, 0, alloc_size);
     }
-    port::AlignedSizedFree(ptr, alignment, num_bytes);
+    port::AlignedSizedFree(ptr, num_bytes,
+                           static_cast<std::align_val_t>(alignment));
   }
 
   void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
@@ -147,7 +147,7 @@ class CPUAllocator : public Allocator {
                              {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                              {"requested_bytes", req_bytes},
                              {"allocation_bytes", alloc_bytes},
-                             {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                             {"addr", reinterpret_cast<uint64_t>(chunk_ptr)},
                              {"tf_op", annotation.pending_op_name},
                              {"id", annotation.pending_step_id},
                              {"region_type", annotation.pending_region_type},

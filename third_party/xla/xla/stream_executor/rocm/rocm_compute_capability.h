@@ -61,6 +61,11 @@ class RocmComputeCapability {
     return proto;
   }
 
+  static RocmComputeCapability FromProto(
+      const RocmComputeCapabilityProto& proto) {
+    return RocmComputeCapability{proto.gcn_arch_name()};
+  }
+
   bool operator==(const RocmComputeCapability& other) const {
     return gcn_arch_name_ == other.gcn_arch_name_;
   }
@@ -188,6 +193,8 @@ class RocmComputeCapability {
   bool has_ocp_fp8_support() const { return gfx9_mi350() || gfx12_discrete(); }
 
   bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
+
+  int threads_per_warp() const { return gfx9_mi100_or_later() ? 64 : 32; }
 
   /// \brief Invalid gfx id for default gcn_arch_name_ value and testing
   static constexpr absl::string_view kInvalidGfx = "gfx000";

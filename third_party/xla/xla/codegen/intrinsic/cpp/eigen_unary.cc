@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 #include "xla/codegen/intrinsic/cpp/eigen_unary.h"
 
 #include "Eigen/Core"
@@ -20,19 +23,51 @@ limitations under the License.
 
 namespace xla::codegen {
 
-// Using Packet over a Map'd Array yields better llvm IR on ARM.
-using Packet4f = Eigen::internal::Packet4f;
+//===--------------------------------------------------------------------===//
+// Generic conversion and operation
+//===--------------------------------------------------------------------===//
 
-Vec4f FastTanhf(const Vec4f x) {
-  Packet4f packet = static_cast<Eigen::internal::Packet4f>(x);
-  Packet4f res = Eigen::internal::ptanh_float(packet);
-  return *static_cast<Vec4f*>(&res);
+template <typename VecType>
+inline VecType VectorTanh(const VecType x) {
+  using ArrayType = typename ArrayMap<VecType>::type;
+  ArrayType x_array = *reinterpret_cast<const ArrayType*>(&x);
+  ArrayType result = x_array.tanh();
+  return *reinterpret_cast<const VecType*>(&result);
 }
 
-Vec8d FastRqsqrtf(const Vec8d x) {
-  const Eigen::Map<const Eigen::Array<double, 8, 1>> x_arr((const double*)&x);
-  const Eigen::Array<double, 8, 1> res = x_arr.rsqrt();
-  return *(Vec8d*)res.data();
+//===--------------------------------------------------------------------===//
+// XLA entrypoints, renamed with asm in header file.
+//===--------------------------------------------------------------------===//
+
+using FloatArrayType = Eigen::Array<float, 16, 1>;
+
+// Single precision
+float tanh_f32(float x) { return Eigen::internal::ptanh_float(x); }
+Vec4f tanh_v4f32(Vec4f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec4f*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec4f*>(&buffer);
 }
+Vec8f tanh_v8f32(Vec8f x) {
+  FloatArrayType buffer;
+  *reinterpret_cast<Vec8f*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec8f*>(&buffer);
+}
+Vec16f tanh_v16f32(Vec16f x) { return VectorTanh(x); }
+
+// Double precision
+using DoubleArrayType = Eigen::Array<double, 8, 1>;
+double tanh_f64(double x) { return Eigen::internal::ptanh_double(x); }
+Vec4d tanh_v4f64(Vec4d x) {
+  DoubleArrayType buffer;
+  *reinterpret_cast<Vec4d*>(&buffer) = x;
+  buffer = buffer.tanh();
+  return *reinterpret_cast<Vec4d*>(&buffer);
+}
+Vec8d tanh_v8f64(Vec8d x) { return VectorTanh(x); }
 
 }  // namespace xla::codegen
+#endif  // defined(__has_attribute) && __has_attribute(vector_size) &&
+        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)

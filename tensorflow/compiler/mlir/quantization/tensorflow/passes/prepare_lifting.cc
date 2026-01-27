@@ -147,8 +147,8 @@ Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
   if (shape.getRank() != 1) {
     SmallVector<int64_t> new_shape;
     new_shape.push_back(shape.getNumElements());
-    value = builder.create<TF::ReshapeOp>(
-        loc, value, Create1DConstValue(builder, loc, new_shape));
+    value = TF::ReshapeOp::create(builder, loc, value,
+                                  Create1DConstValue(builder, loc, new_shape));
   }
   return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
 }
@@ -210,8 +210,8 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   }
   absl::c_reverse(new_shape);
 
-  auto reshape_op = builder.create<TF::ReshapeOp>(
-      loc, value, Create1DConstValue(builder, loc, new_shape));
+  auto reshape_op = TF::ReshapeOp::create(
+      builder, loc, value, Create1DConstValue(builder, loc, new_shape));
   return ConstantFoldOpIfPossible(reshape_op).front();
 }
 
@@ -254,14 +254,14 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
                              Value multiplier) {
   auto dq_op = value.getDefiningOp<mlir::quant::ir::DequantizeCastOp>();
   if (!dq_op) {
-    auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
+    auto mul_op = TF::MulOp::create(builder, loc, value, multiplier);
     return mul_op.getResult();
   }
   auto q_op = dq_op.getArg().getDefiningOp<mlir::quant::ir::QuantizeCastOp>();
   if (!q_op) return {};
 
   Value float_value = q_op.getArg();
-  Value new_value = builder.create<TF::MulOp>(loc, float_value, multiplier);
+  Value new_value = TF::MulOp::create(builder, loc, float_value, multiplier);
   auto new_value_type = mlir::cast<TensorType>(new_value.getType());
 
   // Get multiplier value in double.
@@ -311,10 +311,10 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
         per_axis_type.getStorageTypeMin(), per_axis_type.getStorageTypeMax());
   }
 
-  auto quantize = builder.create<mlir::quant::ir::QuantizeCastOp>(
-      q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
-  auto dequantize = builder.create<mlir::quant::ir::DequantizeCastOp>(
-      dq_op.getLoc(), new_value_type, quantize.getResult());
+  auto quantize = mlir::quant::ir::QuantizeCastOp::create(
+      builder, q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
+  auto dequantize = mlir::quant::ir::DequantizeCastOp::create(
+      builder, dq_op.getLoc(), new_value_type, quantize.getResult());
   return dequantize.getResult();
 }
 

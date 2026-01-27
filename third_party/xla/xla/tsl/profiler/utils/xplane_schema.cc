@@ -303,6 +303,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"Thread Id", kThreadId},
        {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
+       {"hbm_utilization_percent", kHbmUtilizationPercent},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
@@ -384,7 +385,15 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_map_id", kCudaGraphMapId},
        {"cuda_graph_map_value_id", kCudaGraphMapValueId},
        {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
-       {"graph_metadata_line_id", kGraphMetadataLineId}});
+       {"graph_metadata_line_id", kGraphMetadataLineId},
+       {"offload_core_id", kOffloadCoreId},
+       {"tc_offload_start_id", kTcOffloadStartId},
+       {"offload_execution_index", kOffloadExecutionIndex},
+       {"marker_payload", kMarkerPayloadString},
+       {"cuda_version", kMetadataCudaVersion},
+       {"libtpu_version", kMetadataLibtpuVersion},
+       {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
+       {"cuda_driver_version", kMetadataCudaDriverVersion}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
@@ -568,7 +577,7 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 bool IsInternalStat(std::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
-    case StatType::kKernelDetails:
+    // case StatType::kKernelDetails:  # removed for rocm gpu kernel details
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:

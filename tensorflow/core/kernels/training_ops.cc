@@ -1566,9 +1566,9 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),          \
                           SparseApplyProximalGradientDescentOp<T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
 #undef REGISTER_KERNELS
 
@@ -1924,6 +1924,9 @@ class SparseApplyAdagradOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2058,6 +2061,9 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, grad.dims() == var.dims(),
+                absl::InvalidArgumentError("grad must have the same number of "
+                                           "dimensions as var"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2252,9 +2258,9 @@ class SparseApplyProximalAdagradOp : public OpKernel {
           .TypeConstraint<Tindices>("Tindices"),             \
       SparseApplyProximalAdagradOp<D##Device, T, Tindices>);
 
-REGISTER_KERNELS(CPU, float, int32);
+REGISTER_KERNELS(CPU, float, int32_t);
 REGISTER_KERNELS(CPU, float, int64_t);
-REGISTER_KERNELS(CPU, double, int32);
+REGISTER_KERNELS(CPU, double, int32_t);
 REGISTER_KERNELS(CPU, double, int64_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -2582,9 +2588,9 @@ class SparseApplyAdagradDAOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),      \
                           SparseApplyAdagradDAOp<T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
 #undef REGISTER_KERNELS
 
@@ -4465,15 +4471,15 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
                               .TypeConstraint<Tindices>("Tindices"),  \
                           SparseApplyCenteredRMSPropOp<T, Tindices>);
 
-REGISTER_KERNELS(Eigen::half, int32);
+REGISTER_KERNELS(Eigen::half, int32_t);
 REGISTER_KERNELS(Eigen::half, int64_t);
-REGISTER_KERNELS(float, int32);
+REGISTER_KERNELS(float, int32_t);
 REGISTER_KERNELS(float, int64_t);
-REGISTER_KERNELS(double, int32);
+REGISTER_KERNELS(double, int32_t);
 REGISTER_KERNELS(double, int64_t);
-REGISTER_KERNELS(complex64, int32);
+REGISTER_KERNELS(complex64, int32_t);
 REGISTER_KERNELS(complex64, int64_t);
-REGISTER_KERNELS(complex128, int32);
+REGISTER_KERNELS(complex128, int32_t);
 REGISTER_KERNELS(complex128, int64_t);
 
 #undef REGISTER_KERNELS

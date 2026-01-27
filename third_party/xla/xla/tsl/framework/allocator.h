@@ -38,7 +38,7 @@ struct AllocationAttributes {
   AllocationAttributes() = default;
 
   AllocationAttributes(bool retry_on_failure, bool allocation_will_be_logged,
-                       std::function<uint64()>* freed_by_func)
+                       std::function<uint64_t()>* freed_by_func)
       : retry_on_failure(retry_on_failure),
         allocation_will_be_logged(allocation_will_be_logged),
         freed_by_func(freed_by_func) {}
@@ -59,7 +59,7 @@ struct AllocationAttributes {
   // EXPERIMENTAL: If provided, then evaluates to a timing count such that only
   // a memory chunk whose freed_at_count is at this value or earlier may be
   // returned.
-  std::function<uint64()>* freed_by_func = nullptr;  // Not owned.
+  std::function<uint64_t()>* freed_by_func = nullptr;  // Not owned.
 
   AllocationAttributes(const AllocationAttributes&) = delete;
   void operator=(const AllocationAttributes&) = delete;
@@ -232,7 +232,7 @@ class Allocator {
   // REQUIRES: GetStats is overridden.
   virtual bool ClearStats() TF_MUST_USE_RESULT { return false; }
 
-  virtual void SetSafeFrontier(uint64 count) {}
+  virtual void SetSafeFrontier(uint64_t count) {}
 
   // For allocator that are stream aware, allow to specify the compute
   // stream this allocator is used for. This can also trigger memory
@@ -352,10 +352,10 @@ struct AllocatorAttributes {
   // device-specific uses.  Implementors of a device can interpret these
   // upper 8 bits in device-specific ways, and ops implemented for those
   // devices are responsible for setting those 8 bits appropriately.
-  uint32 value = 0;
+  uint32_t value = 0;
   // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
   // a named special-purpose allocator on the same device.
-  int32 scope_id = 0;
+  int32_t scope_id = 0;
 
   // Returns a human readable representation of this.
   std::string DebugString() const;

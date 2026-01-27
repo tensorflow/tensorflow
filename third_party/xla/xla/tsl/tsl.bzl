@@ -36,7 +36,7 @@ load(
     "if_tensorrt",
 )
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(
@@ -67,13 +67,13 @@ def clean_dep(target):
     """
 
     # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, e.g. @local_tsl or tsl.
+    # Label() call appears, e.g. @tsl or tsl.
     # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
     label = Label(target)
     not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
 
     if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
-        return "@local_tsl//" + label.package + ":" + label.name
+        return Label("@tsl//" + label.package + ":" + label.name)
     else:
         return str(label)
 
@@ -146,7 +146,7 @@ def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
         # copybara:uncomment_begin(different config setting in OSS)
-        # "//tools/cc_target_os:gce": if_true,
+        # "//xla/tsl:libtpu_on_gce": if_true,
         # copybara:uncomment_end_and_comment_begin
         clean_dep("//xla/tsl:with_tpu_support"): if_true,
         # copybara:comment_end
@@ -508,9 +508,6 @@ def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
         "//conditions:default": [],
     })
 
-def tsl_grpc_cc_dependencies():
-    return [clean_dep("//xla/tsl:grpc++")]
-
 # Bazel rule for collecting the header files that a target depends on.
 def _transitive_hdrs_impl(ctx):
     outputs = _get_transitive_headers([], ctx.attr.deps)
@@ -842,7 +839,7 @@ def tsl_pybind_extension_opensource(
     )
 
 def nvtx_headers():
-    return if_oss(["@nvtx_archive//:headers"], ["@local_config_cuda//cuda:cuda_headers"])
+    return if_oss(["@nvtx_archive//:headers"]) + ["@local_config_cuda//cuda:cuda_headers"]
 
 def tsl_google_bzl_deps():
     return []

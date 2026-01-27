@@ -11,6 +11,12 @@ package(
 distribute_py_strict_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:asan_build": {"mem": "16g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base

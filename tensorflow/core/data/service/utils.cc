@@ -44,7 +44,7 @@ absl::Status ReadDatasetDef(const std::string& path, DatasetDef& dataset_def) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(path, &file));
   io::RecordReader reader(file.get());
-  uint64 offset = 0;
+  uint64_t offset = 0;
   tstring record;
   TF_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
   if (!dataset_def.ParseFromString(record)) {

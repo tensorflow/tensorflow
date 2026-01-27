@@ -371,6 +371,8 @@ class TupleTree {
         .ok();
   }
 
+  bool IsTuple() const { return nodes_.size() > 1; }
+
   absl::Status CopyCompatibleSubtreeFrom(const TupleTree<T>& other,
                                          const ShapeIndex& src_index,
                                          const ShapeIndex& dst_index) {
@@ -499,6 +501,8 @@ class TupleTree {
   const_reverse_leaf_iterator leaf_rend() const {
     return const_reverse_leaf_iterator(leaf_begin());
   }
+
+  size_t num_leaves() const { return std::distance(leaf_begin(), leaf_end()); }
 
   // Returns an iterator pointing to the node at the given ShapeIndex.
   // Returns end() if the index is not found.

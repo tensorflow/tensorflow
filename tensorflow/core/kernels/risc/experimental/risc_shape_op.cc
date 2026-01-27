@@ -34,8 +34,8 @@ class RiscShapeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
-    RiscShapeOp<int32>);
+    Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int32_t>("out_type"),
+    RiscShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(
     Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int64_t>("out_type"),
     RiscShapeOp<int64_t>);

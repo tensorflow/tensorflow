@@ -15,7 +15,7 @@ py_strict_library(
         ":ast_util",
         ":parser",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -33,7 +33,7 @@ py_strict_library(
         ":templates",
         ":transformer",
         "//tensorflow/python/autograph/utils:ag_logging",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -45,7 +45,7 @@ py_strict_library(
         ":anno",
         ":parser",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -63,7 +63,7 @@ py_strict_library(
     name = "gast_util",
     srcs = ["gast_util.py"],
     visibility = ["//visibility:public"],
-    deps = ["@pypi_gast//:pkg"],
+    deps = ["@pypi//gast"],
 )
 
 py_strict_library(
@@ -80,8 +80,8 @@ py_strict_library(
         ":errors",
         ":inspect_utils",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_astunparse//:pkg",
-        "@pypi_gast//:pkg",
+        "@pypi//astunparse",
+        "@pypi//gast",
     ],
 )
 
@@ -109,7 +109,7 @@ py_strict_library(
         ":parser",
         ":pretty_printer",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -117,7 +117,7 @@ py_strict_library(
     name = "anno",
     srcs = ["anno.py"],
     visibility = ["//visibility:public"],
-    deps = ["@pypi_gast//:pkg"],
+    deps = ["@pypi//gast"],
 )
 
 py_strict_library(
@@ -135,7 +135,7 @@ py_strict_library(
         ":parser",
         ":pretty_printer",
         ":templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -146,7 +146,7 @@ py_strict_library(
     deps = [
         ":anno",
         ":parser",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
@@ -156,8 +156,8 @@ py_strict_library(
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
-        "@pypi_astunparse//:pkg",
-        "@pypi_gast//:pkg",
+        "@pypi//astunparse",
+        "@pypi//gast",
     ],
 )
 
@@ -182,8 +182,8 @@ py_strict_library(
     srcs = ["pretty_printer.py"],
     visibility = ["//visibility:public"],
     deps = [
-        "@pypi_gast//:pkg",
-        "@pypi_termcolor//:pkg",
+        "@pypi//gast",
+        "@pypi//termcolor",
     ],
 )
 
@@ -207,7 +207,7 @@ py_strict_test(
         ":parser",
         ":pretty_printer",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -229,7 +229,7 @@ py_strict_test(
     deps = [
         ":cfg",
         ":parser",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -243,7 +243,7 @@ py_strict_test(
         ":loader",
         ":parser",
         ":pretty_printer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_inspect",
@@ -314,7 +314,7 @@ py_strict_test(
         ":errors",
         ":parser",
         ":pretty_printer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -351,7 +351,7 @@ py_strict_test(
         ":qual_names",
         ":templates",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -365,7 +365,7 @@ py_strict_test(
         ":origin_info",
         ":parser",
         ":transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -377,7 +377,7 @@ py_strict_test(
     deps = [
         ":transformer",
         ":transpiler",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],

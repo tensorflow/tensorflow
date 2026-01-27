@@ -23,7 +23,8 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -33,7 +34,8 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class ReductionLayoutNormalizerTest : public HloTestBase {
+class ReductionLayoutNormalizerTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   void CheckReductionLayoutNormalizer(
       absl::string_view hlo, std::optional<absl::string_view> expected) {

@@ -114,20 +114,21 @@ class MergeFusionWithUniformDequantizePattern
 
     // Modify the quantized fused function to do dequantize+relu(6).
     rewriter.setInsertionPoint(req_op);
-    Value new_result = rewriter.create<mlir::stablehlo::UniformDequantizeOp>(
-        req_op.getLoc(), func_op.getResultTypes()[0], req_op.getOperand());
+    Value new_result = mlir::stablehlo::UniformDequantizeOp::create(
+        rewriter, req_op.getLoc(), func_op.getResultTypes()[0],
+        req_op.getOperand());
     if (func_name.contains("_relu6_")) {
-      auto min = rewriter.create<mlir::stablehlo::ConstantOp>(
-          req_op.getLoc(), rewriter.getF32FloatAttr(0));
-      auto max = rewriter.create<mlir::stablehlo::ConstantOp>(
-          req_op.getLoc(), rewriter.getF32FloatAttr(6));
-      new_result = rewriter.create<mlir::stablehlo::ClampOp>(
-          req_op.getLoc(), min, new_result, max);
+      auto min = mlir::stablehlo::ConstantOp::create(
+          rewriter, req_op.getLoc(), rewriter.getF32FloatAttr(0));
+      auto max = mlir::stablehlo::ConstantOp::create(
+          rewriter, req_op.getLoc(), rewriter.getF32FloatAttr(6));
+      new_result = mlir::stablehlo::ClampOp::create(rewriter, req_op.getLoc(),
+                                                    min, new_result, max);
     } else if (func_name.contains("_relu_")) {
-      auto min = rewriter.create<mlir::stablehlo::ConstantOp>(
-          req_op.getLoc(), rewriter.getF32FloatAttr(0));
-      new_result = rewriter.create<mlir::chlo::BroadcastMaxOp>(
-          req_op.getLoc(), min, new_result, nullptr);
+      auto min = mlir::stablehlo::ConstantOp::create(
+          rewriter, req_op.getLoc(), rewriter.getF32FloatAttr(0));
+      new_result = mlir::chlo::BroadcastMaxOp::create(rewriter, req_op.getLoc(),
+                                                      min, new_result, nullptr);
     }
     return_op->setOperand(0, new_result);
     rewriter.eraseOp(req_op);

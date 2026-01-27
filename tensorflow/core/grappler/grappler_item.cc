@@ -74,9 +74,9 @@ std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
 }
 
 std::vector<const NodeDef*> GrapplerItem::EnqueueOpsFanin() const {
-  std::vector<string> enqueue_ops;
+  std::vector<std::string> enqueue_ops;
   for (const auto& queue_runner : queue_runners) {
-    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+    for (const std::string& enqueue_op : queue_runner.enqueue_op_name()) {
       enqueue_ops.push_back(enqueue_op);
     }
   }
@@ -103,9 +103,9 @@ std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
   return vars;
 }
 
-std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
-  std::unordered_set<string> result;
-  for (const string& f : fetch) {
+std::unordered_set<std::string> GrapplerItem::NodesToPreserve() const {
+  std::unordered_set<std::string> result;
+  for (const std::string& f : fetch) {
     VLOG(1) << "Add fetch " << f;
     result.insert(NodeName(f));
   }
@@ -130,7 +130,7 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   }
 
   for (const auto& queue_runner : queue_runners) {
-    for (const string& enqueue_op : queue_runner.enqueue_op_name()) {
+    for (const std::string& enqueue_op : queue_runner.enqueue_op_name()) {
       result.insert(NodeName(enqueue_op));
     }
     if (!queue_runner.close_op_name().empty()) {
@@ -167,11 +167,11 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
   return result;
 }
 
-const std::unordered_set<string>& GrapplerItem::devices() const {
+const std::unordered_set<std::string>& GrapplerItem::devices() const {
   return devices_;
 }
 
-absl::Status GrapplerItem::AddDevice(const string& device) {
+absl::Status GrapplerItem::AddDevice(const std::string& device) {
   DeviceNameUtils::ParsedName name;
 
   if (!DeviceNameUtils::ParseFullName(device, &name)) {
@@ -189,7 +189,7 @@ absl::Status GrapplerItem::AddDevice(const string& device) {
 
 absl::Status GrapplerItem::AddDevices(const GrapplerItem& other) {
   std::vector<absl::string_view> invalid_devices;
-  for (const string& device : other.devices()) {
+  for (const std::string& device : other.devices()) {
     absl::Status added = AddDevice(device);
     if (!added.ok()) invalid_devices.emplace_back(device);
   }

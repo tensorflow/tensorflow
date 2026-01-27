@@ -17,17 +17,41 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
+#include <string>
+#include <type_traits>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla::ffi {
-namespace {
 
+// Define a custom type with `TypeSerDes` specialization to test that TypeInfo
+// is properly generated for such types.
+struct MyString {
+  std::string data;
+};
+
+template <>
+struct TypeRegistry::SerDes<MyString> : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(const MyString& type) {
+    return type.data;
+  }
+  static absl::StatusOr<std::unique_ptr<MyString>> Deserialize(
+      absl::string_view data) {
+    auto type = std::make_unique<MyString>();
+    type->data = std::string(data);
+    return type;
+  }
+};
+
+namespace {
 using ::testing::HasSubstr;
 
 TEST(TypeRegistryTest, RegisterExternalTypeId) {
@@ -53,7 +77,7 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // Registered type has a correct type info.
   TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo foo_info,
-                          TypeRegistry::GetExternalTypeInfo(foo_id));
+                          TypeRegistry::GetTypeInfo(foo_id));
   EXPECT_EQ(foo_info.deleter, type_info.deleter);
 
   // It's ok to register a new type with a user-provided type id.
@@ -64,14 +88,19 @@ TEST(TypeRegistryTest, RegisterExternalTypeId) {
 
   // And a new type has a correct type info.
   TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeInfo bar_info,
-                          TypeRegistry::GetExternalTypeInfo(bar_id));
+                          TypeRegistry::GetTypeInfo(bar_id));
   EXPECT_EQ(bar_info.deleter, type_info.deleter);
 }
 
 TEST(TypeRegistryTest, RegisterInternalTypeId) {
-  auto int32_type_id = TypeRegistry::GetTypeId<int32_t>();
-  auto int64_type_id = TypeRegistry::GetTypeId<int64_t>();
-  EXPECT_NE(int32_type_id, int64_type_id);
+  auto int32_id = TypeRegistry::GetTypeId<int32_t>();
+  auto int64_id = TypeRegistry::GetTypeId<int64_t>();
+  EXPECT_NE(int32_id, int64_id);
+
+  absl::string_view int32_name = TypeRegistry::GetTypeName<int32_t>();
+  absl::string_view int64_name = TypeRegistry::GetTypeName<int64_t>();
+  EXPECT_EQ(*TypeRegistry::GetTypeId(int32_name), int32_id);
+  EXPECT_EQ(*TypeRegistry::GetTypeId(int64_name), int64_id);
 }
 
 TEST(TypeRegistryTest, InternalTypeInfo) {
@@ -79,6 +108,19 @@ TEST(TypeRegistryTest, InternalTypeInfo) {
 
   TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<int32_t>();
   type_info.deleter(ptr);
+}
+
+TEST(TypeRegistryTest, SerializableType) {
+  MyString str = {"foo"};
+
+  TypeRegistry::TypeInfo type_info = TypeRegistry::GetTypeInfo<MyString>();
+  ASSERT_NE(type_info.serializer, nullptr);
+  ASSERT_NE(type_info.deserializer, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized, TypeRegistry::Serialize(str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MyString> deserialized,
+                          TypeRegistry::Deserialize<MyString>(serialized));
+  EXPECT_EQ(deserialized->data, "foo");
 }
 
 }  // namespace

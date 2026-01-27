@@ -33,7 +33,7 @@ load(
     "tf_cc_shared_library",
 )
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
 load(
@@ -136,8 +136,8 @@ PACKAGE_STATIC_DEPS = [
     "@flatbuffers//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@triton//:__subpackages__",
-    "@local_tsl//:__subpackages__",
-    "@local_xla//:__subpackages__",
+    "@tsl//:__subpackages__",
+    "@xla//:__subpackages__",
 ] + tsl_async_value_deps()
 
 package(
@@ -1033,6 +1033,7 @@ package_group(
         "//tensorflow_models/google/recml/...",
         "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
         "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/pathways/...",
         "//third_party/py/cloud_ml_autoflow/...",
         "//third_party/py/envlogger/...",
         "//third_party/py/gldm/...",
@@ -1070,7 +1071,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "@local_xla//xla/tsl/mkl:intel_binary_blob",
+            "@xla//xla/tsl/mkl:intel_binary_blob",
         ],
     ),
 )
@@ -1094,14 +1095,14 @@ bzl_library(
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
         "@rules_cc//cc/common",
         "@rules_java//java:rules",
-        "@local_xla//xla/tsl:tsl_bzl",
-        "@local_xla//xla/tsl:tsl_default_bzl",
-        "@local_xla//xla/tsl/mkl:build_defs_bzl",
+        "@xla//xla/tsl:tsl_bzl",
+        "@xla//xla/tsl:tsl_default_bzl",
+        "@xla//xla/tsl/mkl:build_defs_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
-        "@local_xla//third_party/compute_library:build_defs_bzl",
-        "@local_xla//third_party/llvm_openmp:openmp_bzl",
+        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@xla//third_party/compute_library:build_defs_bzl",
+        "@xla//third_party/llvm_openmp:openmp_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
@@ -1180,38 +1181,31 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-                "//tensorflow/c/experimental/filesystem:filesystem_interface",
-                "//tensorflow/c/experimental/stream_executor:stream_executor",
-                "//tensorflow/c:env",
-                "//tensorflow/c:kernels",
-                "//tensorflow/c:kernels_experimental",
-                "//tensorflow/c:logging",
-                "//tensorflow/c:ops",
-                "//tensorflow/cc/saved_model:fingerprinting_impl",
-                "//tensorflow/cc/saved_model:loader_lite_impl",
-                "//tensorflow/cc/saved_model:metrics_impl",
-                "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
-                "//tensorflow/core/common_runtime:core_cpu_impl",
-                "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-                "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
-                "//tensorflow/core:framework_internal_impl",
-                "//tensorflow/core/framework:tensor",
-                "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
-                "//tensorflow/core:lib_internal_impl",
-                "//tensorflow/core/profiler:profiler_impl",
-                "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
-                "//tensorflow/lite/kernels/shim:tf_kernel_shim",
-                "@local_xla//xla/stream_executor:stream_executor_impl",
-                "@local_xla//xla/tsl/framework:bfc_allocator",
-                "@local_xla//xla/tsl/framework:metrics",
-            ] + tf_additional_binary_deps() +
-            # TODO(b/259305727): Remove this select and include captured_function in macos builds.
-            select({
-                "//tensorflow:macos": [],
-                "//conditions:default": [
-                    "//tensorflow/core/data:captured_function",
-                ],
-            }),
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:env",
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:kernels_experimental",
+        "//tensorflow/c:ops",
+        "//tensorflow/cc/saved_model:fingerprinting_impl",
+        "//tensorflow/cc/saved_model:loader_lite_impl",
+        "//tensorflow/cc/saved_model:metrics_impl",
+        "//tensorflow/compiler/tf2tensorrt:op_converter_registry_impl",
+        "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
+        "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/profiler:profiler_impl",
+        "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
+        "//tensorflow/lite/kernels/shim:tf_kernel_shim",
+        "@xla//xla/stream_executor:stream_executor_impl",
+        "@xla//xla/tsl/framework:bfc_allocator",
+        "@xla//xla/tsl/framework:metrics",
+        "//tensorflow/core/data:captured_function",
+    ] + tf_additional_binary_deps(),
     soversion = VERSION,
     static_deps = PACKAGE_STATIC_DEPS,
     visibility = ["//visibility:public"],
@@ -1308,8 +1302,8 @@ tf_cc_shared_library(
     }),
     exports_filter = [
         "//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-        "@local_xla//xla:__subpackages__",
+        "@tsl//tsl:__subpackages__",
+        "@xla//xla:__subpackages__",
     ],
     framework_so = [],
     linkopts = select({
@@ -1372,7 +1366,7 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
-        "@local_xla//xla/service:computation_placer",
+        "@xla//xla/service:computation_placer",
         "//tensorflow/core",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
@@ -1481,11 +1475,11 @@ check_deps(
     disallowed_deps = if_static(
         [],
         otherwise = [
-            "@local_xla//xla/stream_executor/cuda:all_runtime",
-            "@local_xla//xla/stream_executor/cuda:cuda_platform",
-            "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
-            "@local_xla//xla/stream_executor/cuda:cufft_plugin",
-            "@local_xla//xla/stream_executor:cuda_platform",
+            "@xla//xla/stream_executor/cuda:all_runtime",
+            "@xla//xla/stream_executor/cuda:cuda_platform",
+            "@xla//xla/stream_executor/cuda:cudnn_plugin",
+            "@xla//xla/stream_executor/cuda:cufft_plugin",
+            "@xla//xla/stream_executor:cuda_platform",
         ],
     ),
     deps = if_cuda([

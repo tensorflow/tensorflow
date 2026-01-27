@@ -30,10 +30,10 @@ TEST(RandomOpsTest, Multinomial_ShapeFn) {
   INFER_OK(op, "[?,?];?", "[d0_0,?]");
   INFER_OK(op, "[2,?];?", "[d0_0,?]");
   INFER_OK(op, "[2,1];?", "[d0_0,?]");
-  Tensor num_samples = test::AsScalar<int32>(3);
+  Tensor num_samples = test::AsScalar<int32_t>(3);
   op.input_tensors[1] = &num_samples;
   INFER_OK(op, "[2,1];[]", "[d0_0,3]");
-  num_samples = test::AsTensor<int32>({1, 2, 3});
+  num_samples = test::AsTensor<int32_t>({1, 2, 3});
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[2,1];[3]");
 }
 
@@ -45,7 +45,7 @@ TEST(RandomOpsTest, RandomGamma_ShapeFn) {
   INFER_OK(op, "?;[3]", "?");
   INFER_OK(op, "[1];?", "?");
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,2];[3,4]");
-  Tensor shape = test::AsTensor<int32>({1, 2, 3});
+  Tensor shape = test::AsTensor<int32_t>({1, 2, 3});
   op.input_tensors[0] = &shape;
   INFER_OK(op, "[3];[4,?]", "[1,2,3,d1_0,d1_1]");
   INFER_OK(op, "[3];[4,5]", "[1,2,3,d1_0,d1_1]");
@@ -60,7 +60,7 @@ TEST(RandomOpsTest, RandomPoisson_ShapeFn) {
   INFER_OK(op, "?;[3]", "?");
   INFER_OK(op, "[1];?", "?");
   INFER_ERROR("Shape must be rank 1 but is rank 2", op, "[1,2];[3,4]");
-  Tensor shape = test::AsTensor<int32>({1, 2, 3});
+  Tensor shape = test::AsTensor<int32_t>({1, 2, 3});
   op.input_tensors[0] = &shape;
   INFER_OK(op, "[3];[4,?]", "[1,2,3,d1_0,d1_1]");
   INFER_OK(op, "[3];[4,5]", "[1,2,3,d1_0,d1_1]");

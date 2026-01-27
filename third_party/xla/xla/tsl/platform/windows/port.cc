@@ -16,6 +16,10 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <new>
+#include <string>
+#include <vector>
 #ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
@@ -24,6 +28,7 @@ limitations under the License.
 #include <processthreadsapi.h>
 #include <shlwapi.h>
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/cpu_info.h"
@@ -37,7 +42,22 @@ limitations under the License.
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+namespace {
+std::vector<std::string>& GetArgvsStorage() {
+  static absl::NoDestructor<std::vector<std::string>> g_argvs;
+  return *g_argvs;
+}
+}  // namespace
+
+void InitMain(const char* usage, int* argc, char*** argv) {
+  GetArgvsStorage().assign(*argv, *argv + *argc);
+}
+
+const std::vector<std::string>& GetArgvs() { return GetArgvsStorage(); }
+
+const char* GetArgv0() {
+  return GetArgvsStorage().empty() ? "" : GetArgvsStorage().front().c_str();
+}
 
 string Hostname() {
   char name[1024];
@@ -186,13 +206,14 @@ int NumHyperthreadsPerCore() {
 namespace tsl {
 namespace port {
 
-void* AlignedMalloc(size_t size, int minimum_alignment) {
-  return _aligned_malloc(size, minimum_alignment);
+void* AlignedMalloc(size_t size, std::align_val_t minimum_alignment) {
+  return _aligned_malloc(size, static_cast<size_t>(minimum_alignment));
 }
 
 void AlignedFree(void* aligned_memory) { _aligned_free(aligned_memory); }
 
-void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+void AlignedSizedFree(void* aligned_memory, size_t size,
+                      std::align_val_t alignment) {
   (void)alignment;
   (void)size;
 

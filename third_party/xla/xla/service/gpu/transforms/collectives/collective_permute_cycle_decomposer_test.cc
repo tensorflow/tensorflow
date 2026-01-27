@@ -79,7 +79,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, NoCycle_NotTransformed) {
         source_target_pairs={{0,0}}
     }
   )";
-  TF_ASSERT_OK(RunAndCheckHloRewrite(kHlo, Decomposer(0), false));
+  ASSERT_OK(RunAndCheckHloRewrite(kHlo, Decomposer(0), false));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, HonorsThreshold) {
@@ -95,9 +95,9 @@ TEST_F(CollectivePermuteCycleDecomposerTest, HonorsThreshold) {
     }
   )";
 
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(33), false));
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(32), true));
-  TF_ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(16), true));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(33), false));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(32), true));
+  ASSERT_OK(RunAndCheckHloRewrite(hlo, Decomposer(16), true));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
@@ -112,7 +112,6 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
       p = u32[8,8] parameter(0)
       ROOT start = u32[8,8] collective-permute(p), channel_id=1,
         source_target_pairs={{0,1},{1,2},{2,3},{3,0}},
-        frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"},
         metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     }
   )";
@@ -126,10 +125,10 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycle) {
     // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
 
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1,
-    // CHECK-SAME{LITERAL}: source_target_pairs={{3,0}}, frontend_attributes={_xla_send_recv_validation={{3,10}}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
+    // CHECK-SAME{LITERAL}: source_target_pairs={{3,0}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2,
-    // CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}}, frontend_attributes={_xla_send_recv_validation={{0,7},{1,8},{2,9}}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
+    // CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
@@ -220,8 +219,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
     weights = f32[2,2] get-tuple-element(param), index=2
     cp = f32[2,2] collective-permute(data),
       channel_id=1,
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}},
-      frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"}
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,0}}
     matmul = f32[2,2] dot(weights, cp), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     iter_increment = u32[] constant(1)
     next_iter = u32[] add(iter, iter_increment)
@@ -241,12 +239,8 @@ TEST_F(CollectivePermuteCycleDecomposerTest, ForwardCycleWithMatmul) {
   Decomposed deco = FindComponents(module.get(), "cp");
   EXPECT_THAT(deco.cp_bwd->ToString(),
               HasSubstr("source_target_pairs={{3,0}}"));
-  EXPECT_THAT(deco.cp_bwd->ToString(),
-              HasSubstr("_xla_send_recv_validation={{3,10}}"));
   EXPECT_THAT(deco.cp_fwd->ToString(),
               HasSubstr("source_target_pairs={{0,1},{1,2},{2,3}}"));
-  EXPECT_THAT(deco.cp_fwd->ToString(),
-              HasSubstr("_xla_send_recv_validation={{0,7},{1,8},{2,9}}"));
 }
 
 TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
@@ -260,7 +254,6 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
       p = u32[8,8] parameter(0)
       ROOT start = u32[8,8] collective-permute(p), channel_id=1,
         source_target_pairs={{0,3},{1,0},{2,1},{3,2}},
-        frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"},
         metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
     })";
 
@@ -274,10 +267,10 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycle) {
     // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
 
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=1, source_target_pairs=
-    // CHECK-SAME{LITERAL}: {{0,3}}, frontend_attributes={_xla_send_recv_validation={{0,7}}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
+    // CHECK-SAME{LITERAL}: {{0,3}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), channel_id=2, source_target_pairs=
-    // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}, frontend_attributes={_xla_send_recv_validation={{1,8},{2,9},{3,10}}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
+    // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}, metadata={op_name="op1/op2/add" source_file="foo/bar/mysource.py" source_line=35}
 
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }
@@ -293,8 +286,7 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycleNoChannel) {
     ENTRY test_computation {
       p = u32[8,8] parameter(0)
       ROOT start = u32[8,8] collective-permute(p),
-        source_target_pairs={{0,3},{1,0},{2,1},{3,2}},
-        frontend_attributes={_xla_send_recv_validation="{{0,7},{1,8},{2,9},{3,10}}"}
+        source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -307,10 +299,10 @@ TEST_F(CollectivePermuteCycleDecomposerTest, BackwardCycleNoChannel) {
     // CHECK-DAG:   %{{.+}} = u32[8,8] parameter(0)
 
     // CHECK-DAG:   %[[cp1:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
-    // CHECK-SAME{LITERAL}: {{0,3}}, frontend_attributes={_xla_send_recv_validation={{0,7}}}
+    // CHECK-SAME{LITERAL}: {{0,3}}
 
     // CHECK-DAG:   %[[cp2:.+]] = u32[8,8] collective-permute(%{{.+}}), source_target_pairs=
-    // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}, frontend_attributes={_xla_send_recv_validation={{1,8},{2,9},{3,10}}}
+    // CHECK-SAME{LITERAL}: {{1,0},{2,1},{3,2}}
 
     // CHECK-DAG:   ROOT %{{.+}} = u32[8,8] select(%[[compare]], %[[cp1]], %[[cp2]])
     // CHECK-DAG: }

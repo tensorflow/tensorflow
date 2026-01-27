@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "xla/service/cpu/tiled_dot_emitter.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
@@ -565,9 +565,8 @@ void RowMajorMatrixVectorProductEmitter::EmitOuterLoopBody(llvm::Value* row,
                         &scalar_accumulators);
 
   std::vector<llvm::Value*> accumulator_values;
-  std::transform(
-      vector_accumulators.begin(), vector_accumulators.end(),
-      std::back_inserter(accumulator_values),
+  absl::c_transform(
+      vector_accumulators, std::back_inserter(accumulator_values),
       [](const VectorVariable& vector_var) { return vector_var.Get(); });
 
   std::vector<llvm::Value*> horizontal_sums;

@@ -38,14 +38,8 @@ namespace xla::gpu {
 class GpuCollectivesStub : public GpuCollectives {
  public:
   bool IsImplemented() const final { return false; }
-  bool IsGlobalConfig() const final { return false; }
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final {
-    return UnimplementedError();
-  }
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback*, bool) final {
     return UnimplementedError();
   }
 
@@ -58,7 +52,7 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const>, int32_t, absl::Span<const RankId>,
-      const Collectives::Config&) final {
+      const Collectives::Config&, absl::Span<const DeviceRank> ranks) final {
     return UnimplementedError();
   }
 
@@ -68,7 +62,8 @@ class GpuCollectivesStub : public GpuCollectives {
 
   absl::Status Deallocate(void* buffer) final { return UnimplementedError(); }
 
-  absl::Status InitializeTopology(Topology topology) final {
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final {
     return UnimplementedError();
   }
 

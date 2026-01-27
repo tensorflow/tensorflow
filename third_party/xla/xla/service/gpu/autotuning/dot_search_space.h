@@ -42,13 +42,15 @@ class TritonDotFusionSearchSpace {
                              const HloDotInstruction* dot);
 
   // Generates the list of promising configs in the search space for the
-  // autotuner to try. If `force_contracting_split` is set, the search space
+  // autotuner to try.
+  // If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
-  // If `autotune_tma` is set, the search space will be extended with TMA
-  // parameterization.
+  //
+  // If true, `autotune_warp_specialization` extends the search space with warp
+  // specialization support.
   std::vector<TritonGemmConfig> GenerateConfigs(
       std::optional<int64_t> force_contracting_split = std::nullopt,
-      bool autotune_tma = false) const;
+      bool autotune_warp_specialization = false) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.
   // Generally, this will mean that configs are restricted to the ones that
@@ -213,6 +215,11 @@ class TritonDotFusionSearchSpace {
   // Extend the passed configs with TMA parameterization.
   void AddTmaParameter(const ConfigWithNotes& config,
                        std::vector<ConfigWithNotes>& updated_configs) const;
+
+  // Extend the passed configs with automatic warp specialization.
+  void AddWarpSpecializationParameter(
+      const ConfigWithNotes& config,
+      std::vector<ConfigWithNotes>& updated_configs) const;
 
   // The order of these fields is important: the values of those defined earlier
   // are used to compute the values of later ones.

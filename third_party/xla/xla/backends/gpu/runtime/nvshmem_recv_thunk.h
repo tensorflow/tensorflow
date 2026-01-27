@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_RECV_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_RECV_THUNK_H_
 
-#include <vector>
+#include <cstdint>
+#include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/stream.h"
 

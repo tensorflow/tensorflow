@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package stream_executor;
 
+import "xla/stream_executor/kernel_args_packing_spec.proto";
+
 message CudaPtxProto {
   string data = 1;
 }
@@ -10,12 +12,19 @@ message CudaCubinProto {
   bytes data = 1;
 }
 
+message InProcessSymbolProto {
+  string persistent_name = 1;
+}
+
 message KernelLoaderSpecProto {
   oneof payload {
     CudaPtxProto ptx = 1;
     CudaCubinProto cubin = 2;
+    InProcessSymbolProto in_process_symbol = 6;
   }
 
   int32 arity = 3;
   string kernel_name = 4;
+
+  optional KernelArgsPackingSpecProto kernel_args_packing_spec = 5;
 }

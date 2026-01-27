@@ -45,11 +45,23 @@ bool InstructionNeedsLayoutConversion(const HloInstruction* instruction) {
     return true;
   }
 
-  if (instruction->opcode() == HloOpcode::kParameter ||
-      instruction->opcode() == HloOpcode::kTuple ||
-      instruction->IsElementwise()) {
+  if (instruction->opcode() == HloOpcode::kTuple) {
     return false;
   }
+
+  if ((instruction->opcode() == HloOpcode::kParameter ||
+       instruction->IsElementwise()) &&
+      // Only allow 32-bit element types for now. If there are mixed element
+      // types, we need layout conversion to align elements since for
+      // example bf16 can have bf16 packing which results in different
+      // element order from f32.
+      //
+      // TODO(b/446667479): Support cases that don't have mixed element types.
+      (!instruction->shape().IsArray() ||
+       ShapeUtil::ElementSizeInBits(instruction->shape()) == 32)) {
+    return false;
+  }
+
   // Only allow scalar broadcasts for now.
   // If needed, we could allow row-major broadcasts without tiling.
   if (instruction->opcode() == HloOpcode::kBroadcast) {
@@ -112,7 +124,7 @@ bool HostOffloadingLayoutAnalysis::ShapeHasPadding(const Shape& shape) {
   return has_padding;
 }
 
-absl::StatusOr<bool> HostOffloadingLayoutAnalysis::Run(
+absl::StatusOr<bool> HostOffloadingLayoutAnalysis::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // TODO(ecg): relax this by allowing padding to then operate on a modified

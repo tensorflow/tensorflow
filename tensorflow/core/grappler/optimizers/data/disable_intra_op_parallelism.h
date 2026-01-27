@@ -27,7 +27,7 @@ class DisableIntraOpParallelism : public TFDataOptimizerBase {
   DisableIntraOpParallelism() = default;
   ~DisableIntraOpParallelism() override = default;
 
-  string name() const override { return "disable_intra_op_parallelism"; };
+  std::string name() const override { return "disable_intra_op_parallelism"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

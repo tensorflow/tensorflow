@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -45,17 +43,17 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/engine_options.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -479,10 +477,11 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
-    se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
-    se::DeviceMemoryBase out_buf) const {
+    se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
+    se::DeviceAddressBase out_buf,
+    const se::GpuComputeCapability& gpu_version) const {
   auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout,
-                               se::DeviceMemoryBase data)
+                               se::DeviceAddressBase data)
       -> absl::StatusOr<se::gpu::MatrixDescriptor> {
     TF_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
@@ -513,7 +512,7 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
   TF_ASSIGN_OR_RETURN(out_desc.compute_type,
                       se::gpu::GetBlasComputationType(
                           PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
-                          se::blas::kDefaultComputePrecision));
+                          se::blas::kDefaultComputePrecision, gpu_version));
 
   TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
                       create_matrix_desc(lhs, lhs_buf));
@@ -529,12 +528,12 @@ template <typename Scale, typename Input, typename Output>
 absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
                                  const se::gpu::MatrixDescriptor& rhs,
                                  const se::gpu::OutputMatrixDescriptor& output,
-                                 se::DeviceMemoryBase workspace, Scale alpha,
+                                 se::DeviceAddressBase workspace, Scale alpha,
                                  Scale beta, se::Stream* stream,
                                  PrecisionConfig::Algorithm precision_algorithm,
                                  se::blas::AlgorithmType algorithm,
                                  se::blas::ComputePrecision compute_precision,
-                                 const se::NumericOptions& numeric_options,
+                                 const se::EngineOptions& engine_options,
                                  se::blas::ProfileResult* profile_result,
                                  se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
@@ -542,9 +541,10 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
   TF_ASSIGN_OR_RETURN(
       se::blas::ComputationType computation_type,
-      se::gpu::GetBlasComputationType(precision_algorithm, lhs_type,
-                                      output_type, compute_precision));
-  se::DeviceMemory<Output> output_data(output.data);
+      se::gpu::GetBlasComputationType(
+          precision_algorithm, lhs_type, output_type, compute_precision,
+          stream->parent()->GetDeviceDescription().gpu_compute_capability()));
+  se::DeviceAddress<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
   auto* blas = stream->parent()->AsBlas();
@@ -560,30 +560,30 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
         alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
-        output.batch_size, computation_type, algorithm, numeric_options,
+        output.batch_size, computation_type, algorithm, engine_options,
         profile_result, context);
   }
   return blas->BlasGemmWithAlgorithm(
       stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
       lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
       rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-      computation_type, algorithm, numeric_options, profile_result, context);
+      computation_type, algorithm, engine_options, profile_result, context);
 }
 
 template <typename Scale, typename Input, typename Output>
 absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     const se::gpu::MatrixDescriptor& rhs,
                     const se::gpu::OutputMatrixDescriptor& output,
-                    se::DeviceMemoryBase workspace, Scale alpha, Scale beta,
+                    se::DeviceAddressBase workspace, Scale alpha, Scale beta,
                     se::Stream* stream,
                     PrecisionConfig::Algorithm precision_algorithm,
                     std::optional<se::blas::AlgorithmType> algorithm,
                     se::blas::ComputePrecision compute_precision,
-                    const se::NumericOptions& numeric_options,
+                    const se::EngineOptions& engine_options,
                     se::blas::ProfileResult* profile_result,
                     se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
-  se::DeviceMemory<Output> output_data(output.data);
+  se::DeviceAddress<Output> output_data(output.data);
   auto* blas = stream->parent()->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No Blas support for stream");
@@ -592,8 +592,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         lhs, rhs, output, workspace, alpha, beta, stream, precision_algorithm,
-        *algorithm, compute_precision, numeric_options, profile_result,
-        context);
+        *algorithm, compute_precision, engine_options, profile_result, context);
   }
 
   // Set a workspace for all Blas operations launched below.
@@ -605,22 +604,22 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
         alpha, lhs.cast<Input>(), lhs.leading_dim_stride, lhs.batch_stride,
         rhs.cast<Input>(), rhs.leading_dim_stride, rhs.batch_stride, beta,
         &output_data, output.leading_dim_stride, output.batch_stride,
-        output.batch_size, numeric_options, context);
+        output.batch_size, engine_options, context);
   }
 
   return blas->BlasGemm(stream, lhs.transpose, rhs.transpose, output.m,
                         output.n, output.k, alpha, lhs.cast<Input>(),
                         lhs.leading_dim_stride, rhs.cast<Input>(),
                         rhs.leading_dim_stride, beta, &output_data,
-                        output.leading_dim_stride, numeric_options, context);
+                        output.leading_dim_stride, engine_options, context);
 }
 
 }  // namespace
 
-absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-                     se::DeviceMemoryBase rhs_buffer,
-                     se::DeviceMemoryBase output_buffer,
-                     se::DeviceMemoryBase workspace_buffer,
+absl::Status RunGemm(const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
+                     se::DeviceAddressBase rhs_buffer,
+                     se::DeviceAddressBase output_buffer,
+                     se::DeviceAddressBase workspace_buffer,
                      bool deterministic_ops, se::Stream* stream,
                      std::optional<se::blas::AlgorithmType> algorithm,
                      se::blas::ProfileResult* profile_result) {
@@ -628,12 +627,15 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
   TF_ASSIGN_OR_RETURN(
       GemmConfig::DescriptorsTuple desc,
-      config.GetMatrixDescriptors(lhs_buffer, rhs_buffer, output_buffer));
+      config.GetMatrixDescriptors(
+          lhs_buffer, rhs_buffer, output_buffer,
+          stream->parent()->GetDeviceDescription().gpu_compute_capability()));
 
-  se::NumericOptions numeric_options{
+  se::EngineOptions engine_options{
       deterministic_ops,
-      /*allow_tf32=*/IsTf32Allowed(config.precision_algorithm,
-                                   config.compute_precision)};
+      /*allow_tf32=*/
+      IsTf32Allowed(config.precision_algorithm, config.compute_precision),
+      /*require_command_buffer=*/false};
 
   if (!algorithm) {
     algorithm = config.algorithm;
@@ -673,7 +675,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         static_cast<NativeScaleType>(config.alpha.real()),                  \
         static_cast<NativeScaleType>(config.beta), stream,                  \
         config.precision_algorithm, algorithm, config.compute_precision,    \
-        numeric_options, profile_result, context);                          \
+        engine_options, profile_result, context);                           \
   }
 
 #define TYPED_GEMM_COMPLEX(SCALENTYPE, ATYPE, BTYPE, CTYPE)                 \
@@ -687,7 +689,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         static_cast<NativeScaleType>(config.alpha),                         \
         static_cast<NativeScaleType>(config.beta), stream,                  \
         config.precision_algorithm, algorithm, config.compute_precision,    \
-        numeric_options, profile_result, context);                          \
+        engine_options, profile_result, context);                           \
   }
 
   if (config.output_layout.dtype == S32) {
@@ -700,7 +702,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         desc.lhs, desc.rhs, desc.output, workspace_buffer,
         static_cast<int32_t>(config.alpha.real()),
         static_cast<int32_t>(config.beta), stream, PrecisionConfig::ALG_UNSET,
-        *algorithm, se::blas::kDefaultComputePrecision, numeric_options,
+        *algorithm, se::blas::kDefaultComputePrecision, engine_options,
         profile_result, context);
   }
 
@@ -806,10 +808,10 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_RET_CHECK(proto.num_warps() > 0);
   TF_RET_CHECK(proto.num_ctas() > 0);
 
-  return TritonGemmConfig(proto.block_m(), proto.block_n(), proto.block_k(),
-                          proto.split_k(), proto.num_stages(),
-                          proto.num_warps(), proto.num_ctas(),
-                          proto.is_tma_allowed());
+  return TritonGemmConfig(
+      proto.block_m(), proto.block_n(), proto.block_k(), proto.split_k(),
+      proto.num_stages(), proto.num_warps(), proto.num_ctas(),
+      proto.is_tma_allowed(), proto.is_warp_specialization_allowed());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -822,15 +824,17 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_num_warps(num_warps);
   key.set_num_ctas(num_ctas);
   key.set_is_tma_allowed(is_tma_allowed);
+  key.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
   return key;
 }
 
 std::string TritonGemmConfig::ToString() const {
-  return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
-                      ",block_k:", block_k, ",split_k:", split_k,
-                      ",num_stages:", num_stages, ",num_warps:", num_warps,
-                      ",num_ctas:", num_ctas,
-                      ",is_tma_allowed:", is_tma_allowed, "}");
+  return absl::StrCat(
+      "{block_m:", block_m, ",block_n:", block_n, ",block_k:", block_k,
+      ",split_k:", split_k, ",num_stages:", num_stages,
+      ",num_warps:", num_warps, ",num_ctas:", num_ctas,
+      ",is_tma_allowed:", is_tma_allowed,
+      ",is_warp_specialization_allowed:", is_warp_specialization_allowed, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(

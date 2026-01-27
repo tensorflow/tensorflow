@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -47,17 +46,17 @@ XlaCompiledCpuFunctionThunks::XlaCompiledCpuFunctionThunks(
       std::move(function_library));
 
   // To load a CPU executable we don't need a compiler or a stream executor.
-  TF_CHECK_OK(aot_compilation_result.status());
+  CHECK_OK(aot_compilation_result.status());
   // NO_CDC: aot_compilation_result is checked to be OK above.
   auto cpu_executable = std::move(*aot_compilation_result.value())
-                            .LoadExecutable(nullptr, nullptr);
+                            .LoadExecutable(/*stream_exec=*/nullptr);
 
-  TF_CHECK_OK(cpu_executable.status());
+  CHECK_OK(cpu_executable.status());
   auto executable_or_err =
       // NO_CDC: cpu_executable is checked to be OK above.
       xla::cpu::NanoRtExecutable::Create(std::move(cpu_executable.value()));
 
-  TF_CHECK_OK(executable_or_err.status());
+  CHECK_OK(executable_or_err.status());
   // NO_CDC: executable_or_err is checked to be OK above.
   executable_ = std::move(executable_or_err.value());
 }

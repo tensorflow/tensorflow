@@ -25,88 +25,66 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
-using ::xla::gpu::BufferDebugLogEntry;
 using ::xla::gpu::BufferDebugLogHeader;
 
-absl::StatusOr<BufferDebugLog> BufferDebugLog::CreateOnDevice(
-    Stream& stream, DeviceMemory<uint8_t> log_buffer) {
-  if (log_buffer.is_null()) {
+absl::StatusOr<DeviceAddress<uint8_t>> BufferDebugLogBase::CreateOnDevice(
+    Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size) {
+  if (memory.is_null()) {
     return absl::InvalidArgumentError("Log buffer must be non-null");
   }
 
-  static constexpr size_t kMinBufferSize =
-      sizeof(BufferDebugLogHeader) + sizeof(BufferDebugLogEntry);
-  if (log_buffer.size() < kMinBufferSize) {
+  size_t kMinBufferSize = sizeof(BufferDebugLogHeader) + entry_size;
+  if (memory.size() < kMinBufferSize) {
     return absl::InvalidArgumentError(
         absl::StrFormat("Log buffer size %u is too small to hold any log "
                         "entries (required: %u bytes)",
-                        log_buffer.size(), kMinBufferSize));
+                        memory.size(), kMinBufferSize));
   }
 
   const uint32_t max_entries =
-      (log_buffer.size() - sizeof(BufferDebugLogHeader)) /
-      sizeof(BufferDebugLogEntry);
+      (memory.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const BufferDebugLogHeader empty_header{
       /*write_idx=*/0,
       /*capacity=*/max_entries,
   };
   TF_RETURN_IF_ERROR(
-      stream.Memcpy(&log_buffer, &empty_header, sizeof(empty_header)));
-  return BufferDebugLog(log_buffer);
+      stream.Memcpy(&memory, &empty_header, sizeof(empty_header)));
+  return memory;
 }
 
-absl::StatusOr<BufferDebugLogHeader> BufferDebugLog::ReadHeaderFromDevice(
-    Stream& stream) const {
+absl::StatusOr<BufferDebugLogHeader> BufferDebugLogBase::ReadHeaderFromDevice(
+    Stream& stream, DeviceAddress<uint8_t> memory) const {
   BufferDebugLogHeader header;
-  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory_, sizeof(header)));
+  TF_RETURN_IF_ERROR(stream.Memcpy(&header, memory, sizeof(header)));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
   return header;
 }
 
-absl::StatusOr<std::vector<BufferDebugLogEntry>> BufferDebugLog::ReadFromDevice(
-    Stream& stream) const {
-  std::vector<uint8_t> buffer(memory_.size());
-  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory_, memory_.size()));
+absl::StatusOr<size_t> BufferDebugLogBase::ReadFromDevice(
+    Stream& stream, DeviceAddress<uint8_t> memory, size_t entry_size,
+    void* entries_data) const {
+  std::vector<uint8_t> buffer(memory.size());
+  TF_RETURN_IF_ERROR(stream.Memcpy(buffer.data(), memory, memory.size()));
   TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
   BufferDebugLogHeader header;
   memcpy(&header, buffer.data(), sizeof(header));
 
-  const uint32_t max_entries = (memory_.size() - sizeof(BufferDebugLogHeader)) /
-                               sizeof(BufferDebugLogEntry);
+  const uint32_t max_entries =
+      (memory.size() - sizeof(BufferDebugLogHeader)) / entry_size;
   const size_t initialized_entries =
       std::min(max_entries, std::min(header.capacity, header.write_idx));
-  std::vector<BufferDebugLogEntry> entries(initialized_entries);
-  memcpy(entries.data(), buffer.data() + sizeof(header),
-         initialized_entries * sizeof(BufferDebugLogEntry));
+  memcpy(entries_data, buffer.data() + sizeof(header),
+         initialized_entries * entry_size);
 
-  return entries;
-}
-
-absl::StatusOr<xla::gpu::BufferDebugLogProto> BufferDebugLog::ReadProto(
-    Stream& stream) const {
-  TF_ASSIGN_OR_RETURN(std::vector<BufferDebugLogEntry> entries,
-                      ReadFromDevice(stream));
-
-  xla::gpu::BufferDebugLogProto buffer_debug_log_proto;
-  buffer_debug_log_proto.mutable_entries()->Reserve(entries.size());
-  for (const auto& entry : entries) {
-    xla::gpu::BufferDebugLogEntryProto* entry_proto =
-        buffer_debug_log_proto.add_entries();
-    entry_proto->set_thunk_id(entry.entry_id.thunk_id().value());
-    entry_proto->set_buffer_idx(entry.entry_id.buffer_idx());
-    entry_proto->set_checksum(entry.checksum);
-  }
-
-  return buffer_debug_log_proto;
+  return initialized_entries;
 }
 
 }  // namespace stream_executor::gpu

@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -33,7 +33,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class TriangularExpanderTest : public HloTestBase,
+class TriangularExpanderTest : public HloPjRtTestBase,
                                public ::testing::WithParamInterface<int32_t> {};
 
 TEST_P(TriangularExpanderTest, TestBlockSize) {

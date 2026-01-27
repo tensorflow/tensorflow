@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <new>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -174,7 +175,9 @@ class NanoRtExecutable {
 
    private:
     friend class NanoRtExecutable;
-    using Allocator = tsl::port::AlignedAllocator<std::byte, Align()>;
+    using Allocator =
+        tsl::port::AlignedAllocator<std::byte,
+                                    static_cast<std::align_val_t>(Align())>;
     alignas(Align()) absl::FixedArray<std::byte, n, Allocator> data_;
   };
 

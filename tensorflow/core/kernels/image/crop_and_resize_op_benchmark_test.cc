@@ -29,7 +29,7 @@ static Graph* CropAndResize(int batches, int width, int height, int depth,
   Tensor boxes(DT_FLOAT, TensorShape({batches, 4}));
   auto boxes_tensor = boxes.matrix<float>();
   Tensor box_ind(DT_INT32, TensorShape({batches}));
-  auto box_ind_flat = box_ind.flat<int32>();
+  auto box_ind_flat = box_ind.flat<int32_t>();
   for (int i = 0; i < batches; ++i) {
     boxes_tensor(i, 0) = 0.2;
     boxes_tensor(i, 1) = 0.2;
@@ -38,7 +38,7 @@ static Graph* CropAndResize(int batches, int width, int height, int depth,
     box_ind_flat(i) = i;
   }
   Tensor crop_size(DT_INT32, TensorShape({2}));
-  auto crop_size_flat = crop_size.flat<int32>();
+  auto crop_size_flat = crop_size.flat<int32_t>();
   crop_size_flat(0) = crop_height;
   crop_size_flat(1) = crop_width;
   Node* ret;

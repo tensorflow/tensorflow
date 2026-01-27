@@ -32,8 +32,9 @@ namespace tensorflow {
 namespace test {
 namespace graph {
 
-Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
-           const uint64 sender_incarnation, const string& receiver) {
+Node* Send(Graph* g, Node* input, const std::string& tensor,
+           const std::string& sender, const uint64_t sender_incarnation,
+           const std::string& receiver) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Send")
                   .Input(input, 0)
@@ -46,9 +47,9 @@ Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
   return ret;
 }
 
-Node* Recv(Graph* g, const string& tensor, const string& type,
-           const string& sender, const uint64 sender_incarnation,
-           const string& receiver) {
+Node* Recv(Graph* g, const std::string& tensor, const std::string& type,
+           const std::string& sender, const uint64_t sender_incarnation,
+           const std::string& receiver) {
   Node* ret;
   DataType dtype;
   CHECK(DataTypeFromString(type, &dtype));
@@ -72,7 +73,7 @@ Node* Constant(Graph* g, const Tensor& tensor) {
   return ret;
 }
 
-Node* Constant(Graph* g, const Tensor& tensor, const string& name) {
+Node* Constant(Graph* g, const Tensor& tensor, const std::string& name) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(name, "Const")
                   .Attr("dtype", tensor.dtype())
@@ -85,7 +86,7 @@ Node* HostConstant(Graph* g, const Tensor& tensor) {
   return HostConstant(g, tensor, g->NewName("n"));
 }
 
-Node* HostConstant(Graph* g, const Tensor& tensor, const string& name) {
+Node* HostConstant(Graph* g, const Tensor& tensor, const std::string& name) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(name, "HostConst")
                   .Attr("dtype", tensor.dtype())
@@ -104,7 +105,7 @@ Node* Var(Graph* g, const DataType dtype, const TensorShape& shape) {
 }
 
 Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
-          const string& name) {
+          const std::string& name) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(name, "Variable")
                   .Attr("dtype", dtype)
@@ -134,7 +135,7 @@ Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive, bool reverse) {
   return ret;
 }
 
-Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
+Node* Reduce(Graph* g, const std::string& reduce, Node* data, Node* axes,
              bool keep_dims) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), reduce, g->op_registry())
@@ -179,7 +180,7 @@ Node* BatchMatmul(Graph* g, Node* in0, Node* in1, bool adj_x, bool adj_y) {
   return ret;
 }
 
-Node* RandomNumberGenerator(const string& op, Graph* g, Node* input,
+Node* RandomNumberGenerator(const std::string& op, Graph* g, Node* input,
                             DataType dtype) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), op, g->op_registry())
@@ -222,7 +223,7 @@ Node* RandomPoisson(Graph* g, Node* shape, Node* lam) {
   return ret;
 }
 
-Node* Unary(Graph* g, const string& func, Node* input, int index) {
+Node* Unary(Graph* g, const std::string& func, Node* input, int index) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
                   .Input(input, index)
@@ -230,7 +231,7 @@ Node* Unary(Graph* g, const string& func, Node* input, int index) {
   return ret;
 }
 
-Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
+Node* Binary(Graph* g, const std::string& func, Node* in0, Node* in1) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), func, g->op_registry())
                   .Input(in0)
@@ -239,7 +240,7 @@ Node* Binary(Graph* g, const string& func, Node* in0, Node* in1) {
   return ret;
 }
 
-Node* Multi(Graph* g, const string& func, absl::Span<Node* const> ins) {
+Node* Multi(Graph* g, const std::string& func, absl::Span<Node* const> ins) {
   Node* ret;
   auto b = NodeBuilder(g->NewName("n"), func, g->op_registry());
   for (Node* n : ins) b = b.Input(n);
@@ -271,7 +272,7 @@ Node* Roll(Graph* g, Node* input, Node* shift, Node* axis) {
   return ret;
 }
 
-Node* Error(Graph* g, Node* input, const string& errmsg, bool log_error) {
+Node* Error(Graph* g, Node* input, const std::string& errmsg, bool log_error) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")
                   .Input(input)
@@ -317,7 +318,7 @@ Node* Switch(Graph* g, Node* in0, Node* in1) {
   return ret;
 }
 
-Node* Enter(Graph* g, Node* input, const string& frame_name) {
+Node* Enter(Graph* g, Node* input, const std::string& frame_name) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Enter")
                   .Input(input)
@@ -341,11 +342,11 @@ Node* Merge(Graph* g, Node* in0, Node* in1) {
   return ret;
 }
 
-Node* Merge(Graph* g, Node* in0, absl::Span<const string> remaining_in) {
+Node* Merge(Graph* g, Node* in0, absl::Span<const std::string> remaining_in) {
   std::vector<NodeBuilder::NodeOut> inputs;
   inputs.reserve(remaining_in.size() + 1);
   inputs.emplace_back(in0);
-  for (const string& in_name : remaining_in) {
+  for (const std::string& in_name : remaining_in) {
     inputs.emplace_back(in_name, 0, inputs[0].dt);
   }
 
@@ -383,7 +384,7 @@ Node* ConcatV2(Graph* g, absl::Span<Node* const> tensors, Node* concat_dim) {
   return ret;
 }
 
-Node* Next(Graph* g, const string& name, Node* input) {
+Node* Next(Graph* g, const std::string& name, Node* input) {
   Node* ret;
   TF_CHECK_OK(
       NodeBuilder(name, "NextIteration").Input(input).Finalize(g, &ret));
@@ -497,7 +498,7 @@ Node* DiagPart(Graph* g, Node* in, DataType type) {
   return ret;
 }
 
-Node* CheckNumerics(Graph* g, Node* in, const string& message) {
+Node* CheckNumerics(Graph* g, Node* in, const std::string& message) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "CheckNumerics")
                   .Input(in)

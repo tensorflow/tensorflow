@@ -33,8 +33,8 @@ namespace tfprof {
 namespace {
 TFStats* tf_stat = nullptr;
 
-string RunProfile(const string& command, const string& options,
-                  TFStats* tf_stats) {
+std::string RunProfile(const std::string& command, const std::string& options,
+                       TFStats* tf_stats) {
   if (command == kCmds[4]) {
     AdvisorOptionsProto option_pb;
     if (!option_pb.ParseFromString(options)) {
@@ -60,7 +60,7 @@ string RunProfile(const string& command, const string& options,
     absl::PrintF("%s", opts.ToString());
     absl::PrintF(
         "\n==================Model Analysis Report======================\n");
-    string ret = "";
+    std::string ret = "";
     if (command == kCmds[2] || command == kCmds[3]) {
       ret = tf_stats->ShowMultiGraphNode(command, opts).SerializeAsString();
     } else if (command == kCmds[0] || command == kCmds[1]) {
@@ -84,8 +84,8 @@ string RunProfile(const string& command, const string& options,
 }
 }  // namespace
 
-bool NewProfiler(const string* graph, const string* op_log) {
-  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+bool NewProfiler(const std::string* graph, const std::string* op_log) {
+  std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
   if (graph && !graph->empty()) {
     if (!graph_ptr->ParseFromString(*graph)) {
       if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
@@ -108,7 +108,7 @@ bool NewProfiler(const string* graph, const string* op_log) {
   return true;
 }
 
-void ProfilerFromFile(const string* filename) {
+void ProfilerFromFile(const std::string* filename) {
   CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
   CHECK(filename) << "Missing profile filename to init profiler from file";
   tf_stat = new TFStats(*filename, nullptr);
@@ -121,12 +121,12 @@ void DeleteProfiler() {
   }
 }
 
-double AddStep(int64_t step, const string* graph, const string* run_meta,
-               const string* op_log) {
+double AddStep(int64_t step, const std::string* graph,
+               const std::string* run_meta, const std::string* op_log) {
   CHECK(tf_stat);
 
   if (graph && !graph->empty()) {
-    std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+    std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
     if (!graph_ptr->ParseFromString(*graph)) {
       if (!protobuf::TextFormat::ParseFromString(*graph, graph_ptr.get())) {
         absl::FPrintF(stderr, "Failed to parse graph\n");
@@ -137,7 +137,7 @@ double AddStep(int64_t step, const string* graph, const string* run_meta,
 
   CHECK(run_meta && !run_meta->empty());
   // TODO(xpan): Better error handling.
-  std::unique_ptr<RunMetadata> run_meta_ptr(new RunMetadata());
+  std::unique_ptr<RunMetadata> run_meta_ptr = std::make_unique<RunMetadata>();
   run_meta_ptr->ParseFromString(*run_meta);
   tf_stat->AddRunMeta(step, std::move(run_meta_ptr));
 
@@ -150,32 +150,34 @@ double AddStep(int64_t step, const string* graph, const string* run_meta,
   return tf_stat->run_coverage();
 }
 
-string Profile(const string* command, const string* options) {
+std::string Profile(const std::string* command, const std::string* options) {
   CHECK(tf_stat);
   CHECK(command) << "command mustn't be null";
   CHECK(options) << "options mustn't be null";
   return RunProfile(*command, *options, tf_stat);
 }
 
-string SerializeToString() {
+std::string SerializeToString() {
   CHECK(tf_stat);
-  string content;
+  std::string content;
   tf_stat->SerializeToString(&content);
   return content;
 }
 
-void WriteProfile(const string* filename) {
+void WriteProfile(const std::string* filename) {
   CHECK(tf_stat);
   CHECK(filename) << "empty file name when asking to write profile.";
   tf_stat->WriteProfile(*filename);
 }
 
-string PrintModelAnalysis(const string* graph, const string* run_meta,
-                          const string* op_log, const string* command,
-                          const string* options) {
+std::string PrintModelAnalysis(const std::string* graph,
+                               const std::string* run_meta,
+                               const std::string* op_log,
+                               const std::string* command,
+                               const std::string* options) {
   CHECK(command) << "command mustn't be null";
   CHECK(options) << "options mustn't be null";
-  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+  std::unique_ptr<GraphDef> graph_ptr = std::make_unique<GraphDef>();
   if (graph && !graph->empty()) {
     graph_ptr->ParseFromString(*graph);
   }

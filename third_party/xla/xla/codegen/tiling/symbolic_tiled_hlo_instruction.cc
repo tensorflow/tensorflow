@@ -36,9 +36,10 @@ std::string SymbolicTiledHloInstruction::ToString(
   ss << "indexing map: " << indexing_map_;
   if (!runtime_variables_.empty()) {
     ss << field_separator;
-    ss << "runtime operands: (";
+    ss << "runtime variables: (" << field_separator;
     for (const auto& rt_var : runtime_variables_) {
-      ss << rt_var->ToString() << field_separator;
+      ss << rt_var->ToString(field_separator) << field_separator
+         << field_separator;
     }
     ss << ")";
   }

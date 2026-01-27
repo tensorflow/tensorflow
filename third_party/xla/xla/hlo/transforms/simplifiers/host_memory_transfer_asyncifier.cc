@@ -197,7 +197,7 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
 }  // namespace
 
-absl::StatusOr<bool> HostMemoryTransferAsyncifier::Run(
+absl::StatusOr<bool> HostMemoryTransferAsyncifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   HostMemoryTransferAsyncifierVisitor visitor(kHostMemorySpaceColor);

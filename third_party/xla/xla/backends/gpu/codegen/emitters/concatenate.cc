@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/concatenate_kernel_emitter.h"
@@ -37,11 +38,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
+
+using ::mlir::MLIRContext;
 
 using KernelEmitter = emitters::ConcatenateFusionKernelEmitter;
 
@@ -59,13 +61,13 @@ LaunchDimensions ConcatenateFusion::launch_dimensions() const {
 }
 
 std::optional<IndexingMap> ConcatenateFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, SymbolicExprContext* ctx) const {
+    int64_t root_index, MLIRContext* ctx) const {
   return std::nullopt;
 }
 
 std::optional<std::vector<IndexingMap>>
-ConcatenateFusion::ComputeThreadIdToInputIndexing(
-    int64_t root_index, SymbolicExprContext* ctx) const {
+ConcatenateFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
+                                                  MLIRContext* ctx) const {
   IndexingMap map_for_largest_shape =
       KernelEmitter::ComputeWorkItemIdToOutputIndexing(GetWorkDimensions(),
                                                        largest_shape_, ctx);
@@ -78,17 +80,16 @@ ConcatenateFusion::ComputeThreadIdToInputIndexing(
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 ConcatenateFusion::CreateMLIRModule(
-    SymbolicExprContext& symbolic_expr_context,
-    const HloFusionInstruction& fusion, const std::string& entry_function_name,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
   emitters::ConcatenateFusionKernelEmitter emitter(
-      symbolic_expr_context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status ConcatenateFusion::EmitEntryFunction(

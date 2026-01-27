@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -28,7 +27,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -43,7 +42,10 @@ namespace xla::gpu {
 
 namespace {
 
-using ::stream_executor::gpu::AllReduceStrategy;
+using se::gpu::AllReduceStrategy;
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
+    2 * 1024 * 1024;  // 2 MB
 
 template <typename T, ReductionKind kReductionKindV>
 class TagRegistry {
@@ -58,6 +60,7 @@ class TagRegistry {
  public:
   static constexpr auto kOneShot = Impl<AllReduceStrategy::kOneShot>{};
   static constexpr auto kTwoShot = Impl<AllReduceStrategy::kTwoShot>{};
+  static constexpr auto kMultimem = Impl<AllReduceStrategy::kMultimem>{};
 };
 
 // Static set of supported kernel tags.
@@ -71,15 +74,13 @@ static constexpr int64_t kMaxThreadsPerBlock = 512;
 static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
-absl::Status LaunchTypedKernel(TagType, se::Stream* stream,
-                               const LaunchDimensions& launch_dimensions,
-                               se::DeviceMemoryBase symmetric_input_buffer,
-                               se::DeviceMemoryBase local_input_buffer,
-                               se::DeviceMemoryBase output_buffer, int64_t rank,
-                               int64_t num_ranks, int64_t num_elements,
-                               se::DeviceMemoryBase symmetric_signal_buffer,
-                               uint32_t signal_value,
-                               se::DeviceMemoryBase metadata) {
+absl::Status LaunchTypedKernel(
+    TagType, se::Stream* stream, const LaunchDimensions& launch_dimensions,
+    se::DeviceAddressBase symmetric_input_buffer,
+    se::DeviceAddressBase local_input_buffer,
+    se::DeviceAddressBase output_buffer, int64_t rank, int64_t num_ranks,
+    int64_t num_elements, se::DeviceAddressBase symmetric_signal_buffer,
+    uint32_t signal_value, se::DeviceAddressBase metadata) {
   using ElementType = typename TagType::ElementType;
   static constexpr bool kIsTwoShot =
       TagType::kAllReduceStrategy == AllReduceStrategy::kTwoShot;
@@ -159,6 +160,28 @@ bool IsElementReductionSupported(PrimitiveType element_type,
 
 }  // namespace
 
+AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                       bool is_multimem_enabled) {
+  if (input_size_bytes > kMaxOneShotAllReduceSizeBytes) {
+    return AllReduceStrategy::kTwoShot;
+  }
+  if (is_multimem_enabled) {
+    return AllReduceStrategy::kMultimem;
+  }
+  return AllReduceStrategy::kOneShot;
+}
+
+int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      return kMaxOneShotAllReduceSizeBytes;
+    case AllReduceStrategy::kTwoShot:
+      return kMaxTwoShotAllReduceSizeBytes;
+    case AllReduceStrategy::kMultimem:
+      return kMaxTwoShotAllReduceSizeBytes;
+  }
+}
+
 LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
                                            AllReduceStrategy strategy) {
   int64_t threads_per_block;
@@ -179,14 +202,18 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 ReductionKind reduction_kind,
                                 AllReduceStrategy all_reduce_strategy) {
   if (!IsElementReductionSupported(element_type, reduction_kind)) {
+    VLOG(3) << "Element type and reduction kind combination is not supported.";
     return false;
   }
   const int64_t alignment_requirement =
-      all_reduce_strategy == AllReduceStrategy::kOneShot
+      all_reduce_strategy == AllReduceStrategy::kOneShot ||
+              all_reduce_strategy == AllReduceStrategy::kMultimem
           ? se::gpu::kNumElementsPerThread
           : se::gpu::kNumElementsPerThread * num_ranks;
 
   if (num_elements % alignment_requirement != 0) {
+    VLOG(3)
+        << "Number of elements is not aligned to the alignment requirement.";
     return false;
   }
 
@@ -195,20 +222,20 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
 }
 
 absl::Status RunAllReduceKernel(
-    se::Stream* stream,                            //
-    const LaunchDimensions& launch_dimensions,     //
-    PrimitiveType element_type,                    //
-    ReductionKind reduction_kind,                  //
-    AllReduceStrategy all_reduce_strategy,         //
-    se::DeviceMemoryBase symmetric_input_buffer,   //
-    se::DeviceMemoryBase local_input_buffer,       //
-    se::DeviceMemoryBase output_buffer,            //
-    RankId rank,                                   //
-    int64_t num_ranks,                             //
-    int64_t num_elements,                          //
-    se::DeviceMemoryBase symmetric_signal_buffer,  //
-    uint32_t signal_value,                         //
-    se::DeviceMemoryBase metadata) {
+    se::Stream* stream,                             //
+    const LaunchDimensions& launch_dimensions,      //
+    PrimitiveType element_type,                     //
+    ReductionKind reduction_kind,                   //
+    AllReduceStrategy all_reduce_strategy,          //
+    se::DeviceAddressBase symmetric_input_buffer,   //
+    se::DeviceAddressBase local_input_buffer,       //
+    se::DeviceAddressBase output_buffer,            //
+    RankId rank,                                    //
+    int64_t num_ranks,                              //
+    int64_t num_elements,                           //
+    se::DeviceAddressBase symmetric_signal_buffer,  //
+    uint32_t signal_value,                          //
+    se::DeviceAddressBase metadata) {
   if (!IsAllReduceKernelSupported(num_ranks, num_elements, element_type,
                                   reduction_kind, all_reduce_strategy)) {
     return absl::InvalidArgumentError(
@@ -216,7 +243,7 @@ absl::Status RunAllReduceKernel(
                      "of ranks, elements, element type and reduction kind: ",
                      num_ranks, ", ", num_elements, ", ",
                      primitive_util::LowercasePrimitiveTypeName(element_type),
-                     ", ", ReductionKindToString(reduction_kind)));
+                     ", ", reduction_kind));
   }
 
   const auto launch_kernel_impl = [&](auto tag) -> absl::Status {
@@ -232,6 +259,8 @@ absl::Status RunAllReduceKernel(
         return launch_kernel_impl(tag_registry.kOneShot);
       case AllReduceStrategy::kTwoShot:
         return launch_kernel_impl(tag_registry.kTwoShot);
+      case AllReduceStrategy::kMultimem:
+        return launch_kernel_impl(tag_registry.kMultimem);
     }
   };
 

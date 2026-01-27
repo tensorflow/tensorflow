@@ -401,8 +401,14 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   // If rank(new_shape) > rank(instr), extra dimensions with value = 1 can be
   // deleted from the new_shape.
   auto instr_shape = contraction->shape();
-  int64_t rank_difference =
-      new_shape.dimensions().size() - instr_shape.dimensions().size();
+  int64_t rank_difference = 0;
+  // Since the absl APIs return unsigned dimension sizes, compute the rank
+  // difference only when LHS > RHS. Performing an unconditional subtraction
+  // could cause an unsigned underflow.
+  if (new_shape.dimensions().size() > instr_shape.dimensions().size()) {
+    rank_difference =
+        new_shape.dimensions().size() - instr_shape.dimensions().size();
+  }
   auto new_dims = new_shape.dimensions();
   std::vector<int64_t> dims_to_delete;
   for (int i = 0; i < rank_difference; ++i) {
@@ -446,8 +452,8 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   if (operand_dims.size() > instr_dims.size()) {
     return false;
   }
-  int operand_idx = operand_dims.size() - 1;
-  int instr_idx = instr_dims.size() - 1;
+  int operand_idx = static_cast<int>(operand_dims.size()) - 1;
+  int instr_idx = static_cast<int>(instr_dims.size()) - 1;
   for (; operand_idx >= 0; --operand_idx, --instr_idx) {
     if (operand_dims[operand_idx] != 1 &&
         operand_dims[operand_idx] != instr_dims[instr_idx]) {
@@ -536,8 +542,8 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
   int64_t rhs_dim_k = dot_dim_numbers.rhs_contracting_dimensions(0);
 
   // Supported contraction is only in one of last two dimensions.
-  if (lhs_dim_k < lhs_shape.dimensions().size() - 2 ||
-      rhs_dim_k < rhs_shape.dimensions().size() - 2) {
+  if (lhs_dim_k + 2 < lhs_shape.dimensions().size() ||
+      rhs_dim_k + 2 < rhs_shape.dimensions().size()) {
     return false;
   }
 
@@ -632,8 +638,8 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     BackendConfig backend_config;
     OneDnnMatMulConfig* matmul_config =
         backend_config.mutable_onednn_matmul_config();
-    bool transpose_a = (lhs_dim_k != lhs_shape.dimensions().size() - 1);
-    bool transpose_b = (rhs_dim_k != rhs_shape.dimensions().size() - 2);
+    bool transpose_a = (lhs_dim_k + 1 != lhs_shape.dimensions().size());
+    bool transpose_b = (rhs_dim_k + 2 != rhs_shape.dimensions().size());
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
     TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
@@ -679,22 +685,20 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
           (*it).window_reversal()) {
         return absl::OkStatus();
       }
-      // Changing the input subspace of uint repeated fields from whole numbers
-      // to natural nummbers to avoid misinterpretation of buffer values.
-      conv_config->mutable_window()->add_pad_left((*it).padding_low() + 1);
-      conv_config->mutable_window()->add_pad_right((*it).padding_high() + 1);
-      conv_config->mutable_window()->add_strides((*it).stride() + 1);
+      conv_config->mutable_window()->add_pad_left((*it).padding_low());
+      conv_config->mutable_window()->add_pad_right((*it).padding_high());
+      conv_config->mutable_window()->add_strides((*it).stride());
       conv_config->mutable_window()->add_window_dilations(
-          (*it).window_dilation() + 1);
+          (*it).window_dilation());
     }
 
     for (int i = 0; i < dims; i++) {
       conv_config->mutable_input()->mutable_data()->add_spatial_dims(
-          conv_dims.input_spatial_dimensions()[i] + 1);
+          conv_dims.input_spatial_dimensions()[i]);
       conv_config->mutable_kernel()->mutable_filter()->add_spatial_dims(
-          conv_dims.kernel_spatial_dimensions()[i] + 1);
+          conv_dims.kernel_spatial_dimensions()[i]);
       conv_config->mutable_output()->mutable_data()->add_spatial_dims(
-          conv_dims.output_spatial_dimensions()[i] + 1);
+          conv_dims.output_spatial_dimensions()[i]);
     }
 
     HloInstruction* custom_call =
@@ -1065,10 +1069,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto backend_config = custom_call->backend_config<BackendConfig>();
       auto fusions_config = GetFusionsConfig(&backend_config);
       fusions_config->add_ops(OneDnnFusionConfig::LINEAR);
-      // Casting to int32 because of issues in proto config for decimal types
-      // handling.
-      fusions_config->add_alpha_typecast(
-          *(reinterpret_cast<int32_t*>(&constant_value.value())));
+      fusions_config->add_alpha(constant_value.value());
       TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
@@ -1530,11 +1531,11 @@ EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(
     OneDnnConvolutionConfig, onednn_conv_config, optimization_config,
     user_scratchpad);
 
-absl::StatusOr<bool> OneDnnContractionRewriter::Run(
+absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "OneDnnContractionRewriter::RunImpl(), before:\n" +
+                        module->ToString());
   OneDnnContractionRewriteVisitor visitor(graph_enabled_);
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
@@ -1544,7 +1545,7 @@ absl::StatusOr<bool> OneDnnContractionRewriter::Run(
   TF_ASSIGN_OR_RETURN(auto result2,
                       reorder_visitor.RunOnModule(module, execution_threads));
   XLA_VLOG_LINES(
-      3, "OneDnnContractionRewriter::Run(), after:\n" + module->ToString());
+      3, "OneDnnContractionRewriter::RunImpl(), after:\n" + module->ToString());
   return {result || result2};
 }
 

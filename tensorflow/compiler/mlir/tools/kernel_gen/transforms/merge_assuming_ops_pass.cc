@@ -73,8 +73,8 @@ struct ShapeReificationPattern : public OpRewritePattern<shape::ShapeOfOp> {
 
     // Insert cast if needed.
     if (reifiedShape.getType() != op.getType()) {
-      reifiedShape = rewriter.create<tensor::CastOp>(op.getLoc(), op.getType(),
-                                                     reifiedShape);
+      reifiedShape = tensor::CastOp::create(rewriter, op.getLoc(), op.getType(),
+                                            reifiedShape);
     }
 
     rewriter.replaceOp(op, reifiedShape);
@@ -148,9 +148,9 @@ LogicalResult moveUpIntoAssumingOpMatchAndRewrite(Operation *op,
   // Insert the rewritten assuming op right before the old one.
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(assumingOp);
-  auto newAssumingOp = rewriter.create<shape::AssumingOp>(
-      assumingOp.getLoc(), assumingOp.getWitness(),
-      [&](OpBuilder &b, Location) {
+  auto newAssumingOp = shape::AssumingOp::create(
+      rewriter, assumingOp.getLoc(), assumingOp.getWitness(),
+      [&](OpBuilder& b, Location) {
         // Copy body.
         IRMapping mapping;
         for (auto &nested : body->without_terminator())
@@ -304,9 +304,9 @@ struct MoveUpOutOfAssumingOpPattern : public OpRewritePattern<OpTy> {
     // explicitly as they are assumed to be independent. The assuming op is
     // rewritten accordingly.
     SmallVector<Value, 2> replacementValues;
-    auto newAssumingOp = rewriter.create<shape::AssumingOp>(
-        assumingOp.getLoc(), assumingOp.getWitness(),
-        [&](OpBuilder &b, Location) {
+    auto newAssumingOp = shape::AssumingOp::create(
+        rewriter, assumingOp.getLoc(), assumingOp.getWitness(),
+        [&](OpBuilder& b, Location) {
           // Copy body.
           IRMapping mapping;
           for (Operation &nested : body->without_terminator()) {
@@ -354,15 +354,16 @@ struct MergeAssumingOpsPattern : public OpRewritePattern<shape::AssumingOp> {
     // Merge witnesses.
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPoint(precedingOp);
-    Value newWitness = rewriter.create<shape::AssumingAllOp>(
-        op.getWitness().getDefiningOp()->getLoc(),
+    Value newWitness = shape::AssumingAllOp::create(
+        rewriter, op.getWitness().getDefiningOp()->getLoc(),
         ValueRange{precedingOp.getWitness(), op.getWitness()});
 
     // Merge assuming ops.
     Block *body_a = precedingOp.getBody();
     Block *body_b = op.getBody();
-    auto newAssumingOp = rewriter.create<shape::AssumingOp>(
-        precedingOp.getLoc(), newWitness, [&](OpBuilder &b, Location) {
+    auto newAssumingOp = shape::AssumingOp::create(
+        rewriter, precedingOp.getLoc(), newWitness,
+        [&](OpBuilder& b, Location) {
           // Copy preceding op's body.
           IRMapping mapping;
           for (auto &nested : body_a->without_terminator()) {

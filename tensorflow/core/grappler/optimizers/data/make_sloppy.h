@@ -26,7 +26,7 @@ class MakeSloppy : public TFDataOptimizerBase {
   MakeSloppy() = default;
   ~MakeSloppy() override = default;
 
-  string name() const override { return "make_sloppy"; }
+  std::string name() const override { return "make_sloppy"; }
 
   bool UsesFunctionLibrary() const override { return false; }
 

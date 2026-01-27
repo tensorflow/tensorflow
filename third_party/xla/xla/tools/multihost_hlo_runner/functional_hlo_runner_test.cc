@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
@@ -27,20 +29,36 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/primitive_util.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/platform_util.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/tools/multihost_hlo_runner/profiler_interface.h"
@@ -49,22 +67,26 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/testing/temporary_directory.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
+using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Lt;
+using ::testing::Property;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
 std::string GetHloPath(std::string file_name) {
@@ -96,6 +118,112 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, debug_options, preproc_options, raw_compile_options,
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+// TODO(b/475218574): Re-enable once the test is fixed.
+TEST_F(FunctionalHloRunnerTest, DISABLED_SingleDevicePinnedHostZeroInputs) {
+  if (test::DeviceTypeIs(test::kCpu)) {
+    GTEST_SKIP() << "This test is specialized for GPU platform!";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string platform_name,
+                          PlatformUtil::CanonicalPlatformName("gpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName(
+                              absl::AsciiStrToUpper(platform_name)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executors,
+                          PlatformUtil::GetStreamExecutors(platform));
+  EXPECT_TRUE(!executors.empty());
+  const auto& desc = executors[0]->GetDeviceDescription();
+  if (platform_name == "rocm") {
+    if (!desc.rocm_compute_capability().has_fp8_support()) {
+      GTEST_SKIP() << "This test requires fp8 support!";
+    }
+  }
+
+  GpuClientOptions gpu_opts;
+  gpu_opts.allocator_config.kind = GpuAllocatorConfig::Kind::kPlatform;
+  gpu_opts.should_stage_host_to_device_transfers = false;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          CreateGpuClient(gpu_opts));
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+
+  auto set_host_memory_space = [](ShapeLayout* layout) {
+    Shape shape = layout->shape();
+    ShapeUtil::ForEachMutableSubshape(&shape, [](Shape* subshape,
+                                                 const ShapeIndex& index) {
+      if (subshape->IsArray()) {
+        subshape->mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
+      }
+    });
+    *layout = ShapeLayout(shape);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          {GetHloPath("fp8_gemm_loop.hlo")}, InputFormat::kText));
+  auto hlo_module = std::move(hlo_module_and_arguments.hlo_module);
+
+  auto& entry_layout =
+      *hlo_module->mutable_config().mutable_entry_computation_layout();
+
+  FunctionalHloRunner::PerDeviceLiteralVecType arguments;
+  auto& args_vector = arguments[0];
+
+  const auto& params =
+      hlo_module->entry_computation()->parameter_instructions();
+  args_vector.resize(params.size());
+  for (size_t i = 0; i < params.size(); ++i) {
+    const auto& shape = params[i]->shape();
+    EXPECT_TRUE(shape.IsArray());
+    Literal literal(shape);
+    primitive_util::ArrayTypeSwitch(
+        [&](auto prim_const) {
+          using T = primitive_util::NativeTypeOf<prim_const>;
+          int idx = 0;
+          for (auto& val : literal.data<T>()) {
+            // Zero-out all input arguments except for the matrix B
+            val = static_cast<T>(i == 1 ? 0.05f + (idx + 1) / 100.f : 0.0f);
+          }
+          idx++;
+        },
+        shape.element_type());
+    args_vector[i] = std::move(literal);
+  }
+
+  EXPECT_EQ(entry_layout.parameter_count(), 3);
+  // Allocate the matrix C in pinned mem that would make the loading slow
+  set_host_memory_space(entry_layout.mutable_parameter_layout(2));
+
+  FunctionalHloRunner::RunningOptions running_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto output, FunctionalHloRunner::CompileAndRun(
+                       *client, debug_options, preproc_options, compile_options,
+                       running_options, hlo_module.get(), arguments));
+
+  for (const auto& [dev, vec] : output) {
+    for (const auto& item : vec) {
+      bool res = item.EachCellUntilFailure<float>(
+          [](absl::Span<const int64_t> indices, auto value) -> bool {
+            return Eigen::numext::isfinite(value) &&
+                   Eigen::numext::abs(value) < 1e-8;
+          });
+      EXPECT_TRUE(res);
+    }
+  }
 }
 
 TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomEngine) {
@@ -483,13 +611,23 @@ TEST_F(FunctionalHloRunnerTest, ShardedAutotuningWorks) {
     GTEST_SKIP() << "GPU-only test.";
   }
 
-  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=2", /*overwrite=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string cache_dir = temp_dir.path();
+
+  tsl::setenv("TF_CPP_VMODULE", "autotuner_pass=2,autotuner=2",
+              /*overwrite=*/true);
   tsl::SubProcess child[kNumNodes];
   for (int node_id = 0; node_id < kNumNodes; ++node_id) {
     std::vector<std::string> argv;
     argv.push_back(binary_name);
     argv.push_back("--xla_gpu_shard_autotuning");
     argv.push_back(absl::StrFormat("--node_id=%d", node_id));
+    if (!tsl::kIsOpenSource) {
+      argv.push_back("--logtostderr");
+      argv.push_back("--vmodule=autotuner_pass=2,autotuner=2");
+    }
     child[node_id].SetProgram(binary_name, argv);
     child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
     child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -533,18 +671,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
-        env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "b190aeb9aa0b9e93e4c08d095726f562_"
-                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_0",
+        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_0",
                           absl::Seconds(1)));
-    CHECK(absl::StrContains(results0, "run_time"));
+    CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
-        env.kv_store->Get("gemm_fusion_autotuning_results_"
-                          "b190aeb9aa0b9e93e4c08d095726f562_"
-                          "iuhMRX2JY-YpaUJD3Pw0h3H3HNGWEzN4xA0s9Q3CoK8_1",
+        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_1",
                           absl::Seconds(1)));
-    CHECK(absl::StrContains(results1, "run_time"));
+    CHECK(absl::StrContains(results1, "result"));
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
   }
@@ -795,6 +929,71 @@ TEST_F(FunctionalHloRunnerTest, ReadHloUnoptimizedSnapshot) {
            hlo_module_and_arguments_from_binary.arguments.size());
 }
 
+TEST_F(FunctionalHloRunnerTest,
+       ReadHloModuleProtoDoesNotPreserveInstructionIds) {
+  std::string path_to_text_hlo =
+      GetHloPath("sharded_unoptimized_hlo_snapshot.pbtxt");
+
+  tsl::Env* env = tsl::Env::Default();
+
+  // Read the text proto
+  HloUnoptimizedSnapshot message;
+  TF_ASSERT_OK(tsl::ReadTextProto(env, path_to_text_hlo, &message));
+
+  // Manually modify instruction ids in the proto.
+  int64_t instruction_id_offset = 1000;
+  for (HloComputationProto& computation :
+       *message.mutable_hlo_module()->mutable_computations()) {
+    for (HloInstructionProto& instruction :
+         *computation.mutable_instructions()) {
+      instruction.set_id(instruction.id() + instruction_id_offset);
+      for (int64_t& operand_id : *instruction.mutable_operand_ids()) {
+        operand_id += instruction_id_offset;
+      }
+    }
+    computation.set_root_id(computation.root_id() + instruction_id_offset);
+  }
+
+  // Dump message in the custom binary format
+  std::string path_to_binary_hlo =
+      tsl::io::JoinPath(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"),
+                        "sharded_unoptimized_hlo_snapshot_modified_ids.pb");
+
+  std::unique_ptr<tsl::WritableFile> file;
+  TF_ASSERT_OK(env->NewWritableFile(path_to_binary_hlo, &file));
+
+  tsl::WritableFileCopyingOutputStream output(file.get());
+
+  tsl::protobuf::io::CopyingOutputStreamAdaptor adaptor(&output);
+  EXPECT_TRUE(message.SerializeToZeroCopyStream(&adaptor));
+  adaptor.Flush();
+
+  TF_ASSERT_OK(file->Close());
+
+  // Read HloModuleAndArguments from binary dump.
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloModuleAndArguments hlo_module_and_arguments_from_binary,
+      FunctionalHloRunner::LoadHloModuleAndArguments(
+          path_to_binary_hlo, InputFormat::kUnoptimizedSnapshotProtoBinary));
+
+  // Check if ids have been re-assigned in a compact way
+  HloComputation* entry_computation =
+      hlo_module_and_arguments_from_binary.hlo_module->entry_computation();
+
+  EXPECT_THAT(entry_computation->instructions(),
+              ElementsAre(Property(&HloInstruction::local_id, Eq(0)),
+                          Property(&HloInstruction::local_id, Eq(1)),
+                          Property(&HloInstruction::local_id, Eq(2)),
+                          Property(&HloInstruction::local_id, Eq(3))));
+
+  // Check that all operand ids are also within the re-assigned range.
+  EXPECT_THAT(entry_computation->instructions(),
+              Each(Property(&HloInstruction::operands,
+                            Each(Property(&HloInstruction::local_id, Lt(4))))));
+
+  EXPECT_THAT(entry_computation->root_instruction()->local_id(), Eq(3));
+}
+
 TEST_F(FunctionalHloRunnerTest, FixFakeArguments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
                           GetPjRtClient());
@@ -843,6 +1042,7 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
   // This test checks that we don't overwrite if we don't set xla_dump_to in the
   // raw options.
   xla::DebugOptions debug_options;
+  debug_options.set_xla_dump_to("test_dump_to");
   debug_options.set_xla_dump_hlo_as_text(true);
   FunctionalHloRunner::RawCompileOptions raw_compile_options;
   raw_compile_options.execution_options = ExecutionOptions();
@@ -859,6 +1059,33 @@ TEST(FunctionalHloRunnerTest, TestDebugOptionsAreNotOverwrittenByRawOptions) {
                                                 /*kv_store=*/nullptr));
   EXPECT_TRUE(compile_options.executable_build_options.debug_options()
                   .xla_dump_hlo_as_text());
+  EXPECT_EQ(
+      compile_options.executable_build_options.debug_options().xla_dump_to(),
+      "");
+}
+
+// Check that xla_dump_to is respected if preserve_xla_dump_to is true.
+TEST(FunctionalHloRunnerTest, TestDebugOptionsDumpToIsRespected) {
+  xla::DebugOptions debug_options;
+  std::string xla_dump_to = "test_dump_to";
+  debug_options.set_xla_dump_to(xla_dump_to);
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.preserve_xla_dump_to = true;
+  raw_compile_options.execution_options = ExecutionOptions();
+  *raw_compile_options.execution_options->mutable_debug_options() =
+      debug_options;
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CompileOptions compile_options,
+      FunctionalHloRunner::CreateCompileOptions(*client, raw_compile_options,
+                                                /*task_id=*/0, /*num_nodes=*/1,
+                                                /*kv_store=*/nullptr));
+  EXPECT_EQ(
+      compile_options.executable_build_options.debug_options().xla_dump_to(),
+      xla_dump_to);
 }
 
 TEST(FunctionalHloRunnerTest, RespectUseSpmdPartitioning) {
@@ -1000,7 +1227,12 @@ int main(int argc, char* argv[]) {
   tsl::Flags::Parse(&argc, argv, flag_list);
   testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
-    return !xla::ShardedAutotuningWorksTestBody(node_id).ok();
+    absl::Status status = xla::ShardedAutotuningWorksTestBody(node_id);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+      return 1;
+    }
+    return 0;
   }
   return RUN_ALL_TESTS();
 }

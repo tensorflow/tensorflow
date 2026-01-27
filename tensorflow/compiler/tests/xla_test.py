@@ -308,7 +308,8 @@ class XLATestCase(test.TestCase):
       yield
 
   def assert_op_output_matches_expected(
-      self, op, inp, expected, equality_test=None, rtol=1e-3, atol=1e-5
+      self, op, inp, expected, local_session,
+      equality_test=None, rtol=1e-3, atol=1e-5
   ):
     """Verifies that 'op' produces 'expected' when fed input 'inp' .
 
@@ -316,25 +317,25 @@ class XLATestCase(test.TestCase):
       op: operator to test
       inp: numpy input array to use as input to 'op'.
       expected: numpy array representing the expected output of 'op'.
+      local_session: The session to use for the test.
       equality_test: either None, or a function that tests two numpy arrays for
         equality. If None, self.assertAllClose is used.
       rtol: relative tolerance for equality test.
       atol: absolute tolerance for equality test.
     """
-    with self.session() as local_session:
-      with self.test_scope():
-        pinp = array_ops.placeholder(
-            dtypes.as_dtype(inp.dtype), inp.shape, name='a'
-        )
-        output = op(pinp)
-      result = local_session.run(output, {pinp: inp})
-      if equality_test is None:
-        self.assertEqual(output.dtype, expected.dtype)
-        self.assertAllCloseAccordingToType(
-            expected, result, rtol=rtol, atol=atol, bfloat16_rtol=0.03
-        )
-      else:
-        equality_test(result, expected, rtol=rtol, atol=atol)
+    with self.test_scope():
+      pinp = array_ops.placeholder(
+          dtypes.as_dtype(inp.dtype), inp.shape, name='a'
+      )
+      output = op(pinp)
+    result = local_session.run(output, {pinp: inp})
+    if equality_test is None:
+      self.assertEqual(output.dtype, expected.dtype)
+      self.assertAllCloseAccordingToType(
+          expected, result, rtol=rtol, atol=atol, bfloat16_rtol=0.03
+      )
+    else:
+      equality_test(result, expected, rtol=rtol, atol=atol)
 
   def test_scope(self):
     """Deprecated alias of `device_scope`.

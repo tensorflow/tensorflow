@@ -67,6 +67,26 @@ TEST(ArrayTest, InitializerListCtor) {
   EXPECT_EQ(arr(1, 2), 6);
 }
 
+TEST(ArrayTest, SpanCtor) {
+  Array<int> arr1d({3}, {10, 20, 30});
+  EXPECT_EQ(arr1d.dim(0), 3);
+  EXPECT_EQ(arr1d(0), 10);
+  EXPECT_EQ(arr1d(1), 20);
+  EXPECT_EQ(arr1d(2), 30);
+
+  Array<int> arr2d({2, 3}, {1, 2, 3, 4, 5, 6});
+
+  EXPECT_EQ(arr2d.dim(0), 2);
+  EXPECT_EQ(arr2d.dim(1), 3);
+
+  EXPECT_EQ(arr2d(0, 0), 1);
+  EXPECT_EQ(arr2d(0, 1), 2);
+  EXPECT_EQ(arr2d(0, 2), 3);
+  EXPECT_EQ(arr2d(1, 0), 4);
+  EXPECT_EQ(arr2d(1, 1), 5);
+  EXPECT_EQ(arr2d(1, 2), 6);
+}
+
 TEST(ArrayTest, Transpose1DNoOp) {
   Array<int> arr({3});
   arr.FillWithMultiples(10);  // {0, 10, 20}

@@ -139,11 +139,6 @@ class WhileLoopUnroller : public HloModulePass {
 
   absl::string_view name() const override { return "while_loop_unroller"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Runs a sequence of passes that are necessary to prepare loops for
   // unrolling. Failure to run these passes will prevent unroller from unrolling
   // loops that would have been otherwise unrollable.
@@ -175,6 +170,11 @@ class WhileLoopUnroller : public HloModulePass {
       HloInstruction* while_op, int64_t unroll_factor = -1,
       bool wrap_in_trivial_loop = false, bool force_unroll = false,
       bool prepare = true, const UnrollConfig& unroll_config = UnrollConfig());
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   int64_t unroll_factor_;

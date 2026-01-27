@@ -25,10 +25,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -156,7 +156,7 @@ class GpuPerformanceModelBase {
   // blocks that the IR emitter will use.
   static LaunchDimensions EstimateFusionLaunchDimensions(
       const HloFusionAnalysis& fusion_analysis,
-      SymbolicExprContext* symbolic_expr_context);
+      mlir::MLIRContext* mlir_context);
 
   // Returns bytes accessed of operand output by instruction. Returns 0, if the
   // operand is not used by the instruction.
@@ -208,6 +208,14 @@ class GpuPerformanceModelBase {
   static int64_t CalculateEffectiveFlopsPerNs(
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t num_threads_per_block);
+
+  // Estimates peak performance on the provided dtype using accelerated compute
+  // (i.e. Tensor Cores/Matrix Cores). The number is calculated assuming each
+  // FMA is 2 operations.
+  // Falls back to non-accelerated estimates if the provided device info does
+  // not have matrix unit information.
+  static int64_t CalculatePeakMatrixOpsPerNs(
+      const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype);
 
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,

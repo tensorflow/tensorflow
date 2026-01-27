@@ -15,35 +15,39 @@ limitations under the License.
 
 #include "xla/tsl/framework/allocator.h"
 
-#include <atomic>
+#include <cstddef>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringprintf.h"
+#include "tsl/platform/numbers.h"
 
 namespace tsl {
 
-string AllocatorStats::DebugString() const {
-  return strings::Printf(
-      "Limit:            %20lld\n"
-      "InUse:            %20lld\n"
-      "MaxInUse:         %20lld\n"
+std::string AllocatorStats::DebugString() const {
+  return absl::StrFormat(
+      "Limit:            %20s\n"
+      "InUse:            %20s\n"
+      "MaxInUse:         %20s\n"
       "NumAllocs:        %20lld\n"
-      "MaxAllocSize:     %20lld\n"
-      "Reserved:         %20lld\n"
-      "PeakReserved:     %20lld\n"
-      "LargestFreeBlock: %20lld\n",
-      static_cast<long long>(this->bytes_limit ? *this->bytes_limit : 0),
-      static_cast<long long>(this->bytes_in_use),
-      static_cast<long long>(this->peak_bytes_in_use),
+      "MaxAllocSize:     %20s\n"
+      "Reserved:         %20s\n"
+      "PeakReserved:     %20s\n"
+      "LargestFreeBlock: %20s\n",
+      strings::HumanReadableNumBytes(this->bytes_limit ? *this->bytes_limit
+                                                       : 0),
+      strings::HumanReadableNumBytes(this->bytes_in_use),
+      strings::HumanReadableNumBytes(this->peak_bytes_in_use),
       static_cast<long long>(this->num_allocs),
-      static_cast<long long>(this->largest_alloc_size),
-      static_cast<long long>(this->bytes_reserved),
-      static_cast<long long>(this->peak_bytes_reserved),
-      static_cast<long long>(this->largest_free_block_bytes));
+      strings::HumanReadableNumBytes(this->largest_alloc_size),
+      strings::HumanReadableNumBytes(this->bytes_reserved),
+      strings::HumanReadableNumBytes(this->peak_bytes_reserved),
+      strings::HumanReadableNumBytes(this->largest_free_block_bytes));
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;
@@ -56,10 +60,10 @@ static bool cpu_allocator_collect_full_stats = false;
 void EnableCPUAllocatorFullStats() { cpu_allocator_collect_full_stats = true; }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
-string AllocatorAttributes::DebugString() const {
-  return strings::StrCat("AllocatorAttributes(on_host=", on_host(),
-                         " nic_compatible=", nic_compatible(),
-                         " gpu_compatible=", gpu_compatible(), ")");
+std::string AllocatorAttributes::DebugString() const {
+  return absl::StrCat("AllocatorAttributes(on_host=", on_host(),
+                      " nic_compatible=", nic_compatible(),
+                      " gpu_compatible=", gpu_compatible(), ")");
 }
 
 Allocator* cpu_allocator_base() {

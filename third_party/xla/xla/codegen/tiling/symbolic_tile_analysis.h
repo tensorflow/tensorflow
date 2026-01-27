@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/instruction_fusion.h"
 
 namespace xla {
@@ -97,7 +96,7 @@ class EmitterSpecificConstraints {
 // TODO(b/367306544): get rid of the HloFusionAdaptor parameter once the
 // abstraction exists.
 using EmitterSpecificConstraintsBuilder =
-    std::function<std::unique_ptr<EmitterSpecificConstraints>(
+    std::function<absl::StatusOr<std::unique_ptr<EmitterSpecificConstraints>>(
         const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&,
         const HloFusionAdaptor&)>;
 
@@ -130,12 +129,11 @@ class SymbolicTileAnalysis {
   // tiles of these operands may contain expressions with symbols which would
   // fail to be tiled.
   static SymbolicTileAnalysisOrError AnalyzeComputation(
-      const HloComputation& computation,
-      gpu::SymbolicExprContext* symbolic_expr_context,
+      const HloComputation& computation, mlir::MLIRContext* mlir_context,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
   static SymbolicTileAnalysisOrError AnalyzeFusion(
-      const HloFusionAdaptor& fusion, gpu::SymbolicExprContext* ctx,
+      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
 
@@ -202,10 +200,8 @@ class SymbolicTileAnalysis {
   // specification.
   absl::StatusOr<bool> ParametersSatisfyConstraints(const Tiling& tiling) const;
 
-  // Return the underlying MLIRContext.
-  mlir::MLIRContext* GetMLIRContext() const {
-    return symbolic_expr_context_->GetMLIRContext();
-  };
+  // Return the underlying mlir::MLIRContext.
+  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; };
 
   // Returns a string representation of the analysis. Used only for error
   // messages and debugging.
@@ -222,25 +218,24 @@ class SymbolicTileAnalysis {
       const RootIndexing& root_indexing,
       TilingSpecification tiling_specification,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
-      gpu::SymbolicExprContext* symbolic_expr_context)
+      mlir::MLIRContext* mlir_context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         root_indexing_(std::move(root_indexing)),
         tiling_specification_(std::move(tiling_specification)),
         emitter_specific_constraints_(std::move(emitter_specific_constraints)),
-        symbolic_expr_context_(symbolic_expr_context) {}
+        mlir_context_(mlir_context) {}
 
   // Computes indexing information for the roots of the computation.
   static absl::StatusOr<RootIndexing> GetRootIndexing(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context);
+      mlir::MLIRContext* mlir_context);
 
   static SymbolicTileAnalysisOrError AnalyzeFusionImpl(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context,
-      const RootIndexing& root_indexing,
+      mlir::MLIRContext* mlir_context, const RootIndexing& root_indexing,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
       std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
@@ -249,8 +244,7 @@ class SymbolicTileAnalysis {
   static SymbolicTileAnalysisOrError AnalyzeNestedFusion(
       const HloFusionAdaptor& fusion,
       const TilingSpecification::ParameterMapping& parameter_mapping,
-      gpu::SymbolicExprContext* symbolic_expr_context,
-      const IndexingMap& indexing_map,
+      mlir::MLIRContext* mlir_context, const IndexingMap& indexing_map,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
       std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
@@ -270,7 +264,7 @@ class SymbolicTileAnalysis {
   // no builder was provided when constructing the analysis.
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints_;
 
-  gpu::SymbolicExprContext* symbolic_expr_context_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 namespace detail {

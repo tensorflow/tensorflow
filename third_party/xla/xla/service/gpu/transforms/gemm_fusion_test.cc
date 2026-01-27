@@ -144,9 +144,10 @@ ENTRY e {
   r1 = s8[8,32,8] reshape(p0)
   t1 = s8[32,8,8] transpose(r1), dimensions={1,0,2}
   r0 = s8[32,64] reshape(t1)
+  c1 = f16[32,64] convert(r0)
   p1 = s8[32,32] parameter(1)
   c0 = f16[32,32] convert(p1)
-  ROOT d = f16[64,32] dot(r0, c0),
+  ROOT d = f16[64,32] dot(c1, c0),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
@@ -226,6 +227,58 @@ ENTRY e {
   EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
 }
 
+TEST_F(GemmFusionTest, FuseSliceWithOtherUsersWhenDotHasSmallK) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[512,3584]{1,0} parameter(0)
+  p1 = bf16[3584,14400]{0,1} parameter(1)
+  p2 = bf16[64,14336]{1,0} parameter(2)
+
+  d0 = bf16[512,14400]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sl0 = bf16[512,14336]{1,0} slice(d0), slice={[0:512], [0:14336]}
+
+  sl1 = bf16[512,64]{1,0} slice(d0), slice={[0:512], [14336:14400]}
+  d1 = bf16[512,14336]{1,0} dot(sl1, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT a0 = bf16[512,14336]{1,0} add(sl0, d1)
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kHopper, 0};
+  EXPECT_TRUE(GemmFusion(cc).Run(module.get()).value());
+
+  // Check that the second dot is fused and the fusion contains sl1.
+  // We make no assumptions about other fusions.
+  constexpr absl::string_view kExpectedHloText = R"(
+    CHECK: %[[FUSION_DOT:.*]] (
+    CHECK:   %[[SLICE:.*]] = bf16[512,64]{1,0} slice(%parameter_0), slice={[0:512], [14336:14400]}
+    CHECK:   ROOT {{.*}} = bf16[512,14336]{1,0} dot(%[[SLICE]], %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    CHECK: ENTRY
+    CHECK-DAG: %[[FUSION_D1:.*]] = bf16[512,14336]{1,0} fusion({{.*}}, {{.*}}), kind=kCustom, calls=%[[FUSION_DOT]]
+    CHECK-DAG: ROOT %a0 = bf16[512,14336]{1,0} add({{.*}}, %[[FUSION_D1]])
+  )";
+  MatchHloModule(*module, kExpectedHloText);
+}
+
+TEST_F(GemmFusionTest, DoNotFuseSliceWithOtherUsersWhenDotHasLargeK) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = bf16[512,3584]{1,0} parameter(0)
+  p1 = bf16[3584,14400]{0,1} parameter(1)
+  p2 = bf16[1400,14336]{1,0} parameter(2)
+
+  d0 = bf16[512,14400]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  sl0 = bf16[512,14336]{1,0} slice(d0), slice={[0:512], [0:14336]}
+  sl1 = bf16[512,1400]{1,0} slice(d0), slice={[0:512], [13000:14400]}
+
+  d1 = bf16[512,14336]{1,0} dot(sl1, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT a0 = bf16[512,14336]{1,0} add(sl0, d1)
+})"));
+
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::kHopper, 0};
+  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+}
+
 TEST_F(GemmFusionTest, DoNotFuseSliceOfMixedDimensions) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
@@ -263,7 +316,8 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, DynamicSliceIsFused) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSliceIsFused) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -287,7 +341,8 @@ ENTRY e {
                                     m::Parameter(), m::Constant()))));
 }
 
-TEST_F(GemmFusionTest, DynamicSlicesAreFusedEvenIfTheyShareIndices) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DynamicSlicesAreFusedEvenIfTheyShareIndices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -318,7 +373,8 @@ ENTRY e {
                             m::Parameter(), m::Parameter()))));
 }
 
-TEST_F(GemmFusionTest, DoNotFuseDynamicSliceOfNonMajorFragments) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest, DISABLED_DoNotFuseDynamicSliceOfNonMajorFragments) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -337,7 +393,9 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
 }
 
-TEST_F(GemmFusionTest, CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
+// TODO(b/417172838): support dynamic slice op.
+TEST_F(GemmFusionTest,
+       DISABLED_CanFuseDynamicSliceOfContractingDimIfItIsMajor) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -1398,7 +1456,7 @@ ENTRY e {
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
   constexpr auto kInt4Dot = R"(
     ENTRY e {
-      p0 = s8[16,16] parameter(0)
+      p0 = bf16[16,16] parameter(0)
       p1 = s4[16,16] parameter(1)
       p1c = bf16[16,16] convert(p1)
       ROOT dot = bf16[16,16] dot(p0, p1c),
@@ -1520,7 +1578,7 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
     CHECK:   ROOT %[[FUSION:.*]] = bf16[4,4]{1,0} fusion(
     CHECK:     kind=kCustom,
     CHECK:     calls=%[[FUSION_DOT]]
-    CHECK:     {"kind":"__triton_scaled_dot_fusion"}
+    CHECK:     {"kind":"__triton_gemm"}
   )";
   MatchHloModule(*module, kExpectedHloText);
 }

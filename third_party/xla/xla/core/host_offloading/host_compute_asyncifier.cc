@@ -60,7 +60,7 @@ void RemoveTilesAndMemorySpaces(HloComputation* computation) {
 }
 }  // namespace
 
-absl::StatusOr<bool> HostComputeAsyncifier::Run(
+absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

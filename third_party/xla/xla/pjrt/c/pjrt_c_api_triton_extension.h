@@ -39,11 +39,8 @@ struct PJRT_Triton_Compile_Args {
   const char* out_asm;  // owned
   size_t out_asm_size;
   int64_t out_smem_bytes;
-  int out_cluster_dim_x;
-  int out_cluster_dim_y;
-  int out_cluster_dim_z;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Triton_Compile_Args, out_cluster_dim_z);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Triton_Compile_Args, out_smem_bytes);
 
 // Compiles a given Triton kernel.
 typedef PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args);

@@ -1,5 +1,10 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# copybara:uncomment_begin(google-only)
+# load("@flatbuffers//:flatbuffers.bzl", "flatbuffers_library", "ts_flatbuffers_library")
+# copybara:uncomment_end
+
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -131,3 +136,15 @@ tf_cc_test(
         "@flatbuffers//:flatc_library",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# flatbuffers_library(
+#     name = "schema_fbslib",
+#     srcs = ["schema.fbs"],
+# )
+#
+# ts_flatbuffers_library(
+#     name = "schema_ts_fbs",
+#     deps = [":schema_fbslib"],
+# )
+# copybara:uncomment_end

@@ -104,7 +104,8 @@ class RangeOp : public XlaOpKernel {
     absl::StatusOr<xla::XlaOp> output;
     switch (type) {
       case DT_INT32:
-        output = CreateRangeTensor<int32>(start, limit, delta, ctx->builder());
+        output =
+            CreateRangeTensor<int32_t>(start, limit, delta, ctx->builder());
         break;
       case DT_INT64:
         output =

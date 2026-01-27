@@ -342,6 +342,8 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures_no_tensor_names.bin",
         "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [

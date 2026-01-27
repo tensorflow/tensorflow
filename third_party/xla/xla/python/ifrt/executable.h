@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,10 +52,11 @@ struct CompileOptions;
 struct DeserializeExecutableOptions;
 
 struct ExecutableVersion : llvm::RTTIExtends<ExecutableVersion, Serializable> {
-  // Returns true iff this version is compatible with `other`. The logic for
+  // Returns OK iff this version is compatible with `other`. The logic for
   // checking the version compatibility is an implementation detail of
   // `ExecutableVersion` subclasses.
-  virtual bool IsCompatibleWith(const ExecutableVersion& other) const = 0;
+  virtual absl::Status IsCompatibleWith(
+      const ExecutableVersion& other) const = 0;
 
   static char ID;  // NOLINT
 };
@@ -145,8 +148,17 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
-  absl::StatusOr<ExecuteOptionsProto> ToProto(
+  // Converts the execute options to a protobuf.
+  absl::Status ToProto(
+      ExecuteOptionsProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
+
+  absl::StatusOr<ExecuteOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    ExecuteOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -248,6 +260,22 @@ class LoadedExecutable
 
   using ExecuteOptions = ::xla::ifrt::ExecuteOptions;
 
+  // Handle that can be passed to `CancelExecution` to perform best-effort
+  // cancellation of the enqueued execution.
+  class CancellationHandleObject {
+   public:
+    explicit CancellationHandleObject() = default;
+    virtual ~CancellationHandleObject() = default;
+
+    // Not copyable or movable.
+    CancellationHandleObject(const CancellationHandleObject&) = delete;
+    CancellationHandleObject(CancellationHandleObject&&) = delete;
+    CancellationHandleObject& operator=(const CancellationHandleObject&) =
+        delete;
+    CancellationHandleObject& operator=(CancellationHandleObject&&) = delete;
+  };
+  using CancellationHandle = std::shared_ptr<CancellationHandleObject>;
+
   // Result from an execution.
   struct ExecuteResult {
     // Resulting status of the execution. Filled only if
@@ -255,6 +283,10 @@ class LoadedExecutable
     tsl::Future<> status;
     // Output arrays.
     std::vector<ArrayRef> outputs;
+    // Handle that can be passed to `CancelExecution` to perform best-effort
+    // cancellation of the enqueued execution. May be `nullptr` in which case
+    // cancellation will be ignored.
+    CancellationHandle cancellation_handle;
   };
 
   // Executes the executable on devices.
@@ -279,8 +311,9 @@ class LoadedExecutable
       std::optional<DeviceListRef> devices) = 0;
 
   // Returns the list of devices where the executable has been compiled and
-  // loaded onto.
-  virtual const DeviceListRef& devices() const = 0;
+  // loaded onto. Returns `std::nullopt` if the executable is not bound to a
+  // particular device list, e.g., portable executables.
+  virtual std::optional<DeviceListRef> devices() const = 0;
 
   // The following APIs are taken from xla::PjRtLoadedExecutable for fast
   // prototyping.

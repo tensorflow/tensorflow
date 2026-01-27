@@ -39,10 +39,11 @@ using strings::StrCat;
 
 struct NameCounts {
   mutex counts_mutex;
-  std::unordered_map<string, int> counts;
+  std::unordered_map<std::string, int> counts;
 };
 
-string MakeUniqueFilename(string name, const string& suffix = ".pbtxt") {
+std::string MakeUniqueFilename(std::string name,
+                               const std::string& suffix = ".pbtxt") {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
@@ -60,7 +61,7 @@ string MakeUniqueFilename(string name, const string& suffix = ".pbtxt") {
     count = instance.counts[name]++;
   }
 
-  string filename = name;
+  std::string filename = name;
   if (count > 0) {
     absl::StrAppend(&filename, "_", count);
   }
@@ -78,7 +79,7 @@ struct GraphDumperConfig {
                                const FunctionLibraryDefinition* flib_def,
                                WritableFile*)>
         dumper = nullptr;
-    string suffix = ".pbtxt";
+    std::string suffix = ".pbtxt";
   } config TF_GUARDED_BY(mu);
 
   // Returns whether a custom dumper is set.
@@ -93,8 +94,8 @@ GraphDumperConfig& GetGraphDumperConfig() {
   return config;
 }
 
-string GetDumpGraphFormatLowerCase() {
-  string fmt;
+std::string GetDumpGraphFormatLowerCase() {
+  std::string fmt;
   absl::Status status =
       tsl::ReadStringFromEnvVar("TF_DUMP_GRAPH_FMT", "TXT", &fmt);
   if (!status.ok()) {
@@ -105,8 +106,8 @@ string GetDumpGraphFormatLowerCase() {
   return fmt;
 }
 
-string GetDumpGraphSuffix() {
-  string fmt = GetDumpGraphFormatLowerCase();
+std::string GetDumpGraphSuffix() {
+  std::string fmt = GetDumpGraphFormatLowerCase();
   if (fmt == "txt") {
     return ".pbtxt";
   } else if (fmt == "bin") {
@@ -145,11 +146,12 @@ class StderrWritableFile : public WritableFile {
   }
 };
 
-absl::Status CreateWritableFile(Env* env, const string& dirname,
-                                const string& name, const string& suffix,
-                                string* filepath,
+absl::Status CreateWritableFile(Env* env, const std::string& dirname,
+                                const std::string& name,
+                                const std::string& suffix,
+                                std::string* filepath,
                                 std::unique_ptr<WritableFile>* file) {
-  string dir;
+  std::string dir;
   if (!dirname.empty()) {
     dir = dirname;
   } else {
@@ -187,8 +189,8 @@ absl::Status CreateWritableFile(Env* env, const string& dirname,
 
 absl::Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
                                     WritableFile* file) {
-  string s;
-  string format = GetDumpGraphFormatLowerCase();
+  std::string s;
+  std::string format = GetDumpGraphFormatLowerCase();
   if (format == "txt" &&
       !::tensorflow::protobuf::TextFormat::PrintToString(proto, &s)) {
     return absl::FailedPreconditionError("Unable to convert proto to text.");
@@ -209,7 +211,7 @@ absl::Status WriteProtoToUniqueFile(const tensorflow::protobuf::Message& proto,
 
 absl::Status WriteProtoToUniqueFile(
     const tensorflow::protobuf::MessageLite& proto, WritableFile* file) {
-  string s;
+  std::string s;
   if (!SerializeToStringDeterministic(proto, &s)) {
     return errors::Internal("Failed to serialize proto to string.");
   }
@@ -223,10 +225,10 @@ absl::Status WriteProtoToUniqueFile(
 
 }  // anonymous namespace
 
-string DumpToFile(const string& name, const string& dirname,
-                  const string& suffix, absl::string_view type_name,
-                  std::function<absl::Status(WritableFile*)> dumper) {
-  string filepath;
+std::string DumpToFile(const std::string& name, const std::string& dirname,
+                       const std::string& suffix, absl::string_view type_name,
+                       std::function<absl::Status(WritableFile*)> dumper) {
+  std::string filepath;
   std::unique_ptr<WritableFile> file;
   absl::Status status = CreateWritableFile(Env::Default(), dirname, name,
                                            suffix, &filepath, &file);
@@ -249,32 +251,34 @@ void SetGraphDumper(
                                const FunctionLibraryDefinition* flib_def,
                                WritableFile*)>
         dumper,
-    string suffix) {
+    std::string suffix) {
   GraphDumperConfig& dumper_config = GetGraphDumperConfig();
   mutex_lock lock(dumper_config.mu);
   dumper_config.config.dumper = dumper;
   dumper_config.config.suffix = suffix;
 }
 
-string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
-                          const string& dirname) {
+std::string DumpGraphDefToFile(const std::string& name,
+                               GraphDef const& graph_def,
+                               const std::string& dirname) {
   return DumpToFile(name, dirname, GetDumpGraphSuffix(), "Graph",
                     [&](WritableFile* file) {
                       return WriteProtoToUniqueFile(graph_def, file);
                     });
 }
 
-string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
-                              const string& dirname) {
+std::string DumpCostGraphDefToFile(const std::string& name,
+                                   CostGraphDef const& graph_def,
+                                   const std::string& dirname) {
   return DumpToFile(name, dirname, GetDumpGraphSuffix(), "Graph",
                     [&](WritableFile* file) {
                       return WriteProtoToUniqueFile(graph_def, file);
                     });
 }
 
-string DumpGraphToFile(const string& name, Graph const& graph,
-                       const FunctionLibraryDefinition* flib_def,
-                       const string& dirname) {
+std::string DumpGraphToFile(const std::string& name, Graph const& graph,
+                            const FunctionLibraryDefinition* flib_def,
+                            const std::string& dirname) {
   auto& dumper_config = GetGraphDumperConfig();
   if (dumper_config.IsSet()) {
     GraphDumperConfig::Config config;
@@ -298,16 +302,17 @@ string DumpGraphToFile(const string& name, Graph const& graph,
   return DumpGraphDefToFile(name, graph_def, dirname);
 }
 
-string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef,
-                             const string& dirname) {
+std::string DumpFunctionDefToFile(const std::string& name,
+                                  FunctionDef const& fdef,
+                                  const std::string& dirname) {
   return DumpToFile(
       name, dirname, GetDumpGraphSuffix(), "FunctionDef",
       [&](WritableFile* file) { return WriteProtoToUniqueFile(fdef, file); });
 }
 
-string DumpProtoToFile(const string& name,
-                       tensorflow::protobuf::Message const& proto,
-                       const string& dirname) {
+std::string DumpProtoToFile(const std::string& name,
+                            tensorflow::protobuf::Message const& proto,
+                            const std::string& dirname) {
   return DumpToFile(
       name, dirname, GetDumpGraphSuffix(), proto.GetTypeName(),
       [&](WritableFile* file) { return WriteProtoToUniqueFile(proto, file); });

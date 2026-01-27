@@ -15,6 +15,8 @@ limitations under the License.
 
 syntax = "proto3";
 
+import "xla/xla_data.proto";
+
 package xla.buffer_assignment;
 
 // This defines the buffer isolation configuration, which is a debugging tool to
@@ -108,4 +110,5 @@ message BufferAllocationSliceProto {
   int64 offset = 1;
   int64 size = 2;
   int64 buffer_allocation_index = 3;
+  xla.PrimitiveType element_type = 4;
 }

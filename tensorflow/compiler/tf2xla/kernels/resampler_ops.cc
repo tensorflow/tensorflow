@@ -311,7 +311,7 @@ XlaOp CalculateGradData(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::Pad(grad_data, xla::Zero(ctx->builder(), warp_type),
                xla::MakeEdgePaddingConfig({{0, 0}, {1, 1}, {1, 1}, {0, 0}}));
 
-  auto shifting_value = xla::ConstantR1<int32>(
+  auto shifting_value = xla::ConstantR1<int32_t>(
       ctx->builder(), {/*batch=*/0, /*x(width)=*/1, /*y(height)=*/1});
   auto shifted_gather_indices =
       xla::Add(gather_indices, shifting_value, {last_warp_dim});
@@ -384,7 +384,7 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
       xla::Pad(data, xla::Zero(ctx->builder(), data_type),
                xla::MakeEdgePaddingConfig({{0, 0}, {1, 1}, {1, 1}, {0, 0}}));
 
-  auto shifting_value = xla::ConstantR1<int32>(
+  auto shifting_value = xla::ConstantR1<int32_t>(
       ctx->builder(), {/*batch=*/0, /*x(width)=*/1, /*y(height)=*/1});
   auto shifted_gather_indices =
       xla::Add(gather_indices, shifting_value, {last_warp_dim});

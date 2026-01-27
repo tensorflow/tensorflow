@@ -92,15 +92,11 @@ IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
 absl::StatusOr<std::unique_ptr<IfrtIRProgram>>
 IfrtIrExecutableImplTestBase::SerDeRoundTrip(
     std::unique_ptr<IfrtIRProgram> program,
-    Version::CompatibilityRequirement compatibility_requirement,
-    bool propagate_shardings) {
+    Version::CompatibilityRequirement compatibility_requirement) {
   // Ensure the atom programs are outlined to modules. If the atom programs are
   // already outlined, this pipeline will do nothing.
   mlir::PassManager pm(program->mlir_module.getContext());
-  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
-  outline_pipeline_options.propagate_shardings = propagate_shardings;
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
-                                                      outline_pipeline_options);
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
   mlir::BaseScopedDiagnosticHandler diag_handler(
       program->mlir_module.getContext());
   if (mlir::failed(pm.run(program->mlir_module))) {
@@ -135,7 +131,10 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
   TF_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
-  TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
+  TF_ASSIGN_OR_RETURN(
+      auto per_shard,
+      sharding->Disassemble(shape,
+                            xla::ifrt::SingleDeviceShardSemantics::kAllShards));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
   std::vector<ArrayRef> per_shard_arrays;
@@ -153,8 +152,9 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
     per_shard_arrays.push_back(per_shard_array);
   }
   return client_->AssembleArrayFromSingleDeviceArrays(
-      shape, sharding, absl::MakeSpan(per_shard_arrays),
-      ArrayCopySemantics::kAlwaysCopy);
+      dtype, shape, sharding, absl::MakeSpan(per_shard_arrays),
+      ArrayCopySemantics::kAlwaysCopy,
+      xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
 }
 
 absl::StatusOr<DeviceListRef> IfrtIrExecutableImplTestBase::PickDevices(

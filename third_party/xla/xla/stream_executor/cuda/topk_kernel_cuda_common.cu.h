@@ -1,3 +1,4 @@
+#include "xla/stream_executor/kernel_symbol_registry.h"
 /* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -285,10 +286,15 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelCuda_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {             \
-        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
-            absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                     \
-            "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                        \
-      }));
+        return stream_executor::KernelLoaderSpec::                            \
+            CreateSerializableInProcessSymbolSpec(                            \
+                /*persistent_kernel_name=*/"topk_k" #K_VAL "_" #TYPE "_" #VT, \
+                absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                 \
+                "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                    \
+      }));                                                                    \
+  KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                          \
+      topk_k##K_VAL##_##TYPE##_##VT, stream_executor::cuda::kCudaPlatformId,  \
+      (&Run<K_VAL, TYPE, VT>));
 
 }  // namespace stream_executor::cuda
 

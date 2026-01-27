@@ -1,5 +1,9 @@
 # MLIR-HLO: A Standalone "HLO" MLIR-based Compiler
 
+> Note:
+> [this project is deprecated](https://groups.google.com/a/openxla.org/g/openxla-discuss/c/Mppuv1Edv1s),
+> and will be removed in the future.
+
 The code here exists in two places:
 
 *   https://github.com/openxla/xla/tree/main/xla/mlir_hlo:

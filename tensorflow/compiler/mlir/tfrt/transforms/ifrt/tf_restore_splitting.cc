@@ -93,15 +93,15 @@ class TfRestoreSplittingPass
                    shape_and_slices.getValues<llvm::StringRef>(),
                    restore.getTensors())) {
       auto new_tensor_names =
-          builder.create<mlir::TF::ConstOp>(restore.getTensorNames().getLoc(),
-                                            GetStringTensorAttr({tensor_name}));
+          mlir::TF::ConstOp::create(builder, restore.getTensorNames().getLoc(),
+                                    GetStringTensorAttr({tensor_name}));
 
-      auto new_shape_and_slices = builder.create<mlir::TF::ConstOp>(
-          restore.getShapeAndSlices().getLoc(),
+      auto new_shape_and_slices = mlir::TF::ConstOp::create(
+          builder, restore.getShapeAndSlices().getLoc(),
           GetStringTensorAttr({shape_and_slice}));
 
-      auto new_restore = builder.create<mlir::TF::RestoreV2Op>(
-          restore.getLoc(), mlir::TypeRange({result.getType()}),
+      auto new_restore = mlir::TF::RestoreV2Op::create(
+          builder, restore.getLoc(), mlir::TypeRange({result.getType()}),
           restore.getPrefix(), new_tensor_names, new_shape_and_slices);
       result.replaceAllUsesWith(new_restore.getTensors()[0]);
     }

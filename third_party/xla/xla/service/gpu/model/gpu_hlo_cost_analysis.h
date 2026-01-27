@@ -79,6 +79,8 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   absl::Status HandleAsyncStart(const HloInstruction* hlo) override;
   absl::Status HandleReduceScatter(const HloInstruction* hlo) override;
   absl::Status HandleAllToAll(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  absl::Status HandleCollectivePermuteStart(const HloInstruction* hlo) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.

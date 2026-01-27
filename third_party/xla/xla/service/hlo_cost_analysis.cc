@@ -62,8 +62,12 @@ absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // The default number of bytes accessed for an instruction is the sum of the
   // sizes of the inputs and outputs. The default ShapeUtil::ByteSizeOf does not
   // handle opaque types.
-  float bytes_accessed = GetShapeSize(hlo->shape());
-  current_properties_.set_output_bytes_accessed(GetShapeSize(hlo->shape()));
+  float bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        bytes_accessed += GetShapeSize(sub_shape);
+      });
+  current_properties_.set_output_bytes_accessed(bytes_accessed);
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
@@ -576,6 +580,23 @@ absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   sub_properties.ForEach([&](absl::string_view key, float val) {
     if (KeyToCopyFromSubcomputation(key)) {
       current_properties_[key] = val * reduction_count;
+    }
+  });
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleScan(const HloInstruction* scan) {
+  HloComputation* function = scan->to_apply();
+  // Compute the cost of the user function.
+  TF_ASSIGN_OR_RETURN(const Properties sub_properties,
+                      ProcessSubcomputation(function));
+
+  // Compute the cost of all elements for this Scan operation.
+  auto input = scan->operand(1);
+  int64_t element_count = ShapeUtil::ElementsIn(input->shape());
+  sub_properties.ForEach([&](absl::string_view key, float val) {
+    if (KeyToCopyFromSubcomputation(key)) {
+      current_properties_[key] = val * element_count;
     }
   });
   return absl::OkStatus();

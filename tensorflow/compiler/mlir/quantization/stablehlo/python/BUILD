@@ -1,5 +1,5 @@
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",

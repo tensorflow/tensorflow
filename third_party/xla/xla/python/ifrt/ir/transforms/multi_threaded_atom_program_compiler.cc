@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -46,40 +44,17 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/with_user_context.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/platform/env.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/random.h"
 
 namespace xla {
 namespace ifrt {
 
 namespace {
-
-// Lazily initialized shared thread pool.
-tsl::thread::ThreadPool* thread_pool() {
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    constexpr int kMaxParallelism = 32;
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(),
-                                       "CompileAtomPrograms", kMaxParallelism);
-  }();
-  return thread_pool;
-}
-
-void ScheduleWork(tsl::thread::ThreadPool* pool,
-                  absl::AnyInvocable<void()> callee) {
-  // ThreadPool expects std::function that must be copyable, but we can avoid
-  // this by using AnyInvocable.
-  pool->Schedule([ptr = new absl::AnyInvocable<void()>(std::move(callee))]() {
-    (*ptr)();
-    delete ptr;
-  });
-}
 
 // Construct a bool vector with a True entry for each input sharding that must
 // be inferred.
@@ -120,21 +95,23 @@ llvm::SmallVector<bool> GetOutputShardingPropagation(
 
 }  // namespace
 
-absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileModule(
-    CallOp call_op, mlir::ModuleOp module_op) {
+absl::StatusOr<AtomProgramCompileResult>
+MultiThreadedAtomProgramCompiler::CompileModule(CallOp call_op,
+                                                mlir::ModuleOp module_op) {
   auto module_type =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
   if (module_type == kIfrtModuleTypeXla) {
-    return CompileXla(call_op, module_op, thread_pool());
-  } else if (module_type == kIfrtModuleTypeMpmdReshard) {
+    return CompileXla(call_op, module_op);
+  }
+  if (module_type == kIfrtModuleTypeMpmdReshard) {
     return CompileMpmdReshard(module_op);
-  } else if (module_type == nullptr) {
+  }
+  if (module_type == nullptr) {
     return absl::InvalidArgumentError(absl::StrCat(
         "CallOp requires `", kIfrtModuleTypeAttrName.str(), "` to be set"));
-  } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("No compiler for module type: ", module_type.str()));
   }
+  return absl::InvalidArgumentError(
+      absl::StrCat("No compiler for module type: ", module_type.str()));
 }
 
 absl::StatusOr<xla::CompileOptions>
@@ -189,32 +166,35 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
   return compile_options;
 }
 
-absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
-    CallOp call_op, mlir::ModuleOp module_op,
-    tsl::thread::ThreadPool* thread_pool) {
+absl::StatusOr<AtomProgramCompileResult>
+MultiThreadedAtomProgramCompiler::CompileXla(CallOp call_op,
+                                             mlir::ModuleOp module_op) {
   TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                       GetXlaCompileOptions(call_op, module_op));
-
-  // We must clone the module in order ensure the module string representation
-  // is maintained. This is because MLIR printing takes different paths
-  // depending on if a ModuleOp has a parent or not.
-
-  auto hlo_program = std::make_unique<HloProgram>(
-      /*context=*/nullptr,  // Shares the same long-living context.
-      mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
-  auto [promise, future] = CompileFuture::MakePromise();
-  ScheduleWork(
-      thread_pool,
-      WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
-                              compile_options = std::move(compile_options),
-                              promise = std::move(promise)]() mutable {
-        promise.Set(compiler_->CompileXla(std::move(hlo_program),
-                                          std::move(compile_options)));
-      }));
-  return std::move(future);
+  // In order to be able to compile multiple XLA computations in parallel, we
+  // need to:
+  // 1. Create a new MLIR context with threading disabled to ensure MLIR doesn't
+  // create too many threads when compiling many XLA computations in parallel.
+  // 2. Clone the module into this new context. This cloning is necessary
+  // because MLIR printing takes different paths depending on if a ModuleOp has
+  // a parent or not. Thus, by cloning the module we ensure that the module's
+  // string representation is maintained.
+  auto context = std::make_unique<mlir::MLIRContext>(
+      mlir::MLIRContext::Threading::DISABLED);
+  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> cloned_module,
+                      CloneModuleIntoContext(module_op, *context));
+  auto hlo_program = std::make_unique<HloProgram>(std::move(context),
+                                                  std::move(cloned_module));
+  AtomProgramCompileResult result;
+  result.name = absl::StrCat(
+      hlo_program->mlir_module().getName().value_or("<unknown>").str(), ".",
+      tsl::random::ThreadLocalNew64());
+  result.executable =
+      compiler_->CompileXla(std::move(hlo_program), std::move(compile_options));
+  return result;
 }
 
-absl::StatusOr<CompileFuture>
+absl::StatusOr<AtomProgramCompileResult>
 MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
   auto main_func =
       module_op.lookupSymbol<mlir::func::FuncOp>(kCalleeMainFuncName);
@@ -244,13 +224,11 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
     out_arrays_types.push_back(array_type);
   }
-  auto [promise, future] = CompileFuture::MakePromise();
-  // No need to dispatch from a different thread because MpmdReshard uses its
-  // own thread pool already.
-  auto compile_result = compiler_->CompileMpmdReshard(
+  AtomProgramCompileResult result;
+  result.name = absl::StrCat("mpmd_reshard.", tsl::random::ThreadLocalNew64());
+  result.executable = compiler_->CompileMpmdReshard(
       std::move(dtypes), std::move(shapes), in_arrays_types, out_arrays_types);
-  promise.Set(std::move(compile_result));
-  return future;
+  return result;
 }
 
 }  // namespace ifrt

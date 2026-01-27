@@ -38,7 +38,7 @@ static bool Initialized = [] {
 
 class DeviceContextTest : public ::testing::Test {
  public:
-  void SetDevice(const string& device_type) {
+  void SetDevice(const std::string& device_type) {
     auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
     rollout_config.AllowForDeviceInXlaLaunch(DeviceType(device_type));
     rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(device_type));

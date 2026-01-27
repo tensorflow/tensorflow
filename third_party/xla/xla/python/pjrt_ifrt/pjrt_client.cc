@@ -44,9 +44,11 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -54,7 +56,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
@@ -65,32 +66,32 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -99,7 +100,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -498,6 +498,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
       }
     }
 
+    std::string platform_name(pjrt_client->platform_name());
     const bool node_is_me = process_index == global_topology.my_process_index;
     for (const DeviceProto& device_proto : node.devices()) {
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
@@ -536,7 +537,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
         }
       }
       auto ifrt_device = std::make_unique<PjRtDevice>(
-          client, ifrt_device_id, device_proto.device_kind(),
+          client, ifrt_device_id, platform_name, device_proto.device_kind(),
           std::move(to_string), std::move(debug_string), process_index,
           std::move(attributes), pjrt_device);
       devices.push_back(std::move(ifrt_device));
@@ -658,7 +659,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
       arrays.size(), std::move(buffer_backing_store));
 
   auto [buffers_promise, buffers_future] =
-      tsl::Future<BasicStringArray::Buffers>::MakePromise();
+      tsl::MakePromise<BasicStringArray::Buffers>();
 
   auto buffer_copier = [state = buffer_copying_state,
                         promise = std::move(buffers_promise).ToShared()](
@@ -716,6 +717,30 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
   return BasicStringArray::Create(client, std::move(shape), std::move(sharding),
                                   buffers_future,
                                   std::move(on_done_with_buffer));
+}
+
+// Copies the buffer at the given index in each array to a buffer on the given
+// device.
+absl::StatusOr<std::vector<std::shared_ptr<PjRtBuffer>>>
+CopyPjRtBuffersToLocalDevice(int index, absl::Span<ArrayRef> arrays,
+                             Device* dst_device,
+                             std::optional<MemoryKind> memory_kind,
+                             ArrayCopySemantics semantics) {
+  std::vector<std::shared_ptr<PjRtBuffer>> buffers;
+  buffers.reserve(arrays.size());
+  for (ArrayRef& array : arrays) {
+    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get());
+        pjrt_array != nullptr) {
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<PjRtBuffer> buffer,
+                          pjrt_array->CopySinglePjRtBuffer(
+                              index, dst_device, memory_kind, semantics));
+      buffers.push_back(std::move(buffer));
+    } else {
+      return absl::InvalidArgumentError(
+          "Unsupported array type for CopyPjRtBuffersToLocalDevice");
+    }
+  }
+  return buffers;
 }
 
 const char kKeyPrefix[] = "ifrt_cross_host_transfer_";
@@ -858,6 +883,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   client->kv_store_ = std::move(options.kv_store);
   client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
   client->transfer_server_factory_ = std::move(options.transfer_server_factory);
+  client->force_dcn_cross_host_transfers_ =
+      options.force_dcn_cross_host_transfers;
 
   if (client->pjrt_client()->plugin_attributes().has_value()) {
     auto attrs = client->pjrt_client()->plugin_attributes()->attributes;
@@ -869,7 +896,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   // Start a background thread to monitor the status of all processes.
   if (client->distributed_client_) {
-    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+    absl::StatusOr<xla::CoordinationServiceAgent*> agent =
         client->distributed_client_->GetCoordinationServiceAgent();
     if (agent.ok()) {
       client->global_process_info_thread_.reset(
@@ -883,9 +910,6 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
               }));
     }
   }
-
-  client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
-      tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
 
   LogDeviceSummary(client.get());
   return client;
@@ -987,10 +1011,14 @@ PjRtClient::CreatePjRtArray(Shape shape, PjRtBuffers pjrt_buffers,
 absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
-    Client::HostBufferSemantics semantics,
+    LayoutRef layout, Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer) {
   DCHECK(this);
   if (dtype.kind() == DType::kString) {
+    if (layout != nullptr) {
+      return InvalidArgument(
+          "String arrays do not support custom layouts: layout=%v", *layout);
+    }
     return MakeStringArrayFromHostBuffer(this, data, dtype, shape, byte_strides,
                                          sharding, semantics,
                                          on_done_with_host_buffer);
@@ -1011,6 +1039,15 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   if (ifrt_addressable_devices.empty()) {
     return InvalidArgument("Cannot copy array to non-addressable device: %s",
                            sharding->devices()->DebugString());
+  }
+  std::shared_ptr<const xla::PjRtLayout> pjrt_layout;
+  const xla::Layout* xla_layout;
+  if (layout == nullptr) {
+    xla_layout = nullptr;
+  } else {
+    TF_ASSIGN_OR_RETURN(Shape shard_shape, sharding->GetShardShape(shape));
+    TF_ASSIGN_OR_RETURN(pjrt_layout, ToPjRtLayout(dtype, shard_shape, layout));
+    xla_layout = &pjrt_layout->xla_layout();
   }
   std::function<void()> on_done_with_host_buffer_per_device;
   if (on_done_with_host_buffer) {
@@ -1057,24 +1094,22 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
                       data, primitive_type, shape.dims(), byte_strides,
                       semantics, on_done_with_host_buffer_per_device,
                       tensorflow::down_cast<PjRtMemory*>(memory)->pjrt_memory(),
-                      /*device_layout=*/nullptr));
+                      xla_layout));
     } else {
       TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * memory_space,
                           tensorflow::down_cast<PjRtDevice*>(device)
                               ->pjrt_device()
                               ->default_memory_space());
-      TF_ASSIGN_OR_RETURN(buffer,
-                          pjrt_client_->BufferFromHostBuffer(
-                              data, primitive_type, shape.dims(), byte_strides,
-                              semantics, on_done_with_host_buffer_per_device,
-                              memory_space, /*device_layout=*/nullptr));
+      TF_ASSIGN_OR_RETURN(
+          buffer,
+          pjrt_client_->BufferFromHostBuffer(
+              data, primitive_type, shape.dims(), byte_strides, semantics,
+              on_done_with_host_buffer_per_device, memory_space, xla_layout));
     }
     buffers.push_back(std::move(buffer));
   }
-  // `MakeArrayFromHostBuffer` only creates buffers with a default layout.
-  std::shared_ptr<const xla::PjRtLayout> layout = nullptr;
   return PjRtArray::Create(this, dtype, std::move(shape), std::move(sharding),
-                           std::move(buffers), std::move(layout));
+                           std::move(buffers), std::move(pjrt_layout));
 }
 
 absl::StatusOr<std::vector<ArrayRef>>
@@ -1292,9 +1327,9 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
     return new_arrays;
   }
-  if (pjrt_supports_cross_host_transfers_) {
-    return CopyArraysForCrossHost(arrays, src_devices, dst_devices,
-                                  memory_kind);
+  if (pjrt_supports_cross_host_transfers_ && !force_dcn_cross_host_transfers_) {
+    return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind,
+                                  semantics);
   }
   if (transfer_server_factory_ != nullptr) {
     return CopyArraysForCrossHostFallback(arrays, src_devices, dst_devices,
@@ -1310,39 +1345,40 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
                                    DeviceListRef src_devices,
                                    DeviceListRef dst_devices,
-                                   std::optional<MemoryKind> memory_kind) {
+                                   std::optional<MemoryKind> memory_kind,
+                                   ArrayCopySemantics semantics) {
   std::vector<ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
-  std::vector<PjRtBuffers> recv_buffers;
+  std::vector<std::vector<std::shared_ptr<PjRtBuffer>>> recv_buffers;
   recv_buffers.reserve(dst_devices->AddressableDeviceList()->size());
+  auto on_send_done = [](absl::Status status) {
+    if (!status.ok()) {
+      LOG(ERROR) << "xla::PjRtClient::CrossHostSendBuffers failed: " << status;
+    }
+  };
+  auto on_recv_done = [](absl::Status status) {
+    if (!status.ok()) {
+      LOG(ERROR) << "Cross-host receive buffer failed: " << status;
+    }
+  };
   int j = 0;  // Counter for the addressable buffers.
   for (int i = 0; i < dst_devices->size(); ++i) {
     // TODO(emilyaf): Extend CreateNewTransferKey to take N and return N keys
     // as a performance optimization.
-    std::vector<int64_t> transfer_keys;
+    std::vector<CrossHostTransferKey> transfer_keys;
     transfer_keys.reserve(arrays.size());
     for (int k = 0; k < arrays.size(); ++k) {
       transfer_keys.push_back(CreateNewTransferKey());
     }
 
     if (src_devices->devices()[i]->IsAddressable()) {
-      if (dst_devices->devices()[i]->IsAddressable()) {
-        // TODO(emilyaf): Support host-local transfers alongside cross-host
-        // transfers.
-        return absl::UnimplementedError(absl::StrFormat(
-            "Cross-host transfers are currently supported only if every "
-            "shard requires a cross-host transfer. A host-local transfer "
-            "was requested from device %s to device %s.",
-            src_devices->devices()[i]->DebugString(),
-            dst_devices->devices()[i]->DebugString()));
-      }
-
-      PjRtArray::PjRtBuffers send_buffers;
+      // Create send buffers.
+      std::vector<PjRtBuffer*> send_buffers;
       send_buffers.reserve(arrays.size());
       for (ArrayRef& array : arrays) {
         if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
           auto buffers = pjrt_array->pjrt_buffers();
-          send_buffers.push_back(buffers[j]);
+          send_buffers.push_back(buffers[j].get());
         } else {
           // TODO(emilyaf): Support string arrays.
           return absl::InvalidArgumentError(
@@ -1350,15 +1386,49 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
-      TF_RETURN_IF_ERROR(
-          CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
+
+      if (dst_devices->devices()[i]->IsAddressable()) {
+        // This transfer is between two addressable devices.
+        TF_ASSIGN_OR_RETURN(
+            recv_buffers.emplace_back(),
+            CopyPjRtBuffersToLocalDevice(j, arrays, dst_devices->devices()[i],
+                                         memory_kind, semantics));
+      } else {
+        // Create vector of (remote) dst devices; we send each array to
+        // dst_devices->devices()[i].
+        TF_ASSIGN_OR_RETURN(
+            xla::PjRtGlobalDeviceId dst_global_device_id,
+            GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
+        std::vector<PjRtGlobalDeviceId> dst_global_device_ids(
+            arrays.size(), dst_global_device_id);
+
+        // If the PJRT plugin implements the `CrossHostSendBuffers` API, use it.
+        // Otherwise, call this class's `CrossHostSendBuffers` method to use the
+        // plugin's `CopyToRemoteDevice` API, getting the buffer descriptors
+        // from the KV store.
+        absl::StatusOr<std::vector<Future<>>> send_futures =
+            pjrt_client_->CrossHostSendBuffers(
+                send_buffers, std::move(dst_global_device_ids), transfer_keys);
+        if (send_futures.ok()) {
+          for (Future<>& send_future : *send_futures) {
+            send_future.OnReady(on_send_done);
+          }
+        } else if (absl::IsUnimplemented(send_futures.status())) {
+          TF_RETURN_IF_ERROR(
+              CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
+        } else {
+          return send_futures.status();
+        }
+      }
       ++j;
     } else if (dst_devices->devices()[i]->IsAddressable()) {
+      // Create vector of shapes to receive.
       std::vector<xla::Shape> recv_shapes;
       recv_shapes.reserve(arrays.size());
       for (const ArrayRef& array : arrays) {
         if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-          TF_ASSIGN_OR_RETURN(auto dtype, ToPrimitiveType(pjrt_array->dtype()));
+          TF_ASSIGN_OR_RETURN(xla::PrimitiveType dtype,
+                              ToPrimitiveType(pjrt_array->dtype()));
           TF_ASSIGN_OR_RETURN(
               Shape shard_shape,
               pjrt_array->sharding().GetShardShape(pjrt_array->shape()));
@@ -1371,14 +1441,45 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
+
+      // Get the dst device we receive into.
       TF_ASSIGN_OR_RETURN(
           xla::PjRtGlobalDeviceId pjrt_global_device_id,
           GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
       TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupDevice(pjrt_global_device_id));
-      TF_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
-                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,
-                                                  std::move(transfer_keys)));
+
+      // Create vector of src devices; we receive each array from
+      // src_devices->devices()[i].
+      TF_ASSIGN_OR_RETURN(
+          xla::PjRtGlobalDeviceId src_global_device_id,
+          GetPjRtGlobalDeviceId(src_devices->devices()[i]->Id()));
+      std::vector<PjRtGlobalDeviceId> src_global_device_ids(
+          arrays.size(), src_global_device_id);
+
+      // If the PJRT plugin implements the `CrossHostReceiveBuffers` API, use
+      // it. Otherwise, call this class's `CrossHostReceiveBuffers` method to
+      // use the plugin's `MakeCrossHostReceiveBuffers` API, transmitting the
+      // buffer descriptors via the KV store.
+      absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+          received_buffers = pjrt_client_->CrossHostReceiveBuffers(
+              pjrt_device, recv_shapes, std::move(src_global_device_ids),
+              transfer_keys);
+      if (absl::IsUnimplemented(received_buffers.status())) {
+        TF_ASSIGN_OR_RETURN(received_buffers,
+                            CrossHostReceiveBuffers(recv_shapes, pjrt_device,
+                                                    std::move(transfer_keys)));
+      }
+      if (!received_buffers.ok()) {
+        return received_buffers.status();
+      }
+      std::vector<std::shared_ptr<PjRtBuffer>> buffers;
+      buffers.reserve(received_buffers->size());
+      for (std::unique_ptr<PjRtBuffer>& buffer : *received_buffers) {
+        buffer->GetReadyFuture().OnReady(on_recv_done);
+        buffers.push_back(std::move(buffer));
+      }
+      recv_buffers.push_back(std::move(buffers));
     }
   }
 
@@ -1428,10 +1529,12 @@ PjRtClient::CopyArraysForCrossHostFallback(
                                memory_kind);
 }
 
-int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
+CrossHostTransferKey PjRtClient::CreateNewTransferKey() {
+  return CrossHostTransferKey(next_transfer_key_++);
+}
 
 absl::Status PjRtClient::WatchGlobalProcessInfo(
-    tsl::CoordinationServiceAgent& agent) {
+    xla::CoordinationServiceAgent& agent) {
   TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
   VLOG(3) << "Watching global process info for task "
           << task.ShortDebugString();
@@ -1507,37 +1610,48 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 }
 
 absl::Status PjRtClient::CrossHostSendBuffers(
-    PjRtBuffers buffers, const std::vector<int64_t>& keys) {
+    std::vector<PjRtBuffer*> buffers,
+    const std::vector<CrossHostTransferKey>& keys) {
   if (keys.size() != buffers.size()) {
     return absl::InternalError(
         "CrossHostSendBuffers: keys must be the same size as buffers.");
   }
-  // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
-  // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
-    auto [promise, descriptor_future] = tsl::Future<std::string>::MakePromise();
-    work_queue_->Schedule(
-        [this, k = keys[i], promise = std::move(promise).ToShared()]() mutable {
-          std::string key = absl::StrCat(kKeyPrefix, k);
-          absl::StatusOr<std::string> descriptor =
-              kv_store_->Get(key, cross_host_transfer_timeout_);
-          if (!descriptor.ok()) {
-            LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
-                       << descriptor.status();
-          }
-          promise->Set(std::move(*descriptor));
+    auto [promise, descriptor_future] = tsl::MakePromise<std::string>();
+    std::shared_ptr<tsl::CallOptions> call_opts = kv_store_->AsyncGet(
+        absl::StrCat(kKeyPrefix, keys[i]),
+        [promise = std::move(promise).ToShared()](
+            const absl::StatusOr<std::string>& descriptor) mutable {
+          promise->Set(descriptor);
         });
-    auto on_done = [](absl::Status status, bool sends_were_enqueued) {
-      CHECK_OK(status);
-    };
-    buffers[i]->CopyToRemoteDevice(std::move(descriptor_future), on_done);
+    if (call_opts == nullptr) {
+      return absl::InternalError(
+          "CrossHostSendBuffers: kv_store_->AsyncGet returned nullptr.");
+    }
+    xla::PjRtBuffer::RemoteSendCallback on_done =
+        [call_opts = std::move(call_opts)](absl::Status status,
+                                           bool sends_were_enqueued) {
+          if (!status.ok()) {
+            call_opts->StartCancel();
+            LOG(ERROR) << "`xla::PjRtBuffer::CopyToRemoteDevice` failed: "
+                       << status;
+          }
+          if (!sends_were_enqueued) {
+            LOG(ERROR)
+                << "`xla::PjRtBuffer::CopyToRemoteDevice` did not enqueue "
+                   "sends.";
+          }
+        };
+    buffers[i]->CopyToRemoteDevice(std::move(descriptor_future),
+                                   std::move(on_done));
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
-    absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-    std::vector<int64_t> keys) {
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+PjRtClient::CrossHostReceiveBuffers(absl::Span<const xla::Shape> shapes,
+                                    xla::PjRtDevice* device,
+                                    std::vector<CrossHostTransferKey> keys) {
   auto notifier = [this, keys = std::move(keys)](
                       absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
     if (!recv_state.ok()) {
@@ -1567,7 +1681,7 @@ absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
       return;
     }
     for (int i = 0, n = keys.size(); i < n; ++i) {
-      std::string key = absl::StrCat(kKeyPrefix, keys[i]);
+      std::string key = absl::StrCat(kKeyPrefix, keys[i].value());
       absl::Status kv_status = kv_store_->Set(
           key, recv_state->descriptors[i].serialized_descriptors.front());
       if (!kv_status.ok()) {
@@ -1581,15 +1695,8 @@ absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
       }
     }
   };
-  TF_ASSIGN_OR_RETURN(auto recv_buffers,
-                      pjrt_client_->MakeCrossHostReceiveBuffers(
-                          shapes, device, std::move(notifier)));
-  PjRtArray::PjRtBuffers buffers;
-  buffers.reserve(recv_buffers.size());
-  for (auto& recv_buffer : recv_buffers) {
-    buffers.push_back(std::move(recv_buffer));
-  }
-  return buffers;
+  return pjrt_client_->MakeCrossHostReceiveBuffers(shapes, device,
+                                                   std::move(notifier));
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
@@ -1654,7 +1761,7 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
     }
     TF_ASSIGN_OR_RETURN(PrimitiveType element_type, ToPrimitiveType(dtype));
     if (element_type == PrimitiveType::TOKEN) {
-      return std::make_shared<PjRtLayout>(
+      return std::make_shared<xla::PjRtLayout>(
           LayoutUtil::MakeDescendingLayout(dims.size()));
     }
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
@@ -1695,7 +1802,7 @@ PjRtClient::Incarnations() const {
   if (!distributed_client_) {
     return absl::FailedPreconditionError("missing distributed client");
   }
-  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+  TF_ASSIGN_OR_RETURN(xla::CoordinationServiceAgent * agent,
                       distributed_client_->GetCoordinationServiceAgent());
   return agent->Incarnations();
 }

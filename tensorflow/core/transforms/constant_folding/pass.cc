@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <cctype>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
@@ -448,9 +448,7 @@ bool OpPropertyHelper::ModifiesInputsInPlace(TFOp op) {
     return false;
   }
 
-  std::string lower_op_name = op_name.str();
-  std::transform(lower_op_name.begin(), lower_op_name.end(),
-                 lower_op_name.begin(), ::tolower);
+  std::string lower_op_name = absl::AsciiStrToLower(op_name.str());
   if (absl::StrContains(lower_op_name, "inplace")) return true;
 
   return op->hasAttr("in_place") || op->hasAttr("inplace");

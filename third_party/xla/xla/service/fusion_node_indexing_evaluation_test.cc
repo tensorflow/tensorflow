@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/fusion_node_indexing_evaluation.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -34,7 +35,7 @@ using FusionNodeIndexingEvaluationTest = HloHardwareIndependentTestBase;
 class InstructionFusionForTesting : public InstructionFusion {
  public:
   explicit InstructionFusionForTesting()
-      : InstructionFusion(InstructionFusion::IsExpensive) {}
+      : InstructionFusion(InstructionFusion::IsExpensive, &own_alias_info_) {}
 
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override {
@@ -84,6 +85,7 @@ class InstructionFusionForTesting : public InstructionFusion {
  private:
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
+  AliasInfo own_alias_info_;
 };
 
 TEST_F(FusionNodeIndexingEvaluationTest, FuseTwoInstructions) {

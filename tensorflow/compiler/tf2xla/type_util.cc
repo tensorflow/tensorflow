@@ -87,6 +87,9 @@ absl::Status DataTypeToPrimitiveType(DataType data_type,
     case tensorflow::DT_FLOAT8_E5M2FNUZ:
       *type = xla::F8E5M2FNUZ;
       return absl::OkStatus();
+    case tensorflow::DT_FLOAT4_E2M1FN:
+      *type = xla::F4E2M1FN;
+      return absl::OkStatus();
     case tensorflow::DT_BFLOAT16:
       *type = xla::BF16;
       return absl::OkStatus();
@@ -122,6 +125,7 @@ absl::StatusOr<DataType> EncodePrimitiveTypeAsDataType(
           {xla::F8E4M3FNUZ, DT_FLOAT8_E4M3FNUZ},
           {xla::F8E4M3B11FNUZ, DT_FLOAT8_E4M3B11FNUZ},
           {xla::F8E5M2FNUZ, DT_FLOAT8_E5M2FNUZ},
+          {xla::F4E2M1FN, DT_FLOAT4_E2M1FN},
           {xla::BF16, DT_BFLOAT16},
           {xla::F16, DT_HALF},
           {xla::F32, DT_FLOAT},

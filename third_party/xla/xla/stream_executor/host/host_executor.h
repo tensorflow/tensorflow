@@ -23,8 +23,8 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/generic_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
@@ -56,8 +56,8 @@ class HostExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const KernelLoaderSpec& spec) override;
 
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
-  void Deallocate(DeviceMemoryBase* mem) override;
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override;
+  void Deallocate(DeviceAddressBase* mem) override;
 
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override {
@@ -68,13 +68,13 @@ class HostExecutor : public StreamExecutorCommon {
   }
 
   bool SynchronizeAllActivity() override { return true; }
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override;
 
-  absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
+                                 const DeviceAddressBase& gpu_src,
                                  uint64_t size) override;
 
   void DeallocateStream(Stream* stream) override;
@@ -101,7 +101,7 @@ class HostExecutor : public StreamExecutorCommon {
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override;
+      MemorySpace type) override;
 
  private:
   int device_ordinal_;

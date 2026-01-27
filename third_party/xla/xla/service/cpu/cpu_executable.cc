@@ -45,28 +45,28 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -88,14 +88,13 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map) {
+    TargetMachineOptions target_machine_options) {
   VLOG(2) << "Create CpuExecutable from a thunk sequence; module="
           << hlo_module->name() << ", constants=" << constants.size();
 
-  std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
-      std::move(hlo_module), std::move(hlo_profile_printer_data),
-      std::move(hlo_profile_index_map), std::move(assignment)));
+  std::unique_ptr<CpuExecutable> executable(
+      new CpuExecutable(std::move(hlo_module), std::move(assignment),
+                        std::move(target_machine_options)));
   executable->function_library_ = std::move(function_library);
 
   ThunkExecutor::Options thunk_executor_options;
@@ -103,12 +102,6 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
-
-  // Find if the thunk sequence contains any XNN fusion thunks. If we do have
-  // any, we will prepare the XNNPACK thread pool for them at run time.
-  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
-    executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
-  });
 
   // Find if the thunk sequence contains any YNN fusion thunks. If we do have
   // any, we will prepare the YNNPACK thread pool for them at run time.
@@ -127,14 +120,12 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   return executable;
 }
 
-CpuExecutable::CpuExecutable(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<BufferAssignment> assignment)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
-                 std::move(hlo_profile_index_map)),
-      assignment_(std::move(assignment)) {
+CpuExecutable::CpuExecutable(std::unique_ptr<HloModule> hlo_module,
+                             std::unique_ptr<BufferAssignment> assignment,
+                             TargetMachineOptions target_machine_options)
+    : Executable(std::move(hlo_module)),
+      assignment_(std::move(assignment)),
+      target_machine_options_(std::move(target_machine_options)) {
   if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
   }
@@ -159,35 +150,35 @@ CpuExecutable::~CpuExecutable() {
   }
 }
 
-static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
+static absl::StatusOr<MaybeOwningDeviceAddress> MemoryForAllocation(
     const BufferAllocation& allocation,
     absl::Span<const ExecutionInput> arguments,
     absl::Span<const ConstantAllocation> constants,
-    se::DeviceMemoryAllocator* memory_allocator, int device_ordinal) {
+    se::DeviceAddressAllocator* memory_allocator, int device_ordinal) {
   VLOG(3) << allocation.ToString();
   if (allocation.is_entry_computation_parameter()) {
-    se::DeviceMemoryBase out = arguments[allocation.parameter_number()]
-                                   .Buffer(allocation.param_shape_index())
-                                   .AsDeviceMemoryBase();
+    se::DeviceAddressBase out = arguments[allocation.parameter_number()]
+                                    .Buffer(allocation.param_shape_index())
+                                    .AsDeviceAddress();
     CHECK_LE(allocation.size(), out.size())
         << "Size mismatch on param " << allocation.parameter_number()
         << " at shape index " << allocation.param_shape_index().ToString();
     VLOG(3) << "allocation is a parameter";
-    return MaybeOwningDeviceMemory{out};
+    return MaybeOwningDeviceAddress{out};
   } else if (allocation.is_constant()) {
     VLOG(3) << "allocation is a constant";
     if (allocation.index() < constants.size()) {
-      return MaybeOwningDeviceMemory(
-          constants[allocation.index()].AsDeviceMemoryBase());
+      return MaybeOwningDeviceAddress(
+          constants[allocation.index()].AsDeviceAddress());
     }
-    return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
+    return MaybeOwningDeviceAddress{se::DeviceAddressBase{}};
   } else if (allocation.is_thread_local()) {
     VLOG(3) << "buffer is thread-local";
-    return MaybeOwningDeviceMemory{se::DeviceMemoryBase{}};
+    return MaybeOwningDeviceAddress{se::DeviceAddressBase{}};
   }
 
   int64_t buffer_size = allocation.size();
-  TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory out,
+  TF_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> out,
                       memory_allocator->Allocate(device_ordinal, buffer_size));
   VLOG(3) << "buffer allocated " << buffer_size << " bytes [" << out->opaque()
           << "]";
@@ -197,14 +188,14 @@ static absl::StatusOr<MaybeOwningDeviceMemory> MemoryForAllocation(
   // initialized. Mark them initialized so that memory sanitizer doesn't flag
   // loads from these buffers.
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(out->opaque(), buffer_size);
-  return MaybeOwningDeviceMemory{std::move(out)};
+  return MaybeOwningDeviceAddress{std::move(out)};
 }
 
-absl::StatusOr<std::vector<MaybeOwningDeviceMemory>>
-CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
+absl::StatusOr<std::vector<MaybeOwningDeviceAddress>>
+CpuExecutable::CreateBufferTable(se::DeviceAddressAllocator* memory_allocator,
                                  int device_ordinal,
                                  absl::Span<ExecutionInput const> arguments) {
-  std::vector<MaybeOwningDeviceMemory> buffers(
+  std::vector<MaybeOwningDeviceAddress> buffers(
       assignment_->Allocations().size());
   VLOG(3) << "Allocating " << assignment_->Allocations().size()
           << " allocations for module " << module().name();
@@ -224,9 +215,19 @@ CpuExecutable::CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
   return std::move(buffers);
 }
 
+static int32_t GetDeviceOrdinal(const ExecutableRunOptions* run_options) {
+  if (!run_options) {
+    return 0;
+  }
+  if (run_options->device_ordinal() != -1) {
+    return run_options->device_ordinal();
+  }
+  return run_options->stream()->parent()->device_ordinal();
+}
+
 absl::Status CpuExecutable::ExecuteThunks(
     const ExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory const> buffers) {
+    absl::Span<MaybeOwningDeviceAddress const> buffers) {
   uint64_t start_ns = tsl::Env::Default()->NowNanos();
 
   size_t profile_counters_size = 0;
@@ -237,9 +238,8 @@ absl::Status CpuExecutable::ExecuteThunks(
   VLOG(3) << "Executing XLA:CPU thunks:";
   VLOG(3) << absl::StrFormat("  Number of buffer allocations: %u",
                              buffers.size());
-  auto mem_printer = [](std::string* out, const MaybeOwningDeviceMemory& mem) {
-    absl::StrAppend(out,
-                    absl::StrFormat("%p", mem.AsDeviceMemoryBase().opaque()));
+  auto mem_printer = [](std::string* out, const MaybeOwningDeviceAddress& mem) {
+    absl::StrAppend(out, absl::StrFormat("%p", mem.AsDeviceAddress().opaque()));
   };
   VLOG(3) << absl::StrFormat("  Buffer allocations: [%s]",
                              absl::StrJoin(buffers, ", ", mem_printer));
@@ -255,10 +255,10 @@ absl::Status CpuExecutable::ExecuteThunks(
   TF_ASSIGN_OR_RETURN(Thunk::CustomCallExecuteParams custom_call_execute_params,
                       Thunk::CustomCallExecuteParams::Create(run_options));
 
-  // Prepare for executing XNNPACK fusions.
-  std::optional<Thunk::XnnParams> xnn_params;
-  if (has_xnn_fusions()) {
-    TF_ASSIGN_OR_RETURN(xnn_params, Thunk::XnnParams::Create(run_options));
+  // Prepare for executing YNNPACK fusions.
+  std::optional<Thunk::YnnParams> ynn_params;
+  if (has_ynn_fusions()) {
+    TF_ASSIGN_OR_RETURN(ynn_params, Thunk::YnnParams::Create(run_options));
   }
 
   // Use the intra-op thread pool to offload thunk executor tasks.
@@ -269,12 +269,12 @@ absl::Status CpuExecutable::ExecuteThunks(
   Thunk::ExecuteParams execute_params = {
       &*function_library_,
       &allocations,
-      GetXfeedManager(runtime::GetDeviceOrdinal(run_options)),
+      GetXfeedManager(GetDeviceOrdinal(run_options)),
       intra_op_thread_pool,
       &task_runner,
       &collective_execute_params,
       &custom_call_execute_params,
-      xnn_params ? &*xnn_params : nullptr};
+      ynn_params ? &*ynn_params : nullptr};
 
   auto executed_event = thunks_->Execute(execute_params);
 
@@ -294,7 +294,7 @@ absl::Status CpuExecutable::ExecuteThunks(
 
 absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<MaybeOwningDeviceMemory> buffers,
+    absl::Span<MaybeOwningDeviceAddress> buffers,
     absl::Span<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
   ExecutionOutput result(/*on_device_shape=*/result_shape(),
@@ -302,15 +302,15 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
                          stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =
       module().input_output_alias_config();
-  HloInstruction* root = hlo_module_->entry_computation()->root_instruction();
+  HloInstruction* root = module().entry_computation()->root_instruction();
   const Shape& root_shape = root->shape();
 
-  // Move se::OwningDeviceMemory values which contain the array(s) of the result
-  // into the respective location in ScopedShapedBuffer which is returned to the
-  // caller.
+  // Move se::ScopedDeviceAddress<uint8_t> values which contain the array(s) of
+  // the result into the respective location in ScopedShapedBuffer which is
+  // returned to the caller.
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
-    se::DeviceMemoryBase& result_buffer = p.second;
+    se::DeviceAddressBase& result_buffer = p.second;
     const HloValueSet& sources = this->GetRootValueSet().element(index);
     // The points to set is unambiguous so the set should be a
     // singleton.
@@ -331,7 +331,7 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     if (alias) {
       CHECK_LT(alias->parameter_number, arguments.size());
       ExecutionInput& input = arguments[alias->parameter_number];
-      MaybeOwningDeviceMemory* maybe_owning_memory =
+      MaybeOwningDeviceAddress* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
       if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
         return InvalidArgument(
@@ -339,13 +339,13 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
             "compile time but not donated at runtime: %s",
             alias->ToString());
       }
-      if (std::optional<se::OwningDeviceMemory> owning =
+      if (std::optional<se::ScopedDeviceAddress<uint8_t>> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
         // donate a buffer; the aliasing information describes which buffers
         // may alias, not buffers that must alias.
-        se::DeviceMemoryBase argument_buffer = owning->Release();
+        se::DeviceAddressBase argument_buffer = owning->Release();
         *maybe_owning_memory = argument_buffer;
         result_buffer = argument_buffer;
         // The caller is giving us the
@@ -363,28 +363,28 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(root_shape, index));
         TF_ASSIGN_OR_RETURN(
-            se::OwningDeviceMemory allocated_buffer,
+            se::ScopedDeviceAddress<uint8_t> allocated_buffer,
             run_options->allocator()->Allocate(
                 stream->parent()->device_ordinal(), allocation_size));
         result_buffer = allocated_buffer.Release();
-        MaybeOwningDeviceMemory& registered_buffer = buffers[buffer_index];
+        MaybeOwningDeviceAddress& registered_buffer = buffers[buffer_index];
         CHECK_EQ(result_buffer.size(),
-                 registered_buffer.AsDeviceMemoryBase().size());
+                 registered_buffer.AsDeviceAddress().size());
         std::memcpy(/*dest=*/result_buffer.opaque(),
-                    /*src=*/registered_buffer.AsDeviceMemoryBase().opaque(),
+                    /*src=*/registered_buffer.AsDeviceAddress().opaque(),
                     /*n=*/result_buffer.size());
         registered_buffer = result_buffer;
       }
     }
 
     if (result_buffer.is_null()) {
-      MaybeOwningDeviceMemory& buffer = buffers[buffer_index];
-      if (std::optional<se::OwningDeviceMemory> owned_buffer =
+      MaybeOwningDeviceAddress& buffer = buffers[buffer_index];
+      if (std::optional<se::ScopedDeviceAddress<uint8_t>> owned_buffer =
               buffer.Release()) {
         result_buffer = owned_buffer->Release();
         buffer = result_buffer;
       } else {
-        result_buffer = buffer.AsDeviceMemoryBase();
+        result_buffer = buffer.AsDeviceAddress();
         result.AddAliasedIndex(index);
       }
     }
@@ -404,8 +404,8 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
 
-  if (hlo_module_) {
-    const HloComputation* entry_comp = hlo_module_->entry_computation();
+  if (has_module()) {
+    const HloComputation* entry_comp = module().entry_computation();
     CHECK_EQ(entry_comp->num_parameters(), arguments.size())
         << "Wrong number of arguments passed when running executable";
     for (int64_t i = 0; i < entry_comp->num_parameters(); ++i) {
@@ -421,9 +421,9 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   }
 
   se::Stream* stream = run_options->stream();
-  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+  se::DeviceAddressAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
-      std::vector<MaybeOwningDeviceMemory> buffers,
+      std::vector<MaybeOwningDeviceAddress> buffers,
       CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
                         arguments));
 

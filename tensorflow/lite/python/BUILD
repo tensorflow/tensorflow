@@ -12,8 +12,10 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/odml/infra/genai/conversion:__subpackages__",
+        "//third_party/odml/litert/litert/python:__subpackages__",
         "//third_party/odml/model_customization/quantization:__subpackages__",
         "//third_party/py/ai_edge_torch:__subpackages__",
+        "//third_party/py/litert_torch:__subpackages__",
         "//third_party/py/tensorflow_federated:__subpackages__",
         "//third_party/tflite_micro:__subpackages__",
     ],
@@ -321,7 +323,7 @@ py_strict_test(
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_jax//:pkg",
+        "@pypi//jax",
     ],
 )
 

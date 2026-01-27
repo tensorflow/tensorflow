@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/compiler.h"
 
@@ -33,10 +34,12 @@ class NanoRtClient {
   // Compiles the given XLA computation to a NanoRtExecutable using the XLA:CPU
   // backend.
   absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Compile(
-      const XlaComputation& computation);
+      const XlaComputation& computation,
+      const ExecutableBuildOptions& executable_build_options =
+          ExecutableBuildOptions());
 
   // Exports the given NanoRtExecutable to an AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
       NanoRtExecutable* executable);
 };
 

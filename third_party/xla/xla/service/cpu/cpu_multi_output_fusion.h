@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/multi_output_fusion.h"
 
@@ -26,7 +27,8 @@ namespace xla::cpu {
 
 class CpuMultiOutputFusion final : public MultiOutputFusion {
  public:
-  CpuMultiOutputFusion() = default;
+  explicit CpuMultiOutputFusion(const AliasInfo* alias_info)
+      : MultiOutputFusion(alias_info) {}
 
   absl::string_view name() const override { return "cpu_multi_output_fusion"; }
 

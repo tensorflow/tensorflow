@@ -42,11 +42,8 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
-#include "xla/codegen/llvm_kernel_emitter.h"
-#include "xla/codegen/mlir_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_emitter.h"
+#include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,7 +54,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace xla::cpu {
@@ -90,10 +86,10 @@ NB_MODULE(_extension, kernel_runner_module) {
   // Use a tuple and cast to NumWorkGroups to take advantage of built in
   // bindings.
   using NbNumWorkGroups = std::tuple<uint64_t, uint64_t, uint64_t>;
-  nb::class_<LlvmTestKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                       "LlvmTestKernelEmitter")
-      .def("__init__", [](LlvmKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
+  nb::class_<LlvmTestKernelEmitter, KernelEmitter<LlvmKernelSource>>(
+      kernel_runner_module, "LlvmTestKernelEmitter")
+      .def("__init__", [](KernelEmitter<LlvmKernelSource>* self,
+                          absl::string_view ir, absl::string_view kernel_name,
                           NbNumWorkGroups num_workgroups) {
         new (self)
             LlvmTestKernelEmitter(ir, kernel_name,
@@ -103,10 +99,10 @@ NB_MODULE(_extension, kernel_runner_module) {
                                   {});
       });
 
-  nb::class_<MlirTestKernelEmitter, MlirKernelEmitter>(kernel_runner_module,
-                                                       "MlirTestKernelEmitter")
-      .def("__init__", [](MlirKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
+  nb::class_<MlirTestKernelEmitter, KernelEmitter<MlirKernelSource>>(
+      kernel_runner_module, "MlirTestKernelEmitter")
+      .def("__init__", [](KernelEmitter<MlirKernelSource>* self,
+                          absl::string_view ir, absl::string_view kernel_name,
                           NbNumWorkGroups num_workgroups) {
         new (self)
             MlirTestKernelEmitter(ir, kernel_name,
@@ -117,15 +113,14 @@ NB_MODULE(_extension, kernel_runner_module) {
       });
 
   kernel_runner_module.def("lower_to_llvm", [](MlirKernelSource& source) {
-    absl::StatusOr<LlvmIrKernelSource> llvm_ir_kernel_source =
-        LowerToLlvm(source);
+    absl::StatusOr<LlvmKernelSource> llvm_kernel_source = LowerToLlvm(source);
 
-    if (!llvm_ir_kernel_source.ok()) {
+    if (!llvm_kernel_source.ok()) {
       throw std::runtime_error(
-          std::string(llvm_ir_kernel_source.status().message()));
+          std::string(llvm_kernel_source.status().message()));
     }
 
-    return std::move(llvm_ir_kernel_source).value();
+    return std::move(llvm_kernel_source).value();
   });
 
   nb::class_<CpuCompiler>(kernel_runner_module, "HloCompiler")
@@ -157,63 +152,58 @@ NB_MODULE(_extension, kernel_runner_module) {
   nb::class_<mlir::MLIRContext>(kernel_runner_module, "MLIRContext")
       .def(nb::new_([] { return FusionCompiler::CreateContext(); }));
 
-  nb::class_<gpu::SymbolicExprContext>(kernel_runner_module,
-                                       "SymbolicExprContext")
-      .def(nb::init<mlir::MLIRContext*>(), nb::keep_alive<1, 2>());
-
   nb::class_<TargetMachineFeatures>(kernel_runner_module,
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
-  nb::class_<ElementalKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ElementalKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ElementalKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<DotKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                  "DotKernelEmitter")
+  nb::class_<DotKernelEmitter, KernelEmitter<LlvmKernelSource>>(
+      kernel_runner_module, "DotKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ConcatenateKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ConcatenateKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ConcatenateKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ComputationKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ComputationKernelEmitter, KernelEmitter<LlvmKernelSource>>(
       kernel_runner_module, "ComputationKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<CpuScatterFusion, MlirKernelEmitter>(kernel_runner_module,
-                                                  "ScatterKernelEmitter")
+  nb::class_<CpuScatterFusion, KernelEmitter<MlirKernelSource>>(
+      kernel_runner_module, "ScatterKernelEmitter")
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
              const BufferAssignment* buffer_assignment,
-             gpu::SymbolicExprContext* symbolic_expr_context) {
-            new (self) CpuScatterFusion(*buffer_assignment, instruction,
-                                        symbolic_expr_context);
+             mlir::MLIRContext* mlir_context) {
+            new (self)
+                CpuScatterFusion(*buffer_assignment, instruction, mlir_context);
           },
           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
           nb::keep_alive<1, 4>());
 
   kernel_runner_module.def(
       "emit_fusion_kernel",
-      [](gpu::SymbolicExprContext& symbolic_expr_context,
-         const HloFusionInstruction& fusion,
-         const BufferAssignment* buffer_assignment) {
-        absl::StatusOr<MlirKernelDefinition> kernel_definition =
-            EmitFusionKernel(symbolic_expr_context, fusion, buffer_assignment,
-                             false);
+      [](mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+         const BufferAssignment* buffer_assignment, bool enable_tiled_emitter) {
+        auto kernel_definition =
+            EmitFusionKernel(mlir_context, fusion, buffer_assignment, false,
+                             enable_tiled_emitter);
         if (!kernel_definition.ok()) {
           throw std::runtime_error(kernel_definition.status().ToString());
         }
@@ -247,8 +237,8 @@ NB_MODULE(_extension, kernel_runner_module) {
                                               "KernelRunner")
       .def_static(
           "create",
-          [](std::unique_ptr<MlirKernelDefinition,
-                             nb::deleter<MlirKernelDefinition>>
+          [](std::unique_ptr<KernelDefinition<MlirKernelSource>,
+                             nb::deleter<KernelDefinition<MlirKernelSource>>>
                  kernel_definition,
              std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
                  jit_compiler) {
@@ -262,11 +252,12 @@ NB_MODULE(_extension, kernel_runner_module) {
             return *std::move(runner);
           })
       .def_static(
-          "create", [](std::unique_ptr<LlvmKernelDefinition,
-                                       nb::deleter<LlvmKernelDefinition>>
-                           kernel_definition,
-                       std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
-                           jit_compiler) {
+          "create",
+          [](std::unique_ptr<KernelDefinition<LlvmKernelSource>,
+                             nb::deleter<KernelDefinition<LlvmKernelSource>>>
+                 kernel_definition,
+             std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
+                 jit_compiler) {
             absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
                 std::move(*kernel_definition), std::move(*jit_compiler));
 
@@ -280,7 +271,8 @@ NB_MODULE(_extension, kernel_runner_module) {
   kernel_runner_module.def(
       "run_fusion_wrapper_pass",
       [](std::unique_ptr<HloModule, nb::deleter<HloModule>> hlo_module) {
-        FusionWrapper fusion_wrapper(true);
+        FusionWrapper fusion_wrapper(/*using_new_fusion_emitter=*/true,
+                                     /*use_tiled_emitter=*/true);
         absl::StatusOr<bool> result = fusion_wrapper.Run(hlo_module.get());
         if (!result.ok()) {
           throw std::runtime_error(std::string(result.status().message()));

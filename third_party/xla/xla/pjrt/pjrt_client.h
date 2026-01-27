@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -58,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -197,7 +200,7 @@ class PjRtDevice {
 
   // Returns a scoped event that the caller uses to tell the PjRtClient that
   // there is asynchronous work happening that depends on activity on the
-  // PjRtDevice. See comment on class definition in pjrt_future.h.
+  // PjRtDevice. See comment on class definition in future.h.
   //
   // Only some PjRtDevice implementations support ScopedAsyncTrackingEvent, and
   // those that do not will return nullptr.
@@ -389,14 +392,14 @@ class CopyToDeviceStream {
   // Returns the amount of data the stream currently has either transferred or
   // has buffered to transfer.
   int64_t current_bytes() const ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return current_bytes_;
   }
 
   // Returns true if the stream is complete; all expected bytes have been
   // transferred or are buffered to transfer.
   bool IsComplete() const ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return IsCompleteLocked();
   }
 
@@ -442,6 +445,10 @@ struct PjRtPluginAttributes {
   absl::flat_hash_map<std::string, PjRtValueType> attributes;
 };
 
+// Each cross-host transfer in the second transfers API is associated with a
+// unique CrossHostTransferKey.
+TSL_LIB_GTL_DEFINE_INT_TYPE(CrossHostTransferKey, int64_t);
+
 // Encapsulates the state of Python session with XLA.
 //
 // It is the responsibility of the client of this API to keep the PjRtClient
@@ -449,7 +456,7 @@ struct PjRtPluginAttributes {
 //
 // A note on the semantics of cross-device copies.
 //
-// There are two mechanisms to transfer a buffer from one device to another.
+// There are three mechanisms to transfer a buffer from one device to another.
 // When both devices are on the same host (more specifically, the user program
 // ends up with pointers to both the source and destination buffers in the same
 // address space), the caller can use:
@@ -459,18 +466,25 @@ struct PjRtPluginAttributes {
 // made via native device networking (as opposed to the user program fetching
 // the buffer and sending it using its own networking code), the caller can
 // use:
+//   DstHost: dst_client->CrossHostReceiveBuffers(...)
+//   SrcHost: src_client->CrossHostSendBuffers(...)
+//
+// The caller can also use the original cross-host transfers API:
 //   DstHost: dst_client->MakeCrossHostReceiveBuffers(...)
 //   DstHost: [...]
 //   DstHost: gets callback containing PjRtCrossHostRecvDescriptors
 //   DstHost: sends cross-host recv serialized descriptors to SrcHost
 //   SrcHost: src_buffer->CopyToRemoteDevice(serialized_descriptors)
 //
+// See subclass documentation for platform-specific tradeoffs between the
+// two cross-host transfer methods.
+//
 // Note that in the cross-host case, the dst_client may call
-// MakeCrossHostReceiveBuffers before the action that produces src_buffer has
+// (Make)CrossHostReceiveBuffers before the action that produces src_buffer has
 // been enqueued at SrcHost.
 //
 // On some platforms, device-to-device transfers consume scarce hardware
-// resources. If dst_client->MakeCrossHostReceiveBuffers immediately claimed
+// resources. If dst_client->(Make)CrossHostReceiveBuffers immediately claimed
 // those resources, then there would be a risk of system-wide deadlock, if the
 // resources claimed by the recv prevented other transfers that are necessary
 // to generate src_buffer from acquiring enough resources to proceed.
@@ -557,6 +571,12 @@ class PjRtClient {
   // Returns a string containing human-readable, platform-specific version info
   // (e.g. the CUDA version on GPU or libtpu version on Cloud TPU).
   virtual absl::string_view platform_version() const = 0;
+
+  // Returns PjRtRuntimeAbiVersion containing the ABI version of the runtime.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  RuntimeAbiVersion() const {
+    return absl::UnimplementedError("RuntimeAbiVersion is not supported.");
+  }
 
   // Returns the key value store used by the client.
   virtual std::optional<std::shared_ptr<KeyValueStoreInterface>>
@@ -964,16 +984,16 @@ class PjRtClient {
   virtual absl::StatusOr<std::uintptr_t> UnsafeBufferPointer(
       PjRtBuffer* buffer);
 
-  // Returns a vector of PjRtBuffers that can be used to receive
-  // cross host transfers using `client` on `device'. Asynchronously calls
-  // `notifier` once receive descriptors are ready to be communicated to the
-  // sender. `shapes` must be the exact shapes, with identical layouts,
-  // corresponding to the buffers that will be sent. When resources for the
-  // transfer are available, notifier will be called with a vector of
-  // PjRtCrossHostRecvDescriptors structs, one for each shape in `shapes`. Each
-  // struct contains an opaque string that should be transmitted to the sending
-  // host and used in a call to CopyToRemoteDevice. None of the recv buffers
-  // will become ready until *all* of the sends have completed.
+  // Part of original cross-host transfers API. Returns a vector of PjRtBuffers
+  // that can be used to receive cross host transfers using `client` on
+  // `device'. Asynchronously calls `notifier` once receive descriptors are
+  // ready to be communicated to the sender. `shapes` must be the exact shapes,
+  // with identical layouts, corresponding to the buffers that will be sent.
+  // When resources for the transfer are available, notifier will be called with
+  // a vector of PjRtCrossHostRecvDescriptors structs, one for each shape in
+  // `shapes`. Each struct contains an opaque string that should be transmitted
+  // to the sending host and used in a call to CopyToRemoteDevice. None of the
+  // recv buffers will become ready until *all* of the sends have completed.
   //
   // If MakeCrossHostReceiveBuffers returns an error, then `notifier` will not
   // be called. Otherwise `notifier` will be called exactly once. In the case
@@ -1009,6 +1029,28 @@ class PjRtClient {
   virtual absl::Status DmaUnmap(void* data) {
     return absl::UnimplementedError(absl::StrFormat(
         "DmaUnmap not supported on platform %s", platform_name()));
+  }
+
+  // CrossHostSendBuffers and CrossHostReceiveBuffers are part of the second
+  // cross-host transfers API.
+
+  // Send buffers to remote devices specified by dst_global_device_ids.
+  virtual absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
+      absl::Span<PjRtBuffer* const> buffers,
+      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) {
+    return absl::UnimplementedError(
+        "Cross-host data transfers are not supported by this client.");
+  }
+
+  // Places buffers from a cross-host send onto device.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  CrossHostReceiveBuffers(
+      xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
+      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      std::vector<CrossHostTransferKey> transfer_keys) {
+    return absl::UnimplementedError(
+        "Cross-host data transfers are not supported.");
   }
 
  private:
@@ -1136,57 +1178,20 @@ class PjRtBuffer {
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
-    absl::Notification done;
-    absl::Status status;
-    ToLiteral(literal).OnReady([&](absl::Status s) {
-      status = std::move(s);
-      done.Notify();
-    });
-    done.WaitForNotification();
-    return status;
+    return ToLiteral(literal).Await();
   }
 
-  absl::StatusOr<Shape> HostShape() {
-    Shape device_shape;
-    if (!IsTuple()) {
-      absl::Span<const int64_t> literal_dims;
-      std::optional<std::vector<int64_t>> logical_dims_storage;
-      if (has_dynamic_dimensions()) {
-        TF_ASSIGN_OR_RETURN(std::vector<int64_t> logical_dims,
-                            logical_dimensions());
-        logical_dims_storage.emplace(std::move(logical_dims));
-        literal_dims = *logical_dims_storage;
-      } else {
-        literal_dims = dimensions();
-      }
-      if (element_type() == TOKEN) {
-        device_shape = ShapeUtil::MakeTokenShape();
-      } else {
-        device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
-        // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
-        *device_shape.mutable_layout() = layout()->xla_layout();
-      }
-    } else {
-      // TODO(skyewm): does anything need to create tuple literals? The PJRT C
-      // API doesn't support tuples or {logical_}on_device_shape(), so we prefer
-      // to use the above non-tuple code path where possible.
-      device_shape = on_device_shape();
-      if (device_shape.is_dynamic()) {
-        TF_ASSIGN_OR_RETURN(device_shape, logical_on_device_shape());
-      }
-    }
-    return ShapeUtil::DeviceShapeToHostShape(device_shape);
-  }
+  absl::StatusOr<Shape> HostShape();
 
   // Convenience synchronous overload that allocates a literal with a default
   // layout.
+  ABSL_DEPRECATE_AND_INLINE()
   absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    TF_ASSIGN_OR_RETURN(Shape host_shape, HostShape());
-    TF_ASSIGN_OR_RETURN(auto literal, Literal::Make(host_shape));
-    auto shared_literal = std::make_shared<Literal>(std::move(literal));
-    TF_RETURN_IF_ERROR(ToLiteralSync(shared_literal.get()));
-    return shared_literal;
+    return ToLiteral().Await();
   }
+
+  // ToLiteral overload which async allocates a literal with default layout.
+  xla::Future<std::shared_ptr<Literal>> ToLiteral();
 
   // Returns the number of bytes of the buffer storage on the device.
   virtual absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const = 0;
@@ -1261,13 +1266,14 @@ class PjRtBuffer {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) = 0;
 
-  // Prepares to send a copy of the buffer to a remote device. The destination
-  // device is encoded in `serialized_descriptor`, which must be fulfilled by
-  // the result of call to MakeCrossHostReceiveBuffers on the remote host's
-  // destination device. MakeCrossHostReceiveBuffers takes an array of shapes to
-  // construct the destination buffers, and a callback supplies an array
-  // containing both the destination buffers, and a serialized descriptor for
-  // each buffer. For each destination buffer there should be a matching call to
+  // Part of original cross-host transfers API. Prepares to send a copy of the
+  // buffer to a remote device. The destination device is encoded in
+  // `serialized_descriptor`, which must be fulfilled by the result of call to
+  // MakeCrossHostReceiveBuffers on the remote host's destination device.
+  // MakeCrossHostReceiveBuffers takes an array of shapes to construct the
+  // destination buffers, and a callback supplies an array containing both the
+  // destination buffers, and a serialized descriptor for each buffer. For each
+  // destination buffer there should be a matching call to
   // src->CopyToRemoteDevice on a remote host for a src buffer of the
   // corresponding shape. If `serialized_descriptor` is fulfilled with a non-Ok
   // status, then the transfer is canceled, otherwise it must be the string

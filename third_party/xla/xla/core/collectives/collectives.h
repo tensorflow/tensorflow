@@ -79,7 +79,8 @@ class Collectives {
   // Creates communicators by splitting `comms`.
   virtual absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   SplitCommunicators(absl::Span<const Communicator* const> comms, int32_t color,
-                     absl::Span<const RankId> keys, const Config& config) = 0;
+                     absl::Span<const RankId> keys, const Config& config,
+                     absl::Span<const DeviceRank> ranks) = 0;
 
   // Collectives instance can be ephemeral and used only for a small number of
   // XLA program executions. XLA backends that rely on the collectives instances

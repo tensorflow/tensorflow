@@ -35,7 +35,7 @@ std::vector<double> ParamFromEnvWithDefault(const char* var_name,
   if (!val) {
     return default_value;
   }
-  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<std::string> splits = str_util::Split(val, ",");
   std::vector<double> result;
   result.reserve(splits.size());
   for (auto& split : splits) {
@@ -56,7 +56,7 @@ std::vector<int> ParamFromEnvWithDefault(const char* var_name,
   if (!val) {
     return default_value;
   }
-  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<std::string> splits = str_util::Split(val, ",");
   std::vector<int> result;
   result.reserve(splits.size());
   for (auto& split : splits) {

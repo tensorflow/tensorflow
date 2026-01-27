@@ -29,7 +29,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/ffi/api/c_api.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/ffi/attribute_map.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
@@ -45,47 +46,12 @@ namespace xla::ffi {
 class CallFrame;  // forward declare
 
 class CallFrameBuilder {
-  // A little bit of template metaprogramming to append type to std::variant.
-  template <typename V, class T>
-  struct AppendType;
-
-  template <typename... Ts, class T>
-  struct AppendType<std::variant<Ts...>, T> {
-    using Type = std::variant<Ts..., T>;
-  };
-
  public:
   CallFrameBuilder(size_t num_args, size_t num_rets);
   ~CallFrameBuilder();
 
   CallFrameBuilder(CallFrameBuilder&&);
   CallFrameBuilder& operator=(CallFrameBuilder&&);
-
-  using Scalar = std::variant<bool, int8_t, int16_t, int32_t, int64_t, uint8_t,
-                              uint16_t, uint32_t, uint64_t, float, double>;
-  using Array = std::variant<std::vector<int8_t>, std::vector<int16_t>,
-                             std::vector<int32_t>, std::vector<int64_t>,
-                             std::vector<uint8_t>, std::vector<uint16_t>,
-                             std::vector<uint32_t>, std::vector<uint64_t>,
-                             std::vector<float>, std::vector<double>>;
-
-  // Declare implementation detail structs for call frame builder storage.
-  struct Dictionary;
-
-  // Attributes that do not support nested dictionaries.
-  using FlatAttribute = std::variant<Scalar, Array, std::string>;
-  using FlatAttributesMap = absl::flat_hash_map<std::string, FlatAttribute>;
-
-  // Attributes that support arbitrary nesting.
-  using Attribute = typename AppendType<FlatAttribute, Dictionary>::Type;
-  using AttributesMap = absl::flat_hash_map<std::string, Attribute>;
-
-  // Dictionary is just a wrapper around AttributesMap. We need an indirection
-  // through `std::shared_ptr` to be able to define recursive `std::variant`. We
-  // use shared pointer to keep `AttributesMap` copyable.
-  struct Dictionary {
-    std::shared_ptr<AttributesMap> attrs;
-  };
 
   // A helper class to build call frame attributes.
   class AttributesBuilder {
@@ -110,12 +76,12 @@ class CallFrameBuilder {
 
   CallFrame Build();
 
-  void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
+  void AddBufferArg(se::DeviceAddressBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
   void AddTokenArg();
 
-  void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
+  void AddBufferRet(se::DeviceAddressBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
   void AddTokenRet();
@@ -151,16 +117,16 @@ class CallFrame {
   // array (buffer) arguments and results are known at compile time. Instead of
   // rebuilding the call frame from scratch on every execution, we can just
   // update the arguments and results with new pointers to device memory.
-  absl::Status UpdateWithBuffers(absl::Span<const se::DeviceMemoryBase> args,
-                                 absl::Span<const se::DeviceMemoryBase> rets);
+  absl::Status UpdateWithBuffers(absl::Span<const se::DeviceAddressBase> args,
+                                 absl::Span<const se::DeviceAddressBase> rets);
 
   // Creates a copy of the call frame.
   CallFrame Copy() const;
 
   // Creates a copy of the call frame with updated arguments and results.
   absl::StatusOr<CallFrame> CopyWithBuffers(
-      absl::Span<const se::DeviceMemoryBase> args,
-      absl::Span<const se::DeviceMemoryBase> rets) const;
+      absl::Span<const se::DeviceAddressBase> args,
+      absl::Span<const se::DeviceAddressBase> rets) const;
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(
@@ -224,8 +190,7 @@ class CallFrame {
   //===----- Call frame attributes ----------------------------------------===//
 
   // Creates call frame attributes from the call frame builder attributes.
-  static std::unique_ptr<Attributes> CreateAttrs(
-      const CallFrameBuilder::AttributesMap& attrs);
+  static std::unique_ptr<Attributes> CreateAttrs(const AttributesMap& attrs);
 
   // Fixes up call frame attributes by initializing XLA FFI structs with valid
   // pointers into storage objects.

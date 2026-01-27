@@ -74,7 +74,7 @@ cc_library(
     deps = [
         ":philox_random",
         "//xla/tsl/platform:logging",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -164,6 +164,7 @@ tsl_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -178,7 +179,7 @@ tsl_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -193,8 +194,8 @@ tsl_cc_test(
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
     ],
 )
 

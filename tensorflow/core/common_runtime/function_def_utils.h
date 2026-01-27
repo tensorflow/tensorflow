@@ -55,7 +55,7 @@ absl::Status FunctionDefToBodyHelper(const FunctionDef& fdef,
 absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* lib_def,
-    const std::function<absl::Status(const string&, const OpDef**)>&
+    const std::function<absl::Status(const std::string&, const OpDef**)>&
         get_func_sig,
     std::unique_ptr<FunctionBody>* fbody);
 

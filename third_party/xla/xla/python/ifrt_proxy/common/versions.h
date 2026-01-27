@@ -23,29 +23,9 @@ namespace proxy {
 namespace protocol_version {
 
 enum {
-  // Versions kAncient are named and are only referred to by their numbers. See
-  // VERSIONS.md to see the explanation of the numbers.
-  kAncient = 10,
-
-  // kClientHandlesOptimization2 introduces a set of performance optimizations
-  // where the client generates array handles.
-  kClientHandlesOptimization2 = 11,
-
-  // kClientHandlesExecutableOptimization introduces a set of performance
-  // optimizations where the client generates array handles for operations
-  // related to LoadedExecutable.
-  kClientHandlesExecutableOptimization = 12,
-
-  // kAssembleArrayFromSingleDeviceArraysWithDType adds a DType argument to
-  // AssembleArrayFromSingleDeviceArrays to support non-addressable arrays.
-  kAssembleArrayFromSingleDeviceArraysWithDType = 13,
-
-  // kMakeArraysFromHostBufferShards adds Client::MakeArraysFromHostBufferShards
-  // support.
-  kMakeArraysFromHostBufferShards = 14,
-
-  // kSerDesVersioning users IFRT SerDes versioning for IFRT types.
-  kSerDesVersioning = 15,
+  // There should not be any references to kAncient and earlier versions in the
+  // code base.
+  kAncient = 15,
 
   // kExecutableDevices adds a devices() method to Executable.
   kExecutableDevices = 16,
@@ -61,20 +41,39 @@ enum {
   // GetHumanReadableProgramText in Executable.
   kLoadedExecutableGetHumanReadableProgramText = 19,
 
+  // kMpmdLoadedExecutableMethods implements MpmdLoadedExecutable methods such
+  // as GetMpmdAddressableDevices, GetMpmdCompiledMemoryStats, and
+  // GetMpmdCostAnalysis.
+  kMpmdLoadedExecutableMethods = 20,
+
+  // kExecuteResult adds a separate request/response type for Execution
+  // results to return extra information such as device time measurement.
+  kExecuteResult = 21,
+
+  // kDevicePlatformName adds a PlatformName() method to Device.
+  kDevicePlatformName = 22,
+
+  // MakeArrayFromHostBuffer supports a layout argument.
+  kMakeArrayFromHostBufferWithLayout = 23,
+
   // kSentiel is used to derive kCurrent below. Keep this as the last value of
   // the enum.
   kSentiel,
 };
 
-// The minimum protocol_version that the current client code understands.
-inline constexpr int kClientMin = kSerDesVersioning;
-
-// The minimum protocol_version that the current server code understands.
-inline constexpr int kServerMin = 3;
-
 // The maximum protocol_version that the current client and server code
 // understand.
 constexpr int kCurrent = kSentiel - 1;
+
+// The minimum and maximum protocol_version that the current client code
+// understands.
+inline constexpr int kClientMin = kExecutableDevices;
+inline constexpr int kClientMax = kCurrent;
+
+// The minimum and maximum protocol_version that the current server code
+// understands.
+inline constexpr int kServerMin = kExecutableDevices;
+inline constexpr int kServerMax = kCurrent;
 
 }  // namespace protocol_version
 

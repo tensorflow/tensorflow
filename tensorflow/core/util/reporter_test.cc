@@ -44,8 +44,8 @@ TEST(TestReporter, UsesEnv) {
 
   // Set a file we can't possibly create, check for failure
   setenv(TestReporter::kTestReporterEnv, "/cant/find/me:!", 1);
-  CHECK_EQ(string(std::getenv(TestReporter::kTestReporterEnv)),
-           string("/cant/find/me:!"));
+  CHECK_EQ(std::string(std::getenv(TestReporter::kTestReporterEnv)),
+           std::string("/cant/find/me:!"));
   TestReporter test_reporter("b1");
   absl::Status s = test_reporter.Initialize();
   ExpectHasSubstr(s.ToString(), "/cant/find/me");
@@ -92,14 +92,15 @@ TEST(TestReporter, CreateCloseCreateAgainSkipsSecond) {
 }
 
 TEST(TestReporter, Benchmark) {
-  string fname = absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
+  std::string fname =
+      absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
   TestReporter test_reporter(fname, "b1/2/3");
   TF_EXPECT_OK(test_reporter.Initialize());
   TF_EXPECT_OK(test_reporter.Benchmark(1, 1.0, 2.0, 3.0));
   TF_EXPECT_OK(test_reporter.Close());
 
-  string expected_fname = absl::StrCat(fname, "b1__2__3");
-  string read;
+  std::string expected_fname = absl::StrCat(fname, "b1__2__3");
+  std::string read;
   TF_EXPECT_OK(ReadFileToString(Env::Default(), expected_fname, &read));
 
   BenchmarkEntries benchmark_entries;
@@ -115,15 +116,16 @@ TEST(TestReporter, Benchmark) {
 }
 
 TEST(TestReporter, SetProperties) {
-  string fname = absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
+  std::string fname =
+      absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
   TestReporter test_reporter(fname, "b2/3/4");
   TF_EXPECT_OK(test_reporter.Initialize());
   TF_EXPECT_OK(test_reporter.SetProperty("string_prop", "abc"));
   TF_EXPECT_OK(test_reporter.SetProperty("double_prop", 4.0));
 
   TF_EXPECT_OK(test_reporter.Close());
-  string expected_fname = absl::StrCat(fname, "b2__3__4");
-  string read;
+  std::string expected_fname = absl::StrCat(fname, "b2__3__4");
+  std::string read;
   TF_EXPECT_OK(ReadFileToString(Env::Default(), expected_fname, &read));
 
   BenchmarkEntries benchmark_entries;
@@ -137,15 +139,16 @@ TEST(TestReporter, SetProperties) {
 }
 
 TEST(TestReporter, AddMetrics) {
-  string fname = absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
+  std::string fname =
+      absl::StrCat(testing::TmpDir(), "/test_reporter_benchmarks_");
   TestReporter test_reporter(fname, "b3/4/5");
   TF_EXPECT_OK(test_reporter.Initialize());
   TF_EXPECT_OK(test_reporter.AddMetric("metric1", 2.0));
   TF_EXPECT_OK(test_reporter.AddMetric("metric2", 3.0));
 
   TF_EXPECT_OK(test_reporter.Close());
-  string expected_fname = absl::StrCat(fname, "b3__4__5");
-  string read;
+  std::string expected_fname = absl::StrCat(fname, "b3__4__5");
+  std::string read;
   TF_EXPECT_OK(ReadFileToString(Env::Default(), expected_fname, &read));
 
   BenchmarkEntries benchmark_entries;

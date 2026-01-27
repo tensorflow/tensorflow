@@ -184,10 +184,10 @@ class GpuCastOp : public CastOpBase {
   }
 
  private:
-  Status Prepare() {
+  absl::Status Prepare() {
     if (external_src_dtype_ == external_dst_dtype_) {
       work_ = nullptr;  // Identity
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (src_dtype_ == DT_BOOL) {
       work_ = GetGpuCastFromBool(dst_dtype_);
@@ -228,7 +228,7 @@ class GpuCastOp : public CastOpBase {
     } else if (src_dtype_ == DT_UINT4) {
       work_ = GetGpuCastFromUint4(dst_dtype_);
     }
-    return work_ == nullptr ? Unimplemented() : OkStatus();
+    return work_ == nullptr ? Unimplemented() : absl::OkStatus();
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -263,14 +263,14 @@ CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<float>);
 CURRY_TYPES2(REGISTER_CAST_GPU, std::complex<double>);
 #else
 REGISTER_CAST_GPU(bool, bfloat16);
-REGISTER_CAST_GPU(int8, bfloat16);
-REGISTER_CAST_GPU(int16, bfloat16);
-REGISTER_CAST_GPU(int32, bfloat16);
-REGISTER_CAST_GPU(int64, bfloat16);
-REGISTER_CAST_GPU(uint8, bfloat16);
-REGISTER_CAST_GPU(uint16, bfloat16);
-REGISTER_CAST_GPU(uint32, bfloat16);
-REGISTER_CAST_GPU(uint64, bfloat16);
+REGISTER_CAST_GPU(int8_t, bfloat16);
+REGISTER_CAST_GPU(int16_t, bfloat16);
+REGISTER_CAST_GPU(int32_t, bfloat16);
+REGISTER_CAST_GPU(int64_t, bfloat16);
+REGISTER_CAST_GPU(uint8_t, bfloat16);
+REGISTER_CAST_GPU(uint16_t, bfloat16);
+REGISTER_CAST_GPU(uint32_t, bfloat16);
+REGISTER_CAST_GPU(uint64_t, bfloat16);
 REGISTER_CAST_GPU(Eigen::half, bfloat16);
 REGISTER_CAST_GPU(float, bfloat16);
 REGISTER_CAST_GPU(double, bfloat16);
@@ -301,43 +301,43 @@ REGISTER_CAST_GPU(float8_e4m3fn, float8_e5m2);
 REGISTER_CAST_GPU(float8_e4m3fn, float8_e4m3fn);
 
 REGISTER_CAST_GPU(int4, int4);
-REGISTER_CAST_GPU(int4, int8);
-REGISTER_CAST_GPU(int4, int16);
-REGISTER_CAST_GPU(int4, int32);
+REGISTER_CAST_GPU(int4, int8_t);
+REGISTER_CAST_GPU(int4, int16_t);
+REGISTER_CAST_GPU(int4, int32_t);
 REGISTER_CAST_GPU(int4, int64_t);
 REGISTER_CAST_GPU(int4, uint4);
-REGISTER_CAST_GPU(int4, uint8);
-REGISTER_CAST_GPU(int4, uint16);
-REGISTER_CAST_GPU(int4, uint32);
+REGISTER_CAST_GPU(int4, uint8_t);
+REGISTER_CAST_GPU(int4, uint16_t);
+REGISTER_CAST_GPU(int4, uint32_t);
 REGISTER_CAST_GPU(int4, uint64_t);
 
-REGISTER_CAST_GPU(int8, int4);
-REGISTER_CAST_GPU(int16, int4);
-REGISTER_CAST_GPU(int32, int4);
+REGISTER_CAST_GPU(int8_t, int4);
+REGISTER_CAST_GPU(int16_t, int4);
+REGISTER_CAST_GPU(int32_t, int4);
 REGISTER_CAST_GPU(int64_t, int4);
 REGISTER_CAST_GPU(uint4, int4);
-REGISTER_CAST_GPU(uint8, int4);
-REGISTER_CAST_GPU(uint16, int4);
-REGISTER_CAST_GPU(uint32, int4);
+REGISTER_CAST_GPU(uint8_t, int4);
+REGISTER_CAST_GPU(uint16_t, int4);
+REGISTER_CAST_GPU(uint32_t, int4);
 REGISTER_CAST_GPU(uint64_t, int4);
 
-REGISTER_CAST_GPU(uint4, int8);
-REGISTER_CAST_GPU(uint4, int16);
-REGISTER_CAST_GPU(uint4, int32);
+REGISTER_CAST_GPU(uint4, int8_t);
+REGISTER_CAST_GPU(uint4, int16_t);
+REGISTER_CAST_GPU(uint4, int32_t);
 REGISTER_CAST_GPU(uint4, int64_t);
 REGISTER_CAST_GPU(uint4, uint4);
-REGISTER_CAST_GPU(uint4, uint8);
-REGISTER_CAST_GPU(uint4, uint16);
-REGISTER_CAST_GPU(uint4, uint32);
+REGISTER_CAST_GPU(uint4, uint8_t);
+REGISTER_CAST_GPU(uint4, uint16_t);
+REGISTER_CAST_GPU(uint4, uint32_t);
 REGISTER_CAST_GPU(uint4, uint64_t);
 
-REGISTER_CAST_GPU(int8, uint4);
-REGISTER_CAST_GPU(int16, uint4);
-REGISTER_CAST_GPU(int32, uint4);
+REGISTER_CAST_GPU(int8_t, uint4);
+REGISTER_CAST_GPU(int16_t, uint4);
+REGISTER_CAST_GPU(int32_t, uint4);
 REGISTER_CAST_GPU(int64_t, uint4);
-REGISTER_CAST_GPU(uint8, uint4);
-REGISTER_CAST_GPU(uint16, uint4);
-REGISTER_CAST_GPU(uint32, uint4);
+REGISTER_CAST_GPU(uint8_t, uint4);
+REGISTER_CAST_GPU(uint16_t, uint4);
+REGISTER_CAST_GPU(uint32_t, uint4);
 REGISTER_CAST_GPU(uint64_t, uint4);
 
 #undef REGISTER_CAST_GPU

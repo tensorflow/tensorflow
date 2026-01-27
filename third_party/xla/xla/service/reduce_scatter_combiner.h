@@ -45,11 +45,6 @@ class ReduceScatterCombiner : public HloModulePass {
 
   absl::string_view name() const override { return "reduce-scatter-combiner"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   using GroupKey = std::tuple<AllReduceKey, /*scatter_dimension*/ int64_t,
                               /*extra_args*/ std::string>;
 
@@ -69,6 +64,10 @@ class ReduceScatterCombiner : public HloModulePass {
       absl::FunctionRef<std::optional<ReduceScatterCombiner::GroupKey>(
           const HloInstruction*, const HloDomainMap&, bool)>
           combine_key);
+
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Combine reduce-scatter ops up to this threshold.
   int64_t combine_threshold_in_bytes_;

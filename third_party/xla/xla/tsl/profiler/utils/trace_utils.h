@@ -29,27 +29,27 @@ namespace profiler {
 // Constants used as trace_viewer PID (device_id in trace_events.proto).
 // PID 0 is unused.
 // Support up to 500 accelerator devices.
-constexpr uint32 kFirstDeviceId = 1;
-constexpr uint32 kLastDeviceId = 500;
+constexpr uint32_t kFirstDeviceId = 1;
+constexpr uint32_t kLastDeviceId = 500;
 
 // Max. devices per host. Power of 10 for ease of debugging.
 static constexpr uint32_t kMaxDevicesPerHost = 1000;
 // Support Upto 200 custom planes as fake devices (i.e., planes with a
 // "/custom:" prefix). See `<project_name>::kCustomPlanePrefix` for more
 // information
-constexpr uint32 kFirstCustomPlaneDeviceId = kLastDeviceId + 1;
-constexpr uint32 kMaxCustomPlaneDevicesPerHost = 200;
-constexpr uint32 kLastCustomPlaneDeviceId =
+constexpr uint32_t kFirstCustomPlaneDeviceId = kLastDeviceId + 1;
+constexpr uint32_t kMaxCustomPlaneDevicesPerHost = 200;
+constexpr uint32_t kLastCustomPlaneDeviceId =
     kFirstCustomPlaneDeviceId + kMaxCustomPlaneDevicesPerHost - 1;
 // Host threads are shown as a single fake device.
-constexpr uint32 kHostThreadsDeviceId = kLastCustomPlaneDeviceId + 1;
+constexpr uint32_t kHostThreadsDeviceId = kLastCustomPlaneDeviceId + 1;
 
 // Constants used as plane ID for custom NCCL planes, starting from the last
 // kMaxNcclPlanes in the custom plane device ID range.
-constexpr uint32 kMaxNcclPlanes = 100;
-constexpr uint32 kFirstNcclPlaneId =
+constexpr uint32_t kMaxNcclPlanes = 100;
+constexpr uint32_t kFirstNcclPlaneId =
     tsl::profiler::kMaxCustomPlaneDevicesPerHost - kMaxNcclPlanes;
-constexpr uint32 kLastNcclPlaneId = kFirstNcclPlaneId + kMaxNcclPlanes - 1;
+constexpr uint32_t kLastNcclPlaneId = kFirstNcclPlaneId + kMaxNcclPlanes - 1;
 
 constexpr int kNumGpuOnDeviceCustomPlanesPerHost = 50;
 constexpr int kFirstGpuOnDeviceCustomPlaneId =

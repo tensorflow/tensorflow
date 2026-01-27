@@ -15,16 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <functional>
-#include <limits>
-#include <numeric>
-#include <string>
-#include <tuple>
-#include <type_traits>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -194,8 +188,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     if (!mlir::isa<TensorType>(result_type) ||
         !mlir::isa<TensorType>(input.getType()))
       return nullptr;
-    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
-                                      /*truncate=*/builder.getBoolAttr(false));
+    return TF::CastOp::create(builder, conversion_loc, result_type, input,
+                              /*truncate=*/builder.getBoolAttr(false));
   }
 
   void processInlinedCallBlocks(
@@ -351,7 +345,7 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  return builder.create<ConstOp>(loc, type, value);
+  return ConstOp::create(builder, loc, type, value);
 }
 
 }  // namespace TF

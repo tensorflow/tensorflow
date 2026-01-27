@@ -705,11 +705,12 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
 
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
-      if (is_variable) {
-        TF_LITE_REPORT_ERROR(error_reporter_,
-                             "Tensor %d is a variable tensor with buffer. "
-                             "It's not supported now.\n",
-                             i);
+      if (is_variable || tensor->external_buffer() != 0) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Tensor %d is a variable tensor with buffer or external buffer. "
+            "It's not supported now.\n",
+            i);
         status = kTfLiteError;
       }
 
@@ -725,7 +726,8 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity,
-              /*buffer_identifier=*/tensor->buffer()) != kTfLiteOk) {
+              /*buffer_identifier=*/tensor->buffer(),
+              /*external_buffer_id=*/tensor->external_buffer()) != kTfLiteOk) {
         TF_LITE_REPORT_ERROR(error_reporter_,
                              "Tensor %d is invalidly specified in schema.\n",
                              i);

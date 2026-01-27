@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -53,10 +51,10 @@ using HloPassPipelineTest = HloHardwareIndependentTestBase;
 class FooToBarModulePass : public HloModulePass {
   absl::string_view name() const override { return "foo2bar"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -76,10 +74,10 @@ class FooToBarModulePass : public HloModulePass {
 class ReverseStringModulePass : public HloModulePass {
   absl::string_view name() const override { return "reverse"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -97,9 +95,9 @@ class ReverseStringModulePass : public HloModulePass {
 class BazToQuxModulePass : public HloModulePass {
   absl::string_view name() const override { return "baz2qux"; }
 
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -119,10 +117,10 @@ class BazToQuxModulePass : public HloModulePass {
 class BarBlowerUpper : public HloModulePass {
   absl::string_view name() const override { return "bar-blower-upper"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
@@ -356,10 +354,10 @@ TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
 class NoOpModulePass : public HloModulePass {
   absl::string_view name() const override { return "noop"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     return false;
   }
 };

@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double, int32,
-          int64_t, bfloat16, complex64, complex128);
+REGISTER8(BinaryOp, CPU, "Sub", functor::sub, float, Eigen::half, double,
+          int32_t, int64_t, bfloat16, complex64, complex128);
 #if !defined(__ANDROID_TYPES_SLIM__)
 // Sub op for int8, uint8, int16, uint16
-REGISTER6(BinaryOp, CPU, "Sub", functor::sub, int8, uint8, int16, uint16,
-          uint32, uint64);
+REGISTER6(BinaryOp, CPU, "Sub", functor::sub, int8_t, uint8_t, int16_t,
+          uint16_t, uint32_t, uint64_t);
 #else
 // We only register the first type when we have multi-argument calls in the
 // case where we're trying to reduce executable size, but it turns out that the
@@ -53,7 +53,7 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::sub<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::sub<int32_t>>);
 
 }  // namespace tensorflow

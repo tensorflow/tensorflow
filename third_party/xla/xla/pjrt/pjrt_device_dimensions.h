@@ -54,6 +54,7 @@ class PjRtDeviceDimensions {
 
   const int32_t& operator[](size_t i) const { return dimensions_[i]; }
 
+  const int32_t* data() const { return dimensions_.data(); }
   size_t size() const { return dimensions_.size(); }
 
   friend bool operator==(const PjRtDeviceDimensions& a,

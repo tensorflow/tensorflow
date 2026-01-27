@@ -61,10 +61,10 @@ class CpuUnaryIntrinsicTest
     auto spec = info.param;
 
     std::string opcode(HloOpcodeString(spec.opcode));
-    opcode[0] = toupper(opcode[0]);
+    opcode[0] = absl::ascii_toupper(opcode[0]);
 
     std::string type(PrimitiveType_Name(spec.type));
-    type[0] = toupper(type[0]);
+    type[0] = absl::ascii_toupper(type[0]);
 
     std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
@@ -151,24 +151,24 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
     // Check that we see inlined vectorized exp.f64 code
     IntrinsicTestSpec{HloOpcode::kExp, F64, true, kTriple_x86_64, "",
                       R"(
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f32
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
                       CHECK: fmul <2 x double> {{.*}}splat (double 0x3FF71547652B82FE)
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f32
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f64
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f32
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
     )"},
 
     IntrinsicTestSpec{HloOpcode::kExp, F64, true, kTriple_x86_64, "+avx",
                       R"(
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f64
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @local_xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
                       CHECK: fmul <4 x double> {{.*}}splat (double 0x3FF71547652B82FE)
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @local_xla.exp.v4f32
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
     )"},
 
     IntrinsicTestSpec{HloOpcode::kExp, F64, false, kTriple_x86_64, "",
-                      R"(CHECK: call fast double @local_xla.exp.f64(double)"},
+                      R"(CHECK: call fast double @xla.exp.f64(double)"},
 
     IntrinsicTestSpec{
         HloOpcode::kExp, F32, true, kTriple_x86_64, "+avx",

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_threadpool.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -130,6 +131,7 @@ TEST_P(YnnFusionThunkTest, ElementwiseAdd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, YnnFusionThunk::Create(
                       YnnFusionThunk::Options{use_threadpool()}, {"fusion"},
+                      reinterpret_cast<HloInstruction*>(0xDEADBEEF),
                       {lhs_arg, rhs_arg}, {out_res}, &BuildBinaryAddSubgraph));
 
   YnnThreadpool threadpool;

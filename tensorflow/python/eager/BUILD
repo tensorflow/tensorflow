@@ -79,11 +79,11 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//third_party/python_runtime:headers",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//third_party/python_runtime:headers",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -253,8 +253,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -296,7 +296,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-        "@local_xla//xla/service:hlo_proto_py",
+        "@xla//xla/service:hlo_proto_py",
     ],
 )
 
@@ -753,6 +753,9 @@ py_strict_library(
 cuda_py_benchmark_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "24g",
+    },
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -791,6 +794,9 @@ cuda_py_benchmark_test(
 cuda_py_strict_test(
     name = "run_eager_op_as_function_test",
     srcs = ["run_eager_op_as_function_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     tags = [
         "no_windows",  # b/207695287
     ],
@@ -1108,6 +1114,7 @@ cuda_py_strict_test(
         "no_oss",  # This test launches local server.
         "nofastbuild",  # times out
         "optonly",  # times out
+        "requires-mem:20g",  # Add this for Test Execution OOM
     ],
     deps = [
         ":cancellation",
@@ -1137,7 +1144,7 @@ cuda_py_strict_test(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -1271,7 +1278,7 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/framework:ops",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 

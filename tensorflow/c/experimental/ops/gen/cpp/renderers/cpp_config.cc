@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/renderers/cpp_config.h"
 
+#include <string>
+
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/types.h"
@@ -22,7 +24,7 @@ namespace tensorflow {
 namespace generator {
 namespace cpp {
 
-CppConfig::CppConfig(const string &category, const string &name_space)
+CppConfig::CppConfig(const std::string& category, const std::string& name_space)
     : category(category),
       unit(absl::AsciiStrToLower(category)),
       namespaces(absl::StrSplit(name_space, "::")) {}

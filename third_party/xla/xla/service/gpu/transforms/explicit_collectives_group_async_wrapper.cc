@@ -70,7 +70,7 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
 }
 }  // namespace
 
-absl::StatusOr<bool> ExplicitCollectivesGroupAsyncWrapper::Run(
+absl::StatusOr<bool> ExplicitCollectivesGroupAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

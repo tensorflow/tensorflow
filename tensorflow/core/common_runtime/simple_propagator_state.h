@@ -167,7 +167,7 @@ class SimplePropagatorState {
   // is never concurrent access to the same entry.
   std::vector<Entry> input_tensors_;
 
-  std::unique_ptr<std::atomic<int32>[]> pending_;
+  std::unique_ptr<std::atomic<int32_t>[]> pending_;
 
   // If `vlog_` is true, this stores a bit vector of active nodes, indexed by
   // node ID.

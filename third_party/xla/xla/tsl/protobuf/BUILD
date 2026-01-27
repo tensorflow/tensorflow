@@ -28,27 +28,27 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         "@com_google_protobuf//:any_proto",
         "@com_google_protobuf//:wrappers_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@com_google_protobuf//:wrappers_proto"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:wrappers_proto"],
 )
 
 tf_proto_library(
     name = "status_proto",
     srcs = ["status.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//xla/tsl/protobuf:error_codes_proto_impl"],
     visibility = ["//visibility:public"],
+    deps = ["//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 tf_proto_library(
@@ -73,8 +73,8 @@ tf_proto_library(
     create_java_proto = False,
     create_kotlin_proto = False,
     create_service = True,
-    protodeps = ["@com_google_protobuf//:any_proto"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -103,8 +103,8 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@com_google_protobuf//:any_proto"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 tf_proto_library(
@@ -112,7 +112,8 @@ tf_proto_library(
     create_go_proto = False,
     create_kotlin_proto = False,
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
         # breakages (and they are not actually used).
         ":bfc_memory_map_proto",
@@ -125,5 +126,4 @@ tf_proto_library(
         ":test_log_proto",
         "@com_google_protobuf//:any_proto",
     ],
-    visibility = ["//visibility:public"],
 )

@@ -40,8 +40,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,7 +59,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
@@ -71,7 +73,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -80,6 +81,12 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+// Bitcasts are fusible if they don't change the bit width.
+bool IsFusibleBitcast(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kBitcast &&
+         hlo_instruction_utils::KeepsBitwidth(instr);
+}
 
 bool IsFusible(const HloInstruction& instr) {
   // Side-effecting operations are not fusible.
@@ -92,13 +99,16 @@ bool IsFusible(const HloInstruction& instr) {
     return true;
   }
 
+  // Bitcasts are fusible if they don't change the bit width.
+  if (IsFusibleBitcast(instr)) {
+    return true;
+  }
+
   // Other non-elementwise ops also supported by elemental fusion.
   switch (instr.opcode()) {
     case HloOpcode::kFusion:
       return IsGenericTritonFusion(instr) ||
              instr.fusion_kind() != HloInstruction::FusionKind::kCustom;
-    case HloOpcode::kBitcast:
-      return hlo_instruction_utils::KeepsBitwidth(instr);
     case HloOpcode::kCopy:
     case HloOpcode::kIota:
     case HloOpcode::kConstant:
@@ -150,28 +160,29 @@ class PriorityFusionQueue {
                       const se::DeviceDescription* device_info,
                       FusionProcessDumpProto* fusion_process_dump,
                       tsl::thread::ThreadPool* thread_pool,
-                      SymbolicExprContext* symbolic_expr_context,
+                      mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
-                      bool triton_heroless_fusion_enabled)
+                      bool triton_heroless_fusion_enabled,
+                      const AliasInfo* alias_info)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(cost_analysis_options, *device_info),
         gpu_indexing_performance_model_(device_info, &fusion_analysis_cache,
                                         cost_analysis_options.shape_size,
-                                        symbolic_expr_context),
+                                        mlir_context),
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
         gpu_performance_model_(*device_info, fusion_analysis_cache,
-                               gpu_performance_model_cache_,
-                               symbolic_expr_context),
+                               gpu_performance_model_cache_, mlir_context),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
-        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
+        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled),
+        alias_info_(alias_info) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
-    TF_CHECK_OK(computation_->Accept(&cost_analysis_));
+    CHECK_OK(computation_->Accept(&cost_analysis_));
 
     dump_fusion_visualization_ = computation->parent()
                                      ->config()
@@ -181,7 +192,7 @@ class PriorityFusionQueue {
     // Initializes the priority queue.
     std::vector<HloInstruction*> instructions;
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      TF_CHECK_OK(UpdatePerformanceModelCache(instruction));
+      CHECK_OK(UpdatePerformanceModelCache(instruction));
       if (HloPredicateIsOp<HloOpcode::kParameter>(instruction) ||
           instruction->user_count() == 0 || !instruction->IsFusible() ||
           HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement>(
@@ -265,7 +276,7 @@ class PriorityFusionQueue {
         current_consumers_ = {*preferred_consumer};
       }
 
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(current_producer_)) {
+      if (IsFusibleBitcast(*current_producer_)) {
         // We don't check if bitcasts can be fused with all consumers, so we
         // have to do it here.
         llvm::erase_if(current_consumers_, [&](HloInstruction* consumer) {
@@ -547,7 +558,7 @@ class PriorityFusionQueue {
       preferred_consumer_.erase(producer);
     }
     // Bitcasts should always be fused first, since they are no-ops.
-    if (HloPredicateIsOp<HloOpcode::kBitcast>(producer)) {
+    if (IsFusibleBitcast(*producer)) {
       return absl::InfiniteDuration();
     }
     // We always fuse constants, but the cost model doesn't handle them very
@@ -790,7 +801,7 @@ class PriorityFusionQueue {
       return can_fuse_triton;
     }
 
-    if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
+    if (IsFusibleBitcast(*consumer)) {
       return FusionDecision::Forbid(
           "not fusing into a single bitcast as consumer");
     }
@@ -861,7 +872,7 @@ class PriorityFusionQueue {
     }
 
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer,
-                                                  std::nullopt);
+                                                  alias_info_, std::nullopt);
   }
 
   FusionDecision CanFuseCached(HloInstruction* producer,
@@ -926,7 +937,7 @@ class PriorityFusionQueue {
     }
     std::vector<HloInstruction*> possible_consumers;
     for (const auto& user : producer->users()) {
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
+      if (IsFusibleBitcast(*user)) {
         continue;
       }
       if (CanFuseTriton(producer, user, /*use_multi_output_fusion=*/true) &&
@@ -960,7 +971,7 @@ class PriorityFusionQueue {
 
     bool has_non_bitcast_user = false;
     for (const auto& user : producer->users()) {
-      if (HloPredicateIsOp<HloOpcode::kBitcast>(user)) {
+      if (IsFusibleBitcast(*user)) {
         continue;
       }
       has_non_bitcast_user = true;
@@ -1071,6 +1082,8 @@ class PriorityFusionQueue {
   // If true, redirect all fusion decisions to Triton fusion.
   bool triton_heroless_fusion_enabled_;
 
+  const AliasInfo* alias_info_;
+
   bool dump_fusion_visualization_;
 };
 
@@ -1127,7 +1140,7 @@ FusionDecision PriorityFusion::CanFuseConstant(const HloInstruction* constant,
   return FusionDecision::Allow();
 }
 
-absl::StatusOr<bool> PriorityFusion::Run(
+absl::StatusOr<bool> PriorityFusion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool dump_enabled =
@@ -1161,9 +1174,9 @@ absl::StatusOr<bool> PriorityFusion::Run(
 
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
-        fusion_process_dump_.get(), thread_pool_, symbolic_expr_context_,
+        fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled);
+        triton_heroless_fusion_enabled, alias_info_);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -1181,7 +1194,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
       for (auto* consumer : consumers) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.
-        if (HloPredicateIsOp<HloOpcode::kBitcast>(consumer)) {
+        if (IsFusibleBitcast(*consumer)) {
           continue;
         }
         if (!ConsumeFuel(producer, consumer)) {
@@ -1287,6 +1300,7 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
     case HloFusionAnalysis::EmitterFusionKind::kCuDnn:
+    case HloFusionAnalysis::EmitterFusionKind::kSort:
       return HloInstruction::FusionKind::kCustom;
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
@@ -1309,7 +1323,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
   if (HloPredicateIsNotOp<HloOpcode::kFusion>(fusion_instruction)) {
     fusion_instruction = computation->AddInstruction(
         HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
-    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   } else if (kind != fusion_instruction->fusion_kind()) {
     fusion_instruction->set_fusion_kind(kind);
   }
@@ -1330,7 +1344,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
       // the computation. Do the same here, so that we have the invariant that
       // the producer has been cleaned up when multi-output fusion is used.
       CHECK_EQ(0, producer->user_count());
-      TF_CHECK_OK(producer->parent()->RemoveInstruction(producer));
+      CHECK_OK(producer->parent()->RemoveInstruction(producer));
     } else {
       fusion_instruction->FuseInstruction(producer);
     }

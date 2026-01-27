@@ -22,24 +22,23 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -47,15 +46,9 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::IsNull;
 using ::testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
-class XlaCompileLibTest : public HloTestBase {
+class XlaCompileLibTest : public HloPjRtTestBase {
  protected:
-  XlaCompileLibTest()
-      : HloTestBase(*PlatformUtil::GetPlatform("Host"),
-                    GetReferencePlatform()) {}
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                                                    "tools", "data", "add.hlo");
@@ -70,7 +63,7 @@ class XlaCompileLibTest : public HloTestBase {
 TEST_F(XlaCompileLibTest, CompilesForCpu) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kCpu,
-                                std::nullopt, result),
+                                std::nullopt, std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
 }
 

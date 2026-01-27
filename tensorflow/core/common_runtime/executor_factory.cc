@@ -29,7 +29,7 @@ namespace {
 
 static mutex executor_factory_lock(LINKER_INITIALIZED);
 
-typedef std::unordered_map<string, ExecutorFactory*> ExecutorFactories;
+typedef std::unordered_map<std::string, ExecutorFactory*> ExecutorFactories;
 ExecutorFactories* executor_factories() {
   static ExecutorFactories* factories = new ExecutorFactories;
   return factories;
@@ -37,7 +37,7 @@ ExecutorFactories* executor_factories() {
 
 }  // namespace
 
-void ExecutorFactory::Register(const string& executor_type,
+void ExecutorFactory::Register(const std::string& executor_type,
                                ExecutorFactory* factory) {
   mutex_lock l(executor_factory_lock);
   if (!executor_factories()->insert({executor_type, factory}).second) {
@@ -47,9 +47,9 @@ void ExecutorFactory::Register(const string& executor_type,
 }
 
 namespace {
-const string RegisteredFactoriesErrorMessageLocked()
+const std::string RegisteredFactoriesErrorMessageLocked()
     TF_SHARED_LOCKS_REQUIRED(executor_factory_lock) {
-  std::vector<string> factory_types;
+  std::vector<std::string> factory_types;
   for (const auto& executor_factory : *executor_factories()) {
     factory_types.push_back(executor_factory.first);
   }
@@ -58,7 +58,7 @@ const string RegisteredFactoriesErrorMessageLocked()
 }
 }  // namespace
 
-absl::Status ExecutorFactory::GetFactory(const string& executor_type,
+absl::Status ExecutorFactory::GetFactory(const std::string& executor_type,
                                          ExecutorFactory** out_factory) {
   tf_shared_lock l(executor_factory_lock);
 
@@ -73,7 +73,7 @@ absl::Status ExecutorFactory::GetFactory(const string& executor_type,
   return absl::OkStatus();
 }
 
-absl::Status NewExecutor(const string& executor_type,
+absl::Status NewExecutor(const std::string& executor_type,
                          const LocalExecutorParams& params, const Graph& graph,
                          std::unique_ptr<Executor>* out_executor) {
   ExecutorFactory* factory = nullptr;

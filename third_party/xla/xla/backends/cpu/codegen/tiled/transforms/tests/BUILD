@@ -10,7 +10,7 @@ lit_test_suite(
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/codegen/tools:emitters_opt",
+        "//xla/backends/cpu/codegen/tools:fusion_compiler_opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )

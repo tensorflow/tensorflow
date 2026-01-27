@@ -27,13 +27,12 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -48,7 +47,6 @@ namespace {
 
 using absl_testing::IsOk;
 using absl_testing::StatusIs;
-using ::tsl::proto_testing::EqualsProto;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
 const char kHlo[] = R"(
@@ -71,6 +69,25 @@ const char kHlo[] = R"(
       backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
   })";
 
+const char kScaledDotHlo[] = R"(
+HloModule ScaledDotIsFused, entry_computation_layout={(bf16[4,4]{1,0}, bf16[4,4]{1,0}, bf16[1,1]{1,0}, bf16[1,1]{1,0})->bf16[4,4]{1,0}}
+
+%fusion_dot (parameter_0: bf16[4,4], parameter_1: bf16[4,4], parameter_2: bf16[1,1], parameter_3: bf16[1,1]) -> bf16[4,4] {
+  %parameter_0 = bf16[4,4]{1,0} parameter(0)
+  %parameter_1 = bf16[4,4]{1,0} parameter(1)
+  %parameter_2 = bf16[1,1]{1,0} parameter(2)
+  %parameter_3 = bf16[1,1]{1,0} parameter(3)
+  ROOT %dot.1 = bf16[4,4]{1,0} scaled-dot(%parameter_0, %parameter_1, %parameter_2, %parameter_3), lhs_contracting_dims={1}, rhs_contracting_dims={1}, metadata={op_name="foo"}
+}
+
+ENTRY %entry (lhs: bf16[4,4], rhs: bf16[4,4], lhs_scale: bf16[1,1], rhs_scale: bf16[1,1]) -> bf16[4,4] {
+  %lhs = bf16[4,4]{1,0} parameter(0)
+  %rhs = bf16[4,4]{1,0} parameter(1)
+  %lhs_scale = bf16[1,1]{1,0} parameter(2)
+  %rhs_scale = bf16[1,1]{1,0} parameter(3)
+  ROOT %fusion = bf16[4,4]{1,0} fusion(%lhs, %rhs, %lhs_scale, %rhs_scale), kind=kCustom, calls=%fusion_dot, metadata={op_name="foo"}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+})";
+
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
@@ -79,20 +96,19 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_,
-                 &symbolic_expr_context_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
+        alias_info_(stream_executor_->GetDeviceDescription()),
+        backend_(&debug_options_, &compiler_, &target_config_, &alias_info_,
+                 &mlir_context_) {
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
+  GpuAliasInfo alias_info_;
   TritonBackend backend_;
   mlir::MLIRContext mlir_context_;
-  SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TritonBackendTest, GetSupportedConfigs) {
@@ -108,21 +124,38 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
   if (backend_.target_config()
           .device_description.cuda_compute_capability()
           .IsAtLeastHopper()) {
-    auto count_tma_allowed =
-        [](const std::vector<std::unique_ptr<BackendConfig>>& configs) {
-          return std::count_if(configs.begin(), configs.end(),
-                               [](auto& config) {
-                                 TritonBackendConfig actual_config;
-                                 if (!config->UnpackTo(&actual_config)) {
-                                   return false;
-                                 }
-                                 return actual_config.is_tma_allowed();
-                               });
-        };
-    // The current TMA autotuning duplicates the given configurations with
-    // is_tma_allowed set to true.
-    EXPECT_EQ(count_tma_allowed(configs.value()), configs.value().size() / 2);
+    // Check that TMA configurations are generated.
+    EXPECT_TRUE(std::any_of(configs.value().begin(), configs.value().end(),
+                            [](auto& config) {
+                              TritonBackendConfig actual_config;
+                              if (!config->UnpackTo(&actual_config)) {
+                                return false;
+                              }
+                              return actual_config.is_tma_allowed();
+                            }));
   }
+}
+
+TEST_F(TritonBackendTest, GetSupportedConfigsForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(*fusion_instr);
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_GT(configs.value().size(), 0);
+}
+
+TEST_F(TritonBackendTest, GetAndApplyConfigForScaledDot) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kScaledDotHlo));
+  HloInstruction* fusion_instr =
+      module->entry_computation()->root_instruction();
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(*fusion_instr);
+  EXPECT_THAT(config, absl_testing::IsOk());
+  EXPECT_THAT(backend_.ApplyConfig(*fusion_instr, *config.value()), IsOk());
 }
 
 TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
@@ -156,17 +189,26 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
 TEST_F(TritonBackendTest, GetDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
-  TritonBackendConfig expected_config =
-      TritonGemmConfig(64, 64, 64, 1, 1, 2, 1, false).ToProto();
-
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()));
 
   EXPECT_THAT(config, absl_testing::IsOk());
-  TritonBackendConfig actual_config;
-  ASSERT_TRUE(config.value()->UnpackTo(&actual_config));
-  EXPECT_THAT(actual_config, EqualsProto(expected_config));
+}
+
+TEST_F(TritonBackendTest, GetDefaultConfigReturnsSplitKOne) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  debug_options_.set_xla_gpu_enable_split_k_autotuning(true);
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(
+          *(module->entry_computation()->root_instruction()));
+
+  ASSERT_THAT(config, absl_testing::IsOk());
+  TritonBackendConfig triton_config;
+  ASSERT_TRUE(config.value()->UnpackTo(&triton_config));
+  EXPECT_EQ(triton_config.split_k(), 1);
 }
 
 TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {

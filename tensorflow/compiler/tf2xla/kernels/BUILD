@@ -1,8 +1,8 @@
 load(
-    "@local_xla//xla/tsl:tsl.bzl",
+    "@xla//xla/tsl:tsl.bzl",
     "check_deps",
 )
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -29,8 +29,8 @@ package(
 check_deps(
     name = "xla_ops_check_deps",
     disallowed_deps = [
-        "@local_xla//xla/service/cpu:cpu_compiler",
-        "@local_xla//xla/service/gpu:gpu_compiler",
+        "@xla//xla/service/cpu:cpu_compiler",
+        "@xla//xla/service/gpu:gpu_compiler",
     ],
     deps = [":xla_ops"],
 )
@@ -212,23 +212,23 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/service:custom_call_status",
-        "@local_xla//xla/service:custom_call_target_registry",
-        "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/stream_executor:device_memory",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/stream_executor:stream",
-        "@local_xla//xla/stream_executor:stream_executor_h",
-        "@local_xla//xla/stream_executor:stream_finder",
-        "@local_xla//xla/tsl/lib/strings:proto_serialization",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:fingerprint",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/service:custom_call_status",
+        "@xla//xla/service:custom_call_target_registry",
+        "@xla//xla/service:hlo_proto_cc",
+        "@xla//xla/stream_executor:device_memory",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/stream_executor:stream",
+        "@xla//xla/stream_executor:stream_executor_h",
+        "@xla//xla/stream_executor:stream_finder",
+        "@xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = 1,
 )
@@ -248,13 +248,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
     alwayslink = 1,
 )
@@ -293,14 +293,14 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-    ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@xla//xla:literal_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+    ] + if_static(["@tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
@@ -314,12 +314,12 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -340,8 +340,8 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:value_inference",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:value_inference",
     ],
 )
 
@@ -366,24 +366,23 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/translate:stablehlo",
-        "@local_xla//xla/mlir/utils:error_util",
-        "@local_xla//xla/mlir/utils:type_util",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/python:refine_polymorphic_shapes",
-        "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/service/spmd/shardy/sdy_round_trip:pipelines",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:vhlo_ops",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/translate:stablehlo",
+        "@xla//xla/mlir/utils:type_util",
+        "@xla//xla/python:refine_polymorphic_shapes",
+        "@xla//xla/service:hlo_proto_cc",
+        "@xla//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -412,20 +411,20 @@ tf_kernel_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:debug_options_flags",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/hlo/translate:stablehlo",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/service:hlo_module_config",
-        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
-        "@local_xla//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla:debug_options_flags",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/hlo/translate:stablehlo",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@xla//xla/service:hlo_module_config",
+        "@xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "@xla//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -452,16 +451,16 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:shape_tree",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:tuple",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_tree",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/client",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:tuple",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -487,10 +486,10 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -511,9 +510,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -550,7 +549,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )
 
@@ -571,8 +570,8 @@ tf_kernel_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -591,9 +590,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -611,10 +610,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:protos_all_cc",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder/lib:math",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder/lib:math",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -634,10 +633,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -656,12 +655,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:sorting",
+        "@xla//xla:literal",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:sorting",
     ],
 )
 
@@ -685,9 +684,9 @@ tf_kernel_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -707,11 +706,11 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:sorting",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:sorting",
     ],
 )
 
@@ -735,8 +734,8 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:status_macros",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -756,9 +755,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -782,13 +781,13 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -807,8 +806,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -825,11 +824,11 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:slicing",
-        "@local_xla//xla/hlo/builder/lib:svd",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla/hlo/builder/lib:svd",
     ],
 )
 
@@ -851,11 +850,11 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -873,7 +872,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -892,10 +891,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -917,9 +916,9 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -951,7 +950,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -975,9 +974,9 @@ tf_kernel_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -994,8 +993,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:comparators",
     ],
 )
 
@@ -1012,10 +1011,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:matrix",
-        "@local_xla//xla/hlo/builder/lib:qr",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla/hlo/builder/lib:qr",
     ],
 )
 
@@ -1033,8 +1032,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
     ],
 )
 
@@ -1053,10 +1052,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1091,9 +1090,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1112,8 +1111,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:inlined_vector",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1139,15 +1138,15 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
-        "@local_xla//xla/hlo/builder/lib:loops",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla/hlo/builder/lib:loops",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1171,11 +1170,11 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla:status_macros",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/client:client_library",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:slicing",
     ],
 )
 
@@ -1195,10 +1194,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1218,13 +1217,13 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/algorithm:container",
-        "@local_xla//xla:comparison_util",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:comparison_util",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1247,8 +1246,8 @@ tf_kernel_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1290,11 +1289,11 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1309,7 +1308,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1328,8 +1327,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -1350,9 +1349,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:stochastic_cast_op_header",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1372,7 +1371,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/algorithm:container",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1389,7 +1388,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1408,8 +1407,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1448,9 +1447,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1468,12 +1467,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1504,8 +1503,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:qr",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:qr",
     ],
 )
 
@@ -1524,11 +1523,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -1546,8 +1545,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1569,11 +1568,11 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -1590,8 +1589,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:sharding_op_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:sharding_op_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1613,8 +1612,8 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1632,8 +1631,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
     ],
 )
 
@@ -1659,13 +1658,13 @@ tf_kernel_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:array4d",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:array4d",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1686,10 +1685,10 @@ tf_kernel_library(
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1706,8 +1705,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla/hlo/builder:padding",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:padding",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1728,12 +1727,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/client:client_library",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -1751,11 +1750,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla:literal",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:slicing",
     ],
 )
 
@@ -1780,13 +1779,13 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:prng",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:prng",
     ],
 )
 
@@ -1805,11 +1804,11 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -1833,10 +1832,10 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:client_library",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1854,8 +1853,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1873,9 +1872,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -1893,18 +1892,17 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
     ],
 )
 
@@ -1921,9 +1919,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
     ],
 )
 
@@ -1942,7 +1940,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -1975,10 +1973,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -1995,10 +1993,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:matrix",
-        "@local_xla//xla/hlo/builder/lib:qr",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla/hlo/builder/lib:qr",
     ],
 )
 
@@ -2018,11 +2016,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/log",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:prng",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:prng",
     ],
 )
 
@@ -2040,9 +2038,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2059,12 +2057,12 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:loops",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:status_macros",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:loops",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -2086,15 +2084,15 @@ tf_kernel_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:comparison_util",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:comparison_util",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2113,12 +2111,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/log",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2141,17 +2139,17 @@ tf_kernel_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:padding",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:pooling",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:padding",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:pooling",
     ],
 )
 
@@ -2171,9 +2169,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:slicing",
     ],
 )
 
@@ -2190,9 +2188,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:quantize",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:quantize",
     ],
 )
 
@@ -2210,7 +2208,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2235,11 +2233,11 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2262,16 +2260,16 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
-        "@local_xla//xla/hlo/builder/lib:loops",
-        "@local_xla//xla/hlo/builder/lib:sorting",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla/hlo/builder/lib:loops",
+        "@xla//xla/hlo/builder/lib:sorting",
     ],
 )
 
@@ -2290,8 +2288,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:status_macros",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2311,10 +2309,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/service:hlo_proto_cc",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 
@@ -2335,7 +2333,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2354,9 +2352,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2376,10 +2374,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla:literal_util",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -2396,10 +2394,10 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -2417,8 +2415,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "@com_google_absl//absl/log",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2437,16 +2435,16 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
     ],
 )
 
@@ -2467,9 +2465,9 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla:status_macros",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2505,12 +2503,12 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:matrix",
-        "@local_xla//xla/hlo/builder/lib:pooling",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla/hlo/builder/lib:pooling",
     ],
 )
 
@@ -2530,10 +2528,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
     ],
 )
 
@@ -2552,8 +2550,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:comparison_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:comparison_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2574,7 +2572,7 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2592,9 +2590,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2611,12 +2609,12 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:comparators",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:comparators",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2633,8 +2631,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder/lib:slicing",
-        "@local_xla//xla/hlo/builder/lib:tridiagonal",
+        "@xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla/hlo/builder/lib:tridiagonal",
     ],
 )
 
@@ -2652,11 +2650,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla/client:client_library",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -2676,8 +2674,8 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:value_inference",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:value_inference",
     ],
 )
 
@@ -2694,7 +2692,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2711,8 +2709,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2728,7 +2726,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2745,7 +2743,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2790,14 +2788,14 @@ tf_kernel_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:dynamic_shaped_ops",
-        "@local_xla//xla/hlo/builder/lib:prng",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:dynamic_shaped_ops",
+        "@xla//xla/hlo/builder/lib:prng",
     ],
 )
 
@@ -2818,12 +2816,12 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:approx_topk",
+        "@xla//xla:literal_util",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:approx_topk",
     ],
 )
 
@@ -2847,12 +2845,12 @@ tf_kernel_library(
         "//tensorflow/core/kernels:stateful_random_ops_header",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:prng",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:prng",
     ],
 )
 
@@ -2883,7 +2881,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )
 
@@ -2900,7 +2898,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:broadcast",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -2920,12 +2918,12 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla:literal",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -2950,9 +2948,9 @@ tf_kernel_library(
         "//tensorflow/core/kernels:scatter_nd_util",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:slicing",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:slicing",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -2973,12 +2971,12 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -2997,10 +2995,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -3019,10 +3017,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/log:check",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3039,7 +3037,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder/lib:self_adjoint_eig",
+        "@xla//xla/hlo/builder/lib:self_adjoint_eig",
     ],
 )
 
@@ -3060,11 +3058,11 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -3085,7 +3083,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3104,10 +3102,10 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
-        "@local_xla//xla:literal_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:literal_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3126,8 +3124,8 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3146,7 +3144,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:errors",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3163,7 +3161,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3181,9 +3179,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:literal",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla:literal",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -3203,11 +3201,11 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -3226,12 +3224,12 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -3252,8 +3250,8 @@ tf_kernel_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3270,9 +3268,9 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:value_inference",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:value_inference",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3297,12 +3295,12 @@ tf_kernel_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:prng",
+        "@xla//xla:shape_util",
+        "@xla//xla:util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:prng",
     ],
 )
 
@@ -3319,8 +3317,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
     ],
 )
 
@@ -3338,8 +3336,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -3354,8 +3352,8 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla:xla_resource",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:matrix",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:matrix",
     ],
 )
 
@@ -3375,13 +3373,13 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
-        "@local_xla//xla/hlo/builder/lib:constants",
-        "@local_xla//xla/hlo/builder/lib:math",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:math",
     ],
 )
 
@@ -3400,8 +3398,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder/lib:arithmetic",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder/lib:arithmetic",
     ],
 )
 
@@ -3419,7 +3417,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "@local_xla//xla/hlo/builder/lib:constants",
+        "@xla//xla/hlo/builder/lib:constants",
     ],
 )
 
@@ -3431,7 +3429,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )
 

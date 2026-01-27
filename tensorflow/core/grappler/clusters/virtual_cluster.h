@@ -39,21 +39,22 @@ namespace grappler {
 class VirtualCluster : public Cluster {
  public:
   explicit VirtualCluster(
-      const std::unordered_map<string, DeviceProperties>& devices);
-  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
-                 std::unique_ptr<OpLevelCostEstimator> node_estimator,
-                 std::unique_ptr<ReadyNodeManager> node_manager);
+      const std::unordered_map<std::string, DeviceProperties>& devices);
+  VirtualCluster(
+      const std::unordered_map<std::string, DeviceProperties>& devices,
+      std::unique_ptr<OpLevelCostEstimator> node_estimator,
+      std::unique_ptr<ReadyNodeManager> node_manager);
   explicit VirtualCluster(const DeviceSet* device_set);
 
   ~VirtualCluster() override;
 
-  string type() const override { return "virtual"; }
+  std::string type() const override { return "virtual"; }
 
   absl::Status Provision() override;
   absl::Status Initialize(const GrapplerItem& item) override;
   absl::Status Run(const GraphDef& graph,
-                   const std::vector<std::pair<string, Tensor>>& feed,
-                   const std::vector<string>& fetch,
+                   const std::vector<std::pair<std::string, Tensor>>& feed,
+                   const std::vector<std::string>& fetch,
                    RunMetadata* metadata) override;
   absl::Status Run(const GrapplerItem& item, RunMetadata* metadata) override;
   const DeviceSet* GetDeviceSet() const override { return device_set_; }

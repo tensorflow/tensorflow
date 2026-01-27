@@ -52,7 +52,7 @@ absl::StatusOr<bool> AnnotateSchedulingInstructionNames(
 
 }  // namespace
 
-absl::StatusOr<bool> SchedulingInstructionAnnotator::Run(
+absl::StatusOr<bool> SchedulingInstructionAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   CHECK(module->has_schedule())

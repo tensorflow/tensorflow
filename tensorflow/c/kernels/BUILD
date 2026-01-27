@@ -117,7 +117,8 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

@@ -137,7 +137,7 @@ class InvertPermutationOp : public XlaOpKernel {
     absl::Status status;
     switch (dtype) {
       case DT_INT32:
-        InvertPermutation<int32>(ctx);
+        InvertPermutation<int32_t>(ctx);
         break;
       case DT_INT64:
         InvertPermutation<int64_t>(ctx);

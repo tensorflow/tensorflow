@@ -32,10 +32,10 @@ using test::function::NDef;
 
 // If the user manually sets intra op parallelism, we don't insert the op.
 class IntraOpAlreadySetTest
-    : public ::testing::TestWithParam<std::tuple<string, int64_t>> {};
+    : public ::testing::TestWithParam<std::tuple<std::string, int64_t>> {};
 
 TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
-  const string op = std::get<0>(GetParam());
+  const std::string op = std::get<0>(GetParam());
   const int64_t value = std::get<1>(GetParam());
 
   GrapplerItem item;
@@ -44,26 +44,26 @@ TEST_P(IntraOpAlreadySetTest, IntraOpParallelism) {
   NodeDef *start_val = graph_utils::AddScalarConstNode<int64_t>(0, &graph);
   NodeDef *stop_val = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_val = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_val->name();
   range_inputs[1] = stop_val->name();
   range_inputs[2] = step_val->name();
-  std::vector<std::pair<string, AttrValue>> range_attrs;
+  std::vector<std::pair<std::string, AttrValue>> range_attrs;
   NodeDef *range_node = graph_utils::AddNode("range", "RangeDataset",
                                              range_inputs, range_attrs, &graph);
 
   NodeDef *parallelism_val =
       graph_utils::AddScalarConstNode<int64_t>(value, &graph);
-  std::vector<string> parallelism_inputs(2);
+  std::vector<std::string> parallelism_inputs(2);
   parallelism_inputs[0] = range_node->name();
   parallelism_inputs[1] = parallelism_val->name();
-  std::vector<std::pair<string, AttrValue>> parallelism_attrs;
+  std::vector<std::pair<std::string, AttrValue>> parallelism_attrs;
   NodeDef *parallelism_node = graph_utils::AddNode(
       "max_parallelism", op, parallelism_inputs, parallelism_attrs, &graph);
 
-  std::vector<string> sink_inputs(1);
+  std::vector<std::string> sink_inputs(1);
   sink_inputs[0] = parallelism_node->name();
-  std::vector<std::pair<string, AttrValue>> sink_attrs;
+  std::vector<std::pair<std::string, AttrValue>> sink_attrs;
   NodeDef *sink_node =
       graph_utils::AddNode("Sink", "Identity", sink_inputs, sink_attrs, &graph);
   item.fetch.push_back(sink_node->name());
@@ -97,10 +97,10 @@ INSTANTIATE_TEST_SUITE_P(
 // If we can not find the sink node or sink node op is "_Retval", we don't apply
 // the optimization; otherwise, we insert the op to disable intra op
 // parallelism.
-class IntraOpNotSetTest : public ::testing::TestWithParam<string> {};
+class IntraOpNotSetTest : public ::testing::TestWithParam<std::string> {};
 
 TEST_P(IntraOpNotSetTest, IntraOpParallelism) {
-  const string op = GetParam();
+  const std::string op = GetParam();
   GrapplerItem item;
 
   item.graph = test::function::GDef(

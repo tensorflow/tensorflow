@@ -45,11 +45,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/local_client.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/shaped_buffer.h"
@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/tsl/framework/device_id_utils.h"
 #include "xla/tsl/framework/serving_device_selector_policies.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -85,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace {
@@ -155,7 +155,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
                                          se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
-  xla::MaybeOwningDeviceMemory* in_buffer =
+  xla::MaybeOwningDeviceAddress* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
     // Here we pass ownership of the buffer to execution_input without releasing
@@ -323,7 +323,7 @@ absl::Status SetOutputForConstant(
     }
     ctx->op_device_context()->CopyCPUTensorToDevice(
         &const_tensor, device, output_tensor,
-        [&](absl::Status status) { TF_CHECK_OK(status); });
+        [&](absl::Status status) { CHECK_OK(status); });
 
     if (device->device_type() == DEVICE_GPU) {
       // The GPUDeviceContext enqueues the host->device transfer in a
@@ -562,7 +562,7 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   }
 
   absl::flat_hash_map<int, const VariableInfo*> variable_info_lookup;
-  TF_CHECK_OK(CreateVariableInfoLookup(variable_args, variable_info_lookup));
+  CHECK_OK(CreateVariableInfoLookup(variable_args, variable_info_lookup));
   for (int64_t input_num = 0; input_num < inputs.size(); ++input_num) {
     const Tensor* input = inputs[input_num];
     XlaCompiler::Argument& arg = out.emplace_back();
@@ -809,8 +809,6 @@ xla::ExecuteOptions GetPjRtExecuteOptions(
     const DeviceType& device_type,
     absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
-  options.arguments_are_tupled = false;
-  options.untuple_result = true;
   // Hardcode run id to always be one: TF distributed strategy
   // differentiates between subsequent runs using dependency edges. This
   // is safe, as only TF dist-strat can produce distributed ops, and we
@@ -859,9 +857,12 @@ absl::Status RunPjRtExecutable(
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtClient* pjrt_client, xla::PjRtLoadedExecutable* executable,
     OpKernelContext* ctx) {
-  const bool use_pjrt_tensor_buffer = ctx->device()
-                                          ->tensorflow_accelerator_device_info()
-                                          ->use_pjrt_tensor_buffer;
+  const CompositeDevice::AcceleratorDeviceInfo* accelerator_device_info =
+      ctx->device()->tensorflow_accelerator_device_info();
+  const bool use_pjrt_tensor_buffer =
+      (accelerator_device_info == nullptr)
+          ? true
+          : accelerator_device_info->use_pjrt_tensor_buffer;
 
   const DeviceType& device_type = GetDeviceType(ctx);
   const int pjrt_device_id =

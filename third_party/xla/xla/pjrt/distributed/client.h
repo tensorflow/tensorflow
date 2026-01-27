@@ -33,16 +33,19 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/env.h"
 
-namespace tsl {
+namespace xla {
 class CoordinationServiceAgent;
-}  // namespace tsl
+}  // namespace xla
 
 namespace xla {
 
-class DistributedRuntimeClient {
+class DistributedRuntimeClient
+    : public std::enable_shared_from_this<DistributedRuntimeClient> {
  public:
   struct Options {
     // This node's global ID. Required.
@@ -118,6 +121,14 @@ class DistributedRuntimeClient {
   virtual absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) = 0;
 
+  // Async version of `BlockingKeyValueGet`. The `done` callback is invoked when
+  // the key-value becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  virtual std::shared_ptr<tsl::CallOptions> AsyncKeyValueGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) = 0;
+
   // Returns `NotFoundError` immediately if the key is not found.
   virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;
 
@@ -165,7 +176,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

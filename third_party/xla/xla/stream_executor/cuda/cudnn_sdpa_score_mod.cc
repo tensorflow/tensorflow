@@ -15,14 +15,25 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cudnn_sdpa_score_mod.h"
 
+#include <iostream>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 namespace gpu {

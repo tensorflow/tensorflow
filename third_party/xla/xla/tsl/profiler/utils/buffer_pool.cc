@@ -50,8 +50,8 @@ uint8_t* BufferPool::GetOrCreateBuffer() {
 
   // Allocate and return a new buffer.
   constexpr size_t kBufferAlignSize = 8;
-  uint8_t* buffer = reinterpret_cast<uint8_t*>(
-      port::AlignedMalloc(buffer_size_in_bytes_, kBufferAlignSize));
+  uint8_t* buffer = reinterpret_cast<uint8_t*>(port::AlignedMalloc(
+      buffer_size_in_bytes_, static_cast<std::align_val_t>(kBufferAlignSize)));
   if (buffer == nullptr) {
     LOG(WARNING) << "Buffer not allocated.";
     return nullptr;

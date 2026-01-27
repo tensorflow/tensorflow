@@ -38,14 +38,15 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -59,6 +60,15 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::ffi {
+
+using xla::ffi::internal::ArgTag;
+using xla::ffi::internal::NumTagged;
+using xla::ffi::internal::RetTag;
+
+// Compile-time test for the template metaprogramming for counting tags.
+static_assert(NumTagged<ArgTag, RetTag<int32_t>>::value == 0);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>>::value == 1);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>, RetTag<int32_t>>::value == 1);
 
 enum class Int32BasedEnum : int32_t {
   kOne = 1,
@@ -117,6 +127,7 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 
 namespace xla::ffi {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 
 TEST(FfiTest, DataTypeEnumValue) {
@@ -511,7 +522,7 @@ TEST(FfiTest, DeviceOrdinal) {
 
 TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -533,7 +544,7 @@ TEST(FfiTest, AnyBufferArgument) {
 
 TEST(FfiTest, BufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -551,7 +562,7 @@ TEST(FfiTest, BufferArgument) {
 
 TEST(FfiTest, AnyBufferResult) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -577,14 +588,13 @@ TEST(FfiTest, MissingBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of arguments")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -595,14 +605,13 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
@@ -612,10 +621,10 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 TEST(FfiTest, WrongNumberOfArguments) {
@@ -631,16 +640,15 @@ TEST(FfiTest, WrongNumberOfArguments) {
       Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
   EXPECT_THAT(status.message(), HasSubstr("foo"));
   EXPECT_THAT(status.message(), HasSubstr("bar"));
 }
 
 TEST(FfiTest, TokenArgument) {
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
-  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+  builder.AddBufferArg(se::DeviceAddressBase(), PrimitiveType::TOKEN,
                        /*dims=*/{});
   auto call_frame = builder.Build();
 
@@ -657,7 +665,7 @@ TEST(FfiTest, TokenArgument) {
 
 TEST(FfiTest, RemainingArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -686,7 +694,7 @@ TEST(FfiTest, RemainingArgs) {
 
 TEST(FfiTest, RemainingRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/2);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -716,7 +724,7 @@ TEST(FfiTest, RemainingRets) {
 
 TEST(FfiTest, OptionalArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -777,7 +785,7 @@ TEST(FfiTest, OptionalArgs) {
 
 TEST(FfiTest, OptionalRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -846,7 +854,7 @@ TEST(FfiTest, AutoBinding) {
   });
 
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert(kI32, 42);
@@ -865,7 +873,8 @@ TEST(FfiTest, AutoBindingResult) {
       Ffi::BindTo(+[](Result<AnyBuffer> buffer) { return Error::Success(); });
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
-  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  builder.AddBufferRet(se::DeviceAddressBase(), PrimitiveType::F32,
+                       /*dims=*/{});
   auto call_frame = builder.Build();
 
   auto status = Call(*handler, call_frame);
@@ -903,6 +912,17 @@ TEST(FfiTest, AutoBindingDictionary) {
 
     EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
     EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+
+    auto it = attrs.begin();
+    EXPECT_EQ(*it, "f32");
+    EXPECT_TRUE(attrs.isa<float>(it));
+    EXPECT_EQ(*attrs.get<float>(it), 42.0f);
+
+    EXPECT_EQ(*++it, "i32");
+    EXPECT_TRUE(attrs.isa<int32_t>(it));
+    EXPECT_EQ(*attrs.get<int32_t>(it), 42);
+
+    EXPECT_EQ(++it, attrs.end());
 
     return Error::Success();
   });
@@ -1072,10 +1092,10 @@ TEST(FfiTest, AttrsAsDictionary) {
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::AttributesMap dict0;
+  AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::AttributesMap dict1;
+  AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1119,7 +1139,7 @@ TEST(FfiTest, DictionaryAttr) {
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -1232,7 +1252,7 @@ TEST(FfiTest, EnumAttr) {
 }
 
 TEST(FfiTest, WrongEnumAttrType) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1282,14 +1302,32 @@ struct MyDataWithExplicitTypeId {
 
 // Rely on XLA to assign unique type id for the type.
 TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", &MyDataWithAutoTypeId::id,
-                      TypeInfo<MyDataWithAutoTypeId>());
+static constexpr auto kMyDataWithAutoTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithAutoTypeId>();
+
+// Test that XLA FFI macro works.
+XLA_FFI_DECLARE_TYPE_ID_SYMBOL(my_data_type_id);
+XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(my_data_type_info);
+
+extern "C" XLA_FFI_TypeId* my_data_type_id() {
+  return &MyDataWithAutoTypeId::id;
+}
+
+extern "C" const XLA_FFI_TypeInfo* my_data_type_info() {
+  return &kMyDataWithAutoTypeIdTypeInfo;
+}
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", my_data_type_id(),
+                      my_data_type_info());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
+static constexpr auto kMyDataWithExplicitTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithExplicitTypeId>();
+
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
                       &MyDataWithExplicitTypeId::id,
-                      TypeInfo<MyDataWithExplicitTypeId>());
+                      &kMyDataWithExplicitTypeIdTypeInfo);
 
 TEST(FfiTest, UserData) {
   MyDataWithAutoTypeId data0{"foo"};
@@ -1328,14 +1366,16 @@ TEST(FfiTest, UserData) {
 
 struct MyState {
   static TypeId id;
+  static TypeInfo info;
 
   explicit MyState(int32_t value) : value(value) {}
   int32_t value;
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id,
-                      TypeInfo<MyState>());
+TypeInfo MyState::info = MakeTypeInfo<MyState>();
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &MyState::info);
 
 TEST(FfiTest, StatefulHandler) {
   ExecutionState execution_state;
@@ -1370,19 +1410,22 @@ TEST(FfiTest, ScratchAllocator) {
   static void* kAddr = reinterpret_cast<void*>(0xDEADBEEF);
 
   // A test only memory allocator that returns a fixed memory address.
-  struct TestDeviceMemoryAllocator final : public se::DeviceMemoryAllocator {
+  struct TestDeviceMemoryAllocator final : public se::DeviceAddressAllocator {
     size_t count;
 
     TestDeviceMemoryAllocator()
-        : se::DeviceMemoryAllocator(nullptr), count(0) {}
+        : se::DeviceAddressAllocator(nullptr), count(0) {}
 
-    absl::StatusOr<se::OwningDeviceMemory> Allocate(int, uint64_t size, bool,
-                                                    int64_t) final {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(int,
+                                                              uint64_t size,
+                                                              bool,
+                                                              int64_t) final {
       count++;
-      return se::OwningDeviceMemory(se::DeviceMemoryBase(kAddr, size), 0, this);
+      return se::ScopedDeviceAddress<uint8_t>(
+          se::DeviceAddressBase(kAddr, size), 0, this);
     }
 
-    absl::Status Deallocate(int, se::DeviceMemoryBase mem) final {
+    absl::Status Deallocate(int, se::DeviceAddressBase mem) final {
       count--;
       EXPECT_EQ(mem.opaque(), kAddr);
       return absl::OkStatus();
@@ -1426,13 +1469,6 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto status = Call(*handler, call_frame);
   TF_ASSERT_OK(status);
-}
-
-TEST(FfiTest, BindFfiInternals) {
-  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
-      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
-        return Error::Success();
-      });
 }
 
 TEST(FfiTest, ThreadPool) {
@@ -1556,7 +1592,7 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(BufferR2F32Handler, BufferR2F32Function);
 
 TEST(FfiTest, DefineAutoSymbol) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -1572,7 +1608,7 @@ TEST(FfiTest, DefineAutoSymbol) {
 //===----------------------------------------------------------------------===//
 
 static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
-  se::DeviceMemoryBase memory;
+  se::DeviceAddressBase memory;
   std::vector<int64_t> dims(4, 1);
 
   CallFrameBuilder builder(/*num_args=*/num_args, /*num_rets=*/0);

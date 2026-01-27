@@ -60,7 +60,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -69,13 +69,11 @@ cc_library(
     hdrs = ["communicator.h"],
     deps = [
         ":rank_id",
+        ":reduction_kind",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:platform",
-        "//xla/tsl/concurrency:async_value",
+        "//xla/stream_executor:device_address",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -100,7 +98,7 @@ cc_library(
     hdrs = ["clique_key.h"],
     deps = [
         ":rank_id",
-        "//xla/service:global_device_id",
+        "//xla/runtime:device_id",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/types:span",
@@ -112,5 +110,25 @@ cc_library(
     hdrs = ["rank_id.h"],
     deps = [
         "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+cc_library(
+    name = "reduction_kind",
+    hdrs = ["reduction_kind.h"],
+    deps = [
+        "//xla:util",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "symmetric_memory",
+    hdrs = ["symmetric_memory.h"],
+    deps = [
+        "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )

@@ -111,6 +111,7 @@ EXPORTS
   ??0SignatureDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0SimpleFieldComparator@util@protobuf@google@@QEAA@XZ
   ??0SingleMachine@grappler@tensorflow@@QEAA@HHH@Z
+  ??0SnappyOutputBuffer@io@tsl@@QEAA@PEAVWritableFile@2@HH@Z
   ??0SourceMgr@llvm@@QEAA@XZ
   ??0SourceMgrDiagnosticHandler@mlir@@QEAA@AEAVSourceMgr@llvm@@PEAVMLIRContext@1@$$QEAV?$unique_function@$$A6A_NVLocation@mlir@@@Z@3@@Z
   ??0SparseCoreLayoutStacker@tpu@tensorflow@@QEAA@H_NH@Z
@@ -217,6 +218,7 @@ EXPORTS
   ?BatchShardedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@HAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z
   ?BoundPort@GrpcDataServerBase@data@tensorflow@@QEAAHXZ
   ?Build@KernelDefBuilder@tensorflow@@QEAAPEBVKernelDef@2@XZ
+  ?ByteSwapTensor@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVTensor@1@@Z
   ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20250814@absl@@@Z
   ?Capture@StackTrace@tensorflow@@SA?AV?$shared_ptr@VStackTrace@tensorflow@@@std@@H@Z
   ?CatPieces@strings_internal@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
@@ -310,6 +312,7 @@ EXPORTS
   ?EncodeToProto@ThreadSafeHistogram@histogram@tsl@@QEBAXPEAVHistogramProto@tensorflow@@_N@Z
   ?EnqueueOpsFanin@GrapplerItem@grappler@tensorflow@@QEBA?AV?$vector@PEBVNodeDef@tensorflow@@V?$allocator@PEBVNodeDef@tensorflow@@@std@@@std@@XZ
   ?EnsureInitialized@DataServiceDispatcherClient@data@tensorflow@@MEAA?AVStatus@lts_20250814@absl@@XZ
+  ?EnsureMemoryTypes@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAVGraph@1@@Z
   ?Enter@PyContextManager@tensorflow@@QEAA_NPEAU_object@@@Z
   ?EqualAttrValueWrapper@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0@Z
   ?EqualGraphDefWrapper@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0@Z
@@ -418,6 +421,7 @@ EXPORTS
   ?HasAtomicMove@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_N@Z
   ?HasTensor@CheckpointReader@checkpoint@tensorflow@@QEBA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?Hash64@tsl@@YA_KPEBD_K1@Z
+  ?HumanReadableNumBytes@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_J@Z
   ?ImportFunction@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NPEAUTFE_Context@@PEAUTSL_Status@@@Z
   ?ImportGraphDef@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NPEAUTSL_Status@@@Z
   ?ImportGraphDef@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NV?$basic_string_view@DU?$char_traits@D@std@@@3@222PEAUTSL_Status@@@Z
@@ -513,6 +517,7 @@ EXPORTS
   ?Matrix@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@0@Z
   ?MaybeRaiseExceptionFromTFStatus@tensorflow@@YAHPEAUTSL_Status@@PEAU_object@@@Z
   ?MemoryTypesForNode@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEBVOpRegistryInterface@1@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAV?$InlinedVector@W4MemoryType@tensorflow@@$03V?$allocator@W4MemoryType@tensorflow@@@std@@@34@3@Z
+  ?MemoryTypeForOutput@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@PEBVGraph@1@PEBVNode@1@HPEAW4MemoryType@1@@Z
   ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@0PEAV723@@Z
   ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VShapeHandle@23@0PEAV723@@Z
   ?MeshDimNames@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
@@ -554,7 +559,6 @@ EXPORTS
   ?PrintModelAnalysis@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0000@Z
   ?PrintResult@MetaOptimizer@grappler@tensorflow@@QEAAXXZ
   ?PrintStepStats@StatSummarizer@tensorflow@@QEBAXXZ
-  ?Printf@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBDZZ
   ?ProcessStepStats@StatSummarizer@tensorflow@@QEAAXAEBVStepStats@2@@Z
   ?Profile@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0@Z
   ?ProfilerFromFile@tfprof@tensorflow@@YAXPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
@@ -782,6 +786,7 @@ EXPORTS
   ?add_ret_check_failure@MakeErrorStream@status_macros@xla@@QEAAAEAVMakeErrorStreamWithOutput@123@PEBD@Z
   ?checkInput@FileCheck@llvm@@QEAA_NAEAVSourceMgr@2@VStringRef@2@PEAV?$vector@UFileCheckDiag@llvm@@V?$allocator@UFileCheckDiag@llvm@@@std@@@std@@@Z
   ?clear_value@AttrValue@tensorflow@@QEAAXXZ
+  ?configureGpuToNVVMConversionLegality@mlir@@YAXAEAVConversionTarget@1@@Z
   ?cost@PyListChecker@py_dispatch@tensorflow@@UEBAHXZ
   ?cost@PyUnionChecker@py_dispatch@tensorflow@@UEBAHXZ
   ?create@ModuleOp@mlir@@SA?AV12@AEAVOpBuilder@2@VLocation@2@V?$optional@VStringRef@llvm@@@std@@@Z

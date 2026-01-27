@@ -57,7 +57,7 @@ class PartitionedCallOp : public AsyncOpKernel {
   // Using unique pointers to avoid including proto headers in kernel headers
   std::unique_ptr<NameAttrList> func_;
   std::unique_ptr<ConfigProto> config_proto_;
-  string executor_type_;
+  std::string executor_type_;
   bool shared_rendezvous_;
   mutex mu_;
   // Cache the handle per FLR because this kernel may be instantiated for

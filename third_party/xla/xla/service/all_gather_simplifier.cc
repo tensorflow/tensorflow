@@ -31,11 +31,12 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-absl::StatusOr<bool> AllGatherSimplifier::Run(
+absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -61,11 +62,14 @@ absl::StatusOr<bool> AllGatherSimplifier::Run(
                 HloPredicateIsOp<HloOpcode::kReplicaId>);
         if (spec.has_value() &&
             spec->split_dim == all_gather->all_gather_dimension()) {
-          changed = true;
           CHECK_EQ(all_gather->users().size(), 1);
           HloInstruction* ds = all_gather->users().front();
-          TF_RETURN_IF_ERROR(
-              ds->ReplaceAllUsesWith(all_gather->mutable_operand(0)));
+          HloInstruction* ag_operand = all_gather->mutable_operand(0);
+          if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
+            continue;
+          }
+          changed = true;
+          TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
           TF_RETURN_IF_ERROR(
               computation->RemoveInstructionAndUnusedOperands(ds));
         }
