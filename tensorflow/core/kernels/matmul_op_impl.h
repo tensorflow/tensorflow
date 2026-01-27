@@ -641,7 +641,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         auto plan_and_algorithms_or = PlanAndAlgorithms::GetOrCreate(
             stream, matmul_params, &pmu, max_algorithm_count);
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
-        absl::MutexLock lock(pmu);
+        absl::MutexLock lock(*pmu);
         const auto* plan_and_algorithms =
             std::move(plan_and_algorithms_or).value();
         auto n_algorithms = plan_and_algorithms->algorithms.size();
