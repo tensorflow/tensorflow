@@ -6499,10 +6499,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         else:
             raise ValueError(f"padding must be 'VALID', 'SAME', int, or tuple, got {padding}")
     elif isinstance(padding, int):
-        effective_kernel_h = (kernel_h - 1) * dilation_h + 1
-        effective_kernel_w = (kernel_w - 1) * dilation_w + 1
-        pad_h = padding * effective_kernel_h // kernel_h
-        pad_w = padding * effective_kernel_w // kernel_w
+        pad_h = pad_w = padding
     
     # Padded output size
     padded_height = height + 2 * pad_h
