@@ -136,6 +136,15 @@ class NamedSharding {
     return mesh_.device_assignment().num_elements();
   }
 
+  // Creates a sharding with empty mesh and no sharding axes depicting it is
+  // replicated across all devices.
+  static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
+    return NamedSharding(/*mesh=*/Mesh(), /*dim_shardings=*/{},
+                         /*replicated_axes=*/{},
+                         /*unreduced_axes=*/{},
+                         /*manual_axes=*/{}, metadata);
+  }
+
  private:
   friend class HloSharding;
 
@@ -157,15 +166,6 @@ class NamedSharding {
     }
     return std::vector<DimensionSharding>(dim_shardings.begin(),
                                           dim_shardings.end());
-  }
-
-  // Creates a sharding with empty mesh and no sharding axes depicting it is
-  // replicated across all devices.
-  static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
-    return NamedSharding(/*mesh=*/Mesh(), /*dim_shardings=*/{},
-                         /*replicated_axes=*/{},
-                         /*unreduced_axes=*/{},
-                         /*manual_axes=*/{}, metadata);
   }
 
   static NamedSharding MaximalSharding(

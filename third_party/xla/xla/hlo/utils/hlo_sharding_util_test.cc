@@ -1318,47 +1318,106 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut7) {
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTiles1) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 8, 128, 128});
   HloSharding sharding = HloSharding::IotaTile({8, 1, 2, 16});
+
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 2), 1);
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 3), 2);
+
+  {
+    Mesh mesh({8, 2, 16}, {"a", "b", "c"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {"b"}, {"c"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 2), 1);
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 3), 2);
+  }
 }
 
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTiles2) {
   Shape shape = ShapeUtil::MakeShape(F32, {4, 8, 128, 128});
   HloSharding sharding = HloSharding::IotaTile({2, 2, 4, 16});
+
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0), 1);
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1), 0);
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 2), 1);
   EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 3), 2);
+
+  {
+    Mesh mesh({2, 2, 4, 16}, {"a", "b", "c", "d"});
+    NamedSharding named_sharding =
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}, {"d"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0), 1);
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1), 0);
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 2), 1);
+    EXPECT_EQ(GetFirstTargetDimToMoveShardingTiles(shape, sharding, 3), 2);
+  }
 }
 
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTiles3) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 128});
   HloSharding sharding = HloSharding::IotaTile({1, 2});
+
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
+
+  {
+    Mesh mesh({2}, {"a"});
+    NamedSharding named_sharding = test_utils::FromAxisNames(mesh, {{}, {"a"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTilesRankOne) {
   Shape shape = ShapeUtil::MakeShape(F32, {1024});
+
   HloSharding sharding =
       HloSharding::Tile(TileAssignment(std::initializer_list<int64_t>{2}));
+
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
+  {
+    Mesh mesh({2}, {"a"});
+    NamedSharding named_sharding = test_utils::FromAxisNames(mesh, {{"a"}});
+    HloSharding sharding(named_sharding);
+
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTilesReplicated) {
   Shape shape = ShapeUtil::MakeShape(F32, {8, 128});
   HloSharding sharding = HloSharding::Replicate();
+
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
   EXPECT_FALSE(
       GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
+  {
+    HloSharding sharding(NamedSharding::Replicate());
+
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 0).has_value());
+    EXPECT_FALSE(
+        GetFirstTargetDimToMoveShardingTiles(shape, sharding, 1).has_value());
+  }
 }
 
 TEST(HloShardingUtilTest, TileShape) {
