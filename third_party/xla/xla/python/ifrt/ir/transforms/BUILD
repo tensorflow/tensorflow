@@ -74,7 +74,6 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:user_context",
-        "//xla/python/ifrt:with_user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
@@ -124,6 +123,7 @@ cc_library(
         "@tsl//tsl/platform:numbers",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:random",
     ],
 )
 

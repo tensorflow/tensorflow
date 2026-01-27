@@ -104,16 +104,10 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
     std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   IfrtToDotPassOptions ifrt_to_dot_pass_options =
       GetIfrtToDotPassOptions(*compile_options);
-  std::shared_ptr<AtomExecutableMap> atom_executable_map_copy;
-  if (!ifrt_to_dot_pass_options.dot_graph_dump_to.empty()) {
-    // We make a shallow copy here to avoid making a shallow copy of the map if
-    // dot dumping is not enabled.
-    atom_executable_map_copy = atom_executable_map;
-  }
   pm.addPass(createIfrtVerifyDeviceTypeConsistencyPass(
       {/*platform_names=*/llvm::to_vector(options.platform_names)}));
   pm.addPass(createIfrtLowerMpmdReshardToCallPass());
@@ -122,7 +116,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
        /*compile_options=*/compile_options}));
   pm.addPass(createIfrtCompileAtomProgramPass(
       std::move(compiler), compile_options->compile_options_overrides,
-      std::move(atom_executable_map)));
+      atom_executable_future_map));
   pm.addPass(mlir::createSymbolDCEPass());
 
   pm.addPass(createIfrtVerifyBoundExternalLoadedExecutablePass(
@@ -132,7 +126,7 @@ absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(
         ifrt_to_dot_pass_options.dot_graph_dump_to));
     pm.addPass(createIfrtToDotPass(std::move(ifrt_to_dot_pass_options),
-                                   std::move(atom_executable_map_copy)));
+                                   atom_executable_future_map));
   }
   return absl::OkStatus();
 }
@@ -165,15 +159,15 @@ void createIfrtFromVersionedPipeline(
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map,
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();
   registerIfrtCompileAtomProgramPass(compiler,
                                      compile_options->compile_options_overrides,
-                                     atom_executable_map);
+                                     atom_executable_future_map);
   registerIfrtVerifyBoundExternalLoadedExecutablePass(bound_executable_map);
   registerIfrtToDotPass(GetIfrtToDotPassOptions(*compile_options),
-                        atom_executable_map);
+                        atom_executable_future_map);
   mlir::PassPipelineRegistration<>(
       "ifrt-to-outlined-atom-programs-pipeline",
       "Runs passes that do not require compilation-time information",
@@ -193,12 +187,13 @@ void registerIfrtPassesAndPipelines(
   mlir::PassPipelineRegistration<OutlinedAtomProgramsToCompiledPipelineOptions>(
       "ifrt-outlined-atom-programs-to-compiled-pipeline",
       "Runs passes to compile IFRT IR programs with outlined atom programs",
-      [compiler, compile_options, atom_executable_map, bound_executable_map](
+      [compiler, compile_options, atom_executable_future_map,
+       bound_executable_map](
           mlir::OpPassManager& pm,
           const OutlinedAtomProgramsToCompiledPipelineOptions&
               options) mutable {
         CHECK_OK(createOutlinedAtomProgramsToCompiledPipeline(
-            pm, compiler, options, compile_options, atom_executable_map,
+            pm, compiler, options, compile_options, atom_executable_future_map,
             bound_executable_map));
       });
 }
