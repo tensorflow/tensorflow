@@ -49,7 +49,8 @@ class IfrtLoadedVariableRegistry {
     // xla compilation.
     std::vector<int> device_ids;
     std::string input_name;
-    xla::HloSharding hlo_sharding;
+    // Not owned. The caller should ensure the sharding outlives the registry.
+    const xla::HloSharding& hlo_sharding;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
       h = H::combine(std::move(h), key.input_name, key.device_ids,

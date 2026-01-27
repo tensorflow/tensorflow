@@ -42,7 +42,9 @@ inline constexpr int kNoCoreSelectedIndex = -1;
 // TODO(b/352551302) Delete VariableDeviceShardingConfigProto.
 struct VariableDeviceShardingConfig {
   std::vector<int> device_ids;
-  xla::HloSharding hlo_sharding;
+  // Not owned. The caller should ensure the sharding outlives the
+  // VariableDeviceShardingConfig.
+  const xla::HloSharding& hlo_sharding;
 };
 
 absl::StatusOr<ifrt_serving::DtypeAndShape> GetDtypeAndShape(

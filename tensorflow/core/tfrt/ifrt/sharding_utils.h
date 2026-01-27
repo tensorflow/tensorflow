@@ -57,7 +57,8 @@ class H2DTransferExecutor {
   virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
       const tensorflow::Tensor& tensor,
       const xla::ifrt::DeviceListRef& device_list,
-      const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool);
+      const xla::HloSharding& hlo_sharding,
+      tsl::thread::ThreadPool& thread_pool);
 
   // Executes the H2D transfers for all registered tensors.
   virtual absl::Status RunH2DTransfers();

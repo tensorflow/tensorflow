@@ -662,8 +662,8 @@ absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
 H2DTransferExecutor::ScheduledH2DTransfer(
     const tensorflow::Tensor& tensor,
     const xla::ifrt::DeviceListRef& device_list,
-    const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool) {
-  TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(sharding));
+    const xla::HloSharding& hlo_sharding,
+    tsl::thread::ThreadPool& thread_pool) {
   TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef array_ref,
                       MakeArrayFromTensor(ifrt_client_, tensor, device_list,
                                           hlo_sharding, thread_pool));

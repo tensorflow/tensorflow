@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -132,6 +133,7 @@ class IfrtServingExecutable {
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+    std::vector<xla::HloSharding> input_hlo_sharding;
 
     CachedExecutableBundle() = default;
     // Move only
