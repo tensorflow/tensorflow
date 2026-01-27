@@ -2,7 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
@@ -629,4 +629,12 @@ cc_library(
         "@riegeli//riegeli/messages:serialize_message",
         "@stablehlo//:version",
     ],
+)
+
+tf_proto_library(
+    name = "program_memory_trace_proto",
+    srcs = ["program_memory_trace.proto"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    make_default_target_header_only = True,
+    visibility = ["//learning/brain/research/ifrt:__subpackages__"],
 )
