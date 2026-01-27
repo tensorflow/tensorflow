@@ -5,6 +5,7 @@ This rule is critical for generating LLVM IR bitcode that is embedded into the X
 It uses standard cc_library with clang flags to generate IR, then extracts it.
 """
 
+load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -53,7 +54,26 @@ def _extract_object_files_impl(ctx):
     if not objects:
         pass
 
-    return DefaultInfo(files = depset(objects))
+    return [DefaultInfo(files = depset(objects))]
+
+def _get_target_triple_impl(ctx):
+    cc_toolchain = find_cc_toolchain(ctx)
+    triple = cc_toolchain.target_gnu_system_name
+    if not triple:
+        triple = "x86_64-unknown-linux-gnu"
+
+    out = ctx.actions.declare_file(ctx.label.name + ".triple")
+    ctx.actions.write(out, triple)
+    return [DefaultInfo(files = depset([out]))]
+
+get_target_triple = rule(
+    implementation = _get_target_triple_impl,
+    attrs = {
+        "_cc_toolchain": attr.label(default = Label("//tools/cpp:current_cc_toolchain")),
+    },
+    toolchains = ["//tools/cpp:toolchain_type"],
+    fragments = ["cpp"],
+)
 
 _extract_object_files = rule(
     implementation = _extract_object_files_impl,
@@ -152,18 +172,26 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     )
 
     # Generate the header file from the IR (Bitcode).
-    # TODO(talts): In the next version, I will update this to store the bitcode in a shared object
-    # file so that we aren't using LLVM's text format.
     variable_name = "k{}Ir".format(to_camel_case(base_name))
 
-    ir_to_string_tool = "//xla/codegen/intrinsic/cpp:ir_to_string"
+    embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
+
+    # Get the target triple from the toolchain
+    get_target_triple(
+        name = name + "_triple",
+        testonly = common_attrs.get("testonly", 0),
+        tags = kwargs.get("tags", []),
+        compatible_with = common_attrs.get("compatible_with", []),
+    )
+
+    out_object = name + ".o"
 
     native.genrule(
-        name = name + "_gen_header",
-        srcs = [":" + name + "_extract_bc"],
-        outs = [out_header],
-        tools = [ir_to_string_tool],
-        cmd = "$(location {}) $< $@ {} {}".format(ir_to_string_tool, variable_name, namespace),
+        name = name + "_embed_bitcode",
+        srcs = [":" + name + "_extract_bc", ":" + name + "_triple"],
+        outs = [out_header, out_object],
+        tools = [embed_bitcode_tool],
+        cmd = "TRIPLE=$$(cat $(location :{}_triple)); $(location {}) $(location :{}) $(location {}) $(location {}) {} {} $$TRIPLE".format(name, embed_bitcode_tool, name + "_extract_bc", out_header, out_object, variable_name, namespace),
         tags = ["manual"],
         **common_attrs
     )
@@ -171,6 +199,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     # Exposed library
     cc_library(
         name = name,
+        srcs = [":" + out_object],
         hdrs = [":" + out_header],
         deps = deps,
         **kwargs
