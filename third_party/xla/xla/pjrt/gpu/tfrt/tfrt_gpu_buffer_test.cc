@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -316,9 +317,8 @@ TEST_F(TfrtGpuBufferTest, CopyPoisonedBuffer) {
       TF_ASSERT_OK_AND_ASSIGN(auto dst_buffer,
                               src_buffer->CopyToMemorySpace(dst_memory_space));
 
-      EXPECT_THAT(
-          dst_buffer->GetReadyFuture().Await(),
-          testing::status::StatusIs(absl::StatusCode::kInternal, errmsg));
+      EXPECT_THAT(dst_buffer->GetReadyFuture().Await(),
+                  absl_testing::StatusIs(absl::StatusCode::kInternal, errmsg));
     }
   }
 }
