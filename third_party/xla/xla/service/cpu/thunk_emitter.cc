@@ -752,10 +752,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
   // as IrEmitter will be removed when we switch to thunks runtime.
   const HloInstruction* input = instruction->operand(0);
   const HloInstruction* kernel = instruction->operand(1);
-  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
-      /*instruction=*/*instruction, /*operands=*/{input, kernel},
-      /*supported_types=*/
-      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
   const bool use_ynn = absl::c_linear_search(
       hlo_module_config_.debug_options().xla_cpu_experimental_ynn_fusion_type(),
@@ -765,6 +761,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
       return EmitYnnFusionThunk(instruction);
     }
   }
+
+  TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
+      /*instruction=*/*instruction, /*operands=*/{input, kernel},
+      /*supported_types=*/
+      {PRED, S8, U8, S16, U16, S32, U32, S64, U64, F16, F32, F64, C64, C128}));
 
   // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.

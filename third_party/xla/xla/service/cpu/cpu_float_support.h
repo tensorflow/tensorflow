@@ -38,7 +38,9 @@ class CpuFloatSupport : public FloatSupport {
 
   // Skip trying to upcast the dot if the dot is supported by a library.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kDot && library_supports_dot_(hlo);
+    return (hlo.opcode() == HloOpcode::kDot ||
+            hlo.opcode() == HloOpcode::kConvolution) &&
+           library_supports_dot_(hlo);
   }
 
   // Makes FloatNormalization skip custom fusion computations for CPU backend.
