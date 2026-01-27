@@ -120,7 +120,7 @@ TEST_P(TopKKernelTest, TopKFloat) {
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
+  stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
@@ -176,7 +176,7 @@ TEST_P(TopKKernelTest, TopKPackedNegative) {
                           executor->LoadKernel(custom_kernel->kernel_spec()));
 
   // Launch topk kernel with device memory arguments.
-  se::KernelArgsDeviceMemoryArray arr(
+  stream_executor::KernelArgsDeviceAddressArray arr(
       std::vector<se::DeviceAddressBase>(
           {input_buffer, output_values, output_indices}),
       custom_kernel->shared_memory_bytes());
