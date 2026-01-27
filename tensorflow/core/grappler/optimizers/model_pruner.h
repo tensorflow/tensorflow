@@ -29,7 +29,7 @@ class ModelPruner : public GraphOptimizer {
   ModelPruner() {}
   ~ModelPruner() override {}
 
-  string name() const override { return "model_pruner"; };
+  std::string name() const override { return "model_pruner"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
