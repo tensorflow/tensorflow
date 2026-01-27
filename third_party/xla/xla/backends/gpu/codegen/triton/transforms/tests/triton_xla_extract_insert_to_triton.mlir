@@ -275,3 +275,28 @@ func.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma(
 // CHECK-TMA-LABEL: tt.func @parameter_into_broadcast_with_3_or_more_stages_does_not_use_tma
 // CHECK-TMA-NOT:         tt.descriptor_load %arg0
 // CHECK-TMA:             tt.descriptor_load %arg1
+
+// -----
+
+#indexing_map_unaligned = #xla.indexing_map<"(d0) -> (d0 * 2816), domain: d0 in [0, 2047]">
+module {
+  func.func @apply_mask_to_unaligned_offset_with_perfect_total_size(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_cast %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map_unaligned(%2)
+    // Total size 5767168 is divisible by 4096 (1408 * 4096)
+    // But offset stride 2816 is not divisible by 4096.
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<5767168xf32, #xtile.layout<[0]>>
+        [%3] [4096] [1] : tensor<4096xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<5767168xf32, #xtile.layout<[0]>>
+        [%3] [4096] [1] : tensor<4096xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
+// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}

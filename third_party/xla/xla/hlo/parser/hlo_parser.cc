@@ -5790,7 +5790,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
         return ParseDxD("lhs_dilate", &lhs_dilate);
       }
       if (field_name == "rhs_dilate") {
-        return ParseDxD("rls_dilate", &rhs_dilate);
+        return ParseDxD("rhs_dilate", &rhs_dilate);
       }
       if (field_name == "pad") {
         return ParseWindowPad(&pad);
