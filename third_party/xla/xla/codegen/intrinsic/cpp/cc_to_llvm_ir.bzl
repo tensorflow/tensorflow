@@ -155,12 +155,23 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     # TODO(talts): In the next version, I will update this to store the bitcode in a shared object
     # file so that we aren't using LLVM's text format.
     variable_name = "k{}Ir".format(to_camel_case(base_name))
-
     ir_to_string_tool = "//xla/codegen/intrinsic/cpp:ir_to_string"
+
+    # Generate an empty bitcode file for MacOS.
+    native.genrule(
+        name = name + "_empty_bc",
+        outs = [name + "_empty.bc"],
+        cmd = "touch $@",
+        tags = ["manual"],
+        **common_attrs
+    )
 
     native.genrule(
         name = name + "_gen_header",
-        srcs = [":" + name + "_extract_bc"],
+        srcs = select({
+            "//xla/tsl:macos": [":" + name + "_empty_bc"],
+            "//conditions:default": [":" + name + "_extract_bc"],
+        }),
         outs = [out_header],
         tools = [ir_to_string_tool],
         cmd = "$(location {}) $< $@ {} {}".format(ir_to_string_tool, variable_name, namespace),
