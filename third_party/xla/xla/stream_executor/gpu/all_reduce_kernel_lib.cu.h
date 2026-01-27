@@ -105,8 +105,7 @@ __device__ __forceinline__ RestrictedPtr<T> GetMultimemPtr(
   return (RestrictedPtr<T>)((uint64_t)metadata.multicast_buffer_ptr + offset);
 }
 
-template <typename T, xla::ReductionKind ReductionKindT,
-          PlatformType PlatformT = PlatformType::NOGPU>
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
 __device__ __forceinline__ void OneShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
@@ -160,8 +159,7 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
 // Right now all devices are copying their data to the remote buffer after
 // which, the first device performs the reduce and broadcast operations using
 // multimem instructions.
-template <typename T, xla::ReductionKind ReductionKindT,
-          PlatformType PlatformT = PlatformType::NOGPU>
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
 __device__ __forceinline__ void MultimemAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   if (!std::is_same_v<T, float>) {
@@ -228,8 +226,7 @@ __device__ __forceinline__ void MultimemAllReduceKernelImpl(
 }
 #endif  // __CUDA_ARCH__ >= 900
 
-template <typename T, xla::ReductionKind ReductionKindT,
-          PlatformType PlatformT = PlatformType::NOGPU>
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
 __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
@@ -337,8 +334,7 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
 }
 
 template <typename T, xla::ReductionKind ReductionKindT,
-          AllReduceStrategy kAllReduceStrategy,
-          PlatformType PlatformT = PlatformType::NOGPU>
+          AllReduceStrategy kAllReduceStrategy, PlatformType PlatformT>
 __global__ void AllReduceKernelImpl(AllReduceKernelParams<T> args) {
   if constexpr (kAllReduceStrategy == AllReduceStrategy::kOneShot) {
     OneShotAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);

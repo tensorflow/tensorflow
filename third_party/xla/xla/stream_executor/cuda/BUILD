@@ -2459,7 +2459,6 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        "//xla/stream_executor:kernel_spec",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,

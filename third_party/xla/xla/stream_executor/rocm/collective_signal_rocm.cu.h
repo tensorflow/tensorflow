@@ -16,25 +16,23 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_COLLECTIVE_SIGNAL_ROCM_CU_H_
 #define XLA_STREAM_EXECUTOR_ROCM_COLLECTIVE_SIGNAL_ROCM_CU_H_
 
-#include <hip/hip_bfloat16.h>
 #include <hip/hip_runtime.h>
 
 #include <cstdint>
 
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
-#include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor::gpu {
 
 template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::ROCM>(
+__device__ __forceinline__ void PutSignalFlag<PlatformType::kRocm>(
     uint32_t* addr, uint32_t val) {
   __atomic_store_n(addr, val, __ATOMIC_RELEASE);
   __threadfence_system();  // Ensure visibility across all GPUs
 }
 
 template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::ROCM>(
+__device__ __forceinline__ void WaitSignalFlag<PlatformType::kRocm>(
     uint32_t* addr, uint32_t expected) {
   uint32_t val;
   do {

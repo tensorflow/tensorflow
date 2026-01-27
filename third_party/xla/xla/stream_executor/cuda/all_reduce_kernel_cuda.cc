@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "third_party/gpus/cuda/include/cuda_bf16.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/cuda/collective_signal_cuda.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
@@ -57,7 +56,7 @@ union alignas(8) Vec<__nv_bfloat16> {
             absl::bit_cast<void*>(&stream_executor::gpu::AllReduceKernelImpl<  \
                                   NV_TYPE, xla::ReductionKind::REDUCTION_KIND, \
                                   xla::se::gpu::AllReduceStrategy::STRATEGY,   \
-                                  stream_executor::gpu::PlatformType::CUDA>),  \
+                                  stream_executor::gpu::PlatformType::kCuda>), \
             "all_reduce_" #SUFFIX #STRATEGY, arity);                           \
       }));
 

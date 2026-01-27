@@ -21,25 +21,23 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 enum class PlatformType : uint32_t {
-  ROCM,
-  CUDA,
-  NOGPU,  // place holder for compiling header only without errors
+  kRocm,
+  kCuda,
 };
 
 // -----------------------------------------------------------------------------
 // Synchronization Primitives
 // -----------------------------------------------------------------------------
 
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {}
+template <PlatformType T>
+__device__ void PutSignalFlag(uint32_t* addr, uint32_t val);
 
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
-                                               uint32_t expected) {}
+template <PlatformType T>
+__device__ void WaitSignalFlag(uint32_t* addr, uint32_t expected);
 
 // Generic Barrier across blocks.
 // MaxPeers is templated to allow reuse between different kernels.
-template <PlatformType T = PlatformType::NOGPU, int64_t MaxPeers>
+template <PlatformType T, int64_t MaxPeers>
 __device__ __forceinline__ void SyncRemoteBlocks(
     // Use raw pointer with __restrict__ directly here
     std::array<uint32_t* __restrict__, MaxPeers> signal_pad_ptrs, int64_t rank,

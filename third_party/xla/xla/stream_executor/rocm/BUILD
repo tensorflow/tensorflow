@@ -1261,7 +1261,6 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
-        "//xla/stream_executor:kernel_spec",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
