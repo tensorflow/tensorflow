@@ -656,7 +656,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // donated due to aliases that were specified by the computation.
   absl::Status SetUpDonation(bool tuple_inputs);
 
-  absl::Status EnqueueExecution(
+  absl::StatusOr<PjRtRawLoadedExecutable::RawExecuteResult> EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
       PjRtDevice* device,
@@ -664,7 +664,7 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
       PjRtDeviceEventSet& events,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      std::vector<absl::AnyInvocable<void() &&>>& compute_callbacks) const;
+      bool fill_future) const;
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
