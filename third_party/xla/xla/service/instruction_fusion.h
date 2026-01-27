@@ -33,6 +33,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -189,10 +190,11 @@ class InstructionFusion : public HloModulePass {
  public:
   explicit InstructionFusion(
       std::function<bool(const HloInstruction& instruction)> is_expensive,
-      bool may_duplicate = true,
+      const AliasInfo* alias_info, bool may_duplicate = true,
       FusionConfigCollection config_collection_mode =
           FusionConfigCollection::kOff)
-      : is_expensive_(is_expensive),
+      : alias_info_(alias_info),
+        is_expensive_(is_expensive),
         may_duplicate_(may_duplicate),
         config_collection_mode_(config_collection_mode) {}
   ~InstructionFusion() override = default;
@@ -210,6 +212,7 @@ class InstructionFusion : public HloModulePass {
   // proven to be the same.
   static FusionDecision ShouldFuseInPlaceOp(
       const HloInstruction* producer, const HloInstruction* consumer,
+      const AliasInfo* alias_info,
       std::optional<const InPlaceFusionOptions> in_place_fusion_options);
 
  protected:
@@ -249,6 +252,7 @@ class InstructionFusion : public HloModulePass {
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
       std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
+                                   const AliasInfo* alias_info,
                                    std::optional<const InPlaceFusionOptions>)>
           inplace_op_fusion_decider,
       bool legality_check_only = false);
@@ -334,6 +338,9 @@ class InstructionFusion : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Holds alias information for the module.
+  const AliasInfo* alias_info_;
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,

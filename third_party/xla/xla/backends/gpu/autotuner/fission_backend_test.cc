@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -210,6 +211,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
   se::DeviceDescription device_description_;
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
+  GpuAliasInfo alias_info_;
   std::unique_ptr<FissionBackend> fission_backend_;
   mlir::MLIRContext mlir_context_;
 
@@ -223,10 +225,11 @@ class FissionTest : public HloHardwareIndependentTestBase,
         rewriter_pipeline_(GetParam().pipeline_factory(device_description_)),
         base_codegen_backend_(GetParam().backend_factory(
             stream_executor_, &debug_options_, &compiler_, &target_config_)),
+        alias_info_(device_description_),
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, &compiler_, &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &mlir_context_, stream_executor_)) {}
+            &alias_info_, &mlir_context_, stream_executor_)) {}
 };
 
 class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
@@ -238,6 +241,7 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_description_;
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
+  GpuAliasInfo alias_info_;
   std::unique_ptr<FissionBackend> fission_backend_;
   mlir::MLIRContext mlir_context_;
 
@@ -252,10 +256,11 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             FissionTest::GetCublasRewriterPipeline(device_description_)),
         base_codegen_backend_(FissionTest::CreateCublasBackend(
             stream_executor_, &debug_options_, &compiler_, &target_config_)),
+        alias_info_(device_description_),
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, &compiler_, &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &mlir_context_, stream_executor_)) {}
+            &alias_info_, &mlir_context_, stream_executor_)) {}
 };
 
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {

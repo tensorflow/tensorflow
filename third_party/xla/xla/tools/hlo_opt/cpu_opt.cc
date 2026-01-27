@@ -184,7 +184,7 @@ class CpuOptProvider : public CompiledOptProvider {
     RegisterPass<cpu::ParallelTaskAssigner>(max_parallelism,
                                             cpu::CpuExecutable::ShapeSizeBytes,
                                             &target_machine_features);
-    RegisterPass<cpu::CpuInstructionFusion>();
+    RegisterPass<cpu::CpuInstructionFusion>(alias_info_.get());
     RegisterPass<CopyInsertion>(alias_info_.get());
   }
 

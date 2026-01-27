@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -82,10 +83,12 @@ class PriorityFusion : public HloModulePass {
  public:
   PriorityFusion(tsl::thread::ThreadPool* thread_pool,
                  const se::DeviceDescription& device,
+                 const AliasInfo* alias_info,
                  GpuHloCostAnalysis::Options cost_analysis_options,
                  mlir::MLIRContext* mlir_context)
       : thread_pool_(thread_pool),
         device_info_(device),
+        alias_info_(alias_info),
         cost_analysis_options_(std::move(cost_analysis_options)),
         fusion_analysis_cache_(device_info_),
         mlir_context_(mlir_context) {}
@@ -114,6 +117,7 @@ class PriorityFusion : public HloModulePass {
 
   tsl::thread::ThreadPool* thread_pool_;
   se::DeviceDescription device_info_;
+  const AliasInfo* alias_info_;
 
   // Cost model options that defines priorities in the queue.
   GpuHloCostAnalysis::Options cost_analysis_options_;

@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -921,6 +920,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
     const HloInstruction* producer, const HloInstruction* consumer,
+    const AliasInfo* alias_info,
     std::optional<const InPlaceFusionOptions> in_place_fusion_options) {
   // Don't fuse if the producer is a non-elementwise op that has the same
   // operand as an in-place operand of the consumer. The consumer will modify
@@ -928,8 +928,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   // allow them to fuse.
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs =
-          HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-              const_cast<HloInstruction*>(consumer));
+          alias_info->GetInPlaceInputOutputPairs(consumer);
   for (auto& pair : in_place_input_output_pairs) {
     int operand_number = pair.first.operand_number;
     VLOG(4) << "in/out pair: " << operand_number << " "
@@ -1093,12 +1092,14 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
-  return ShouldFuse(consumer, operand_index, ShouldFuseInPlaceOp);
+  return ShouldFuse(consumer, operand_index,
+                    InstructionFusion::ShouldFuseInPlaceOp);
 }
 
 FusionDecision InstructionFusion::ShouldFuse(
     HloInstruction* consumer, int64_t operand_index,
     std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
+                                 const AliasInfo* alias_info,
                                  std::optional<const InPlaceFusionOptions>)>
         inplace_op_fusion_decider,
     bool legality_check_only /*=false*/) {
@@ -1118,7 +1119,8 @@ FusionDecision InstructionFusion::ShouldFuse(
                                       ? "expensive producer would be duplicated"
                                       : "fusion pass cannot duplicate");
   }
-  return inplace_op_fusion_decider(producer, consumer, std::nullopt);
+  return inplace_op_fusion_decider(producer, consumer, alias_info_,
+                                   std::nullopt);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

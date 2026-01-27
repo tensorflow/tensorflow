@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -214,12 +215,15 @@ class StatelessAutotunerTest : public HloTestBase {
 
     DeviceConfig test_config{backend().default_stream_executor(),
                              backend().memory_allocator()};
+    GpuAliasInfo alias_info(
+        backend().default_stream_executor()->GetDeviceDescription());
     TF_ASSIGN_OR_RETURN(
         AutotuneConfig autotune_config,
         AutotuneConfig::FromDebugOptions(DeviceOrDevicelessConfig{test_config},
                                          debug_options));
     GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
-                                      debug_options, nullptr, mlir_context);
+                                      debug_options, nullptr, &alias_info,
+                                      mlir_context);
     return autotuner.GenerateConfigs(fusion);
   }
 
@@ -253,9 +257,11 @@ class StatelessAutotunerTest : public HloTestBase {
         AutotuneConfig autotune_config,
         AutotuneConfig::FromDebugOptions(
             DeviceOrDevicelessConfig{device_config}, GetDebugOptionsForTest()));
+    GpuAliasInfo alias_info(
+        backend().default_stream_executor()->GetDeviceDescription());
     GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                       GetDebugOptionsForTest(), nullptr,
-                                      &mlir_context_);
+                                      &alias_info, &mlir_context_);
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
         module.entry_computation()->root_instruction());
     return autotuner.GenerateConfigs(fusion);
@@ -277,6 +283,11 @@ class StatelessAutotunerTest : public HloTestBase {
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
+  void SetUp() override {
+    se::DeviceDescription device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    alias_info_ = std::make_unique<GpuAliasInfo>(device_info);
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
         StatelessAutotunerTest::GetDebugOptionsForTest();
@@ -299,10 +310,9 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
   void CheckTritonAutotuning(absl::string_view hlo,
                              absl::string_view expected) {
     HloPassPipeline pipeline("gemm_rewrite");
-    pipeline.AddPass<GemmFusion>(backend()
-                                     .default_stream_executor()
-                                     ->GetDeviceDescription()
-                                     .gpu_compute_capability());
+    se::DeviceDescription device_info =
+        backend().default_stream_executor()->GetDeviceDescription();
+    pipeline.AddPass<GemmFusion>(device_info.gpu_compute_capability());
     tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "",
                                         tsl::port::MaxParallelism());
     DebugOptions opts;
@@ -314,7 +324,7 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
     CHECK_OK(config.status());
     pipeline.AddPass<GemmFusionAutotuner>(*config, GetToolkitVersion(),
                                           &thread_pool, key_value_store,
-                                          &mlir_context_);
+                                          alias_info_.get(), &mlir_context_);
 
     RunAndFilecheckHloRewrite(
         hlo, std::move(pipeline), expected, [](const HloModule* m) {
@@ -341,6 +351,7 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
           }
         });
   }
+  std::unique_ptr<GpuAliasInfo> alias_info_;
 };
 
 template <typename D>
@@ -367,8 +378,10 @@ GetPossibleMatmulAutotuneTritonConfigs(
       AutotuneConfig autotune_config,
       AutotuneConfig::FromDebugOptions(DeviceOrDevicelessConfig{test_config},
                                        debug_options));
+  GpuAliasInfo alias_info(device_description);
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
-                                    debug_options, nullptr, mlir_context);
+                                    debug_options, nullptr, &alias_info,
+                                    mlir_context);
   return autotuner.GenerateTritonConfigs(dot);
 }
 
@@ -614,7 +627,7 @@ ENTRY main {
   MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
                                         &thread_pool, key_value_store,
-                                        &mlir_context_);
+                                        alias_info_.get(), &mlir_context_);
   pipeline.AddPass<CallInliner>();
   for (GemmRewriterOptions::DType dtype :
        {GemmRewriterOptions::DType::kFp8Only,
@@ -760,15 +773,16 @@ ENTRY e {
                                       tsl::port::MaxParallelism());
   DebugOptions opts;
   MultiProcessKeyValueStore key_value_store;
+  se::DeviceDescription device_info =
+      backend().default_stream_executor()->GetDeviceDescription();
   TF_ASSERT_OK_AND_ASSIGN(
       AutotuneConfig config,
       AutotuneConfig::FromDebugOptions(
-          DeviceOrDevicelessConfig{DevicelessConfig{
-              backend().default_stream_executor()->GetDeviceDescription()}},
-          opts));
+          DeviceOrDevicelessConfig{DevicelessConfig{device_info}}, opts));
+  GpuAliasInfo alias_info(device_info);
   pipeline.AddPass<GemmFusionAutotuner>(config, GetToolkitVersion(),
                                         &thread_pool, key_value_store,
-                                        &mlir_context_);
+                                        &alias_info, &mlir_context_);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
@@ -908,7 +922,7 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
                                        GetDebugOptionsForTest()));
   GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                     GetDebugOptionsForTest(), nullptr,
-                                    &mlir_context_);
+                                    alias_info_.get(), &mlir_context_);
   TF_ASSERT_OK_AND_ASSIGN(
       AutotunerCompileUtil compile_util,
       AutotunerCompileUtil::Create(autotune_config.DeviceConfig(),
@@ -1233,7 +1247,8 @@ class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
       MultiProcessKeyValueStore& multi_process_key_value_store) {
     return GemmFusionAutotuner(GetAutotuneConfigForTest(), GetToolkitVersion(),
                                /*thread_pool=*/{},
-                               multi_process_key_value_store, &mlir_context_);
+                               multi_process_key_value_store, alias_info_.get(),
+                               &mlir_context_);
   }
 };
 

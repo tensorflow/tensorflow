@@ -96,7 +96,9 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
+        alias_info_(stream_executor_->GetDeviceDescription()),
+        backend_(&debug_options_, &compiler_, &target_config_, &alias_info_,
+                 &mlir_context_) {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
@@ -104,6 +106,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
   NVPTXCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  GpuAliasInfo alias_info_;
   TritonBackend backend_;
   mlir::MLIRContext mlir_context_;
 };

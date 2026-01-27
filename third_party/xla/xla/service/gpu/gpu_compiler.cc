@@ -1342,7 +1342,8 @@ absl::Status RunPostFusionSimplificationPasses(
 absl::Status RunPostFusionVerificationPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const GpuCompiler::CompileOptions& options,
-    const GpuTargetConfig& gpu_target_config, mlir::MLIRContext* mlir_context) {
+    const GpuTargetConfig& gpu_target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context) {
   HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
 
   if (hlo_module->config()
@@ -1351,7 +1352,7 @@ absl::Status RunPostFusionVerificationPasses(
     DeviceOrDevicelessConfig device_config =
         GetDeviceConfig(stream_exec, options, gpu_target_config);
     if (!device_config.IsDeviceless()) {
-      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config,
+      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config, alias_info,
                                                      mlir_context);
     }
   }
@@ -1661,8 +1662,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
           gpu_target_config.platform_name == "ROCM"),
       gpu_version, gpu_target_config));
 
-  RETURN_IF_ERROR(RunPostFusionVerificationPasses(
-      hlo_module, stream_exec, options, gpu_target_config, &mlir_context_));
+  RETURN_IF_ERROR(RunPostFusionVerificationPasses(hlo_module, stream_exec,
+                                                  options, gpu_target_config,
+                                                  alias_info, &mlir_context_));
 
   RETURN_IF_ERROR(
       RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
@@ -1913,8 +1915,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
       &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
       stream_exec, &gpu_target_config, options.key_value_store,
-      gpu_target_config.device_description.runtime_version(), debug_options,
-      &mlir_context_, ShapeSizeBytesFunction()));
+      gpu_target_config.device_description.runtime_version(), alias_info,
+      debug_options, &mlir_context_, ShapeSizeBytesFunction()));
   // After autotuning, update GEMM workspace sizes to match the exact
   // requirements of the selected algorithms, potentially reducing memory usage.
   pipeline.AddPass<GemmWorkspaceRewriter>(gpu_version, stream_exec);
@@ -3273,11 +3275,11 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
     se::StreamExecutor* stream_exec,
     const Compiler::GpuTargetConfig* target_config,
     const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version,
+    const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                      GetCodegenBackends(stream_exec, target_config,
+                      GetCodegenBackends(stream_exec, target_config, alias_info,
                                          debug_options, mlir_context));
 
   bool do_not_autotune_cublas_and_cudnn =
