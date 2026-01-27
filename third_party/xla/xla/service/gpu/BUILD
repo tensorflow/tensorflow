@@ -1767,6 +1767,7 @@ cc_library(
         "//xla/service:memory_annotations_hdr",
         "//xla/service:reduce_scatter_combiner",
         "//xla/service:reduce_scatter_reassociate",
+        "//xla/service:scan_expander",
         "//xla/service:scatter_determinism_expander",
         "//xla/service:scatter_expander",
         "//xla/service:scatter_simplifier",

@@ -153,6 +153,33 @@ func.func private @chlo.top_k.impl(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf32>,
 
 // -----
 
+// CHECK-LABEL: @scan_recompose_composite
+func.func public @scan_recompose_composite(%arg0: tensor<2xf64>, %arg1: tensor<4xf64>, %arg2: tensor<5x3xf64>) -> (tensor<4xf64>, tensor<5xf64>) {
+  %0 = stablehlo.broadcast_in_dim %arg0, dims = [1] : (tensor<2xf64>) -> tensor<5x2xf64>
+  // CHECK: chlo.scan(%0, %arg2) inits (%arg1) dimension=0
+  // CHECK-NOT: stablehlo.composite
+  %1:2 = stablehlo.composite "chlo.scan" %0, %arg2, %arg1 {
+    composite_attributes = {
+      dimension = 0 : i64
+    },
+    decomposition = @chlo.scan.impl,
+    version = 1 : i32
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %1#1, %1#0 : tensor<4xf64>, tensor<5xf64>
+}
+// CHECK-NOT: @chlo.scan.impl
+func.func private @chlo.scan.impl(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
+  %0:2 = chlo.scan(%arg0, %arg1) inits(%arg2) dimension=0 {
+  ^bb0(%b0: tensor<2xf64>, %b1: tensor<3xf64>, %b2: tensor<4xf64>):
+    %1 = stablehlo.add %b2, %b2 : tensor<4xf64>
+    %2 = stablehlo.constant dense<0.000000e+00> : tensor<f64>
+    stablehlo.return %2, %1 : tensor<f64>, tensor<4xf64>
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %0#0, %0#1 : tensor<5xf64>, tensor<4xf64>
+}
+
+// -----
+
 /////
 // (Deprecated) CustomCall Recomposition
 
@@ -295,4 +322,26 @@ func.func @topk_no_recompose_invalid_attr(%arg0: tensor<5x16xf32>) -> (tensor<?x
     mhlo.attributes = { k = 4 : i64, largest = false}
   } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
   return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @scan_recompose_cc
+func.func @scan_recompose_cc(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
+  // CHECK: chlo.scan(%arg0, %arg1) inits (%arg2) dimension=0
+  %0:2 = stablehlo.custom_call @chlo.scan(%arg0, %arg1, %arg2) {
+    called_computations = [@chlo.scan.impl],
+    mhlo.attributes = {
+      dimension = 0 : i64,
+      operandSegmentSizes = array<i32: 2, 1>,
+      resultSegmentSizes = array<i32: 1, 1>
+    },
+    mhlo.version = 1 : i64
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %0#0, %0#1 : tensor<5xf64>, tensor<4xf64>
+}
+func.func private @chlo.scan.impl(%arg0: tensor<2xf64>, %arg1: tensor<3xf64>, %arg2: tensor<4xf64>) -> (tensor<f64>, tensor<4xf64>) {
+  %cst = stablehlo.constant dense<0.000000e+00> : tensor<f64>
+  %0 = stablehlo.add %arg2, %arg2 : tensor<4xf64>
+  func.return %cst, %0 : tensor<f64>, tensor<4xf64>
 }

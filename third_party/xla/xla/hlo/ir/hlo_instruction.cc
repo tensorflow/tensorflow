@@ -630,20 +630,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Scan instruction should have 1 called computation but sees "
           << proto.called_computation_ids_size();
       int64_t num_carries = proto.num_carries();
-      if (num_carries == 0) {
-        TF_RET_CHECK(proto.operand_ids_size() % 2 == 0)
-            << "Scan instruction should have an even number of operands but "
-               "sees "
-            << proto.operand_ids_size();
-        num_carries = proto.operand_ids_size() / 2;
-      }
       TF_RET_CHECK(num_carries >= 0 && num_carries <= proto.operand_ids_size());
+      int64_t num_inputs = proto.operand_ids_size() - num_carries;
       const auto scan_operands = all_operands();
-      auto inputs = absl::MakeSpan(scan_operands)
-                        .subspan(0, scan_operands.size() - num_carries);
+      auto inputs = absl::MakeSpan(scan_operands).subspan(0, num_inputs);
       auto inits =
-          absl::MakeSpan(scan_operands)
-              .subspan(scan_operands.size() - num_carries, num_carries);
+          absl::MakeSpan(scan_operands).subspan(num_inputs, num_carries);
       instruction =
           CreateScan(shape, inputs, inits, computations(0), proto.dimensions(0),
                      proto.is_reverse(), proto.is_associative());

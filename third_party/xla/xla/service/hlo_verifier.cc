@@ -1305,18 +1305,28 @@ absl::Status CheckScanToApplyShape(
   const Shape& root_shape = to_apply->root_instruction()->shape();
   int64_t num_carries = scan->num_carries();
   int64_t num_inputs = scan->operand_count() - num_carries;
-  int64_t num_outputs = root_shape.tuple_shapes().size() - num_carries;
+
+  std::vector<const Shape*> result_shapes;
+  if (root_shape.IsTuple()) {
+    for (const auto& s : root_shape.tuple_shapes()) {
+      result_shapes.push_back(&s);
+    }
+  } else {
+    result_shapes.push_back(&root_shape);
+  }
+
+  int64_t num_outputs = result_shapes.size() - num_carries;
 
   for (int64_t i = 0; i < num_carries; ++i) {
     int64_t result_idx = num_outputs + i;
     int64_t param_idx = num_inputs + i;
-    if (!shapes_same(root_shape.tuple_shapes(result_idx),
+    if (!shapes_same(*result_shapes[result_idx],
                      to_apply->parameter_instruction(param_idx)->shape())) {
       return Internal(
           "Computation %s result element %d shape %s does not match parameter "
           "%d shape %s in %s",
-          to_apply->name(), result_idx,
-          root_shape.tuple_shapes(result_idx).ToString(), param_idx,
+          to_apply->name(), result_idx, result_shapes[result_idx]->ToString(),
+          param_idx,
           to_apply->parameter_instruction(param_idx)->shape().ToString(),
           scan->ToString());
     }
@@ -1340,13 +1350,22 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   const Shape& to_apply_root =
       scan_instr->to_apply()->root_instruction()->shape();
 
+  std::vector<const Shape*> to_apply_result_shapes;
+  if (to_apply_root.IsTuple()) {
+    for (const auto& s : to_apply_root.tuple_shapes()) {
+      to_apply_result_shapes.push_back(&s);
+    }
+  } else {
+    to_apply_result_shapes.push_back(&to_apply_root);
+  }
+
   int64_t num_outputs =
-      to_apply_root.tuple_shapes().size() - scan_instr->num_carries();
+      to_apply_result_shapes.size() - scan_instr->num_carries();
   std::vector<Shape> output_shapes;
-  output_shapes.reserve(to_apply_root.tuple_shapes().size());
+  output_shapes.reserve(to_apply_result_shapes.size());
 
   for (int64_t i = 0; i < num_outputs; ++i) {
-    const Shape& output_element_shape = to_apply_root.tuple_shapes(i);
+    const Shape& output_element_shape = *to_apply_result_shapes[i];
     Shape output_array_shape = output_element_shape;
     std::vector<int64_t> dimensions(output_array_shape.dimensions().begin(),
                                     output_array_shape.dimensions().end());
@@ -1373,6 +1392,10 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   int64_t num_inputs = scan->operand_count() - scan_instr->num_carries();
   for (int64_t i = 0; i < scan_instr->num_carries(); ++i) {
     output_shapes.push_back(scan->operand(num_inputs + i)->shape());
+  }
+
+  if (output_shapes.size() == 1 && !scan->shape().IsTuple()) {
+    return CheckShape(scan, output_shapes[0]);
   }
   return CheckShape(scan, ShapeUtil::MakeTupleShape(output_shapes));
 }
