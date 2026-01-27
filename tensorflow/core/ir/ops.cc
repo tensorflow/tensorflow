@@ -1214,14 +1214,11 @@ void GetIfLikeRegionOpSuccessorRegions(
     SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent(
-        ResultRange(op->result_begin(), std::prev(op->result_end()))));
+    regions.emplace_back(RegionSuccessor::parent());
   } else {
     // Unknown successor.
-    regions.emplace_back(&op.getThenRegion(),
-                         GetLoopRegionDataArgs(op.getThenRegion()));
-    regions.emplace_back(&op.getElseRegion(),
-                         GetLoopRegionDataArgs(op.getElseRegion()));
+    regions.emplace_back(&op.getThenRegion());
+    regions.emplace_back(&op.getElseRegion());
   }
 }
 
@@ -1234,13 +1231,11 @@ void GetIfLikeRegionOpEntrySuccessorRegions(
   if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = *cond ? op.getThenRegion() : op.getElseRegion();
-    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
+    regions.emplace_back(&region);
   } else {
     // Unknown successor.
-    regions.emplace_back(&op.getThenRegion(),
-                         GetLoopRegionDataArgs(op.getThenRegion()));
-    regions.emplace_back(&op.getElseRegion(),
-                         GetLoopRegionDataArgs(op.getElseRegion()));
+    regions.emplace_back(&op.getThenRegion());
+    regions.emplace_back(&op.getElseRegion());
   }
 }
 
@@ -1294,12 +1289,10 @@ void GetCaseLikeRegionOpSuccessorRegions(
   // All branch regions branch back to the parent op.
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(RegionSuccessor::parent(
-        ResultRange(op->result_begin(), std::prev(op->result_end()))));
+    regions.emplace_back(RegionSuccessor::parent());
   } else {
     // Unknown successor. Add all of them.
-    for (Region& branch : op.getBranches())
-      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
+    for (Region& branch : op.getBranches()) regions.emplace_back(&branch);
   }
 }
 
@@ -1312,11 +1305,10 @@ void GetCaseLikeRegionOpEntrySuccessorRegions(
   if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = op.getBranches()[*branch_index];
-    regions.emplace_back(&region, GetLoopRegionDataArgs(region));
+    regions.emplace_back(&region);
   } else {
     // Unknown successor. Add all of them.
-    for (Region& branch : op.getBranches())
-      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
+    for (Region& branch : op.getBranches()) regions.emplace_back(&branch);
   }
 }
 
@@ -1383,8 +1375,7 @@ static void GetWhileLikeRegionOpSuccessorRegions(
       (point.getTerminatorPredecessorOrNull() &&
        point.getTerminatorPredecessorOrNull()->getParentRegion() ==
            &op.getRegion(1))) {
-    regions.emplace_back(&op.getCondRegion(),
-                         GetLoopRegionDataArgs(op.getCondRegion()));
+    regions.emplace_back(&op.getCondRegion());
     return;
   }
   assert((point.getTerminatorPredecessorOrNull() &&
@@ -1399,13 +1390,11 @@ static void GetWhileLikeRegionOpSuccessorRegions(
   matchPattern(condition.getCond(), m_Constant(&cond_attr));
   std::optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
   if (!cond || *cond) {
-    regions.emplace_back(&op.getBodyRegion(),
-                         GetLoopRegionDataArgs(op.getBodyRegion()));
+    regions.emplace_back(&op.getBodyRegion());
   }
   if (!cond || !*cond) {
     // Drop the control token.
-    regions.emplace_back(
-        mlir::RegionSuccessor::parent(op.getResults().drop_back()));
+    regions.emplace_back(mlir::RegionSuccessor::parent());
   }
 }
 
@@ -1441,11 +1430,17 @@ void ForRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
-  regions.emplace_back(&getBodyRegion(),
-                       GetLoopRegionDataArgs(getBodyRegion()).drop_front());
+  regions.emplace_back(&getBodyRegion());
   if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
-  regions.emplace_back(mlir::RegionSuccessor::parent(getResults().drop_back()));
+  regions.emplace_back(mlir::RegionSuccessor::parent());
+}
+
+::mlir::ValueRange ForRegionOp::getSuccessorInputs(
+    ::mlir::RegionSuccessor successor) {
+  if (successor.isParent()) return getOuts();
+  // Skip the loop index (first arg) - it's not provided by the parent.
+  return GetLoopRegionDataArgs(*successor.getSuccessor()).drop_front();
 }
 
 BlockArgument ForRegionOp::getDataValueOf(BlockArgument ctl) {
