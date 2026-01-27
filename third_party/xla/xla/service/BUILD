@@ -5197,10 +5197,11 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["interpreter"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":map_inliner",
         "//xla:literal",
@@ -5210,7 +5211,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
