@@ -753,8 +753,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "1ae6fcf983cff3edab717636f91ad0efff2e5ba75607fdddddfd6ad0dbdfaf10",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.24.5/apple_support.1.24.5.tar.gz"),
+        sha256 = "cd2b8896e0a6100a1a7b14cd6abe2275202b5a0f8b1e1548ed71fb81b8c19182",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/2.2.0/apple_support.2.2.0.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases
