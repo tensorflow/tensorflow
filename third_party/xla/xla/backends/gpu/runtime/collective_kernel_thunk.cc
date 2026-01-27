@@ -79,8 +79,8 @@ absl::StatusOr<se::DeviceAddressHandle> AllocateMemory(
   se::DeviceAddressHandle local_buffer_alloc(
       executor,
       executor->Allocate(
-          size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
-  if (local_buffer_alloc.memory().is_null()) {
+          size, static_cast<int64_t>(stream_executor::MemorySpace::kP2P)));
+  if (local_buffer_alloc.address().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
   }
@@ -238,8 +238,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // correct state after use, so we don't need to zero out after
       // initialization.
       TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
-          memory_state->signal_buffers_handle.memory_ptr(),
-          memory_state->signal_buffers_handle.memory().size()));
+          memory_state->signal_buffers_handle.address_ptr(),
+          memory_state->signal_buffers_handle.address().size()));
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       if (!kernel_name_.empty()) {
@@ -268,12 +268,12 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // half of the total allocation.
       for (int i = 0; i < kNumBuffers; ++i) {
         state->remote_buffer_ptrs[i] =
-            memory_state->local_buffers_handle.memory_ptr()->GetByteSlice(
+            memory_state->local_buffers_handle.address_ptr()->GetByteSlice(
                 /*offset_bytes=*/i * memory_state->local_buffer_size_bytes,
                 /*size_bytes=*/memory_state->local_buffer_size_bytes);
 
         state->signal_buffer_ptrs[i] =
-            memory_state->signal_buffers_handle.memory_ptr()->GetByteSlice(
+            memory_state->signal_buffers_handle.address_ptr()->GetByteSlice(
                 /*offset_bytes=*/i * memory_state->signal_buffer_size_bytes,
                 /*size_bytes=*/memory_state->signal_buffer_size_bytes);
       }
@@ -291,14 +291,14 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       TF_ASSIGN_OR_RETURN(
           state->collective_multimem,
           params.multicast_memory_registry->Get(
-              {clique_key, memory_state->local_buffers_handle.memory()}));
+              {clique_key, memory_state->local_buffers_handle.address()}));
       state->multicast_device_ptr =
           state->collective_multimem->mapped_ptr(*rank);
     }
 
     std::vector<se::DeviceAddressBase> parameters{
-        memory_state->local_buffers_handle.memory(),
-        memory_state->signal_buffers_handle.memory()};
+        memory_state->local_buffers_handle.address(),
+        memory_state->signal_buffers_handle.address()};
     TF_RET_CHECK(parameters.size() == kNumParameters);
 
     const size_t param_to_peers_ptrs_size_bytes =
