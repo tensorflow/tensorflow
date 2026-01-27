@@ -213,7 +213,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
   opts.add_xla_cpu_experimental_ynn_fusion_type(
       DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
-
+  opts.add_xla_cpu_experimental_ynn_fusion_type(
+      DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
   opts.set_xla_cpu_enable_concurrency_optimized_scheduler(true);
