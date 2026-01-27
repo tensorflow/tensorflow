@@ -6436,24 +6436,22 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         Tensor of shape (batch, height, width, channels)
         
     Example:
-        # Extract patches with dilation and padding
-        image = tf.random.normal((1, 8, 8, 3))
+        # Basic non-overlapping patches
+        x = tf.reshape(tf.range(0, 16, dtype=tf.float32), (1, 4, 4, 1))
         patches = tf.image.extract_patches(
-            images=image,
-            sizes=[1, 3, 3, 1],
-            strides=[1, 2, 2, 1],
-            rates=[1, 2, 2, 1],  # dilation
-            padding='SAME'
+        images=x,
+        sizes=[1, 2, 2, 1],
+        strides=[1, 2, 2, 1],
+        rates=[1, 1, 1, 1],
+        padding='VALID'
         )
         
         # Reconstruct image
-        reconstructed = fold(
-            patches, 
-            output_size=(8, 8), 
-            kernel_size=3, 
-            stride=2,
-            dilation=2,
-            padding='SAME'
+        out = tf.experimental.fold(
+        patches,
+        output_size=(4, 4),
+        kernel_size=2,
+        stride=2
         )
     """
 
