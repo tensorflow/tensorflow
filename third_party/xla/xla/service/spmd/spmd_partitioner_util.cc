@@ -1124,18 +1124,23 @@ std::optional<HloInstruction*> ExchangeHalo(
   }
   // Left halo.
   // Coalescing the zero-bcasted left halos.
+  HloSharding tile_based_sharding =
+      target.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(target.named_sharding())
+          : target;
   int64_t left_coalesced_zero_halo_size = 0;
   for (int64_t i = CeilOfRatio(max_left_halo_size, input_shard_size) - 1;
        i >= 0 && (-i - 1) * input_shard_size < right_bound; --i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
-    target.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
-      if (indices[dim] > i) {
-        std::vector<int64_t> source_indices(indices.begin(), indices.end());
-        source_indices[dim] -= i + 1;
-        source_target_pairs.emplace_back(
-            target.tile_assignment()(source_indices), device);
-      }
-    });
+    tile_based_sharding.EachTile(
+        [&](absl::Span<const int64_t> indices, int64_t device) {
+          if (indices[dim] > i) {
+            std::vector<int64_t> source_indices(indices.begin(), indices.end());
+            source_indices[dim] -= i + 1;
+            source_target_pairs.emplace_back(
+                tile_based_sharding.tile_assignment()(source_indices), device);
+          }
+        });
     int64_t halo_size_including_skips =
         std::min(max_left_halo_size - input_shard_size * i, input_shard_size);
     int64_t halo_right_skips =
@@ -1206,14 +1211,15 @@ std::optional<HloInstruction*> ExchangeHalo(
   for (int64_t i = skipped_right_halos;
        i < CeilOfRatio(max_right_halo_size, input_shard_size); ++i) {
     std::vector<std::pair<int64_t, int64_t>> source_target_pairs;
-    target.EachTile([&](absl::Span<const int64_t> indices, int64_t device) {
-      if (indices[dim] > i) {
-        std::vector<int64_t> target_indices(indices.begin(), indices.end());
-        target_indices[dim] -= i + 1;
-        source_target_pairs.emplace_back(
-            device, target.tile_assignment()(target_indices));
-      }
-    });
+    tile_based_sharding.EachTile(
+        [&](absl::Span<const int64_t> indices, int64_t device) {
+          if (indices[dim] > i) {
+            std::vector<int64_t> target_indices(indices.begin(), indices.end());
+            target_indices[dim] -= i + 1;
+            source_target_pairs.emplace_back(
+                device, tile_based_sharding.tile_assignment()(target_indices));
+          }
+        });
     int64_t halo_size_including_skips =
         std::min(max_right_halo_size - input_shard_size * i, input_shard_size);
     int64_t halo_left_skips =

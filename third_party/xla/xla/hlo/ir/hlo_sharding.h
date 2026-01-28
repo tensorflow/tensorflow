@@ -367,6 +367,17 @@ class HloSharding {
   // Returns true if the sharding defines an operation on the given device.
   bool UsesDevice(int64_t device) const;
 
+  // Returns the device assignment for the sharding.
+  //
+  // For NamedSharding we convert it to tile based HloShardingV2 and then return
+  // the device assignment.
+  TileAssignment device_assignment() const {
+    if (UseNamedShardingLeaf()) {
+      return V3ToV2Sharding(*named_sharding_).device_assignment();
+    }
+    return tile_assignment_;
+  }
+
   // Returns the tile that should be executed on the given device.
   // REQUIRES: !IsTuple()
   std::vector<int64_t> TileIndexForDevice(int64_t device) const;

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -640,7 +641,6 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
 void HloSharding::EachTile(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
   if (UseNamedShardingLeaf()) {
-    // TODO(b/477530474): Profile this method
     V3ToV2Sharding(*named_sharding_).EachTile(f);
     return;
   }
@@ -671,7 +671,6 @@ absl::Status HloSharding::EachTile(
   }
 
   if (UseNamedShardingLeaf()) {
-    // TODO(b/477530474): Profile this method
     return V3ToV2Sharding(*named_sharding_).EachTile(dims, f);
   }
 
@@ -1149,6 +1148,9 @@ OpSharding HloSharding::ToProto() const {
 
 /*static*/ HloSharding HloSharding::V3ToV2Sharding(
     const NamedSharding& sharding) {
+  // TODO(b/477900810): Remove sharding conversions.
+  LOG(WARNING) << "V3ToV2Sharding method involves sharding conversions for "
+                  "HloShardingV3, its use cases should be avoided.";
   const Mesh& mesh = sharding.mesh();
   absl::Span<const OpMetadata> metadata = sharding.metadata();
   if (sharding.IsReplicated()) {

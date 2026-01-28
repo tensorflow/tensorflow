@@ -589,6 +589,21 @@ TEST_F(HloShardingTest, NestedTuple) {
                                            /*num_devices=*/5));
 }
 
+TEST_F(HloShardingTest, DeviceAssignmentTiledSharding) {
+  TileAssignment ta({2, 4}, {4, 2}, {1, 0});
+  HloSharding sharding = HloSharding::Tile(ta);
+
+  EXPECT_EQ(sharding.device_assignment(), ta);
+}
+TEST_F(HloShardingTest, DeviceAssignmentNamedSharding) {
+  TileAssignment ta({2, 4}, {4, 2}, {1, 0});
+  Mesh mesh(ta, {"a", "b"});
+  HloSharding hlo_sharding_from_named(
+      test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
+
+  EXPECT_EQ(hlo_sharding_from_named.device_assignment(), ta);
+}
+
 TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {
   HloSharding sharding =
       HloSharding::Subgroup(Array<int64_t>({1, 2, 1}, {0, 1}),

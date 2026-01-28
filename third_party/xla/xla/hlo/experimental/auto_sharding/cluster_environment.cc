@@ -251,11 +251,12 @@ double ClusterEnvironment::OverestimateReplicationCost(
 double ClusterEnvironment::TryCollectivePermuteForResharding(
     const Shape& shape, const HloSharding& src_spec,
     const HloSharding& dst_spec) const {
+  TileAssignment dst_spc_device_assignment = dst_spec.device_assignment();
   auto reshard_with_collective_permute = [&]() {
     std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
     src_spec.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t src_device) {
-          int64_t dst_device = dst_spec.tile_assignment()(indices);
+          int64_t dst_device = dst_spc_device_assignment(indices);
           src_dst_pairs.emplace_back(src_device, dst_device);
         });
     return this->CollectivePermuteCost(
