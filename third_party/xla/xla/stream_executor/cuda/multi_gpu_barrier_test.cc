@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -49,8 +48,9 @@ class MultiGpuBarrierTest : public ::testing::Test {
                    << visible_device_count;
     }
 
-    // Limit to kMaxNumBarrierPeers (32)
-    num_devices_ = std::min<int>(visible_device_count, kMaxNumBarrierPeers);
+    // Limit to MultiGpuBarrierKernel::kMaxPeers (32)
+    num_devices_ =
+        std::min<int>(visible_device_count, MultiGpuBarrierKernel::kMaxPeers);
 
     executors_.reserve(num_devices_);
     streams_.reserve(num_devices_);
@@ -112,15 +112,15 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
   }
 
   // 3. Prepare Kernel Arguments
-  std::array<void*, kMaxNumBarrierPeers> kernel_arg_ptrs;
-  for (int i = 0; i < kMaxNumBarrierPeers; ++i) {
+  std::array<void*, MultiGpuBarrierKernel::kMaxPeers> kernel_arg_ptrs;
+  for (int i = 0; i < MultiGpuBarrierKernel::kMaxPeers; ++i) {
     kernel_arg_ptrs[i] = (i < num_devices_) ? signal_buffer_ptrs[i] : nullptr;
   }
 
   // 4. Launch Kernel REPEATEDLY 8 times to verify auto-increment
   for (int step = 0; step < 8; ++step) {
     for (int i = 0; i < num_devices_; ++i) {
-      TF_ASSERT_OK_AND_ASSIGN(
+      ASSERT_OK_AND_ASSIGN(
           auto kernel, (GpuKernelRegistry::GetGlobalRegistry()
                             .LoadKernel<MultiGpuBarrierKernel>(executors_[i])));
 

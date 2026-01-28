@@ -28,13 +28,14 @@ namespace stream_executor::gpu {
 template <PlatformType PlatformT>
 __global__ void MultiGpuBarrierKernelImpl(
     int64_t rank, int64_t num_ranks,
-    std::array<void*, kMaxNumBarrierPeers> signal_buffers_void,
+    std::array<void*, MultiGpuBarrierKernel::kMaxPeers> signal_buffers_void,
     uint32_t* sync_counter) {
   // 1. Cast void* pointers
-  std::array<uint32_t* __restrict__, kMaxNumBarrierPeers> signal_buffers;
+  std::array<uint32_t* __restrict__, MultiGpuBarrierKernel::kMaxPeers>
+      signal_buffers;
 
 #pragma unroll
-  for (int64_t i = 0; i < kMaxNumBarrierPeers; ++i) {
+  for (int64_t i = 0; i < MultiGpuBarrierKernel::kMaxPeers; ++i) {
     signal_buffers[i] = reinterpret_cast<uint32_t*>(signal_buffers_void[i]);
   }
 
@@ -45,8 +46,8 @@ __global__ void MultiGpuBarrierKernelImpl(
   uint32_t signal_value = *sync_counter;
 
   // 3. Barrier
-  SyncRemoteBlocks<PlatformT, kMaxNumBarrierPeers>(signal_buffers, rank,
-                                                   num_ranks, signal_value);
+  SyncRemoteBlocks<PlatformT, MultiGpuBarrierKernel::kMaxPeers>(
+      signal_buffers, rank, num_ranks, signal_value);
 
   // 4. Update State
   // Only the first thread needs to update the counter for the NEXT execution.

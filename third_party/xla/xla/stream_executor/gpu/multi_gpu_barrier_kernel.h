@@ -24,9 +24,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-// Maximum number of peers supported by the barrier.
-inline constexpr int64_t kMaxNumBarrierPeers = 32;
-
 // Kernel signature:
 // 1. rank (int64_t)
 // 2. num_ranks (int64_t)
@@ -34,9 +31,13 @@ inline constexpr int64_t kMaxNumBarrierPeers = 32;
 // 4. sync_counter: DeviceMemory<uint32_t>: Device ptr to a monotonic counter
 //    that increments after every barrier execution. Stores last signal_value.
 struct MultiGpuBarrierKernel {
+  // Maximum number of peers supported by the barrier.
+  // Can be extended to support larger GPU clusters in the future.
+  static constexpr int64_t kMaxPeers = 32;
+
   using KernelType =
       stream_executor::TypedKernel<int64_t, int64_t,
-                                   std::array<void*, kMaxNumBarrierPeers>,
+                                   std::array<void*, kMaxPeers>,
                                    stream_executor::DeviceAddress<uint32_t>>;
 };
 
