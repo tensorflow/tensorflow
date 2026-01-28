@@ -570,34 +570,26 @@ struct SignatureDefData {
 // Helper class to store buffers for export. This class is used to store
 // buffers for export and provides utility functions to get size and hash of
 // the buffers.
+template <typename KeyT, typename ItemT>
 class ExportBufferStorage {
- private:
-  // Abstract base class for type erasure
-  struct ExportBufferBase {
-    using ApplyDataFuncT = absl::FunctionRef<absl::Status(absl::string_view)>;
-    virtual ~ExportBufferBase() = default;
-    inline virtual absl::Status ApplyData(ApplyDataFuncT apply_data_func) = 0;
-    inline virtual std::string GetData() = 0;
-    inline virtual uint64_t GetHash() = 0;
-  };
+ public:
+  using ApplyDataFuncT = absl::FunctionRef<absl::Status(absl::string_view)>;
+  using ApplyDataFromBufferFuncT = absl::AnyInvocable<absl::Status(
+      const ItemT&, ExportBufferStorage::ApplyDataFuncT) const>;
 
-  template <typename T>
-  class ExportBuffer final : public ExportBufferBase {
+  class ExportBuffer {
    public:
-    using ApplyDataFromBufferFuncT = absl::AnyInvocable<absl::Status(
-        const T&, ExportBufferBase::ApplyDataFuncT) const>;
-
-    ExportBuffer(T item, ApplyDataFromBufferFuncT apply, uint64_t hash)
+    ExportBuffer(ItemT item, ApplyDataFromBufferFuncT apply, uint64_t hash)
         : item_(std::move(item)), apply_(std::move(apply)), hash_(hash) {}
 
     inline absl::Status ApplyData(
-        ExportBufferBase::ApplyDataFuncT apply_data_func) override {
+        ExportBufferStorage::ApplyDataFuncT apply_data_func) {
       return apply_(item_, apply_data_func);
     }
 
-    inline uint64_t GetHash() override { return hash_; }
+    inline uint64_t GetHash() { return hash_; }
 
-    inline std::string GetData() override {
+    inline std::string GetData() {
       std::string data;
       data.reserve(32);
       auto status = ApplyData([&data](absl::string_view chunk) {
@@ -613,23 +605,21 @@ class ExportBufferStorage {
     ExportBuffer& operator=(ExportBuffer&&) noexcept = default;
 
    private:
-    T item_;
-    ExportBuffer<T>::ApplyDataFromBufferFuncT apply_;
+    ItemT item_;
+    ExportBufferStorage<KeyT, ItemT>::ApplyDataFromBufferFuncT apply_;
     uint64_t hash_;
   };
 
-  // Store pointers to the base class
-  absl::flat_hash_map<int64_t, std::unique_ptr<ExportBufferBase>> buffers_;
+  inline void Insert(KeyT key, ItemT item,
+                     ExportBufferStorage::ApplyDataFromBufferFuncT apply,
+                     uint64_t hash) {
+    auto export_buffer =
+        std::make_unique<ExportBuffer>(std::move(item), std::move(apply), hash);
+    buffers_[key] = std::move(export_buffer);
+  }
 
- public:
-  template <typename T, typename F>
-  inline void Insert(int64_t index, T&& item, F&& apply, uint64_t hash) {
-    // Ensure T is the actual value type, not a reference etc.
-    using CleanT = std::decay_t<T>;
-
-    auto export_buffer = std::make_unique<ExportBuffer<CleanT>>(
-        std::forward<T>(item), std::forward<F>(apply), hash);
-    buffers_[index] = std::move(export_buffer);
+  inline void Insert(KeyT key, std::unique_ptr<ExportBuffer> buffer) {
+    buffers_[key] = std::move(buffer);
   }
 
   auto& buffers() { return buffers_; }
@@ -639,6 +629,10 @@ class ExportBufferStorage {
   ExportBufferStorage(ExportBufferStorage&&) noexcept = default;
   ExportBufferStorage& operator=(ExportBufferStorage&&) noexcept = default;
   ExportBufferStorage() = default;
+
+ private:
+  // Store pointers to the base class
+  absl::flat_hash_map<KeyT, std::unique_ptr<ExportBuffer>> buffers_;
 };
 
 // Translates an MLIR module in TFLite dialect to TFLite FlatBuffer.
@@ -647,25 +641,22 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns std::nullopt on unsupported, invalid inputs
   // or internal error.
-  static absl::Status Translate(
-      ModuleOp module, llvm::raw_pwrite_stream& export_stream,
-      tflite::ConverterFlags converter_flags,
-      const std::unordered_set<std::string>& tags,
-      OpOrArgNameMapper* op_or_arg_name_mapper,
-      const std::map<std::string, std::string>& metadata,
-      bool serialize_stablehlo_ops,
-      std::optional<size_t> custom_option_alignment,
-      bool disable_buffer_deduping = false);
+  static absl::Status Translate(ModuleOp module,
+                                const tflite::FlatbufferExportOptions& options,
+                                llvm::raw_pwrite_stream& export_stream);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(ModuleOp module, llvm::raw_pwrite_stream& export_stream,
-                      const tflite::ConverterFlags& converter_flags,
-                      const std::unordered_set<std::string>& saved_model_tags,
-                      OpOrArgNameMapper* op_or_arg_name_mapper,
-                      const std::map<std::string, std::string>& metadata,
-                      std::optional<size_t> custom_option_alignment,
-                      bool disable_buffer_deduping)
+  explicit Translator(
+      ModuleOp module, llvm::raw_pwrite_stream& export_stream,
+      const tflite::ConverterFlags& converter_flags,
+      const std::unordered_set<std::string>& saved_model_tags,
+      OpOrArgNameMapper* op_or_arg_name_mapper,
+      const std::map<std::string, std::string>& metadata,
+      std::optional<size_t> custom_option_alignment,
+      bool disable_buffer_deduping,
+      const std::vector<tflite::FlatbufferExportAttributeBufferApplierFactory>&
+          attribute_buffer_applier_factories)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
@@ -680,7 +671,9 @@ class Translator {
         use_buffer_offset_(converter_flags.use_buffer_offset()),
         custom_option_alignment_(custom_option_alignment),
         disable_buffer_deduping_(disable_buffer_deduping),
-        export_stream_(export_stream) {
+        export_stream_(export_stream),
+        attribute_buffer_applier_factories_(
+            attribute_buffer_applier_factories) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -961,18 +954,19 @@ class Translator {
   // Maps buffer data to corresponding buffer index
   // in the idx map, the value is a pair of offset and size
   absl::flat_hash_map<int, std::pair<uint64_t, uint64_t>> buffer_idx_map_;
-  ExportBufferStorage buffer_storage_;
+  ExportBufferStorage<int, std::pair<mlir::Attribute, mlir::Operation*>>
+      const_buffer_storage_;
 
   // Maps custom options data to corresponding node
   // Key is set to be the list of input tensor indices and list of output tensor
   // indices
   // in the idx map, the value is a pair of offset and size
   absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
-                      std::vector<uint8_t>>
-      custom_op_data_map_;
-  absl::flat_hash_map<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
                       std::pair<uint64_t, uint64_t>>
       custom_op_idx_map_;
+  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
+                      mlir::TFL::ConstBytesAttr>
+      custom_op_buffer_storage_;
 
   // Points to TensorFlow and TFLite dialects, respectively. nullptr if the
   // dialect is not registered.
@@ -1038,6 +1032,11 @@ class Translator {
 
   // The stream to export the flatbuffer bytes to.
   std::reference_wrapper<llvm::raw_pwrite_stream> export_stream_;
+
+  // The attribute buffer applier factories to use for exporting custom derived
+  // types of ElementsAttr as constant buffer holders.
+  std::vector<tflite::FlatbufferExportAttributeBufferApplierFactory>
+      attribute_buffer_applier_factories_;
 
   std::string debug_metadata_serialized_string_;
 };
@@ -1141,6 +1140,8 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     const_attribute_to_buffer_map_[attr] = index;
   }
 
+  tflite::FlatbufferExportAttributeBufferApplier applier = nullptr;
+
   // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
   // trouble calling ConvertToTensor(). For now, extract the tensor data from
   // ElementsAttr directly in this and read type from tflite::TensorType instead
@@ -1149,6 +1150,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
 
+  // Default appliers
   if (tflite_element_type == tflite::TensorType_INT4 ||
       tflite_element_type == tflite::TensorType_UINT4 ||
       tflite_element_type == tflite::TensorType_INT2) {
@@ -1156,9 +1158,13 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
                             tflite_element_type == tflite::TensorType_UINT4
                         ? 4
                         : 2;
-    buffer_storage_.Insert(
-        index, attr,
-        [bit_width](const mlir::ElementsAttr& attr, auto apply) {
+    applier =
+        [bit_width](
+            const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
+            auto apply) {
+          auto [attr_, _] = attr_and_inst;
+          auto attr = mlir::cast<ElementsAttr>(attr_);
+
           std::vector<uint8_t> data;
           for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
             data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
@@ -1167,13 +1173,14 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
           return apply(
               absl::string_view(reinterpret_cast<char*>(packed_buffer.data()),
                                 packed_buffer.size()));
-        },
-        /*hash=*/mlir::hash_value(attr));
+        };
   } else {
-    buffer_storage_.Insert(
-        index, std::make_pair(attr, inst),
-        [](const auto& attr_and_inst, auto apply) {
-          auto [attr, inst] = attr_and_inst;
+    applier =
+        [](const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
+           auto apply) {
+          auto [attr_, inst] = attr_and_inst;
+          auto attr = mlir::cast<ElementsAttr>(attr_);
+
           auto tensor = std::make_unique<tensorflow::Tensor>();
           auto status = tensorflow::ConvertToTensor(attr, tensor.get());
 
@@ -1218,22 +1225,45 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
           } else {
             return apply(tensor->tensor_data());
           }
-        },
-        /*hash=*/mlir::hash_value(attr));
+        };
+  }
+
+  // Try to get custom appliers
+  for (auto& factory : attribute_buffer_applier_factories_) {
+    auto applier_or = factory(attr, inst);
+    if (applier_or.has_value()) {
+      applier = std::move(applier_or.value());
+      break;
+    }
   }
 
   if (use_buffer_offset_) {
     // If use_buffer_offset_ is true, creates an empty buffer with offset 0.
+
+    // The hash value of the attribute is used as the buffer fingerprint for
+    // deduplication. This is much cheaper than serializing the attribute to a
+    // string and computing the hash of the string, but can be reliable in some
+    // cases where the MLIR attributes are not deduped properly (e.g. when two
+    // consts of the same value are held in different attribute types).
+    const_buffer_storage_.Insert(index, std::make_pair(attr, inst),
+                                 std::move(applier),
+                                 /*hash=*/mlir::hash_value(attr));
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
-    // Otherwise, creates a buffer with the data immediately.
-    auto storage_it = buffer_storage_.buffers().find(index);
-    std::string buffer = storage_it->second->GetData();
-    buffer_storage_.buffers().erase(storage_it);
+    // Otherwise, creates a buffer with the flatbuffer immediately.
+    ExportBufferStorage<int, std::pair<mlir::Attribute, mlir::Operation*>>::
+        ExportBuffer buffer(std::make_pair(attr, inst), std::move(applier),
+                            /*hash=*/0);
 
-    auto buffer_data = builder_.CreateVector(
-        reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
-    return tflite::CreateBuffer(builder_, buffer_data);
+    std::string buffer_data = buffer.GetData();
+    if (custom_option_alignment_.has_value()) {
+      builder_.ForceVectorAlignment(buffer_data.size(), sizeof(uint8_t),
+                                    custom_option_alignment_.value());
+    }
+    return tflite::CreateBuffer(
+        builder_, builder_.CreateVector(
+                      reinterpret_cast<const uint8_t*>(buffer_data.data()),
+                      buffer_data.size()));
   }
 }
 
@@ -1660,17 +1690,21 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
     Operation* inst, mlir::TFL::CustomOp op,
     const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
-  const std::string attrs =
-      mlir::cast<mlir::TFL::ConstBytesAttr>(op.getCustomOption())
-          .getValue()
-          .str();
-  std::vector<uint8_t> custom_option_vector(attrs.size(), 0);
-  memcpy(custom_option_vector.data(), attrs.data(), attrs.size());
+  ExportBufferStorage<std::pair<std::vector<int32_t>, std::vector<int32_t>>,
+                      mlir::TFL::ConstBytesAttr>::ExportBuffer
+      export_buffer(
+          op.getCustomOption(),
+          [](const mlir::TFL::ConstBytesAttr& attr, auto apply) {
+            return apply(attr.getValue().str());
+          },
+          /*hash=*/mlir::hash_value(op.getCustomOption()));
+
   auto opcode_index =
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
   if (use_buffer_offset_) {
-    custom_op_data_map_[std::make_pair(operands, results)] =
-        custom_option_vector;
+    custom_op_buffer_storage_.Insert(
+        std::make_pair(operands, results),
+        std::make_unique<decltype(export_buffer)>(std::move(export_buffer)));
     return tflite::CreateOperator(
         builder_, opcode_index, builder_.CreateVector(operands),
         builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
@@ -1683,13 +1717,15 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
         /*debug_metadata_index=*/
         GetOperatorDebugMetadataIndex(inst));
   } else {
+    std::string custom_option_data = export_buffer.GetData();
+
     if (custom_option_alignment_.has_value()) {
-      builder_.ForceVectorAlignment(custom_option_vector.size(),
-                                    sizeof(uint8_t),
+      builder_.ForceVectorAlignment(custom_option_data.size(), sizeof(uint8_t),
                                     custom_option_alignment_.value());
     }
-    auto custom_option_fbs_vector =
-        builder_.CreateVector<uint8_t>(custom_option_vector);
+    auto custom_option_fbs_vector = builder_.CreateVector<uint8_t>(
+        reinterpret_cast<uint8_t*>(custom_option_data.data()),
+        custom_option_data.size());
     return tflite::CreateOperator(
         builder_, opcode_index, builder_.CreateVector(operands),
         builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
@@ -4055,16 +4091,13 @@ constexpr absl::string_view kFlatbufferSizeLimitExceededError =
     "Flatbuffer size exceeds 2gb limit.";
 
 absl::Status Translator::Translate(
-    ModuleOp module, llvm::raw_pwrite_stream& export_stream,
-    tflite::ConverterFlags converter_flags,
-    const std::unordered_set<std::string>& tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper,
-    const std::map<std::string, std::string>& metadata,
-    bool serialize_stablehlo_ops, std::optional<size_t> custom_option_alignment,
-    bool disable_buffer_deduping) {
+    ModuleOp module, const tflite::FlatbufferExportOptions& options,
+    llvm::raw_pwrite_stream& export_stream) {
+  OpOrArgNameMapper* op_or_arg_name_mapper = options.op_or_arg_name_mapper;
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
-  if (!op_or_arg_name_mapper)
+  if (!op_or_arg_name_mapper) {
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
+  }
   if (!UpdateEntryFunction(module)) {
     return absl::InvalidArgumentError("No entry function found.");
   }
@@ -4077,6 +4110,7 @@ absl::Status Translator::Translate(
   // offset and avoid a second retry)
   const int64_t enable_buffer_offset_threshold =
       flatbuffer_size_max - (512 * 1024 * 1024 /* 512MB */);
+  auto converter_flags = options.converter_flags;
   if (!converter_flags.use_buffer_offset() &&
       mlir::TFL::GetApproximateModuleSize(module) >
           enable_buffer_offset_threshold) {
@@ -4085,10 +4119,12 @@ absl::Status Translator::Translate(
   }
 
   auto translate = [&]() {
-    Translator translator(module, export_stream, converter_flags, tags,
-                          op_or_arg_name_mapper, metadata,
-                          custom_option_alignment, disable_buffer_deduping);
-    translator.convert_stablehlo_ = serialize_stablehlo_ops;
+    Translator translator(module, export_stream, converter_flags,
+                          options.saved_model_tags, op_or_arg_name_mapper,
+                          options.metadata, options.custom_option_alignment,
+                          options.disable_buffer_deduping,
+                          options.attribute_buffer_applier_factories);
+    translator.convert_stablehlo_ = options.serialize_stablehlo_ops;
     return translator.TranslateInternal();
   };
 
@@ -4350,7 +4386,7 @@ absl::Status Translator::AppendBufferData() {
   auto offset = [this]() { return export_stream_.get().tell(); };
 
   std::unordered_map<uint64_t, std::pair<int64_t, int64_t>> hashcode_to_pos;
-  for (const auto& [index, buffer] : buffer_storage_.buffers()) {
+  for (const auto& [index, buffer] : const_buffer_storage_.buffers()) {
     uint64_t hash = buffer->GetHash();
     if (hashcode_to_pos.find(hash) == hashcode_to_pos.end()) {
       int64_t size = 0;
@@ -4360,11 +4396,11 @@ absl::Status Translator::AppendBufferData() {
         export_stream_.get().write(data.data(), data.size());
         return absl::OkStatus();
       });
-      hashcode_to_pos[hash] = std::make_pair(buffer_offset, size);
-      buffer_idx_map_[index] = std::make_pair(buffer_offset, size);
       if (!status.ok()) {
         return status;
       }
+      hashcode_to_pos[hash] = std::make_pair(buffer_offset, size);
+      buffer_idx_map_[index] = std::make_pair(buffer_offset, size);
     } else {
       // only update offset/index.
       buffer_idx_map_[index] = hashcode_to_pos[hash];
@@ -4376,19 +4412,25 @@ absl::Status Translator::AppendBufferData() {
   // pad to be 16 bytes aligned
   export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
 
-  for (auto& it : custom_op_data_map_) {
+  for (const auto& [key, buffer] : custom_op_buffer_storage_.buffers()) {
     export_stream_.get().write_zeros(kFbAlignment - offset() % kFbAlignment);
 
     if (custom_option_alignment_.has_value()) {
       auto alignment = custom_option_alignment_.value();
-      std::string pad(alignment - offset() % alignment, '\0');
-      export_stream_.get().write(pad.data(), pad.size());
+      export_stream_.get().write_zeros(alignment - offset() % alignment);
     }
 
-    auto buffer = std::string(it.second.begin(), it.second.end());
-    int64_t size = it.second.size();
-    custom_op_idx_map_[it.first] = std::make_pair(offset(), size);
-    export_stream_.get().write(buffer.data(), buffer.size());
+    int64_t size = 0;
+    int64_t buffer_offset = offset();
+    auto status = buffer->ApplyData([this, &size](absl::string_view data) {
+      size += data.size();
+      export_stream_.get().write(data.data(), data.size());
+      return absl::OkStatus();
+    });
+    if (!status.ok()) {
+      return status;
+    }
+    custom_op_idx_map_[key] = std::make_pair(buffer_offset, size);
   }
 
   // pad to be 16 bytes aligned
@@ -4595,6 +4637,14 @@ std::vector<std::pair<int, int>> Translator::ExtractControlEdges(
 
 namespace tflite {
 
+absl::Status MlirToFlatBufferTranslateFunction(
+    mlir::ModuleOp module, const FlatbufferExportOptions& options,
+    llvm::raw_pwrite_stream& export_stream) {
+  return Translator::Translate(module, options, export_stream);
+}
+
+// Legacy API that returns a boolean and populates a string with the
+// serialized flatbuffer on success.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer,
@@ -4602,10 +4652,16 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   llvm::SmallVector<char, 32 * 1024> buffer;
   llvm::raw_svector_ostream export_stream(buffer);
 
-  absl::Status status = Translator::Translate(
-      module, export_stream, options.converter_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
-      options.custom_option_alignment, options.disable_buffer_deduping);
+  absl::Status status;
+  if (serialize_stablehlo_ops != options.serialize_stablehlo_ops) {
+    FlatbufferExportOptions new_options = options;
+    new_options.serialize_stablehlo_ops = serialize_stablehlo_ops;
+    status =
+        MlirToFlatBufferTranslateFunction(module, new_options, export_stream);
+  } else {
+    status = MlirToFlatBufferTranslateFunction(module, options, export_stream);
+  }
+
   if (!status.ok()) {
     return false;
   }
