@@ -502,7 +502,7 @@ absl::Status RunCollectivePermute(
     } else {
       TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
                                               use_symmetric_buffer));
-      auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+      auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
       auto future = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
            &stream](GpuCommunicator* comm) -> absl::Status {

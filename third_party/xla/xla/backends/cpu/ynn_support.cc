@@ -243,6 +243,11 @@ bool IsReduceOpSupportedByYnn(const HloInstruction* hlo) {
   if (!YnnType(hlo->shape().element_type()).ok()) {
     return false;
   }
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(hlo->operand(0)->shape())) {
+    return false;
+  }
+
   const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   CHECK_NE(reduce, nullptr);
   // TODO(ashaposhnikov): we can support this edge case,

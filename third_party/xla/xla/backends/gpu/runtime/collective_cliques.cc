@@ -148,7 +148,7 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     // rendezvous leader elected inside the `AcquireGpuClique` implementation.
     CliqueIdCallback default_clique_id_callback =
         [&](const CliqueKey& key) -> absl::StatusOr<CliqueId> {
-      auto& gpu_key = tsl::down_cast<const GpuCliqueKey&>(key);
+      auto& gpu_key = absl::down_cast<const GpuCliqueKey&>(key);
       if (!gpu_key.is_local()) {
         return Internal(
             "For non-local GPU cliques (cliques that span multiple processes) "

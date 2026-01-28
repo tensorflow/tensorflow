@@ -87,7 +87,7 @@ NvshmemCollectiveThunk::NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Get("gpu", "nvshmem"));
-  return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+  return absl::down_cast<GpuCollectives*>(collectives);
 }
 
 absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {

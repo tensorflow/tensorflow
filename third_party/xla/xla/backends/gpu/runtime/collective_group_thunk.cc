@@ -98,7 +98,7 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   }
 
   Communicator* comm = *communicator_set.begin();
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(comm);
   Future<> group_future = gpu_comm->GroupExecute(
       [this, &params](GpuCommunicator* comm) -> absl::Status {
         for (const std::unique_ptr<Thunk>& thunk : thunks_) {
