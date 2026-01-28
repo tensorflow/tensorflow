@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -55,14 +56,19 @@ namespace {
 // Creates a pair of communicators for the given executors.
 static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
 CreateCommunicators(se::StreamExecutor* executor0,
-                    se::StreamExecutor* executor1, bool blocking = true) {
+                    se::StreamExecutor* executor1, bool blocking = true,
+                    size_t num_ids = 1) {
   GpuCollectives::Device device0(executor0);
   GpuCollectives::Device device1(executor1);
 
   GpuCollectives* collectives = GpuCollectives::Default("GPU");
 
-  TF_ASSIGN_OR_RETURN(CliqueId clique_id, collectives->CreateUniqueCliqueId());
-  CliqueIds clique_ids(clique_id);
+  CliqueIds clique_ids;
+  for (size_t i = 0; i < num_ids; ++i) {
+    TF_ASSIGN_OR_RETURN(CliqueId clique_id,
+                        collectives->CreateUniqueCliqueId());
+    clique_ids.Add(clique_id);
+  }
 
   GpuCliqueKey clique_key({GlobalDeviceId(0), GlobalDeviceId(1)},
                           /*num_local_participants=*/2);
@@ -84,6 +90,27 @@ CreateCommunicators(se::StreamExecutor* executor0,
   gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[0].release()));
   gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[1].release()));
   return gpu_comms;
+}
+
+TEST(GpuCollectivesTest, CreateWithMultipleIds) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
+                       platform->ExecutorForDevice(0));
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
+                       platform->ExecutorForDevice(1));
+
+  ASSERT_OK_AND_ASSIGN(
+      auto comms, CreateCommunicators(executor0, executor1, /*blocking=*/true,
+                                      /*num_ids=*/2));
+
+  EXPECT_TRUE(comms[0]->platform_comm().handle);
+  EXPECT_TRUE(comms[1]->platform_comm().handle);
 }
 
 TEST(GpuCollectivesTest, CreateSymmetricMemory) {

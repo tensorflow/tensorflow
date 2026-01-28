@@ -44,6 +44,8 @@ CliqueIds::CliqueIds(const CliqueId& id) { Add(id); }
 
 void CliqueIds::Add(const CliqueId& id) { ids_.push_back(id); }
 
+size_t CliqueIds::size() const { return ids_.size(); }
+
 absl::Span<const CliqueId> CliqueIds::data() const { return ids_; }
 
 const CliqueId& CliqueIds::at(size_t index) const { return ids_[index]; }

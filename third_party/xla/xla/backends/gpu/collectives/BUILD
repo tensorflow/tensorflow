@@ -397,7 +397,6 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
-        "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:nccl_memory_allocator",  # buildcleaner: keep (static registration)
         "//xla/tsl/cuda:nccl",
@@ -408,6 +407,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -51,7 +51,6 @@ class GpuCliqueKey : public CliqueKey {
       std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
       bool is_p2p = false,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
-      GlobalDeviceId root_device = GlobalDeviceId(-1),
       std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
@@ -64,9 +63,6 @@ class GpuCliqueKey : public CliqueKey {
 
   std::vector<std::vector<GlobalDeviceId>> ParticipantGroups() const;
 
-  // Device generating the unique id for this key
-  GlobalDeviceId root_device() const;
-
   // Returns true if this clique is a subset of `other`: both cliques have the
   // same `stream_id` and all clique devices are part of `other` clique.
   bool IsSubsetOf(const CliqueKey& other) const final;
@@ -74,11 +70,12 @@ class GpuCliqueKey : public CliqueKey {
   // Returns true if this clique will be used with p2p communicators.
   bool is_p2p() const;
 
-  // For multi-root initialization, generate `nroots` copies (subkeys) of the
-  // key each with a different root device. Root devices are distributed evenly
-  // across the ranks. The subkeys are used to exchange the CliqueIds during
-  // clique initialization.
-  std::vector<GpuCliqueKey> GetSubKeys(int64_t nroots) const;
+  // Returns root devices that are responsible for bootstrapping the GPU clique
+  // during initialization. Root devices are distributed evenly across all ranks
+  // in the clique. XLA processes owning the root devices are responsible for
+  // generating clique id and exchanging it with other ranks that share the same
+  // root device (this is done via shared KV store).
+  std::vector<GlobalDeviceId> GetRootDevices(int64_t nroots) const;
 
   // The number of participant devices that are local to the current process (in
   // multi-host environments this likely to be all devices on the same host).
@@ -123,8 +120,6 @@ class GpuCliqueKey : public CliqueKey {
   // Having the participating groups as part of the cache key will prevent such
   // situations
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
-
-  GlobalDeviceId root_device_;
 
   std::vector<IncarnationId> incarnations_;
 };

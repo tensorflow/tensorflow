@@ -50,9 +50,9 @@ class GpuCollectives : public Collectives {
   // Returns the default collectives implementation for the given platform.
   static GpuCollectives* Default(absl::string_view platform_name);
 
-  // A callback to get a unique clique id.
+  // A callback to get a unique clique ids.
   using CliqueIdCallback =  // NOLINT
-      std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
+      std::function<absl::StatusOr<CliqueIds>(const CliqueKey&)>;
 
   // Topology describes how exactly the current process fits into the collection
   // of distributed processes, and based on this information the underlying

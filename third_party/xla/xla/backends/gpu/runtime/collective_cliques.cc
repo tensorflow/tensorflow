@@ -147,14 +147,17 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     // IMPORTANT: This callback is called once for the clique key by the
     // rendezvous leader elected inside the `AcquireGpuClique` implementation.
     CliqueIdCallback default_clique_id_callback =
-        [&](const CliqueKey& key) -> absl::StatusOr<CliqueId> {
+        [&](const CliqueKey& key) -> absl::StatusOr<CliqueIds> {
+      VLOG(4) << absl::StrFormat("Get local NCCL clique ids: clique=%v", key);
       auto& gpu_key = tsl::down_cast<const GpuCliqueKey&>(key);
       if (!gpu_key.is_local()) {
         return Internal(
             "For non-local GPU cliques (cliques that span multiple processes) "
             "clique id callback must be passed via execution params");
       }
-      return params.collectives->CreateUniqueCliqueId();
+      TF_ASSIGN_OR_RETURN(CliqueId clique_id,
+                          params.collectives->CreateUniqueCliqueId());
+      return CliqueIds(clique_id);
     };
 
     int64_t max_channels = r.key.is_p2p() ? params.p2p_max_nchannels

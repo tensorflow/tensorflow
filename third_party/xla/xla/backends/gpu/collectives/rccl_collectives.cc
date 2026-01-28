@@ -87,8 +87,8 @@ class RcclIdStore {
         device_to_process_(std::move(device_to_process)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
-                                       RcclCollectives& rccl_collectives) {
+  absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
+                                         RcclCollectives& rccl_collectives) {
     auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
@@ -101,12 +101,12 @@ class RcclIdStore {
       absl::MutexLock lock(mu_);
       auto it = cache_.find(*gpu_key);
       if (it != cache_.end()) {
-        return it->second;
+        return CliqueIds(it->second);
       }
     }
 
     CliqueId clique_id;
-    if (process_id_ == device_to_process_.at(gpu_key->root_device())) {
+    if (process_id_ == device_to_process_.at(gpu_key->devices().front())) {
       TF_ASSIGN_OR_RETURN(clique_id, rccl_collectives.CreateUniqueCliqueId());
       TF_RETURN_IF_ERROR(
           kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
@@ -120,7 +120,7 @@ class RcclIdStore {
     absl::MutexLock lock(mu_);
     auto result = cache_.emplace(*gpu_key, std::move(clique_id));
     TF_RET_CHECK(result.second) << "Unique ID already in cache.";
-    return result.first->second;
+    return CliqueIds(result.first->second);
   }
 
  private:
@@ -388,7 +388,7 @@ absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
         topology.process_id, topology.device_to_process,
         std::move(topology.kv_store));
     return [rccl_id_store, this](const CliqueKey& key) {
-      return rccl_id_store->GetCliqueId(key, *this);
+      return rccl_id_store->GetCliqueIds(key, *this);
     };
   }
 

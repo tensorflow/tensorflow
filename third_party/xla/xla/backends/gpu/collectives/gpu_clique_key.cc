@@ -64,12 +64,11 @@ CollectiveStreamId GetCollectiveStreamId(bool is_async,
 GpuCliqueKey::GpuCliqueKey(
     std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
     bool is_p2p, std::vector<std::vector<GlobalDeviceId>> participant_groups,
-    GlobalDeviceId root_device, std::vector<IncarnationId> incarnations)
+    std::vector<IncarnationId> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
       is_p2p_(is_p2p),
       participant_groups_(std::move(participant_groups)),
-      root_device_(root_device),
       incarnations_(std::move(incarnations)) {
   for (std::vector<GlobalDeviceId>& group : participant_groups_) {
     absl::c_sort(group);
@@ -85,8 +84,6 @@ GpuCliqueKey::GpuCliqueKey(
 }
 
 bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
-
-GlobalDeviceId GpuCliqueKey::root_device() const { return root_device_; }
 
 std::vector<std::vector<GlobalDeviceId>> GpuCliqueKey::ParticipantGroups()
     const {
@@ -105,35 +102,27 @@ bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
          });
 }
 
-std::vector<GpuCliqueKey> GpuCliqueKey::GetSubKeys(int64_t nroots) const {
-  const auto& devs = devices();
-  int64_t nranks = devs.size();
-  CHECK(nroots <= nranks);
-  int64_t rank_per_root = nranks / nroots;
-  int64_t rank_rem = nranks % nroots;
-  std::vector<GpuCliqueKey> subkeys;
-  for (int64_t i = 0; i < nroots; ++i) {
-    GpuCliqueKey subkey(*this);
-    if (i < rank_rem) {
-      subkey.root_device_ = devs[i * (rank_per_root + 1)];
-    } else {
-      subkey.root_device_ =
-          devs[rank_rem * (rank_per_root + 1) + (i - rank_rem) * rank_per_root];
-    }
-    subkeys.push_back(subkey);
-  }
-  return subkeys;
-}
+std::vector<GlobalDeviceId> GpuCliqueKey::GetRootDevices(int64_t nroots) const {
+  int64_t nranks = devices().size();
+  CHECK_LE(nroots, nranks) << "Can't select more root devices than available";
 
-// StrJoin for devices that shortens long list of devices for readbility.
-static std::string StrJoinDevices(absl::Span<const GlobalDeviceId> devices,
-                                  absl::string_view separator = ",",
-                                  size_t first = 10, size_t last = 4) {
-  if (devices.size() > first + last) {
-    return absl::StrCat(absl::StrJoin(devices.first(first), separator), "...",
-                        absl::StrJoin(devices.last(last), separator));
+  // If nroots evenly divides nranks, then every root is assigned to
+  // ranks_per_root devices. If nroots doesn't divide nranks, then we increase
+  // the size of the first ranks_rem roots by 1.
+  int64_t ranks_per_root = nranks / nroots;
+  int64_t ranks_rem = nranks % nroots;
+
+  std::vector<GlobalDeviceId> roots;
+  roots.reserve(nroots);
+  for (int64_t i = 0; i < nroots; ++i) {
+    if (i < ranks_rem) {
+      roots.push_back(devices()[i * (ranks_per_root + 1)]);
+    } else {
+      roots.push_back(devices()[ranks_rem * (ranks_per_root + 1) +
+                                (i - ranks_rem) * ranks_per_root]);
+    }
   }
-  return absl::StrJoin(devices, separator);
+  return roots;
 }
 
 std::string GpuCliqueKey::ToString() const {
@@ -142,15 +131,15 @@ std::string GpuCliqueKey::ToString() const {
     std::vector<std::string> values;
     values.reserve(participant_groups_.size());
     for (const auto& group : participant_groups_) {
-      values.push_back(absl::StrFormat("[%s]", StrJoinDevices(group)));
+      values.push_back(absl::StrFormat("[%s]", HumanReadableDevices(group)));
     }
     group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
   }
   return absl::StrFormat(
-      "devices=%d:[%s]; is_p2p=%v%s; root=%lld; local_participants=%lld; "
+      "devices=%d:[%s]; is_p2p=%v%s; local_participants=%lld; "
       "incarnations=[%s]",
-      devices().size(), StrJoinDevices(devices()), is_p2p_, group_string,
-      root_device_.value(), num_local_participants_,
+      devices().size(), HumanReadableDevices(devices()), is_p2p_, group_string,
+      num_local_participants_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {
                       absl::StrAppend(out, id.value());
@@ -159,19 +148,19 @@ std::string GpuCliqueKey::ToString() const {
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
   absl::HashState::combine(std::move(state), devices(), participant_groups_,
-                           root_device_, incarnations_);
+                           incarnations_);
 }
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() &&
          a.participant_groups_ == b.participant_groups_ &&
          a.num_local_participants_ == b.num_local_participants_ &&
-         a.root_device_ == b.root_device_ && a.incarnations_ == b.incarnations_;
+         a.incarnations_ == b.incarnations_;
 }
 
 // Constructs a tuple from the clique key for comparison purposes.
 static auto CmpKey(const GpuCliqueKey& key) {
-  return std::make_tuple(key.devices().size(), key.devices(), key.root_device(),
+  return std::make_tuple(key.devices().size(), key.devices(),
                          key.num_local_participants(), key.incarnations());
 }
 

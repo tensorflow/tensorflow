@@ -67,7 +67,7 @@ NvshmemCollectives::InitializeTopology(const Topology& topology) {
   se::gpu::nvshmem::SetEnvInfo(topology.process_id, topology.num_processes,
                                topology.device_count_per_process,
                                topology.kv_store);
-  return [](const CliqueKey&) { return CliqueId(""); };
+  return [](const CliqueKey&) { return CliqueIds(CliqueId("")); };
 }
 
 absl::StatusOr<void*> NvshmemCollectives::Allocate(uint64_t bytes) {

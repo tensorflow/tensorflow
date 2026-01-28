@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
@@ -322,30 +321,13 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     bool synchronized;
   };
 
-  // Check how many roots are needed to initialize the GpuClique
-  static const int64_t nccl_init_rank_per_root_ratio =
-      xla::GetDebugOptionsFromFlags()
-          .xla_gpu_nccl_init_max_rank_per_root_ratio();
-  int64_t nranks = clique_key.num_devices();
-  int64_t nroots = nccl_init_rank_per_root_ratio != 0
-                       ? CeilOfRatio(nranks, nccl_init_rank_per_root_ratio)
-                       : 1;
-
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
       -> absl::StatusOr<LockableGpuClique::Lock> {
     tsl::profiler::TraceMe trace("InitializeGpuClique");
 
-    CliqueIds clique_ids;
-    std::vector<GpuCliqueKey> subkeys = clique_key.GetSubKeys(nroots);
-    for (const auto& subkey : subkeys) {
-      VLOG(5) << absl::StreamFormat(
-          "Get CliqueId for sub clique key %s; nroots=%lld", subkey.ToString(),
-          nroots);
-      TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(subkey));
-      clique_ids.Add(clique_id);
-    }
+    TF_ASSIGN_OR_RETURN(CliqueIds clique_ids, clique_id_callback(clique_key));
 
     // Check that all ranks successfully synchronized device activity before
     // trying to instantiate GPU communicators.
@@ -375,7 +357,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         "[%s] [ranks=%s] Create GPU communicators for clique %v; "
         "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
-        nroots, clique_ids.fingerprint(), peer_access_enabled);
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
 
     ProcessGpuCliques& state = GetProcessGpuCliques();
 
@@ -426,7 +408,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         "[%s] [ranks=%s] Created GPU communicators for clique %v; "
         "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
-        nroots, clique_ids.fingerprint(), peer_access_enabled);
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
 
     // Put constructed clique into the per-process state.
     absl::MutexLock lock(state.mu);
