@@ -4447,10 +4447,8 @@ LogicalResult ScanOp::inferReturnTypeComponents(
 }
 
 LogicalResult ScanOp::verify() {
-  if (getInits().size() != getCarries().size()) {
-    return emitOpError() << "requires the number of inits ("
-                         << getInits().size() << ") and carries ("
-                         << getCarries().size() << ") to be equal";
+  if (getInputs().empty() && getOutputs().empty()) {
+    return emitOpError() << "at least one of inputs or outputs must be present";
   }
 
   // Check that the scan dimension is in bounds for all operands. Also check

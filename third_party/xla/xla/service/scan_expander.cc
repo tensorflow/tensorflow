@@ -39,8 +39,7 @@ namespace {
 
 absl::StatusOr<HloComputation*> BuildConditionComputation(
     HloScanInstruction* scan, const Shape& loop_state_shape) {
-  int64_t scan_dim = scan->scan_dimension();
-  int64_t scan_dim_size = scan->operand(0)->shape().dimensions(scan_dim);
+  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_condition"));
   auto* param = builder.AddInstruction(
@@ -148,7 +147,7 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
   } else {
     num_outputs = 1 - num_carries;
   }
-  int64_t scan_dim_size = inputs[0]->shape().dimensions(scan_dim);
+  TF_ASSIGN_OR_RETURN(int64_t scan_dim_size, scan->GetScanDimSize());
   Shape scalar_shape = ShapeUtil::MakeShape(S64, {});
 
   HloComputation::Builder builder(absl::StrCat(scan->name(), "_body"));

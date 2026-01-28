@@ -894,10 +894,12 @@ class XlaBuilder {
 
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              const XlaComputation& computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
              bool is_reverse = false,
              TriState is_associative = TRI_STATE_UNSPECIFIED);
   XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
              XlaComputationId computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
              bool is_reverse = false,
              TriState is_associative = TRI_STATE_UNSPECIFIED);
 
@@ -1650,10 +1652,12 @@ class XlaBuilder {
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits,
                     const XlaComputation& computation, int64_t scan_dimension,
-                    bool is_reverse, TriState is_associative);
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
+                    TriState is_associative);
   friend XlaOp Scan(absl::Span<const XlaOp> inputs,
                     absl::Span<const XlaOp> inits, XlaComputationId computation,
-                    int64_t scan_dimension, bool is_reverse,
+                    int64_t scan_dimension,
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
                     TriState is_associative);
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
@@ -2792,10 +2796,12 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 // Enqueues a scan instruction onto the computation.
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            const XlaComputation& computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
            bool is_reverse = false,
            TriState is_associative = TRI_STATE_UNSPECIFIED);
 XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
            XlaComputationId computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
            bool is_reverse = false,
            TriState is_associative = TRI_STATE_UNSPECIFIED);
 
