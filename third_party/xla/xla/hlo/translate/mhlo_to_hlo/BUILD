@@ -286,6 +286,18 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "stack_frame_index_builder_test",
+    srcs = ["stack_frame_index_builder_test.cc"],
+    deps = [
+        ":stack_frame_index_builder",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 cc_library(
     name = "translate",
     srcs = ["translate.cc"],
