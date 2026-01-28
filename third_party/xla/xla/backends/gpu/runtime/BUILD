@@ -1978,6 +1978,45 @@ cc_library(
 )
 
 xla_test(
+    name = "collective_metadata_thunk_test",
+    srcs = ["collective_metadata_thunk_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":collective_metadata_thunk",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/core/collectives:rank_id",
+        "//xla/pjrt:worker_thread",
+        "//xla/runtime:device_id",
+        "//xla/service/gpu:gpu_constants",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:collective_kernel_metadata",
+        "//xla/stream_executor/gpu:gpu_init",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "collective_permute_thunk_test",
     srcs = ["collective_permute_thunk_test.cc"],
     backends = ["gpu"],
