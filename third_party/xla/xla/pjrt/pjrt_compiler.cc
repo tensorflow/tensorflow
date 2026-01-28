@@ -74,10 +74,18 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
   absl::ReaderMutexLock l(registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
-  auto it = compiler_registry->find(topology.platform_name());
+  std::string compiler_variant = options.compiler_variant.has_value()
+                                     ? options.compiler_variant.value()
+                                     : "";
+  std::string platform_name =
+      compiler_variant.empty()
+          ? std::string(topology.platform_name())
+          : absl::StrCat(compiler_variant, "_", topology.platform_name());
+  auto it = compiler_registry->find(platform_name);
   if (it == compiler_registry->end()) {
     return absl::NotFoundError(absl::StrCat(
-        "No compiler registered for platform ", topology.platform_name()));
+        "No compiler registered for platform ", topology.platform_name(),
+        " with compiler variant ", compiler_variant));
   }
   return it->second->Compile(std::move(options), computation, topology, client);
 }
@@ -92,10 +100,18 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
   absl::ReaderMutexLock l(registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
-  auto it = compiler_registry->find(topology.platform_name());
+  std::string compiler_variant = options.compiler_variant.has_value()
+                                     ? options.compiler_variant.value()
+                                     : "";
+  std::string platform_name =
+      compiler_variant.empty()
+          ? std::string(topology.platform_name())
+          : absl::StrCat(compiler_variant, "_", topology.platform_name());
+  auto it = compiler_registry->find(platform_name);
   if (it == compiler_registry->end()) {
     return absl::NotFoundError(absl::StrCat(
-        "No compiler registered for platform ", topology.platform_name()));
+        "No compiler registered for platform ", topology.platform_name(),
+        " with compiler variant ", compiler_variant));
   }
   return it->second->Compile(std::move(options), module, topology, client);
 }
