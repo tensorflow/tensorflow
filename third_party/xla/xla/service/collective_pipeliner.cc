@@ -2260,16 +2260,6 @@ absl::Status TransformFormattingOp(
   if (pipelined_map.contains(formatting_op)) {
     return absl::OkStatus();
   }
-  if (!to_add_batch_set.contains(formatting_op) &&
-      formatting_op->opcode() != HloOpcode::kBroadcast) {
-    HloInstruction* cloned_not_to_batch =
-        loop_computation->AddInstruction(formatting_op->CloneWithNewOperands(
-            formatting_op->shape(), collect_operands(formatting_op)));
-    UpdateInstructionChannelId(cloned_not_to_batch, next_channel_id,
-                               update_collective_channel_id);
-    pipelined_map[formatting_op] = cloned_not_to_batch;
-    return absl::OkStatus();
-  }
   if (formatting_op->IsElementwise() ||
       formatting_op->opcode() == HloOpcode::kReshape ||
       formatting_op->opcode() == HloOpcode::kAllReduce ||
@@ -2313,6 +2303,43 @@ absl::Status TransformFormattingOp(
             ComputeFullOutputShape(to_move, formatting_op->shape()),
             operands[0], operands[1], dimensions, formatting_op->to_apply()));
     pipelined_map[formatting_op] = expanded_reduce;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kTranspose) {
+    HloTransposeInstruction* transpose_instruction =
+        Cast<HloTransposeInstruction>(formatting_op);
+    std::vector<int64_t> new_dims(transpose_instruction->dimensions().begin(),
+                                  transpose_instruction->dimensions().end());
+    new_dims.insert(new_dims.begin(), 0);
+    for (int64_t i = 1; i < new_dims.size(); ++i) {
+      ++new_dims[i];
+    }
+    HloInstruction* expanded_transpose =
+        loop_computation->AddInstruction(HloInstruction::CreateTranspose(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op)[0], new_dims));
+    pipelined_map[formatting_op] = expanded_transpose;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kConcatenate) {
+    HloConcatenateInstruction* concat =
+        Cast<HloConcatenateInstruction>(formatting_op);
+    HloInstruction* expanded_concat =
+        loop_computation->AddInstruction(HloInstruction::CreateConcatenate(
+            ComputeFullOutputShape(to_move, formatting_op->shape()),
+            collect_operands(formatting_op),
+            concat->concatenate_dimension() + 1));
+    pipelined_map[formatting_op] = expanded_concat;
+    return absl::OkStatus();
+  }
+  if (!to_add_batch_set.contains(formatting_op) &&
+      formatting_op->opcode() != HloOpcode::kBroadcast) {
+    HloInstruction* cloned_not_to_batch =
+        loop_computation->AddInstruction(formatting_op->CloneWithNewOperands(
+            formatting_op->shape(), collect_operands(formatting_op)));
+    UpdateInstructionChannelId(cloned_not_to_batch, next_channel_id,
+                               update_collective_channel_id);
+    pipelined_map[formatting_op] = cloned_not_to_batch;
     return absl::OkStatus();
   }
   if (formatting_op->opcode() == HloOpcode::kBroadcast) {
@@ -2385,33 +2412,6 @@ absl::Status TransformFormattingOp(
             ComputeFullOutputShape(to_move, formatting_op->shape()),
             new_operands[0], new_operands[1], new_p_config));
     pipelined_map[formatting_op] = expanded_pad;
-    return absl::OkStatus();
-  }
-  if (formatting_op->opcode() == HloOpcode::kTranspose) {
-    HloTransposeInstruction* transpose_instruction =
-        Cast<HloTransposeInstruction>(formatting_op);
-    std::vector<int64_t> new_dims(transpose_instruction->dimensions().begin(),
-                                  transpose_instruction->dimensions().end());
-    new_dims.insert(new_dims.begin(), 0);
-    for (int64_t i = 1; i < new_dims.size(); ++i) {
-      ++new_dims[i];
-    }
-    HloInstruction* expanded_transpose =
-        loop_computation->AddInstruction(HloInstruction::CreateTranspose(
-            ComputeFullOutputShape(to_move, formatting_op->shape()),
-            collect_operands(formatting_op)[0], new_dims));
-    pipelined_map[formatting_op] = expanded_transpose;
-    return absl::OkStatus();
-  }
-  if (formatting_op->opcode() == HloOpcode::kConcatenate) {
-    HloConcatenateInstruction* concat =
-        Cast<HloConcatenateInstruction>(formatting_op);
-    HloInstruction* expanded_concat =
-        loop_computation->AddInstruction(HloInstruction::CreateConcatenate(
-            ComputeFullOutputShape(to_move, formatting_op->shape()),
-            collect_operands(formatting_op),
-            concat->concatenate_dimension() + 1));
-    pipelined_map[formatting_op] = expanded_concat;
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(
@@ -2728,7 +2728,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
       int64_t pipelined_idx = is_output_instruction[original_pipelined];
       HloInstruction* pipelined = loop_computation->AddInstruction(
           HloInstruction::CreateGetTupleElement(new_while, pipelined_idx));
-      // Broadcast loop invariant instructions.
+      // Broadcast loop invariant instructions to match the batched shape.
       if (is_loop_invariant) {
         Shape full_shape = ComputeFullOutputShape(to_move, pipelined->shape());
         absl::InlinedVector<int64_t, 4> operand_dims;
