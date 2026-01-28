@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
