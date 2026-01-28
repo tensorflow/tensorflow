@@ -249,6 +249,7 @@ cc_library(
     name = "gpu_asm_opts",
     hdrs = ["gpu_asm_opts.h"],
     visibility = internal_visibility([
+        "//third_party/py/jax/jaxlib/cuda:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
