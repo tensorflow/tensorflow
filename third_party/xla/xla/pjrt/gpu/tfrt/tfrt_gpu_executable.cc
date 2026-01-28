@@ -347,7 +347,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     VLOG(3) << "device_id: " << device_id;
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
-    device = tsl::down_cast<TfrtGpuDevice*>(pjrt_device);
+    device = absl::down_cast<TfrtGpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
   } else {
     CHECK(device_assignment_ == nullptr);
@@ -431,7 +431,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   donation_clashes.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PjRtBuffer* handle = argument_handles[i];
-    auto* tfrt_buffer = tsl::down_cast<TfrtGpuBuffer*>(handle);
+    auto* tfrt_buffer = absl::down_cast<TfrtGpuBuffer*>(handle);
 
     if (tfrt_buffer->device() != device) {
       return InvalidArgument(
@@ -849,8 +849,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     // Note that NCCL doesn't provide a way to *know* if the collective was
     // aborted, but we conservatively assume it was.
     for (const std::unique_ptr<CliqueKey>& clique_key : clique_keys) {
-      gpu::GpuCliqueKey* gpu_clique_key = CHECK_NOTNULL(
-          tensorflow::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
+      gpu::GpuCliqueKey* gpu_clique_key =
+          CHECK_NOTNULL(absl::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
       if (absl::Status s = CheckCliqueIsntStale(*gpu_clique_key); !s.ok()) {
         VLOG(1) << "GPU clique key " << gpu_clique_key->ToString()
                 << " is stale";
@@ -1041,8 +1041,7 @@ TfrtGpuExecutable::Execute(
       const int device_id = (*device_assignment_)(replica, partition);
       TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                           client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
-      TfrtGpuDevice* gpu_device =
-          tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
+      TfrtGpuDevice* gpu_device = absl::down_cast<TfrtGpuDevice*>(pjrt_device);
 
       VLOG(1) << "Try to run ExecuteHelper for " << name() << " on device "
               << gpu_device->DebugString()
@@ -1157,7 +1156,7 @@ TfrtGpuExecutable::ExecutePortable(
                       ExecuteHelper(argument_handles,
                                     /*replica=*/0,
                                     /*partition=*/0, options, fill_future,
-                                    tsl::down_cast<TfrtGpuDevice*>(device)));
+                                    absl::down_cast<TfrtGpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }

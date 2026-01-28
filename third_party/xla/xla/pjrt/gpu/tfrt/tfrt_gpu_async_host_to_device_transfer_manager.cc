@@ -155,7 +155,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::
       definition_events_(std::move(definition_events)),
       device_shapes_(std::move(device_shapes)),
       device_(device),
-      client_(tsl::down_cast<TfrtGpuClient*>(device_->client())) {
+      client_(absl::down_cast<TfrtGpuClient*>(device_->client())) {
   VLOG(3) << "TfrtGpuAsyncHostToDeviceTransferManager::"
              "TfrtGpuAsyncHostToDeviceTransferManager: this="
           << this << " buffers_.size()=" << buffers_.size();
@@ -187,7 +187,7 @@ absl::Status TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer(
           << this << " buffer_index=" << buffer_index
           << ", device=" << device_->DebugString();
 
-  auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
+  auto* client = absl::down_cast<TfrtGpuClient*>(device_->client());
   DCHECK(client);
 
   TransferManager* transfer_manager =
@@ -259,7 +259,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
           << " is_last_transfer=" << is_last_transfer
           << " device=" << device_->DebugString();
 
-  auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
+  auto* client = absl::down_cast<TfrtGpuClient*>(device_->client());
   DCHECK(client);
 
   HostMemoryAllocator::OwnedPtr staging_buffer;
