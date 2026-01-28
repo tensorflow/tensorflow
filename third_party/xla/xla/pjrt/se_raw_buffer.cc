@@ -266,6 +266,14 @@ void PjRtStreamExecutorRawBuffer::ReadDynamicShape(
   }
 }
 
+absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+PjRtStreamExecutorRawBuffer::RemoveDynamicShapeMetadataIfPresent(
+    const xla::Shape& logical_shape) {
+  // TODO(parkers): This is to match the existing logic, but we probably want to
+  // handle this properly.
+  return tsl::FormRef(this);
+}
+
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
     Promise<> promise, tsl::RCReference<PjRtDeviceEventPromise> device_promise,
     MutableLiteralBase* literal, xla::Shape shape) {
