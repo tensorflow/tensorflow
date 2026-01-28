@@ -68,13 +68,10 @@ std::unique_ptr<CpuTopologyDescription> GetDefaultCpuTopologyDescription() {
   }
 
   return std::make_unique<CpuTopologyDescription>(
-      cpu::PlatformId(), cpu::PlatformName(), cpu::PlatformVersion(),
+      xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
       cpu_topology_devices,
-      DetectMachineAttributes(
-          CpuFeatureFromString(GetDebugOptionsFromFlags().xla_cpu_max_isa()))
-          .features);
+      xla::cpu::TargetMachineOptions(GetDebugOptionsFromFlags()));
 }
-
 TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
   xla::CompileOptions options;
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kProgram));
@@ -120,8 +117,10 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationWithAvx512FeatureOn) {
 
   // Set custom topology.
   auto topology_description = std::make_unique<CpuTopologyDescription>(
-      PlatformId(), PlatformName(), PlatformVersion(), cpu_topology_devices,
-      std::vector<std::string>{"+avx512"});
+      xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+      cpu_topology_devices,
+      xla::cpu::TargetMachineOptions(/*triple=*/"", /*cpu=*/"",
+                                     /*features=*/"+avx512"));
 
   xla::cpu::CpuPjRtCompiler compiler;
   TF_ASSERT_OK_AND_ASSIGN(
