@@ -89,7 +89,7 @@ class RcclIdStore {
 
   absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
                                        RcclCollectives& rccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    auto* gpu_key = absl::down_cast<const GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
     }
@@ -138,7 +138,7 @@ class RcclIdStore {
 //===----------------------------------------------------------------------===//
 
 static ncclComm_t Cast(const Communicator* comm) {
-  auto* rccl_communicator = tsl::down_cast<const RcclCommunicator*>(comm);
+  auto* rccl_communicator = absl::down_cast<const RcclCommunicator*>(comm);
   CHECK(rccl_communicator != nullptr) << "Unsupported XLA communicator";
   return rccl_communicator->comm();
 }
@@ -205,7 +205,7 @@ RcclCollectives::CreateCommunicatorsWithCancel(
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
   if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
@@ -219,7 +219,7 @@ RcclCollectives::CreateCommunicatorsWithCancel(
             << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_ids->fingerprint()
             << "; size(id)=" << clique_ids->data().size();
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
@@ -279,11 +279,11 @@ RcclCollectives::SplitCommunicatorsWithCancel(
   }
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
 
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
@@ -329,7 +329,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   xla::gpu::GpuCollectives* nvshmem_collectives =
-      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+      absl::down_cast<GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
     return absl::InternalError("Failed to get NVSHMEM collectives");
   }
