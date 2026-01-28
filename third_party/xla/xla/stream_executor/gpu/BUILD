@@ -352,20 +352,7 @@ xla_test(
     ],
 )
 
-tsl_gpu_library(
-    name = "gpu_cudamallocasync_allocator_header",
-    hdrs = ["gpu_cudamallocasync_allocator.h"],
-    deps = [
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/framework:allocator",
-        "//xla/tsl/framework:device_id",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:mutex",
-    ],
-)
-
-tsl_gpu_library(
+cc_library(
     name = "gpu_cudamallocasync_allocator",
     srcs = ["gpu_cudamallocasync_allocator.cc"],
     hdrs = ["gpu_cudamallocasync_allocator.h"],
