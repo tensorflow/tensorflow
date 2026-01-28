@@ -4078,10 +4078,11 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["interpreter"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":hlo_cse",
         ":pattern_matcher",
@@ -4095,7 +4096,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
