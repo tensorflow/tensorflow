@@ -186,7 +186,7 @@ message PartitionIdThunkProto {
 
 message CudnnThunkProto {
   string fingerprint = 1;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 2;
+  repeated ShapedSliceProto args = 2;
   repeated bool output_args = 4;
   optional int64 sdpa_dropout_seed = 3;
 }

@@ -37,8 +37,14 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         fingerprint: "fingerprint"
-        args { offset: 123 size: 456 }
-        args { offset: 789 size: 1011 }
+        args {
+          slice { offset: 123 size: 456 }
+          shape { element_type: U8 }
+        }
+        args {
+          slice { offset: 789 size: 1011 }
+          shape { element_type: U8 }
+        }
         output_args: false
         output_args: true
         sdpa_dropout_seed: 123456789

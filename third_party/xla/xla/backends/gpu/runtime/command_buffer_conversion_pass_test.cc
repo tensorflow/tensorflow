@@ -211,7 +211,8 @@ std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {
   BufferAllocation::Slice slice0(&alloc0, 0, 1024);
   return std::make_unique<CuDnnThunk>(
       /*fingerprint=*/"fingeprint", Thunk::ThunkInfo(),
-      /*args=*/std::vector<BufferAllocation::Slice>{slice0},
+      /*args=*/
+      std::vector<ShapedSlice>{{slice0, ShapeUtil::MakeShape(F32, {256})}},
       /*output_args=*/std::vector<bool>{true});
 }
 
