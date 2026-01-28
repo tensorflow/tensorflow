@@ -35,8 +35,8 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::sign<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnaryOp<CPUDevice, functor::sign<int32_t>>);
 #endif
 REGISTER_KERNEL_BUILDER(Name("Sign")
                             .Device(DEVICE_DEFAULT)
