@@ -49,6 +49,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_GetTargetArguments_Args,
 typedef PJRT_Error* PJRT_TpuExecutable_GetTargetArguments(
     PJRT_TpuExecutable_GetTargetArguments_Args* args);
 
+typedef struct PJRT_TpuExecutable_CoreProgramAbiVersion
+    PJRT_TpuExecutable_CoreProgramAbiVersion;
+
+struct PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args {
+  size_t struct_size;
+  const char* serialized_executable;
+  size_t serialized_executable_size;
+
+  const char* abi_version;                                    // out
+  size_t abi_version_size;                                    // out
+  PJRT_TpuExecutable_CoreProgramAbiVersion* abi_version_ptr;  // out
+  void (*abi_version_deleter)(
+      PJRT_TpuExecutable_CoreProgramAbiVersion* args);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args,
+                          abi_version_deleter);
+
+typedef PJRT_Error* PJRT_TpuExecutable_GetCoreProgramAbiVersion(
+    PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args* args);
+
 typedef struct PJRT_TpuExecutable_HloModuleWithConfig
     PJRT_TpuExecutable_HloModuleWithConfig;
 
@@ -73,9 +93,10 @@ typedef struct PJRT_TpuExecutable_Extension {
   PJRT_Extension_Base base;
   PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
   PJRT_TpuExecutable_GetHloModuleWithConfig* get_hlo_module_with_config;
+  PJRT_TpuExecutable_GetCoreProgramAbiVersion* get_core_program_abi_version;
 } PJRT_TpuExecutable_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_Extension,
-                          get_hlo_module_with_config);
+                          get_core_program_abi_version);
 
 #ifdef __cplusplus
 }
