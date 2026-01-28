@@ -194,7 +194,7 @@ std::shared_ptr<HostMemoryAllocator> CreateHostMemoryAllocator(
   allocator_options.unmap_fn = [client](void* data) {
     return client->DmaUnmap(data);
   };
-  return factory(std::move(allocator_options));
+  return factory(std::move(allocator_options)).value();
 }
 
 }  // namespace

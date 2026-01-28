@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/tsl/framework/allocator.h"
 
 namespace xla {
@@ -40,7 +41,8 @@ class HostMemoryAllocator {
   };
 
   using Factory =
-      std::function<std::unique_ptr<HostMemoryAllocator>(Options options)>;
+      std::function<absl::StatusOr<std::unique_ptr<HostMemoryAllocator>>(
+          Options options)>;
 
   struct Deleter {
     void operator()(void* ptr) { deleter(ptr, arg); }
