@@ -24,11 +24,11 @@ namespace xla {
 namespace gpu {
 
 enum class MemorySpaceColor {
-  // Corresponds to stream_executor::MemoryTypes::kDefault or kUnified.
+  // Corresponds to stream_executor::MemorySpace::kDefault or kUnified.
   // This memory can be allocated with any device allocation API.
   kDefault = 0,
 
-  // Corresponds to stream_executor::MemoryTypes::kCollective.
+  // Corresponds to stream_executor::MemorySpace::kCollective.
   // This memory should be allocated with ncclMemAlloc in the runtime.
   kCollective = 1,
 
@@ -36,6 +36,10 @@ enum class MemorySpaceColor {
   // xla_gpu_temp_buffer_use_separate_color is set). This improves cuda-graphs
   // performance. See more details in the corresponding flag description.
   kTempBuffer = 2,
+
+  // Corresponds to stream_executor::MemorySpace::kUnified.
+  // This memory should be allocated in a CPU/GPU unified memory space.
+  kUnified = 3,
 };
 
 BufferAssigner::Colorer CreateColorer(const DebugOptions& option);

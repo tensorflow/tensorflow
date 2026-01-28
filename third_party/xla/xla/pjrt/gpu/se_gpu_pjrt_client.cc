@@ -1489,6 +1489,22 @@ GetStreamExecutorGpuDeviceAllocator(
         /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kCollective);
   }
 
+  // Add allocators for unified memory.
+  for (const auto& ordinal_and_device : addressable_devices) {
+    TF_ASSIGN_OR_RETURN(
+        auto bfc_allocator,
+        CreateBFCAllocator(ordinal_and_device.second->executor(),
+                           /*memory_fraction=*/0.0,
+                           /*preallocate=*/false,
+                           /*gpu_system_memory_size=*/std::nullopt,
+                           /*sub_allocator_alloc_visitors=*/{},
+                           /*sub_allocator_free_visitors=*/{},
+                           /*force_unified_memory=*/true));
+    allocators.emplace_back(
+        std::move(bfc_allocator), ordinal_and_device.second->compute_stream(),
+        /*memory_space=*/(int)xla::gpu::MemorySpaceColor::kUnified);
+  }
+
   for (const auto& ordinal_and_device : addressable_devices) {
     TF_ASSIGN_OR_RETURN(
         auto host_allocator,

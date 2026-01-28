@@ -92,14 +92,18 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
     std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
-    const std::vector<tsl::SubAllocator::Visitor>&
-        sub_allocator_free_visitors) {
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
+    bool force_unified_memory) {
   bool enable_unified_memory;
   absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
                                                 false, &enable_unified_memory);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
                << status.message();
+  }
+
+  if (force_unified_memory) {
+    enable_unified_memory = true;
   }
 
   int device_ordinal = executor->device_ordinal();
@@ -149,7 +153,9 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   opts.allow_growth = !preallocate;
   return std::make_unique<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
-      absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
+      absl::StrCat("GPU_", force_unified_memory ? "unified_" : "",
+                   device_ordinal, "_bfc"),
+      opts);
 }
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.

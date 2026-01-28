@@ -1817,6 +1817,7 @@ cc_library(
         "//xla/service/gpu/transforms:gemv_rewriter",
         "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:layout_assignment",
+        "//xla/service/gpu/transforms:mosaic_collective_metadata_rewriter",
         "//xla/service/gpu/transforms:move_copy_to_users",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
         "//xla/service/gpu/transforms:ragged_all_to_all_canonicalizer",

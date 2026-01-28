@@ -52,7 +52,8 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
     std::optional<int64_t> gpu_system_memory_size,
     const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
-    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors);
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_free_visitors,
+    bool force_unified_memory = false);
 
 // Builds a BFCAllocator for all local GPUs that uses collective memory.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
