@@ -274,6 +274,10 @@ struct RunningOptions {
   // profiling method.
   std::vector<ExecutionProfile>* execution_profiles = nullptr;
 
+  // If true, use random values instead of device id in use_device_id_as_input
+  // mode.
+  bool use_random_val = false;
+
   // Should we log the inputs and outputs to stderr?
   bool log_input_output() const {
     return log_input_output_mode == LogOutputMode::kLogOutput;
