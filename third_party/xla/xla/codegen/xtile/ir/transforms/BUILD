@@ -32,6 +32,7 @@ cc_library(
     name = "passes",
     srcs = [
         "convert_elementwise_0d_tensor_to_scalar_pass.cc",
+        "lower_stablehlo_to_arith.cc",
         "lower_stablehlo_to_xtile.cc",
         "verify_legal_xtile_ops.cc",
     ],

@@ -45,3 +45,13 @@ def StablehloLowerToXtilePass
     "mlir::stablehlo::StablehloDialect",
   ];
 }
+
+def StablehloLowerToArithPass : Pass<"stablehlo-lower-to-arith"> {
+  let summary = "Lowers certain stablehlo ops to arith ops.";
+  let description = [{
+    This pass lowers stablehlo ops to arith ops.
+  }];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+  ];
+}
