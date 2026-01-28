@@ -179,9 +179,6 @@ absl::Status GetBufferAssignment(
       const size_t width = shape.b * shape.w;
       const size_t height = shape.h * DivideRoundUp(shape.c, 4);
       size_t width_pixel_alignment = gpu_info.opencl_info.image_pitch_alignment;
-      if (gpu_info.IsAdreno() && width_pixel_alignment % bytes_per_pixel == 0) {
-        width_pixel_alignment /= bytes_per_pixel;
-      }
       const size_t width_aligned = AlignByN(width, width_pixel_alignment);
       buffer_size = width_aligned * bytes_per_pixel * height;
     } else {
@@ -659,10 +656,6 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
                  : tensor_desc.GetBHWCShape().c);
         size_t width_pixel_alignment =
             gpu_info.opencl_info.image_pitch_alignment;
-        if (gpu_info.IsAdreno() &&
-            width_pixel_alignment % bytes_per_pixel == 0) {
-          width_pixel_alignment /= bytes_per_pixel;
-        }
         RETURN_IF_ERROR(CreateTensorSharedImage2DBuffer(
             *context, shared_buffers_[buffer_index].GetMemoryPtr(), tensor_desc,
             width_pixel_alignment, &shared_buffer_tensors_[tensor_index]));

@@ -278,7 +278,7 @@ void GetPossibleWorkGroups(TuningType tuning_type, const GpuInfo& gpu_info,
   switch (tuning_type) {
     case TuningType::kFast:
       work_groups->push_back(
-          GetWorkGroup(grid, kernel_info.max_work_group_size));
+          GetWorkGroup(grid, std::min(kernel_info.max_work_group_size, gpu_info.GetMaxWorkGroupSizeForX())));
       return;
     case TuningType::kExhaustive: {
       GetWorkGroupsAlignedToGrid(gpu_info, kernel_info, grid, work_groups);
