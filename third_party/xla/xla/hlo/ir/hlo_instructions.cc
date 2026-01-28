@@ -109,21 +109,6 @@ void PrintPrecisionConfig(HloInstruction::AttributePrinter& printer,
   }
 }
 
-std::string ConvKindToString(HloConvolutionInstruction::ConvKind kind) {
-  switch (kind) {
-    case HloConvolutionInstruction::ConvKind::FPROP:
-      return "fprop";
-    case HloConvolutionInstruction::ConvKind::WGRAD:
-      return "wgrad";
-    case HloConvolutionInstruction::ConvKind::DGRAD:
-      return "dgrad";
-    case HloConvolutionInstruction::ConvKind::UNSET:
-      return "unset";
-    default:
-      return absl::StrCat("unknown(", static_cast<int>(kind), ")");
-  }
-}
-
 void SetThreadName(HloComputation* called_computation,
                    absl::string_view execution_thread) {
   called_computation->SetExecutionThread(execution_thread);
@@ -3128,24 +3113,6 @@ void HloConvolutionInstruction::ToProto(HloInstructionProto* proto) const {
   proto->set_feature_group_count(feature_group_count_);
   proto->set_batch_group_count(batch_group_count_);
   *proto->mutable_precision_config() = precision_config_;
-  ConvolutionKind kind = CONVOLUTION_KIND_UNSET;
-  switch (conv_kind_) {
-    case ConvKind::FPROP:
-      kind = CONVOLUTION_KIND_FPROP;
-      break;
-    case ConvKind::DGRAD:
-      kind = CONVOLUTION_KIND_DGRAD;
-      break;
-    case ConvKind::WGRAD:
-      kind = CONVOLUTION_KIND_WGRAD;
-      break;
-    default:
-      kind = CONVOLUTION_KIND_UNSET;
-      break;
-  }
-  if (kind != CONVOLUTION_KIND_UNSET) {
-    proto->set_conv_kind(kind);
-  }
 }
 
 void HloConvolutionInstruction::PrintExtraAttributesImpl(

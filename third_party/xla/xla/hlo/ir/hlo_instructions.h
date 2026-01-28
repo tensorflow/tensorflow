@@ -1956,7 +1956,6 @@ class HloConvolutionInstruction : public HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
-  enum class ConvKind { UNSET, FPROP, WGRAD, DGRAD };
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -1977,9 +1976,6 @@ class HloConvolutionInstruction : public HloInstruction {
   void set_batch_group_count(int64_t num_batch_groups) {
     batch_group_count_ = num_batch_groups;
   }
-
-  ConvKind conv_kind() const { return conv_kind_; }
-  void set_conv_kind(ConvKind conv_kind) { conv_kind_ = conv_kind; }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -2021,8 +2017,6 @@ class HloConvolutionInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
-  // Conv type (fprop, dgrad, wgrad)
-  ConvKind conv_kind_;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {

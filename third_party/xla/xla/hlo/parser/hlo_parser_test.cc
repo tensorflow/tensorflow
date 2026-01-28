@@ -4456,18 +4456,6 @@ TEST(HloParserSingleOpTest, ConvolutionTrivialFeatureGroupCount) {
   EXPECT_EQ(convolution->feature_group_count(), 1);
 }
 
-TEST(HloParserSingleOpTest, ConvolutionWithKind) {
-  const std::string text =
-      R"(%convolution = f32[1,2,1]{2,0,1} convolution(f32[1,2,1]{2,0,1} %copy, f32[1,1,1]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, conv_kind=fprop)";
-  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(text));
-  const HloComputation* computation = module->entry_computation();
-  ASSERT_NE(computation, nullptr);
-  auto* convolution =
-      Cast<HloConvolutionInstruction>(computation->root_instruction());
-  EXPECT_EQ(convolution->conv_kind(),
-            HloConvolutionInstruction::ConvKind::FPROP);
-}
-
 TEST(HloParserSingleOpTest, MultipleOpsProducesError) {
   const std::string text = R"(
     param = f32[2,5,1,3] parameter(0)
