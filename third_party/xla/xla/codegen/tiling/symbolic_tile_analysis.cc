@@ -466,55 +466,70 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   return FusionDecision::Allow();
 }
 
-// Sets a SymbolicTile for each tiled hlo instruction and computes their
-// combined constraints. Returns a FusionDecision if a SymbolicTile cannot be
-// computed for some instruction or if the constraints are unsatisfiable.
-// Returns the combined constraints otherwise.
-std::variant<ConstraintExpression, FusionDecision>
-SetSymbolicTilesAndComputeConstraints(
-    std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
+// Sets a SymbolicTile for a single tiled hlo instruction and computes its
+// constraints. Returns a FusionDecision if a SymbolicTile cannot be
+// computed for some instruction, or constraints if successful.
+FusionDecision SetSymbolicTile(
+    SymbolicTiledHloInstruction* tiled_hlo_instruction,
+    const HloFusionAdaptor& fusion_adaptor) {
+  const HloInstruction* hlo = tiled_hlo_instruction->hlo();
+  const IndexingMap& indexing_map = tiled_hlo_instruction->indexing_map();
+
+  // We first verify some preconditions on the instructions we intend to
+  // codegen. We first check whether an instruction is part of the fusion
+  // adaptor, as `tiled_hlo_instructions` may contain instructions that won't
+  // be codegen'd (the operands to the fusion computation).
+  if (fusion_adaptor.ContainsInstruction(hlo)) {
+    FusionDecision should_proceed =
+        ShouldProceedWithSymbolicTileDerivation(*tiled_hlo_instruction);
+    if (!should_proceed) {
+      return should_proceed;
+    }
+  }
+
+  auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
+  if (!symbolic_tile.has_value()) {
+    return FusionDecision::Forbid("Failed to compute symbolic tile for ")
+           << ToString(indexing_map) << " for HLO " << hlo->ToString();
+  }
+
+  if (!symbolic_tile->is_satisfiable()) {
+    return FusionDecision::Forbid("Symbolic tile ")
+           << symbolic_tile->ToString() << " is not satisfiable for "
+           << ToString(indexing_map) << " for HLO " << hlo->ToString();
+  }
+  tiled_hlo_instruction->set_symbolic_tile(*std::move(symbolic_tile));
+  return FusionDecision::Allow();
+}
+
+// Sets a SymbolicTile for each tiled hlo instruction. Returns a FusionDecision
+// if a SymbolicTile cannot be computed for some instruction.
+FusionDecision SetSymbolicTiles(
+    const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
         tiled_hlo_instructions,
     const HloFusionAdaptor& fusion_adaptor) {
+  for (const std::unique_ptr<SymbolicTiledHloInstruction>&
+           tiled_hlo_instruction : tiled_hlo_instructions) {
+    FusionDecision set_decision =
+        SetSymbolicTile(tiled_hlo_instruction.get(), fusion_adaptor);
+    if (!set_decision) {
+      return set_decision;
+    }
+  }
+  return FusionDecision::Allow();
+}
+
+// Computes combined constraints for a list of tiled hlo instructions, including
+// instructions in regions.
+ConstraintExpression ComputeConstraints(
+    absl::Span<const std::unique_ptr<SymbolicTiledHloInstruction>>
+        tiled_hlo_instructions) {
   ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
   for (const std::unique_ptr<SymbolicTiledHloInstruction>&
            tiled_hlo_instruction : tiled_hlo_instructions) {
-    const HloInstruction* hlo = tiled_hlo_instruction->hlo();
-    const IndexingMap& indexing_map = tiled_hlo_instruction->indexing_map();
-
-    // We first verify some preconditions on the instructions we intend to
-    // codegen. We first check whether an instruction is part of the fusion
-    // adaptor, as `tiled_hlo_instructions` may contain instructions that won't
-    // be codegen'd (the operands to the fusion computation).
-    if (fusion_adaptor.ContainsInstruction(hlo)) {
-      FusionDecision should_proceed =
-          ShouldProceedWithSymbolicTileDerivation(*tiled_hlo_instruction);
-      if (!should_proceed) {
-        return should_proceed;
-      }
-    }
-
-    auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
-    if (!symbolic_tile.has_value()) {
-      return FusionDecision::Forbid("Failed to compute symbolic tile for ")
-             << ToString(indexing_map) << " for HLO " << hlo->ToString();
-    }
-
-    if (!symbolic_tile->is_satisfiable()) {
-      return FusionDecision::Forbid("Symbolic tile ")
-             << symbolic_tile->ToString() << " is not satisfiable for "
-             << ToString(indexing_map) << " for HLO " << hlo->ToString();
-    }
-
-    constraints = constraints && symbolic_tile->constraints();
-    constraints.Simplify();
-
-    if (!constraints.is_satisfiable()) {
-      return FusionDecision::Forbid("Fusion has unsatisfiable constraints");
-    }
-
-    tiled_hlo_instruction->set_symbolic_tile(*std::move(symbolic_tile));
+    constraints =
+        constraints && tiled_hlo_instruction->symbolic_tile().constraints();
   }
-
   return constraints;
 }
 
@@ -1299,12 +1314,16 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
   // Order instructions in def-before-use order.
   SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
 
-  // Set symbolic tiles for each tiled hlo instruction and compute combined
-  // constraints.
-  std::variant<ConstraintExpression, FusionDecision> constraints_or =
-      SetSymbolicTilesAndComputeConstraints(tiled_hlo_instructions, fusion);
-  if (std::holds_alternative<FusionDecision>(constraints_or)) {
-    return std::get<FusionDecision>(constraints_or);
+  // Set symbolic tiles for each tiled hlo instruction.
+  FusionDecision set_tiles_decision =
+      SetSymbolicTiles(tiled_hlo_instructions, fusion);
+  if (!set_tiles_decision) {
+    return set_tiles_decision;
+  }
+  constraints = constraints && ComputeConstraints(tiled_hlo_instructions);
+  constraints.Simplify();
+  if (!constraints.is_satisfiable()) {
+    return FusionDecision::Forbid("Fusion has unsatisfiable constraints");
   }
 
   // Create emitter-specific constraints if a builder was provided.
@@ -1321,9 +1340,8 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
         std::move(*emitter_specific_constraints_applied);
   }
 
-  TilingSpecification tiling_specification = TilingSpecification(
-      std::move(parameter_mapping),
-      constraints && std::get<ConstraintExpression>(std::move(constraints_or)));
+  TilingSpecification tiling_specification =
+      TilingSpecification(std::move(parameter_mapping), std::move(constraints));
 
   return SymbolicTileAnalysis(std::move(tiled_hlo_instructions), root_indexing,
                               std::move(tiling_specification),
