@@ -41,7 +41,7 @@ load(
     "tf_fingerprint_deps",
 )
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
@@ -3660,17 +3660,10 @@ cc_library(
     features = ["-layering_check"],
     local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     deps = if_cuda_or_rocm([
-<<<<<<< HEAD
         "@com_google_absl//absl/container:node_hash_map",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/stream_executor/gpu:gpu_blas_lt",
-=======
-        "@com_google_absl//absl/container:flat_hash_map",
         "@xla//xla:status_macros",
         "@xla//xla:xla_data_proto_cc",
-        "@xla//xla/stream_executor/cuda:cublas_plugin",
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
+        "@xla//xla/stream_executor/gpu:gpu_blas_lt",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",

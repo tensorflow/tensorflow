@@ -120,11 +120,6 @@ COPY release/* tensorflow/tools/ci_build/release/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_patchelf.sh
 RUN /install/install_deb_packages.sh
-<<<<<<< HEAD
-RUN /install/install_bootstrap_deb_packages.sh
-RUN /install/install_pi_python3.9_toolchain.sh
-=======
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 
 SHELL ["/bin/bash", "-c"]
 RUN /install/install_bazel.sh

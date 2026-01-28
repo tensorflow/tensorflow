@@ -1254,15 +1254,9 @@ struct FusedBatchNormGradImplGPU {
 
     std::unique_ptr<functor::CudnnBatchNormAllocatorInTemp<uint8_t>>
         workspace_allocator;
-<<<<<<< HEAD
-    DeviceMemory<uint8>* reserve_space_data_ptr = nullptr;
-    DeviceMemory<uint8> reserve_space_data;
-#if CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
-=======
     stream_executor::DeviceAddress<uint8_t>* reserve_space_data_ptr = nullptr;
     stream_executor::DeviceAddress<uint8_t> reserve_space_data;
-#if CUDNN_VERSION >= 7402
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
+#if CUDNN_VERSION >= 7402 || TF_ROCM_VERSION >= 50100
     if (use_reserved_space) {
       const Tensor& reserve_space = context->input(5);
       workspace_allocator.reset(

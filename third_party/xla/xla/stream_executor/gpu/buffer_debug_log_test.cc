@@ -49,14 +49,9 @@ using ::xla::gpu::ThunkId;
 class BufferDebugLogTest : public ::testing::Test {
  protected:
   void SetUp() override {
-<<<<<<< HEAD
-    TF_ASSERT_OK_AND_ASSIGN(platform_,
-                            PlatformManager::PlatformWithName("ROCM"));
-=======
     auto name = absl::AsciiStrToUpper(
         xla::PlatformUtil::CanonicalPlatformName("gpu").value());
     TF_ASSERT_OK_AND_ASSIGN(platform_, PlatformManager::PlatformWithName(name));
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     TF_ASSERT_OK_AND_ASSIGN(executor_, platform_->ExecutorForDevice(0));
     TF_ASSERT_OK_AND_ASSIGN(stream_, executor_->CreateStream(std::nullopt));
     allocator_ =

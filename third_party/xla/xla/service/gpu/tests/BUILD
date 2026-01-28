@@ -280,14 +280,10 @@ xla_test(
         "gpu_too_many_blocks_test.cc",
     ],
     backends = ["gpu"],
-<<<<<<< HEAD
-=======
     tags = [
-        "cuda-only",
         "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     deps = [
         ":gpu_codegen_test",
         "//xla/hlo/ir:hlo",
@@ -306,14 +302,10 @@ xla_test(
         "swap_conv_operands_test.cc",
     ],
     backends = ["gpu"],
-<<<<<<< HEAD
-=======
     tags = [
-        "cuda-only",
         "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -867,11 +859,7 @@ xla_test(
     name = "dynamic_shared_memory_test",
     srcs = if_cuda_is_configured(["dynamic_shared_memory_test.cc"]),
     backends = ["gpu"],
-<<<<<<< HEAD
     tags = ["cuda-only",],
-=======
-    tags = ["cuda-only"],
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     deps = [
         "//xla:shape_util",
         "//xla:types",
@@ -927,13 +915,9 @@ xla_test(
     backends = ["gpu"],
     shard_count = 15,
     tags = [
-<<<<<<< HEAD
-        "nodebug"],
-=======
         "nodebug",
         "test_migrated_to_hlo_runner_pjrt",
     ],
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",

@@ -45,11 +45,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-<<<<<<< HEAD
-#include "xla/python/ifrt/future.h"
-=======
 #include "xla/python/ifrt/layout.h"
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"

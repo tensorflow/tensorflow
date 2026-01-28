@@ -207,12 +207,6 @@ tsl_pybind_extension(
         "@org_xprof//xprof/convert:tool_options",
         "@org_xprof//xprof/pywrap:profiler_plugin_impl",
         "@pybind11",
-<<<<<<< HEAD
-        "@local_xla//xla/tsl/lib/histogram",
-        "@local_xla//xla/tsl/lib/io:record_writer",
-        "@local_xla//xla/tsl/lib/monitoring:collection_registry",
-        "@local_xla//xla/tsl/lib/monitoring:sampler",
-=======
         "@tsl//tsl/profiler/protobuf:profiler_analysis_proto_cc_impl",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "@tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto_cc_impl",
@@ -251,24 +245,14 @@ tsl_pybind_extension(
         "@xla//xla/tsl/lib/io:record_writer",
         "@xla//xla/tsl/lib/monitoring:collection_registry",
         "@xla//xla/tsl/lib/monitoring:sampler",
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
         "//tensorflow/core:framework_internal_impl",
         "//tensorflow/core/common_runtime/gpu:gpu_id_impl",
         "//tensorflow/core/lib/core:arena",
         "//tensorflow/core/lib/strings:ordered_code",
         "//tensorflow/core/platform:platform_strings",
-<<<<<<< HEAD
-        "@local_tsl//tsl/platform:random",
-        "@local_xla//xla/tsl/platform:resource",
-        "@local_tsl//tsl/profiler/lib:profiler_factory_impl",
-        "@local_tsl//tsl/profiler/lib:profiler_session_impl",
-    ]
-)
-=======
         "@tsl//tsl/platform:random",
         "@xla//xla/tsl/platform:resource",
         "@tsl//tsl/profiler/lib:profiler_factory_impl",
         "@tsl//tsl/profiler/lib:profiler_session_impl",
     ]),
 )
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d

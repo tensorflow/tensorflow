@@ -757,15 +757,11 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-<<<<<<< HEAD
-    tags = ["no_mac",],
-=======
     tags = [
         "no_mac",
         "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     deps = [
         ":support",
         ":test_utils",

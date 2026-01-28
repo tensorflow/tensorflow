@@ -103,16 +103,12 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
-<<<<<<< HEAD
 For CUDA
 
-=======
     - `tensorflow/build:latest-python3.12`
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
 
-<<<<<<< HEAD
 For ROCM
 
     - `rocm/tensorflow-build:latest-python3.10`
@@ -120,10 +116,7 @@ For ROCM
     - `rocm/tensorflow-build:latest-python3.8`
     - `rocm/tensorflow-build:latest-python3.7`
 
-    For this example we'll use `tensorflow/build:latest-python3.9`.
-=======
     For this example we'll use `tensorflow/build:latest-python3.10`.
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 
 3. Pull the container you decided to use.
 

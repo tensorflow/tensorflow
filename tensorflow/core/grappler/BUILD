@@ -80,20 +80,15 @@ tf_cuda_library(
     name = "devices",
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
-<<<<<<< HEAD
-=======
     cuda_deps = [
         "@xla//xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core/platform:stream_executor",
     ],
->>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/log",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
-        "//tensorflow/core/platform:stream_executor",
     ],
 )
 
