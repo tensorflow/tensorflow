@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/debugging/leak_check.h"
 #include "absl/log/log.h"

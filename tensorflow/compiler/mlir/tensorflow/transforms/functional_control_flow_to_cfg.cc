@@ -51,8 +51,8 @@ struct FunctionalControlFlowToCFG
 // Lowers a general tensor argument that is used as a condition to a functional
 // control flow op into an i1 value.
 static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
-  Value zero_d = builder->create<ToBoolOp>(loc, value);
-  Value scalar = builder->create<tensor::ExtractOp>(loc, zero_d);
+  Value zero_d = ToBoolOp::create(*builder, loc, value);
+  Value scalar = tensor::ExtractOp::create(*builder, loc, zero_d);
   return scalar;
 }
 
@@ -72,13 +72,12 @@ static Operation* CallFn(Location loc, const std::function<Value(int)>& get_arg,
     Value val = get_arg(i);
     Type expected = fn_type.getInput(i);
     if (val.getType() != expected) {
-      val =
-          builder->create<TF::CastOp>(loc, expected, val,
-                                      /*Truncate=*/builder->getBoolAttr(false));
+      val = TF::CastOp::create(*builder, loc, expected, val,
+                               /*Truncate=*/builder->getBoolAttr(false));
     }
     operands.push_back(val);
   }
-  return builder->create<func::CallOp>(loc, fn, operands).getOperation();
+  return func::CallOp::create(*builder, loc, fn, operands).getOperation();
 }
 
 // Prepares for jump to the given block by introducing necessary tensor_cast
@@ -96,9 +95,8 @@ static llvm::SmallVector<Value, 4> PrepareValsForJump(
     Value val = get_val(i);
     Type expected = block->getArgument(i).getType();
     if (val.getType() != expected) {
-      val =
-          builder->create<TF::CastOp>(loc, expected, val,
-                                      /*Truncate=*/builder->getBoolAttr(false));
+      val = TF::CastOp::create(*builder, loc, expected, val,
+                               /*Truncate=*/builder->getBoolAttr(false));
     }
     result.push_back(val);
   }
@@ -113,7 +111,7 @@ static llvm::SmallVector<Value, 4> PrepareValsForJump(
 static void JumpToBlock(Location loc, const std::function<Value(int)>& get_arg,
                         Block* block, OpBuilder* builder) {
   auto operands = PrepareValsForJump(loc, get_arg, block, builder);
-  builder->create<cf::BranchOp>(loc, block, operands);
+  cf::BranchOp::create(*builder, loc, block, operands);
 }
 
 // Replaces all uses of the operation results in this block with block
@@ -129,9 +127,8 @@ static void ReplaceOpResultWithBlockArgs(Location loc, Operation* op,
     Value arg = block->getArgument(i);
     Value result = op->getResult(i);
     if (arg.getType() != result.getType()) {
-      arg =
-          builder->create<TF::CastOp>(loc, result.getType(), arg,
-                                      /*Truncate=*/builder->getBoolAttr(false));
+      arg = TF::CastOp::create(*builder, loc, result.getType(), arg,
+                               /*Truncate=*/builder->getBoolAttr(false));
     }
     result.replaceAllUsesWith(arg);
   }
@@ -182,9 +179,9 @@ static LogicalResult LowerIfOp(IfOp op) {
   // Now that we have the then and else blocks, replace the terminator of the
   // orig_block with a conditional branch.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<cf::CondBranchOp>(loc, cond_i1, then_block,
-                                   llvm::ArrayRef<Value>(), else_block,
-                                   llvm::ArrayRef<Value>());
+  cf::CondBranchOp::create(builder, loc, cond_i1, then_block,
+                           llvm::ArrayRef<Value>(), else_block,
+                           llvm::ArrayRef<Value>());
 
   // Finally, delete the op in question.
   op_inst->erase();
@@ -259,8 +256,8 @@ static LogicalResult LowerWhileOp(WhileOp op) {
   Value condition = LowerCondition(loc, cond_call_op->getResult(0), &builder);
   auto br_operands =
       PrepareValsForJump(loc, get_cond_arg, body_block, &builder);
-  builder.create<cf::CondBranchOp>(loc, condition, body_block, br_operands,
-                                   orig_block_tail, br_operands);
+  cf::CondBranchOp::create(builder, loc, condition, body_block, br_operands,
+                           orig_block_tail, br_operands);
 
   // Call body function in the body block and then unconditionally branch back
   // to the condition block.

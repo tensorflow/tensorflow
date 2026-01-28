@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 
 namespace xla::gpu {
 namespace {
@@ -69,6 +71,8 @@ using ::testing::AnyOf;
 using ::testing::Return;
 using ::testing::ReturnRef;
 using ::tsl::proto_testing::EqualsProto;
+
+PLATFORM_DEFINE_ID(kDummyPlatformId, dummy_platform);
 
 DeviceDescription GetDeviceDescription() {
   DeviceDescription device_description;
@@ -160,8 +164,7 @@ class GpuAotCompilationResultTest : public ::testing::Test {
   MockStreamExecutor executor_;
   MockPlatform platform_;
   const std::string platform_name_ = "gpu";
-  stream_executor::Platform::Id platform_id_ =
-      reinterpret_cast<stream_executor::Platform::Id>(123);
+  stream_executor::Platform::Id platform_id_ = kDummyPlatformId;
 };
 
 TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
@@ -173,9 +176,11 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
       GpuAotCompilationResult::FromProto(reference_executable));
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_result,
                           result->SerializeAsString());
+
   GpuExecutableProto deserialized_executable;
-  ASSERT_TRUE(deserialized_executable.ParseFromString(serialized_result))
-      << "Failed to parse serialized result.";
+  ASSERT_OK(ReadSplitProto(
+      std::make_unique<riegeli::StringReader<>>(serialized_result),
+      deserialized_executable));
 
   EXPECT_THAT(deserialized_executable, EqualsProto(reference_executable));
 }

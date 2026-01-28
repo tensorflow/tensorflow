@@ -277,8 +277,8 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
 
   // Create the graph op.
   auto builder = OpBuilder::atBlockBegin(module->getBody());
-  auto graph_op = builder.create<GraphOp>(
-      module->getLoc(), ConvertVersionAttr(ctx_, graph.versions()));
+  auto graph_op = GraphOp::create(builder, module->getLoc(),
+                                  ConvertVersionAttr(ctx_, graph.versions()));
   graph_op.getNodes().push_back(new Block);
 
   // Populate the function op defs.
@@ -334,7 +334,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
     args.reserve(graph.library().function_size());
     for (const FunctionDef &function : graph.library().function()) {
       args.push_back(
-          Argument{builder.create<GraphFuncOp>(unknown_loc_), function});
+          Argument{GraphFuncOp::create(builder, unknown_loc_), function});
     }
     const auto process_func = [&convert_func](Argument &arg) {
       arg.status = convert_func(arg.func, arg.def);
@@ -352,7 +352,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GraphDefImporter::ConvertGraphDef(
   } else {
     // Convert the functions.
     for (const FunctionDef &function : graph.library().function()) {
-      auto func_op = builder.create<GraphFuncOp>(unknown_loc_);
+      auto func_op = GraphFuncOp::create(builder, unknown_loc_);
       TF_RETURN_IF_ERROR(convert_func(func_op, function));
     }
   }
@@ -639,8 +639,8 @@ Status GraphDefImporter::ConvertFunctionDef(
     control_ret_attrs.push_back(b_.getDictionaryAttr(NamedAttribute(
         dialect_->getTfgNameAttrIdentifier(), b_.getStringAttr(control_ret))));
   }
-  builder.create<ReturnOp>(unknown_loc_, return_operands,
-                           b_.getArrayAttr(control_ret_attrs));
+  ReturnOp::create(builder, unknown_loc_, return_operands,
+                   b_.getArrayAttr(control_ret_attrs));
 
   // Finalize the function attributes.
   func_attrs.append(func_op.getArgAttrsAttrName(), b_.getArrayAttr(arg_attrs));

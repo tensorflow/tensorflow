@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
+#include <algorithm>
 #include <climits>
 #include <cmath>
 #include <cstddef>
@@ -82,6 +83,11 @@ bool IsNvtxActivityEvent(const CuptiTracerEvent& event) {
          event.type == CuptiTracerEventType::ThreadMarkerRange;
 }
 
+// Returns true if the event originates from the host or false if it originates
+// from the device. Sets line_id to thread_id for host events and stream_id
+// for device events.
+// NOTE: This function is not called for Environment events, which are handled
+// separately as counters in PerDeviceCollector::Flush.
 bool IsHostEvent(const CuptiTracerEvent& event, int64_t* line_id) {
   // DriverCallback(i.e. kernel launching) events are host events.
   if (event.source == CuptiTracerEventSource::DriverCallback) {
@@ -433,6 +439,12 @@ class PerDeviceCollector {
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
     for (auto& event : events_) {
+      // Environment events are counter-like metrics and handled separately on
+      // counter lines. All other events are processed as trace events on
+      // regular host/device lines.
+      if (event.type == CuptiTracerEventType::Environment) {
+        continue;
+      }
       int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
       if (line_id == CuptiTracerEvent::kInvalidThreadId ||
@@ -453,6 +465,38 @@ class PerDeviceCollector {
       CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
       events_types_per_line[line_id].emplace(event.type);
     }
+
+    // Handle Environment events separately to create counter lines.
+    auto first_env_event = std::partition(
+        events_.begin(), events_.end(), [](const CuptiTracerEvent& event) {
+          return event.type != CuptiTracerEventType::Environment;
+        });
+
+    if (first_env_event != events_.end()) {
+      VLOG(1) << "Processing " << events_.end() - first_env_event
+              << " environment events";
+      XLineBuilder counter_line = device_plane->GetOrCreateCounterLine();
+      for (auto it = first_env_event; it != events_.end(); ++it) {
+        const auto& event = *it;
+        VLOG(3) << "Environment event: " << event.name << " "
+                << event.start_time_ns << " "
+                << event.environment_info.metric_value;
+        // Create a metadata for each metric (e.g., "power_mw", "gpu_temp_c").
+        XEventMetadata* event_metadata =
+            device_plane->GetOrCreateEventMetadata(event.name);
+
+        // Create an event on the counter line.
+        XEventBuilder xevent = counter_line.AddEvent(
+            tsl::profiler::Timespan(
+                tsl::profiler::NanoToPico(event.start_time_ns - start_gpu_ns),
+                0),
+            *event_metadata);
+        xevent.AddStatValue(
+            *device_plane->GetOrCreateStatMetadata(event.name),
+            static_cast<double>(event.environment_info.metric_value));
+      }
+    }
+
     device_plane->ForEachLine([&](XLineBuilder line) {
       // If the line name is already set, we should not override it.
       line.SetNameIfEmpty(

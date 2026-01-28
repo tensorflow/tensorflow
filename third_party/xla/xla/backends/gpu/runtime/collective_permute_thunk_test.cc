@@ -24,9 +24,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -40,6 +40,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -98,6 +100,7 @@ ENTRY test_computation {
 
   const int64_t kElementSize = sizeof(DataT);
   const int64_t kTotalDataBytes = kNumElements * kElementSize;
+  Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});
 
   // Use RoundUpTo to calculate the actual size needed for one buffer.
   const int64_t kAlignedSliceBytes =
@@ -116,8 +119,8 @@ ENTRY test_computation {
   // Use designated initializers if possible, or format for clarity.
   std::vector<CollectiveThunk::Buffer> buffers = {
       {/*element_count=*/kNumElements,
-       /*source_buffer=*/input_slice,
-       /*destination_buffer=*/output_slice,
+       /*source_buffer=*/{input_slice, shape},
+       /*destination_buffer=*/{output_slice, shape},
        /*source_memory_space=*/0,
        /*destination_memory_space=*/0},
   };
@@ -129,14 +132,12 @@ ENTRY test_computation {
   auto cp_start_thunk = std::make_unique<CollectivePermuteStartThunk>(
       Thunk::ThunkInfo{}, cp_instr, /*replica_count=*/2,
       /*partition_count=*/1, std::move(buffers),
-      /*p2p_memcpy_enabled=*/false,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      /*p2p_memcpy_enabled=*/false);
 
   cp_start_thunk->set_async_events(async_events);
 
   auto cp_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kCollectivePermuteDone, Thunk::ThunkInfo{}, async_events,
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      Kind::kCollectivePermuteDone, Thunk::ThunkInfo{}, async_events);
 
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(cp_start_thunk));
@@ -227,7 +228,6 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           async_events_unique_id: 3
           collective_config {}
           p2p_memcpy_enabled: true
-          async_stream_kind: ASYNC_STREAM_KIND_COLLECTIVE
           source_target_pairs: { source: 1 target: 2 }
         }
       )pb");
@@ -267,7 +267,6 @@ TEST(CollectiveThunkTest, SyncCollective) {
         collective_permute_start_thunk {
           collective_config {}
           p2p_memcpy_enabled: true
-          async_stream_kind: ASYNC_STREAM_KIND_COLLECTIVE
           source_target_pairs: { source: 1 target: 2 }
         }
       )pb");

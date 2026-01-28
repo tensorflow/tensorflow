@@ -30,7 +30,7 @@ cc_library(
         ],
     ),
     deps = [
-        "@local_xla//third_party/python_runtime:headers",
         "@robin_map",
+        "@xla//third_party/python_runtime:headers",
     ],
 )

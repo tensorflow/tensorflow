@@ -366,8 +366,9 @@ mlrt::compiler::AsyncOp CreateAsyncOp(
     DCHECK(async_operands.back());
   }
 
-  return builder.create<mlrt::compiler::AsyncOp>(
-      loc, builder.getType<mlrt::compiler::AsyncHandleType>(), async_operands,
+  return mlrt::compiler::AsyncOp::create(
+      builder, loc, builder.getType<mlrt::compiler::AsyncHandleType>(),
+      async_operands,
       mlir::SymbolRefAttr::get(builder.getContext(),
                                GetStreamFunctionName(function_name, stream)));
 }
@@ -395,8 +396,8 @@ mlir::func::FuncOp CreateStreamFunction(
   // The stream function has no result.
   auto func_type = builder.getFunctionType(arg_types, /*results=*/{});
 
-  auto func = builder.create<mlir::func::FuncOp>(
-      loc, GetStreamFunctionName(name, stream), func_type);
+  auto func = mlir::func::FuncOp::create(
+      builder, loc, GetStreamFunctionName(name, stream), func_type);
   func.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
   // Populate the body of the stream function by copying over the operations
@@ -453,8 +454,8 @@ void CreateAllocateFuturesOp(mlir::OpBuilder& builder, Mapping& mapping,
       builder.getType<mlrt::compiler::FutureType>());
 
   if (!stream_info.futures.empty()) {
-    auto allocate_futures = builder.create<tf_mlrt::AllocateFuturesOp>(
-        loc, promise_types, future_types, stream_info.futures.size());
+    auto allocate_futures = tf_mlrt::AllocateFuturesOp::create(
+        builder, loc, promise_types, future_types, stream_info.futures.size());
     for (int i = 0; i < stream_info.futures.size(); ++i) {
       future_mapping.map(stream_info.futures[i],
                          allocate_futures.getFutures()[i]);
@@ -478,8 +479,8 @@ void CreateAllocateFuturesOp(mlir::OpBuilder& builder, Mapping& mapping,
                         builder.getType<mlrt::compiler::FutureType>());
 
     auto allocate_control_futures =
-        builder.create<mlrt::compiler::AllocateControlFuturesOp>(
-            loc, promise_types, future_types,
+        mlrt::compiler::AllocateControlFuturesOp::create(
+            builder, loc, promise_types, future_types,
             stream_info.control_futures.size());
     for (int i = 0; i < stream_info.control_futures.size(); ++i) {
       future_control_mapping[stream_info.control_futures[i]] =
@@ -660,8 +661,9 @@ void ParallelizeBlock(
         } else if (stream_info.futures.contains(operand) &&
                    !value_mapping.contains(operand)) {
           // Insert Await op if it is a future.
-          auto future_value = builder.create<tf_mlrt::TFAwaitOp>(
-              op->getLoc(), operand.getType(), future_mapping.lookup(operand));
+          auto future_value = tf_mlrt::TFAwaitOp::create(
+              builder, op->getLoc(), operand.getType(),
+              future_mapping.lookup(operand));
 
           // Now this future is available in the current stream, so it can be a
           // normal value.
@@ -679,8 +681,8 @@ void ParallelizeBlock(
           if (stream_info.control_futures.contains(control_dep)) {
             if (auto iter = future_control_mapping.find(control_dep);
                 iter != future_control_mapping.end()) {
-              builder.create<mlrt::compiler::AwaitControlOp>(
-                  control_dep->getLoc(), iter->second);
+              mlrt::compiler::AwaitControlOp::create(
+                  builder, control_dep->getLoc(), iter->second);
 
               // Now we no longer need this control dep in this stream.
               future_control_mapping.erase(iter);
@@ -702,17 +704,17 @@ void ParallelizeBlock(
       for (mlir::Value result : op->getResults()) {
         if (stream_info.promises.contains(result)) {
           // Insert Promise op if the result is a promise.
-          builder.create<tf_mlrt::TFPromiseOp>(op->getLoc(),
-                                               promise_mapping.lookup(result),
-                                               value_mapping.lookup(result));
+          tf_mlrt::TFPromiseOp::create(builder, op->getLoc(),
+                                       promise_mapping.lookup(result),
+                                       value_mapping.lookup(result));
         }
       }
 
       if (stream_info.control_promises.contains(op)) {
         // Insert Promise op if this op produce a control dependency to ops in
         // other streams.
-        builder.create<mlrt::compiler::PromiseControlOp>(
-            op->getLoc(), promise_control_mapping[op]);
+        mlrt::compiler::PromiseControlOp::create(builder, op->getLoc(),
+                                                 promise_control_mapping[op]);
       }
 
       // If this op has child streams, insert mlrt.async ops.
@@ -732,7 +734,7 @@ void ParallelizeBlock(
     if (!return_op) {
       DCHECK(!stream_info.IsRoot()) << name << " " << stream->id();
       return_op =
-          builder.create<mlir::func::ReturnOp>(block.getParentOp()->getLoc());
+          mlir::func::ReturnOp::create(builder, block.getParentOp()->getLoc());
     }
 
     // We need to wait for async executions at the end of the stream function,
@@ -740,8 +742,8 @@ void ParallelizeBlock(
     // mlrt.await_handle ops are inserted before the return op.
     builder.setInsertionPoint(return_op);
     for (auto handle : async_handles) {
-      builder.create<mlrt::compiler::AwaitHandleOp>(
-          block.getParentOp()->getLoc(), handle);
+      mlrt::compiler::AwaitHandleOp::create(
+          builder, block.getParentOp()->getLoc(), handle);
     }
   }
 

@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_event.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "third_party/gpus/cuda/include/cuda.h"

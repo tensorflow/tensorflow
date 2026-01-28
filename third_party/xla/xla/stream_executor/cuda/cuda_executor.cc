@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_core_info_table.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/cuda/cuda_memory_allocator.h"
@@ -86,7 +87,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -1234,11 +1235,11 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
             spec.kernel_args_packing()));
   } else {
     const auto& packing_spec =
-        std::get<KernelArgumentsPackingSpec>(spec.kernel_args_packing());
+        std::get<KernelArgsPackingSpec>(spec.kernel_args_packing());
     cuda_kernel->set_args_packing(
         [packing_spec](const Kernel& kernel, const KernelArgs& args) {
           const auto& mem_args = Cast<KernelArgsDeviceAddressArray>(&args);
-          return packing_spec.BuildArguments(mem_args->device_memory_args(),
+          return packing_spec.BuildArguments(mem_args->device_addr_args(),
                                              args.number_of_shared_bytes());
         });
   }
@@ -1329,19 +1330,6 @@ namespace {
 absl::uint128 Fingerprint128(const absl::string_view s) {
   auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
-}
-
-int fpus_per_core(int cc_major, int cc_minor) {
-  // Source:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
-  int n = 128;          // 5.x, 6.1, 6.2, 8.6, 9.0 -> 128.
-  if (cc_major == 3) {  // 3.x -> 192.
-    n = 192;
-  } else if ((cc_major == 6 && cc_minor == 0) || (cc_major == 7) ||
-             (cc_major == 8 && cc_minor == 0)) {
-    n = 64;  // 6.0, 7.x, 8.0 -> 64.
-  }
-  return n;
 }
 
 }  // namespace
@@ -1802,7 +1790,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
 
   int sm_clock_khz =
       GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_CLOCK_RATE, device).value();
-  desc.set_clock_rate_ghz(static_cast<float>(sm_clock_khz) / 1e6);
+  float device_clock_rate_ghz = static_cast<float>(sm_clock_khz) / 1e6;
+  desc.set_clock_rate_ghz(device_clock_rate_ghz);
 
   {
     bool ecc_enabled = false;
@@ -1881,7 +1870,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       GetMaxSharedMemoryPerBlockOptin(device).value());
   int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
-  desc.set_fpus_per_core(fpus_per_core(cc.major, cc.minor));
+  desc.set_fpus_per_core(GetFpusPerCore(cc));
   desc.set_threads_per_core_limit(
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
@@ -1890,6 +1879,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR,
                          device)
           .value());
+
+  FillExecutionUnitDesc(cc, device_clock_rate_ghz, desc);
 
   auto value_or = [](const auto& status_or, auto default_val) {
     if (status_or.ok()) {

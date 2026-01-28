@@ -133,9 +133,8 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<gpu::ShuffleReduceOp> {
     for (int distance = max_distance; distance > 0; distance /= 2) {
       namespace ml = mlir::LLVM;
       auto shuffle_32 = [&](Value v) {
-        return b
-            .create<mlir::gpu::ShuffleOp>(v, distance, warp_size,
-                                          mlir::gpu::ShuffleMode::DOWN)
+        return mlir::gpu::ShuffleOp::create(b, v, distance, warp_size,
+                                            mlir::gpu::ShuffleMode::DOWN)
             .getShuffleResult();
       };
 
@@ -148,44 +147,44 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<gpu::ShuffleReduceOp> {
         int n_shuffles = CeilOfRatio(bit_width, 32);
         auto int_ty = b.getIntegerType(bit_width);
         auto padded_int_ty = b.getIntegerType(n_shuffles * 32);
-        value = b.create<mlir::arith::BitcastOp>(int_ty, value);
-        value = b.create<mlir::arith::ExtUIOp>(padded_int_ty, value);
+        value = mlir::arith::BitcastOp::create(b, int_ty, value);
+        value = mlir::arith::ExtUIOp::create(b, padded_int_ty, value);
         if (n_shuffles > 1) {
           // Don't generate vectors if the size is 1.
           auto vector_type = ml::getVectorType(b.getI32Type(), n_shuffles);
-          value = b.create<ml::BitcastOp>(vector_type, value);
-          Value result_vec = b.create<ml::UndefOp>(vector_type);
+          value = ml::BitcastOp::create(b, vector_type, value);
+          Value result_vec = ml::UndefOp::create(b, vector_type);
           for (int i = 0; i < n_shuffles; ++i) {
-            auto idx = b.create<mlir::arith::ConstantIntOp>(i, 32);
-            result_vec = b.create<ml::InsertElementOp>(
-                result_vec,
-                shuffle_32(b.create<ml::ExtractElementOp>(value, idx)), idx);
+            auto idx = mlir::arith::ConstantIntOp::create(b, i, 32);
+            result_vec = ml::InsertElementOp::create(
+                b, result_vec,
+                shuffle_32(ml::ExtractElementOp::create(b, value, idx)), idx);
           }
-          value = b.create<ml::BitcastOp>(padded_int_ty, result_vec);
+          value = ml::BitcastOp::create(b, padded_int_ty, result_vec);
         } else {
           value = shuffle_32(value);
         }
-        value = b.create<mlir::arith::TruncIOp>(int_ty, value);
-        value = b.create<ml::BitcastOp>(ty, value);
+        value = mlir::arith::TruncIOp::create(b, int_ty, value);
+        value = ml::BitcastOp::create(b, ty, value);
         return value;
       };
 
       auto shuffle = [&](Value value) -> Value {
         if (mlir::isa<mlir::ComplexType>(value.getType())) {
-          return b.create<mlir::complex::CreateOp>(
-              value.getType(),
-              shuffle_int_or_float(b.create<mlir::complex::ReOp>(value)),
-              shuffle_int_or_float(b.create<mlir::complex::ImOp>(value)));
+          return mlir::complex::CreateOp::create(
+              b, value.getType(),
+              shuffle_int_or_float(mlir::complex::ReOp::create(b, value)),
+              shuffle_int_or_float(mlir::complex::ImOp::create(b, value)));
         }
         if (value.getType().isUnsignedInteger()) {
           auto ty = value.getType();
           auto signless_ty = b.getIntegerType(ty.getIntOrFloatBitWidth());
-          value = b.create<mlir::UnrealizedConversionCastOp>(
-                       mlir::TypeRange{signless_ty}, value)
+          value = mlir::UnrealizedConversionCastOp::create(
+                      b, mlir::TypeRange{signless_ty}, value)
                       .getResult(0);
           value = shuffle_int_or_float(value);
-          value = b.create<mlir::UnrealizedConversionCastOp>(
-                       mlir::TypeRange{ty}, value)
+          value = mlir::UnrealizedConversionCastOp::create(
+                      b, mlir::TypeRange{ty}, value)
                       .getResult(0);
           return value;
         }
@@ -196,8 +195,8 @@ struct RewriteShuffleReduce : mlir::OpRewritePattern<gpu::ShuffleReduceOp> {
       for (auto value : values) {
         args.push_back(shuffle(value));
       }
-      values = b.create<PureCallOp>(op.getResultTypes(),
-                                    op.getCombinerAttr().getAttr(), args)
+      values = PureCallOp::create(b, op.getResultTypes(),
+                                  op.getCombinerAttr().getAttr(), args)
                    .getResults();
     }
     rewriter.replaceOp(op, values);
@@ -241,10 +240,10 @@ struct RewriteXlaLoop : mlir::OpRewritePattern<LoopOp> {
                 for (auto result : old_block->getTerminator()->getOperands()) {
                   then_results.push_back(mapping.lookupOrDefault(result));
                 }
-                then_b.create<mlir::scf::YieldOp>(then_results);
+                mlir::scf::YieldOp::create(then_b, then_results);
               },
               [&](OpBuilder& else_b, Location else_loc) {
-                else_b.create<mlir::scf::YieldOp>(loc, iter_args);
+                mlir::scf::YieldOp::create(else_b, loc, iter_args);
               });
           return if_op.getResults();
         });
@@ -276,20 +275,20 @@ struct RewriteInsert : mlir::OpRewritePattern<gpu::InsertOp> {
   mlir::LogicalResult matchAndRewrite(
       gpu::InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto i0 = b.create<mlir::arith::ConstantIndexOp>(0);
-    auto i1 = b.create<mlir::arith::ConstantIndexOp>(1);
-    auto convert =
-        b.create<mlir::UnrealizedConversionCastOp>(
-             getThreadLevelVectorType(op.getSource().getType()), op.getSource())
-            .getResult(0);
+    auto i0 = mlir::arith::ConstantIndexOp::create(b, 0);
+    auto i1 = mlir::arith::ConstantIndexOp::create(b, 1);
+    auto convert = mlir::UnrealizedConversionCastOp::create(
+                       b, getThreadLevelVectorType(op.getSource().getType()),
+                       op.getSource())
+                       .getResult(0);
     // InsertOp's map attribute (op.getMap()) is a mapping from
     //    indexed_vector index -> tensor index.
     // We get indexed_vector index by using its encoding map (source_map).
     // So we loop over indexed_vector encoding map and use the results as the
     // dimensions for InsertOp's map in order to get the final tensor index.
     auto source_map = op.getSource().getType().getIndexingMapAttr();
-    auto loop = b.create<LoopOp>(
-        source_map, op.getIndices(), ValueRange{op.getDest()},
+    auto loop = LoopOp::create(
+        b, source_map, op.getIndices(), ValueRange{op.getDest()},
         [&](OpBuilder&, Location, ValueRange ivs, ValueRange map_results,
             ValueRange iter_args) {
           SmallVector<mlir::OpFoldResult> vector_offset(ivs);
@@ -298,21 +297,21 @@ struct RewriteInsert : mlir::OpRewritePattern<gpu::InsertOp> {
                   op.getSource().getType().getElementType())) {
             vector_offset.insert(vector_offset.begin(), i0.getResult());
             auto real =
-                b.create<mlir::vector::ExtractOp>(convert, vector_offset);
+                mlir::vector::ExtractOp::create(b, convert, vector_offset);
             vector_offset.front() = i1.getResult();
             auto imag =
-                b.create<mlir::vector::ExtractOp>(convert, vector_offset);
-            scalar = b.create<mlir::complex::CreateOp>(complex, real, imag)
+                mlir::vector::ExtractOp::create(b, convert, vector_offset);
+            scalar = mlir::complex::CreateOp::create(b, complex, real, imag)
                          .getResult();
           } else {
-            scalar = b.create<mlir::vector::ExtractOp>(convert, vector_offset)
+            scalar = mlir::vector::ExtractOp::create(b, convert, vector_offset)
                          .getResult();
           }
-          auto tensor_indices = b.create<ApplyIndexingOp>(
-              map_results, ValueRange(), op.getMap().getIndexingMap());
-          Value new_tensor = b.create<mlir::tensor::InsertOp>(
-              scalar, iter_args.back(), tensor_indices.getResults());
-          b.create<YieldOp>(new_tensor);
+          auto tensor_indices = ApplyIndexingOp::create(
+              b, map_results, ValueRange(), op.getMap().getIndexingMap());
+          Value new_tensor = mlir::tensor::InsertOp::create(
+              b, scalar, iter_args.back(), tensor_indices.getResults());
+          YieldOp::create(b, new_tensor);
         });
     rewriter.replaceOp(op, loop->getResults());
 

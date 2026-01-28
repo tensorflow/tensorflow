@@ -361,6 +361,7 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       options.batch_options.max_enqueued_batches();
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
+  pipeline_options->allow_xla_cpu = options.allow_xla_cpu;
 
   return pipeline_options;
 }

@@ -45,11 +45,11 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
 
   ~PjRtCompiler() override = default;
 
-  absl::StatusOr<LoadedExecutableRef> CompileAndLoad(
+  tsl::Future<LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) override;
 
-  absl::StatusOr<ExecutableRef> Compile(
+  tsl::Future<ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) override;
 
@@ -59,7 +59,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
     return absl::UnimplementedError("Not implemented");
   }
 
-  absl::StatusOr<LoadedExecutableRef> DeserializeLoadedExecutable(
+  tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) override;
 

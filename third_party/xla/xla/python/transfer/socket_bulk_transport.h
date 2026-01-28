@@ -158,6 +158,10 @@ class RecvThreadState {
   static std::shared_ptr<RecvThreadState> Create(
       std::optional<SlabAllocator> allocator, SlabAllocator uallocator);
 
+  std::unique_ptr<tsl::Thread> BlockingShutdown() {
+    return std::move(recv_thread_);
+  }
+
  private:
   RecvThreadState(std::optional<SlabAllocator> allocator,
                   SlabAllocator uallocator);

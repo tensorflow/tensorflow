@@ -145,10 +145,8 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   }
   std::unique_ptr<CoordinationService> EnableCoordinationService() {
     CoordinationService::Config config;
-    CoordinatedJob job;
-    job.set_name(kJobName);
-    job.set_num_tasks(2);
-    config.coordinated_job_list.push_back(job);
+    config.job_name = kJobName;
+    config.num_tasks = 2;
     return std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
   void InitializeAndConnectCoordinationAgents() {

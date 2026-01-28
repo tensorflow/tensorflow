@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -47,6 +48,9 @@ limitations under the License.
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -1087,6 +1091,23 @@ TEST_F(ClientServerTest, KeyValueTryGet) {
   auto result = client->KeyValueTryGet("test_key");
   TF_ASSERT_OK(result.status());
   EXPECT_EQ(result.value(), "value");
+}
+
+TEST_F(ClientServerTest, AsyncKeyValueGet) {
+  StartService(/*num_nodes=*/1);
+  auto client = GetClient(/*node_id=*/0);
+  ASSERT_OK(client->Connect());
+
+  auto [promise, future] = tsl::MakePromise<std::string>();
+  tsl::CoordinationServiceAgent::StatusOrValueCallback callback =
+      [promise = std::move(promise).ToShared()](
+          const absl::StatusOr<std::string>& result) { promise->Set(result); };
+  std::shared_ptr<tsl::CallOptions> call_options =
+      client->AsyncKeyValueGet("test_key", callback);
+
+  ASSERT_OK(client->KeyValueSet("test_key", "value"));
+  ASSERT_OK_AND_ASSIGN(std::string result, future.Await());
+  EXPECT_EQ(result, "value");
 }
 
 TEST_F(ClientServerTest, KeyValueIncrement) {

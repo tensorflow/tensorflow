@@ -138,8 +138,8 @@ LogicalResult LiftVariablesFromSession(
     }
     ElementsAttr tensor_attr = tensor_attr_or.value();
 
-    builder.create<tf_saved_model::GlobalTensorOp>(
-        NameLoc::get(builder.getStringAttr(name.str())),
+    tf_saved_model::GlobalTensorOp::create(
+        builder, NameLoc::get(builder.getStringAttr(name.str())),
         builder.getStringAttr(name), tensor_attr,
         TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr());
   }

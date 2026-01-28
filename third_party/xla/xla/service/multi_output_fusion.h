@@ -108,7 +108,6 @@ class MultiOutputFusion : public HloModulePass {
   HloComputation* computation() const { return computation_; }
 
   // An internal data structure for each instruction in current computation.
-  // When an instruction is removed, member 'hlo' is set to nullptr.
   struct FusionCandidate {
     HloInstruction* hlo;
     std::list<std::pair<HloInstruction*, int64_t>> fusibles;
@@ -219,14 +218,15 @@ class MultiOutputFusion : public HloModulePass {
   }
 
   bool is_fused(HloInstruction* instr) {
-    return candidates_[get_candidate_id(instr)].hlo == nullptr;
+    return fused_instructions_.contains(instr);
   }
 
   void set_is_fused(HloInstruction* instr) {
-    candidates_[get_candidate_id(instr)].hlo = nullptr;
+    fused_instructions_.insert(instr);
   }
 
   std::vector<FusionCandidate> candidates_;
+  absl::flat_hash_set<const HloInstruction*> fused_instructions_;
   WorkList worklist_;
 
   // A map that maps an instruction to the index_.

@@ -113,7 +113,7 @@ mlir::LogicalResult rewriteManualComputation(
   if (!resultTypes.empty()) {
     // Same as above, a result of `sdy.manual_computation` can have a
     // dimension of size 0, in which case, the corresponding result of
-    // `@local_xla.sdy.manual_computation_body` call would be replaced with a
+    // `@xla.sdy.manual_computation_body` call would be replaced with a
     // constant. Therefore, we check the first use rather than first result.
     CHECK(!callOp->use_empty());
     localToGlobalShape = mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
@@ -222,7 +222,7 @@ class SdyRoundTripShardMapImportPass
     //
     // NOTE: In addition to the ones that were used by calls, at this point,
     // there may be stray `xla.sdy.GlobalToLocalShape` and
-    // `xla.sdy.LocalToGlobalShape`, if the `@local_xla.sdy.manual_computation_body`
+    // `xla.sdy.LocalToGlobalShape`, if the `@xla.sdy.manual_computation_body`
     // call was eliminated through DCE and the custom call uses were replaced
     // with constants as they had 0 elements, then it's safe to erase.
     module->walk([](CustomCallOp op) {
@@ -244,7 +244,7 @@ class SdyRoundTripShardMapImportPass
   }
 
   StringRef getDescription() const override {
-    return "converts a CallOp calling a @local_xla.sdy.manual_computation_body func "
+    return "converts a CallOp calling a @xla.sdy.manual_computation_body func "
            "with in/out shardings and manual axes as frontend attrs, wrapped "
            "with a pair of `CustomCallOps` that change the shape of the "
            "arguments/results, to a ManualComputationOp";

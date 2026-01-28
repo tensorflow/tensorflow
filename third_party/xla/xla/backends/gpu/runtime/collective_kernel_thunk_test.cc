@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -41,6 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
@@ -156,6 +159,7 @@ struct CollectiveKernelThunkMetadata {
 CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
     int num_devices, int num_elements, bool is_multimem_enabled, bool use_ptx) {
   const int64_t input_size_bytes = num_elements * sizeof(uint64_t);
+  Shape input_shape = ShapeUtil::MakeShape(U64, {num_elements});
   ReplicaGroup replica_group;
 
   for (int device_number = 0; device_number < num_devices; ++device_number) {
@@ -181,8 +185,8 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
                                        aligned_input_size_bytes,
                                        aligned_input_size_bytes);
   result.buffers = {{/*element_count=*/num_elements,
-                     /*source_buffer=*/input_slice,
-                     /*destination_buffer=*/output_slice,
+                     /*source_buffer=*/{input_slice, input_shape},
+                     /*destination_buffer=*/{output_slice, input_shape},
                      /*source_memory_space=*/0,
                      /*destination_memory_space=*/0}};
   Thunk::ThunkInfo thunk_info;
@@ -280,9 +284,11 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
   CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(buffer_allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor,
-                                      &buffer_allocations};
+                                      &memory_requests,   &multimem_registry,
+                                      executor,           &buffer_allocations};
+
   TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
 
   TF_RETURN_IF_ERROR(multimem_registry.Build());
@@ -328,7 +334,7 @@ RunCollectiveKernelThunkOnDevices(CollectiveKernelThunkMetadata& metadata,
   std::vector<tsl::Future<se::DeviceAddressBase>> futures;
   for (int device_number = 0; device_number < metadata.num_devices;
        ++device_number) {
-    futures.push_back(tsl::Future<se::DeviceAddressBase>::MakeOn(
+    futures.push_back(tsl::MakeFutureOn<se::DeviceAddressBase>(
         *thread_pool.AsExecutor(),
         [&metadata, device_number, emulate_multiprocess] {
           return RunCollectiveKernelThunk(metadata,

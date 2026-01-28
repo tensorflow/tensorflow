@@ -59,10 +59,10 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
         "@shardy//shardy/common:file_utils",
         "@shardy//shardy/dialect/sdy/transforms/common:propagation_options",
         "@shardy//shardy/dialect/sdy/transforms/propagation:passes",
+        "@tsl//tsl/platform:path",
     ],
 )
 

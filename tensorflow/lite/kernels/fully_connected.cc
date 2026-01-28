@@ -517,7 +517,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   const bool is_hybrid =
       (input->type == kTfLiteFloat32 &&
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
-        filter->type == kTfLiteInt4));
+        filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
     // Use optimized implementation for 4bit
@@ -759,6 +759,13 @@ TfLiteStatus EvalHybridDense(
     tflite::tensor_utils::UnpackPackedIntToInt8(
         GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
         /*bit_width=*/4, unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else if (filter->type == kTfLiteInt2) {
+    const size_t bytes_unpacked = filter->bytes * 4;
+    unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+    tflite::tensor_utils::UnpackPackedIntToInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        /*bit_width=*/2, unpacked_filter_data.get());
     filter_data = unpacked_filter_data.get();
   } else {
     filter_data = GetTensorData<int8_t>(filter);

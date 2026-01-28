@@ -31,12 +31,12 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.pb.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/ffi/attribute_map.h"
@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
@@ -61,7 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -119,7 +120,8 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
     return DeserializeThunkProto(thunk_proto, fake_allocations_span,
                                  /*hlo_module*/ nullptr,
-                                 /*platform_name=*/"TEST_PLATFORM");
+                                 /*platform_name=*/"TEST_PLATFORM",
+                                 /*gpu_compute_capability=*/{});
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -302,7 +304,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {lhs, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
@@ -488,7 +490,7 @@ TEST_F(DynamicSliceThunkTest, MultipleSlicedOperandsGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({lhs, rhs, out, workspace, lhs_offset_0,
                                  lhs_offset_1, rhs_offset_0, rhs_offset_1},
                                 0, &allocator);
@@ -590,7 +592,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_offsets{
@@ -636,7 +639,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {src, dst, offset_0, offset_1, offset_2, offset_3}, 0, &allocator);
 
@@ -750,7 +753,8 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
@@ -825,7 +829,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {src, dst, src_offset_0, src_offset_1, src_offset_2, src_offset_3,
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
@@ -1011,7 +1015,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {workspace, lhs, out, rhs, lhs_offset_0, lhs_offset_1}, 0, &allocator);
 
@@ -1183,7 +1187,7 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {workspace, /*garbage, to be ignored*/ se::DeviceAddressBase(), out, rhs,
        lhs_offset_0, lhs_offset_1, /*garbage, to be ignored*/ rhs, lhs},
@@ -1350,7 +1354,7 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {lhs_whole_buffer, rhs, out, workspace, lhs_offset_0, lhs_offset_1}, 0,
       &allocator);
@@ -1458,7 +1462,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       CustomCallThunk::Create(Thunk::ThunkInfo(), "__xla_test$$memcpy",
                               registration.bundle, operands, results,
                               /*attributes=*/ffi::AttributesMap(),
-                              /*called_computation=*/nullptr));
+                              /*called_computation=*/nullptr,
+                              /*gpu_compute_capability=*/{}));
 
   // Wrapping dynamic slice thunk around the custom call thunk.
   std::vector<DynamicSliceThunk::Offset> slice_src_offsets{
@@ -1535,7 +1540,7 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(
       {src, dst, src_offset_0, src_offset_1, src_offset_2, src_offset_3,
        dst_offset_0, dst_offset_1, dst_offset_2, dst_offset_3},
@@ -1726,7 +1731,7 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
 
   // Preparing parameters for thunk execution.
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations({buffer, workspace, lhs_offset_0, lhs_offset_1},
                                 0, &allocator);
 
@@ -1947,16 +1952,20 @@ TEST_F(DynamicSliceThunkTest,
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
-  CollectiveCliqueRequests clique_requests;
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
-  se::StreamExecutorMemoryAllocator allocator(executor);
+
+  stream_executor::StreamExecutorAddressAllocator allocator(executor);
   BufferAllocations allocations(/*buffers=*/{lhs, rhs, out, workspace},
                                 /*device_ordinal=*/executor->device_ordinal(),
                                 /*memory_allocator=*/&allocator);
+
+  CollectiveCliqueRequests clique_requests;
+  CollectiveMemoryRequests memory_requests(allocations);
+  CollectiveMultimemRegistry multimem_registry(
+      executor, collective_params.global_device_id);
+
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &multimem_registry, executor,
-                                      &allocations};
+                                      &memory_requests,   &multimem_registry,
+                                      executor,           &allocations};
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, /*buffer_allocations=*/allocations, stream.get(),

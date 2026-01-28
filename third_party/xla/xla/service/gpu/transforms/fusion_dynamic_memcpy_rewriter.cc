@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/codegen/copy.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"

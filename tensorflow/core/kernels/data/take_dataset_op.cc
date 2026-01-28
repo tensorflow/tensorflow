@@ -66,7 +66,7 @@ const std::vector<PartialTensorShape>& TakeDataset::output_shapes() const {
   return input_->output_shapes();
 }
 
-string TakeDataset::DebugString() const {
+std::string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
@@ -93,7 +93,7 @@ absl::Status TakeDataset::CheckExternalState() const {
   return input_->CheckExternalState();
 }
 
-absl::Status TakeDataset::Get(OpKernelContext* ctx, int64 index,
+absl::Status TakeDataset::Get(OpKernelContext* ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
   TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
   return input_->Get(ctx, index, out_tensors);
@@ -211,7 +211,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 std::unique_ptr<IteratorBase> TakeDataset::MakeIteratorInternal(
-    const string& prefix) const {
+    const std::string& prefix) const {
   if (count_ == 0) {
     return std::make_unique<EmptyIterator>(EmptyIterator::Params{
         this, name_utils::IteratorPrefix(kEmptyTake, prefix)});

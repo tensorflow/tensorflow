@@ -170,10 +170,10 @@ TEST(AutotuneSerializeTest, VersionControl) {
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));
 
   ResetAutotuneMaps();
-  EXPECT_THAT(
-      LoadSerializedAutotuneMaps(serialized_string),
-      StatusIs(error::ABORTED,
-               HasSubstr("Aborted because the loaded autotune results")));
+  EXPECT_THAT(LoadSerializedAutotuneMaps(serialized_string),
+              absl_testing::StatusIs(
+                  error::ABORTED,
+                  HasSubstr("Aborted because the loaded autotune results")));
   EXPECT_EQ(ConvAutotuneMap::GetInstance()->GetMap().size(), 0);
 }
 }  // namespace

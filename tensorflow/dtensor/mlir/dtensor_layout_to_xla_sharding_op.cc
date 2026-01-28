@@ -117,7 +117,7 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
             layout_op.getInput(),
             /*sharding=*/builder.getStringAttr(""),  // Not used by tf2xla.
             /*_xlaSharding=*/sharding_attr,
-            /*_xla_sharding_v2=*/builder.getStringAttr(""));
+            /*_XlaShardingV2=*/builder.getStringAttr(""));
         layout_op.getOutput().replaceAllUsesWith(sharding_op);
         layout_op.erase();
         return mlir::WalkResult::advance();

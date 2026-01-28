@@ -30,7 +30,7 @@ cc_library(
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:status_macros",
+        "@xla//xla:status_macros",
     ],
 )
 
@@ -81,7 +81,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/service:hlo_proto_cc",
+        "@xla//xla/service:hlo_proto_cc",
     ],
 )
 

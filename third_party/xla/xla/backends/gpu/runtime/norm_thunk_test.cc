@@ -82,7 +82,11 @@ TEST(NormThunkTest, ProtoRoundTrip) {
           }
           is_dynamic_dimension: [ false, false ]
         }
-        scratch_size: 1024
+        scratch_shape: {
+          element_type: S8
+          dimensions: 1024
+          is_dynamic_dimension: false
+        }
       }
       x { offset: 0 size: 24 buffer_allocation_index: 0 }
       scale { offset: 0 size: 12 buffer_allocation_index: 1 }

@@ -35,7 +35,7 @@ extern "C" {
 // CrossHostSendBuffers and CrossHostReceiveBuffers. These methods allow PjRt
 // clients to implement various optimizations for cross-host transfers.
 
-#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 4
+#define PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 5
 
 // ---------------------------------- Methods ----------------------------------
 
@@ -139,8 +139,11 @@ struct PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_Buffer* buffer;
-  const char* serialized_descriptor;
-  size_t serialized_descriptor_size;
+  // `PJRT_Buffer_CopyToRemoteDevice` is responsible for freeing the event.
+  PJRT_Event* event;
+  // The lifetime of the descriptor data extends until the event is set.
+  char** serialized_descriptor;
+  size_t* serialized_descriptor_size;
   PJRT_Transfers_CrossHostRemoteSendCallbackInfo on_done;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args,

@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -71,18 +71,18 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
     se::Stream* definition_stream;
   };
 
-  explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
-      : thread_pool_(thread_pool),
+  explicit BufferSequencingEvent(AsyncWorkRunner* async_work_runner)
+      : async_work_runner_(async_work_runner),
         event_(tsl::MakeUnconstructedAsyncValueRef<EventState>()) {}
 
-  explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool,
+  explicit BufferSequencingEvent(AsyncWorkRunner* async_work_runner,
                                  tsl::AsyncValueRef<EventState> event)
-      : thread_pool_(thread_pool), event_(event) {}
+      : async_work_runner_(async_work_runner), event_(event) {}
 
   static tsl::AsyncValueRef<BufferSequencingEvent> Create(
-      tsl::thread::ThreadPool* thread_pool) {
+      AsyncWorkRunner* async_work_runner) {
     return tsl::MakeConstructedAsyncValueRef<BufferSequencingEvent>(
-        thread_pool);
+        async_work_runner);
   }
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
@@ -164,7 +164,7 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // at the tail of the queue, i.e., for any newly enqueued command.
   absl::InlinedVector<se::Stream*, 2> streams_defined_on_ ABSL_GUARDED_BY(mu_);
 
-  tsl::thread::ThreadPool* thread_pool_;
+  AsyncWorkRunner* async_work_runner_;
 
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.

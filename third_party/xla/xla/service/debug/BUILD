@@ -94,6 +94,8 @@ xla_test(
         "h100",
         "b200",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         "//xla:xla_proto_cc",
         "//xla/hlo/parser:hlo_parser",

@@ -117,6 +117,6 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:status_matchers",
     ],
 )

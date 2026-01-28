@@ -12,10 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#include <new>
+#include <string>
+#include <vector>
 
 #include "absl/base/internal/sysinfo.h"
+#include "absl/base/no_destructor.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
 #include "xla/tsl/platform/types.h"
@@ -65,10 +68,35 @@ limitations under the License.
 #include <cxxabi.h>
 #endif
 
+namespace {
+absl::Time GetStartupTime() {
+  static absl::Time start_up_time = absl::Now();
+  return start_up_time;
+}
+}  // namespace
+
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+namespace {
+std::vector<std::string>& GetArgvsStorage() {
+  static absl::NoDestructor<std::vector<std::string>> g_argvs;
+  return *g_argvs;
+}
+}  // namespace
+
+void InitMain(const char* usage, int* argc, char*** argv) {
+  GetArgvsStorage().assign(*argv, *argv + *argc);
+  GetStartupTime();
+}
+
+absl::Duration GetUptime() { return absl::Now() - GetStartupTime(); }
+
+const std::vector<std::string>& GetArgvs() { return GetArgvsStorage(); }
+
+const char* GetArgv0() {
+  return GetArgvsStorage().empty() ? "" : GetArgvsStorage().front().c_str();
+}
 
 std::string Hostname() {
   char hostname[1024];

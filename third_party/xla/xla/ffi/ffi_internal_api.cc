@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_structs.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -156,12 +157,38 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_memory_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_memory_requests = gpu->collective_memory_requests;
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
     XLA_FFI_ExecutionContext* ctx, void** collective_clique) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
     *collective_clique = const_cast<xla::gpu::CollectiveCliques*>(  // NOLINT
         gpu->collective_cliques);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
+    XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *gpu_compute_capability =
+        const_cast<stream_executor::GpuComputeCapability*>(  // NOLINT
+            gpu->gpu_compute_capability);
     return nullptr;
   }
 
@@ -188,7 +215,9 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
       XLA_FFI_INTERNAL_CollectiveParams_Get,
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
+      XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
       XLA_FFI_INTERNAL_CollectiveCliques_Get,
+      XLA_FFI_INTERNAL_GpuComputeCapability_Get,
   };
 
   return &internal_api;

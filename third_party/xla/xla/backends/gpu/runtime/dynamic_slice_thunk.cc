@@ -241,7 +241,7 @@ absl::Status DynamicSliceThunk::Prepare(const PrepareParams& params) {
 
   TF_RETURN_IF_ERROR(embedded_thunk_->Prepare(params));
 
-  if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
     Indvar(this) =
         HloEvaluator()
             .Evaluate(
@@ -287,7 +287,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   int64_t* offsets_alloc = [&] {
     absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
-        offsets_allocs_.at(stream.parent())->opaque());
+        offsets_allocs_.at(stream.parent())->address().opaque());
   }();
 
   auto offset_value = [&](int64_t arg_idx, int64_t offset_idx) -> int64_t& {
@@ -421,7 +421,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Execute the underlying custom call thunk with the new buffers.
   TF_RETURN_IF_ERROR(embedded_thunk_->ExecuteOnStream(new_params));
 
-  if (offset_as_function_of_indvar_metadata_ != std::nullopt) {
+  if (offset_as_function_of_indvar_metadata_.has_value()) {
     Indvar(this) =
         HloEvaluator()
             .Evaluate(*offset_as_function_of_indvar_metadata_->indvar_update,

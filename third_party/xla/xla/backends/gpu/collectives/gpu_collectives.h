@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -29,14 +28,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/executable_run_options.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -53,6 +53,25 @@ class GpuCollectives : public Collectives {
   // A callback to get a unique clique id.
   using CliqueIdCallback =  // NOLINT
       std::function<absl::StatusOr<CliqueId>(const CliqueKey&)>;
+
+  // Topology describes how exactly the current process fits into the collection
+  // of distributed processes, and based on this information the underlying
+  // collective communication library can set up communication channels between
+  // all devices.
+  struct Topology {
+    ProcessId process_id;
+    size_t num_processes;
+    size_t device_count_per_process;
+    std::shared_ptr<KeyValueStoreInterface> kv_store;
+    absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
+  };
+
+  // Initializes the collectives backend with the provided topology information
+  // and returns a callback that will generate unique ids for the cliques if
+  // topology spans multiple processes and clique id generation requires
+  // multi-process coordination. For local toplogies returns a nullptr callback.
+  virtual absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) = 0;
 
   // GPU collectives device is just a wrapper around the StreamExecutor.
   class Device : public Collectives::Device {
@@ -106,7 +125,7 @@ class GpuCollectives : public Collectives {
                                 const std::optional<CliqueIds>& clique_ids,
                                 absl::Span<const DeviceRank> ranks,
                                 const Collectives::Config& config,
-                                std::atomic_bool* cancel) {
+                                std::shared_ptr<CancellationToken> cancel) {
     // By default, we ignore cancel.
     return CreateCommunicators(clique_key, clique_ids, ranks, config);
   }
@@ -117,7 +136,7 @@ class GpuCollectives : public Collectives {
                                int32_t color, absl::Span<const RankId> keys,
                                const Collectives::Config& config,
                                absl::Span<const DeviceRank> ranks,
-                               std::atomic_bool* cancel) {
+                               std::shared_ptr<CancellationToken> cancel) {
     // By default, we ignore cancel.
     return SplitCommunicators(comms, color, keys, config, ranks);
   }
@@ -125,13 +144,8 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives are implemented.
   virtual bool IsImplemented() const = 0;
 
-  // Returns true if collectives backend uses global config.
-  virtual bool IsGlobalConfig() const = 0;
-
-  // Returns a clique id callback passed as an argument if it's not null or a
-  // default callback to get create a clique id if we are running in local mode.
-  virtual absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) = 0;
+  // Returns true if GPU collectives support device-initiated communication.
+  virtual bool SupportsDeviceComm() const { return false; }
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
@@ -143,18 +157,6 @@ class GpuCollectives : public Collectives {
   virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
 
   virtual absl::Status Deallocate(void* buffer) = 0;
-
-  struct Topology {
-    int32_t node_id;
-    int32_t num_nodes;
-    size_t device_count_per_process;
-    std::shared_ptr<KeyValueStoreInterface> kv_store;
-    absl::flat_hash_map<GlobalDeviceId, int32_t> device_id_to_node_id;
-    gpu::GpuExecutableRunOptions* gpu_executable_run_options;
-  };
-
-  // Initializes the topology information for the collectives backend.
-  virtual absl::Status InitializeTopology(Topology topology) = 0;
 
   // Creates a single communicator.
   virtual absl::StatusOr<std::unique_ptr<Communicator>>

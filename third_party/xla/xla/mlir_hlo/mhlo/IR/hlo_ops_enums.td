@@ -282,5 +282,4 @@ def MHLO_ResultAccuracyModeAttr : EnumAttr<MHLO_Dialect, MHLO_ResultAccuracyMode
   let assemblyFormat = "`<` $value `>`";
 }
 
-
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ENUMS

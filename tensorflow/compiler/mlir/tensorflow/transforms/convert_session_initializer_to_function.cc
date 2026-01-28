@@ -57,8 +57,8 @@ void ConvertSessionInitializerToFunctionPass::runOnOperation() {
     return;
   }
 
-  auto init = builder.create<func::FuncOp>(
-      module.getLoc(), name,
+  auto init = func::FuncOp::create(
+      builder, module.getLoc(), name,
       FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{}));
 
   // Make savedmodel verification happy.
@@ -80,11 +80,11 @@ void ConvertSessionInitializerToFunctionPass::runOnOperation() {
     func->removeAttr("tf_saved_model.exported_names");
 
     ArrayRef<Value> args;
-    builder.create<func::CallOp>(session_initializer.getLoc(),
-                                 func.getFunctionType().getResults(),
-                                 func.getSymName(), args);
+    func::CallOp::create(builder, session_initializer.getLoc(),
+                         func.getFunctionType().getResults(), func.getSymName(),
+                         args);
   }
-  builder.create<func::ReturnOp>(session_initializer.getLoc());
+  func::ReturnOp::create(builder, session_initializer.getLoc());
 
   session_initializer.erase();
 }

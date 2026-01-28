@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -69,6 +70,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
 
 class XLAOpsTest : public HloPjRtTestBase {
  public:
+  XLAOpsTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   mlir::MLIRContext mlir_context_;
 };
 

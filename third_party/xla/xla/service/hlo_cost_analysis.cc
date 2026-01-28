@@ -585,6 +585,23 @@ absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   return absl::OkStatus();
 }
 
+absl::Status HloCostAnalysis::HandleScan(const HloInstruction* scan) {
+  HloComputation* function = scan->to_apply();
+  // Compute the cost of the user function.
+  TF_ASSIGN_OR_RETURN(const Properties sub_properties,
+                      ProcessSubcomputation(function));
+
+  // Compute the cost of all elements for this Scan operation.
+  auto input = scan->operand(1);
+  int64_t element_count = ShapeUtil::ElementsIn(input->shape());
+  sub_properties.ForEach([&](absl::string_view key, float val) {
+    if (KeyToCopyFromSubcomputation(key)) {
+      current_properties_[key] = val * element_count;
+    }
+  });
+  return absl::OkStatus();
+}
+
 absl::Status HloCostAnalysis::HandleReduceWindow(
     const HloInstruction* reduce_window) {
   const Window& window = reduce_window->window();

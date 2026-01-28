@@ -28,11 +28,13 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
+#include "xla/backends/profiler/gpu/gpu_metadata.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -200,6 +202,7 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
         cupti_collector_->Export(space, end_gpu_ns);
       }
+      AddGpuMetadata(space);
       return absl::OkStatus();
     }
   }

@@ -30,6 +30,7 @@ def XTileDialect : Dialect {
     "mlir::memref::MemRefDialect",
     "mlir::tensor::TensorDialect",
     "mlir::stablehlo::StablehloDialect",
+    "mlir::scf::SCFDialect",
   ];
 
   let useDefaultAttributePrinterParser = 1;

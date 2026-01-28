@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-std::shared_ptr<NodeProperties> ToNodeProperties(const string& text) {
+std::shared_ptr<NodeProperties> ToNodeProperties(const std::string& text) {
   NodeDef node_def;
   DataTypeVector dummy;
   EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &node_def));

@@ -174,11 +174,11 @@ class PreprocessConstantOp : public OpRewritePattern<TF::PartitionedCallOp> {
     auto new_shape_const_attr =
         DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
     rewriter.setInsertionPointAfter(weight_op);
-    auto new_shape_const = rewriter.create<arith::ConstantOp>(
-        weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
-    auto reshape_op = rewriter.create<TF::ReshapeOp>(
-        weight_op->getLoc(), new_shape, weight_op->getResult(0),
-        new_shape_const);
+    auto new_shape_const = arith::ConstantOp::create(
+        rewriter, weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
+    auto reshape_op =
+        TF::ReshapeOp::create(rewriter, weight_op->getLoc(), new_shape,
+                              weight_op->getResult(0), new_shape_const);
     op->setOperand(weight_operand_idx, reshape_op);
 
     // Create a new function with preprocessed types.

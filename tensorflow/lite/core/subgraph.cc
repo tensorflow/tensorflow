@@ -1934,9 +1934,16 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   // For most tensors we know exactly how much memory is necessary so we can
   // ensure the buffer is large enough. However, we need to skip string tensors
   // and sparse tensors because their sizes change with the contents.
+  // We also skip external buffer tensors because their data is loaded at
+  // runtime from an external source (e.g., a separate .bin file), so the
+  // inline buffer size is 0. External buffer tensors have a non-zero
+  // external_buffer_id (neither kTfLiteNoBufferIdentifier nor 0).
   // TODO(b/145615516): Extend BytesRequired to check sparse tensors.
+  const bool has_external_buffer =
+      external_buffer_id != 0 &&
+      external_buffer_id != kTfLiteNoBufferIdentifier;
   if (type != kTfLiteString && type != kTfLiteResource &&
-      type != kTfLiteVariant && sparsity == nullptr) {
+      type != kTfLiteVariant && sparsity == nullptr && !has_external_buffer) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(
         &context_,

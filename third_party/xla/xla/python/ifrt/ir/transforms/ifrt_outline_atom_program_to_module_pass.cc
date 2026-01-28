@@ -76,8 +76,10 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
 
         // Create a ModuleOp and clone callee into it.
         builder.setInsertionPointAfter(callee);
-        auto callee_module = builder.create<mlir::ModuleOp>(
-            callee->getLoc(), callee.getSymName());
+        auto callee_module =
+            mlir::ModuleOp::create(  // ALLOW_MLIR_MODULE_OP_CREATE - does not
+                                     // work with CreateMlirModuleOp.
+                builder, callee->getLoc(), callee.getSymName());
         callee_module.setVisibility(mlir::SymbolTable::Visibility::Private);
 
         mlir::func::FuncOp cloned_callee;

@@ -42,6 +42,12 @@ enum CustomCallSchedule {
   SCHEDULE_EARLIEST = 2;
 }
 
+enum TriState {
+  TRI_STATE_UNSPECIFIED = 0;
+  TRI_STATE_TRUE = 1;
+  TRI_STATE_FALSE = 2;
+}
+
 // The version of the API used by the custom call function. The signatures for
 // each version are given below.
 // TODO(b/189822916): Remove this enum when all clients are migrated to the
@@ -113,7 +119,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 94
+// Next ID: 97
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -399,6 +405,15 @@ message HloInstructionProto {
 
   // Accuracy for unary functions with multiple implementations.
   xla.ResultAccuracy result_accuracy = 91;
+
+  // Whether the scan instruction is in reverse order.
+  bool is_reverse = 94;
+
+  // The number of carries in the scan instruction.
+  int64 num_carries = 95;
+
+  // Whether the scan instruction is associative.
+  TriState is_associative = 96;
 }
 
 // Serialization of HloComputation.

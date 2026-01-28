@@ -164,6 +164,9 @@ CpuAotLoader::LoadAotCompilationResult(
 absl::StatusOr<std::unique_ptr<CompiledModule>>
 CpuAotLoader::LoadAotCompilationResult(
     const xla::cpu::CompilationResultProto& aot_result_proto) {
+  VLOG(3) << "AOT result target machine options: "
+          << aot_result_proto.target_machine_options().DebugString();
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
@@ -201,12 +204,19 @@ CpuAotLoader::LoadAotCompilationResult(
     }
   }
 
+  VLOG(3) << "Host machine options:"
+          << "\nHost CPU: " << llvm::sys::getHostCPUName().str()
+          << "\nHost triple: " << llvm::sys::getDefaultTargetTriple()
+          << "\nHost features: "
+          << absl::StrJoin(host_machine_features_vector, ",");
+
   for (const absl::string_view feature : compile_machine_features) {
     if (feature[0] == '+' &&
         (!host_machine_features.contains(feature.substr(1)) ||
          !host_machine_features[feature.substr(1)])) {
-      // TODO: b/457415427 - Turn this warning into an error once a mechanism
-      // for passing target machine features to the CPU compiler is implemented.
+      // TODO: b/477590953 - Turn this warning into an absl::Status Internal
+      // error once a mechanism for passing CPU topology to host offloaded
+      // programs is implemented.
       LOG(ERROR)
           << "Loading XLA:CPU AOT result. Target machine feature " << feature
           << " is not  supported on the host machine. Machine type used for "

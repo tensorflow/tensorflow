@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_EMITTER_H_
 #define XLA_SERVICE_GPU_THUNK_EMITTER_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,6 +40,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 
 namespace xla::gpu {
@@ -52,7 +53,10 @@ class ThunkEmitter {
     return ir_emitter_context_->platform_name();
   }
 
-  explicit ThunkEmitter(IrEmitterContext* ir_emitter_context);
+  explicit ThunkEmitter(
+      IrEmitterContext* absl_nonnull ir_emitter_context,
+      llvm_ir::LLVMCommandLineOptionsReleasableLock* absl_nonnull
+          llvm_options_lock);
   ThunkEmitter(const ThunkEmitter&) = delete;
   ThunkEmitter& operator=(const ThunkEmitter&) = delete;
 
@@ -246,6 +250,12 @@ class ThunkEmitter {
 
   // Modules for each emitted kernel.
   std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
+
+  // Releasable lock for LLVM options. Most of the thunks are emitted under the
+  // lock, however some thunks (e.g. custom calls) temporarily release the lock
+  // to avoid deadlocks when foreign code calls into LLVM with a different
+  // set of options.
+  llvm_ir::LLVMCommandLineOptionsReleasableLock* llvm_options_lock_;
 };
 
 }  // namespace xla::gpu

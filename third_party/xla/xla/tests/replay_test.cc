@@ -15,25 +15,30 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 using ::tsl::proto_testing::EqualsProto;
 
-class ReplayTest : public ClientLibraryTestBase {};
+class ReplayTest : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 TEST_F(ReplayTest, TwoPlusTwoReplay) {
   // Make 2+2 computation.
@@ -46,21 +51,17 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
   std::unique_ptr<HloSnapshot> module = computation.Snapshot().value();
 
   // Replay it.
-  XlaComputation replayed = client_->LoadSnapshot(*module).value();
+  XlaComputation replayed(module->hlo().hlo_module());
 
   // Check signature is the same.
-  std::unique_ptr<ProgramShape> original_shape =
-      client_->GetComputationShape(computation).value();
-  std::unique_ptr<ProgramShape> replayed_shape =
-      client_->GetComputationShape(replayed).value();
-  ASSERT_THAT(replayed_shape->ToProto(),
-              EqualsProto(original_shape->ToProto()));
+  ASSERT_OK_AND_ASSIGN(ProgramShape original_shape,
+                       computation.GetProgramShape());
+  ASSERT_OK_AND_ASSIGN(ProgramShape replayed_shape, replayed.GetProgramShape());
+  ASSERT_THAT(replayed_shape.ToProto(), EqualsProto(original_shape.ToProto()));
 
   // Run it.
-  Literal literal =
-      client_
-          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
-          .value();
+  ASSERT_OK_AND_ASSIGN(Literal literal,
+                       ExecuteAndTransfer(replayed, /*arguments=*/{}));
 
   // Expect 4.
   LiteralTestUtil::ExpectR0Equal<int32_t>(4, literal);
@@ -78,27 +79,20 @@ TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   std::unique_ptr<HloSnapshot> module = computation.Snapshot().value();
 
   // Replay it.
-  XlaComputation replayed = client_->LoadSnapshot(*module).value();
+  XlaComputation replayed(module->hlo().hlo_module());
 
   // Check signature is the same.
-  std::unique_ptr<ProgramShape> original_shape =
-      client_->GetComputationShape(computation).value();
-  std::unique_ptr<ProgramShape> replayed_shape =
-      client_->GetComputationShape(replayed).value();
-  ASSERT_THAT(replayed_shape->ToProto(),
-              EqualsProto(original_shape->ToProto()));
+  ASSERT_OK_AND_ASSIGN(ProgramShape original_shape,
+                       computation.GetProgramShape());
+  ASSERT_OK_AND_ASSIGN(ProgramShape replayed_shape, replayed.GetProgramShape());
+  ASSERT_THAT(replayed_shape.ToProto(), EqualsProto(original_shape.ToProto()));
 
   // Run it.
-  std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(LiteralUtil::CreateR0<int32_t>(2)).value();
-  std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(LiteralUtil::CreateR0<int32_t>(3)).value();
-  Literal literal =
-      client_
-          ->ExecuteAndTransfer(replayed,
-                               /*arguments=*/{x_data.get(), y_data.get()},
-                               &execution_options_)
-          .value();
+  Literal x_data = LiteralUtil::CreateR0<int32_t>(2);
+  Literal y_data = LiteralUtil::CreateR0<int32_t>(3);
+  ASSERT_OK_AND_ASSIGN(Literal literal,
+                       ExecuteAndTransfer(replayed,
+                                          /*arguments=*/{&x_data, &y_data}));
 
   // Expect 5.
   LiteralTestUtil::ExpectR0Equal<int32_t>(5, literal);
@@ -122,21 +116,17 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   std::unique_ptr<HloSnapshot> module = computation.Snapshot().value();
 
   // Replay it.
-  XlaComputation replayed = client_->LoadSnapshot(*module).value();
+  XlaComputation replayed(module->hlo().hlo_module());
 
   // Check signature is the same.
-  std::unique_ptr<ProgramShape> original_shape =
-      client_->GetComputationShape(computation).value();
-  std::unique_ptr<ProgramShape> replayed_shape =
-      client_->GetComputationShape(replayed).value();
-  ASSERT_THAT(replayed_shape->ToProto(),
-              EqualsProto(original_shape->ToProto()));
+  ASSERT_OK_AND_ASSIGN(ProgramShape original_shape,
+                       computation.GetProgramShape());
+  ASSERT_OK_AND_ASSIGN(ProgramShape replayed_shape, replayed.GetProgramShape());
+  ASSERT_THAT(replayed_shape.ToProto(), EqualsProto(original_shape.ToProto()));
 
   // Run it.
-  Literal literal =
-      client_
-          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
-          .value();
+  ASSERT_OK_AND_ASSIGN(Literal literal,
+                       ExecuteAndTransfer(replayed, /*arguments=*/{}));
 
   // Expect result.
   LiteralTestUtil::ExpectR1Equal<int32_t>({3, 4, 5}, literal);

@@ -139,8 +139,8 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
   // Every ModuleOp has at least one region and one block.
   Block* first_block = &module->getRegion(0).front();
   builder.setInsertionPointToEnd(first_block);
-  auto func = builder.create<mlir::func::FuncOp>(
-      ops[0]->getLoc(), dialect.str() + std::to_string(function_id),
+  auto func = mlir::func::FuncOp::create(
+      builder, ops[0]->getLoc(), dialect.str() + std::to_string(function_id),
       builder.getFunctionType(input_types, output_types));
   func->setAttr("dialect", builder.getStringAttr(dialect));
   auto block = func.addEntryBlock();
@@ -160,9 +160,9 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
 
   // Insert function call.
   builder.setInsertionPoint(ops[0]);
-  auto call = builder.create<mlir::func::CallOp>(
-      ops[0]->getLoc(), func.getFunctionType().getResults(), func.getSymName(),
-      inputs);
+  auto call = mlir::func::CallOp::create(builder, ops[0]->getLoc(),
+                                         func.getFunctionType().getResults(),
+                                         func.getSymName(), inputs);
   for (const auto& v : llvm::enumerate(outputs)) {
     v.value().replaceUsesWithIf(call.getResult(v.index()), [=](OpOperand& o) {
       // Outside of what we're moving, results of our operations need to
@@ -177,7 +177,7 @@ void wrapOpsInFunction(std::vector<Operation*>& ops, int function_id,
     op->remove();
     builder.insert(op);
   }
-  builder.create<mlir::func::ReturnOp>(ops[0]->getLoc(), outputs);
+  mlir::func::ReturnOp::create(builder, ops[0]->getLoc(), outputs);
 }
 
 }  // namespace

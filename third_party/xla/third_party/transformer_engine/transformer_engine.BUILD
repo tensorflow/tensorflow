@@ -1,8 +1,8 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
-load("@local_xla//third_party/py/rules_pywrap:pywrap.impl.bzl", "python_extension", "pywrap_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:py_binary.bzl", "py_binary")
+load("@xla//third_party/py/rules_pywrap:pywrap.impl.bzl", "python_extension", "pywrap_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -15,7 +15,7 @@ package(
 
 py_binary(
     name = "codegen",
-    srcs = ["@local_xla//third_party/transformer_engine:codegen.py"],
+    srcs = ["@xla//third_party/transformer_engine:codegen.py"],
     deps = [
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
@@ -177,9 +177,9 @@ cuda_library(
         "@local_config_cuda//cuda:cufft",
         "@local_config_cuda//cuda:cusparse",
         "@local_config_cuda//cuda:nvrtc_headers",
-        "@local_tsl//tsl/platform:cuda_root_path",
-        "@local_xla//xla/ffi/api:ffi",
         "@pybind11",
+        "@tsl//tsl/platform:cuda_root_path",
+        "@xla//xla/ffi/api:ffi",
     ],
 )
 
@@ -232,9 +232,9 @@ python_extension(
         ":transformer_engine_jax_utils",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn",
-        "@local_xla//xla/ffi/api:c_api",
-        "@local_xla//xla/ffi/api:ffi",
         "@pybind11",
+        "@xla//xla/ffi/api:c_api",
+        "@xla//xla/ffi/api:ffi",
     ],
 )
 

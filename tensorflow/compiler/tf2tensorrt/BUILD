@@ -4,11 +4,11 @@
 #   APIs are meant to change over time.
 
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
-    "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
-load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -75,7 +75,7 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt_headers",
         "//tensorflow/core:lib",
-        "@local_tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:dso_loader",
     ]),
 )
 
@@ -113,7 +113,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@xla//xla/stream_executor/gpu:gpu_init",
     ] + if_tensorrt([
         ":tensorrt_lib",
     ]) + select({
@@ -1090,8 +1090,8 @@ pybind_extension(
         "@snappy//:__subpackages__",
         "//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-        "@local_xla//xla:__subpackages__",
+        "@tsl//tsl:__subpackages__",
+        "@xla//xla:__subpackages__",
     ],
     deps = [
         ":common_utils",

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_filter.h"
 #include "xla/ffi/attribute_map.h"
@@ -35,8 +34,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -102,7 +103,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
-            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU"));
+            {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
+            stream_executor::GpuComputeCapability()));
     log_thunk->add_control_predecessor(sequence[0].get());
     sequence.emplace_back(std::move(log_thunk));
   }

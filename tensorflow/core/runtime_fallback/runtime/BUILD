@@ -217,9 +217,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@tf_runtime//:hostcontext",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:statusor",
     ],
 )

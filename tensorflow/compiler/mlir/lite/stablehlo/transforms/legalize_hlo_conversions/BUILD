@@ -24,7 +24,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -43,7 +43,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -65,7 +65,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -82,7 +82,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -100,7 +100,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -132,7 +132,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -147,7 +147,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -164,7 +164,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -177,7 +177,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -193,7 +193,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -211,7 +211,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -235,7 +235,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -251,7 +251,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -267,7 +267,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -283,7 +283,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -300,7 +300,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -316,7 +316,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -331,7 +331,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -347,7 +347,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -363,6 +363,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )

@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
+#include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
@@ -47,18 +49,26 @@ namespace {
 
 using ::tsl::thread::ThreadPool;
 
-TEST(TfrtGpuBufferTest, CreateBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+class TfrtGpuBufferTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ASSERT_OK_AND_ASSIGN(client_, GetTfrtGpuClient(GpuClientOptions()));
+    tfrt_gpu_client_ = tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+  }
 
-  TfrtGpuClient* tfrt_gpu_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client.get());
+  TfrtGpuThreadChecker thread_checker_;
+  std::unique_ptr<PjRtClient> client_;
+  TfrtGpuClient* tfrt_gpu_client_;
+};
+
+TEST_F(TfrtGpuBufferTest, CreateBuffer) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_gpu_client_->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   auto buffer_async_value_ref =
@@ -70,28 +80,24 @@ TEST(TfrtGpuBufferTest, CreateBuffer) {
       tsl::MakeAvailableAsyncValueRef<GpuEvent>());
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client_,
       device, memory_space);
 
   EXPECT_EQ(buffer->on_device_shape(), on_device_shape);
   EXPECT_EQ(buffer->device(), device);
-  EXPECT_EQ(buffer->client(), client.get());
+  EXPECT_EQ(buffer->client(), client_.get());
   EXPECT_EQ(buffer->memory_space(), memory_space);
   EXPECT_EQ(buffer->GetOnDeviceSizeInBytes().value(), size_in_bytes);
 }
 
-TEST(TfrtGpuBufferTest, AcquireExternalReference) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
-
-  TfrtGpuClient* tfrt_gpu_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client.get());
+TEST_F(TfrtGpuBufferTest, AcquireExternalReference) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_gpu_client_->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   auto buffer_async_value_ref =
@@ -102,7 +108,7 @@ TEST(TfrtGpuBufferTest, AcquireExternalReference) {
       std::move(buffer_async_value_ref), definition_event, definition_event);
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client_,
       device, memory_space);
 
   ThreadPool thread_pool(tsl::Env::Default(), "gpu_buffer_test",
@@ -127,18 +133,14 @@ TEST(TfrtGpuBufferTest, AcquireExternalReference) {
   // TODO(b/382117736): external reference should block donation.
 }
 
-TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
-
-  TfrtGpuClient* tfrt_gpu_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client.get());
+TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_gpu_client_->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
@@ -158,7 +160,7 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
 
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client_,
       device, memory_space);
 
   // Release and don't wait for definition or usage events to complete.
@@ -175,18 +177,14 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
   EXPECT_EQ(nullptr, ref_status_2.value().get());
 }
 
-TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
-
-  TfrtGpuClient* tfrt_gpu_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client.get());
+TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_gpu_client_->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   void* device_memory_opaque = device_buffer.buffer().opaque();
@@ -206,7 +204,7 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
 
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client_,
       device, memory_space);
 
   ThreadPool thread_pool(tsl::Env::Default(), "gpu_buffer_test",
@@ -244,18 +242,14 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
   EXPECT_EQ(nullptr, ref_status_2.value().get());
 }
 
-TEST(TfrtGpuBufferTest, Delete) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
-
-  TfrtGpuClient* tfrt_gpu_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client.get());
+TEST_F(TfrtGpuBufferTest, Delete) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
+      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(tfrt_gpu_client->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_gpu_client_->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   auto buffer_async_value_ref =
@@ -274,7 +268,7 @@ TEST(TfrtGpuBufferTest, Delete) {
 
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_gpu_client_,
       device, memory_space);
 
   // Delete the buffer. The underlying device memory should not be freed until
@@ -293,31 +287,29 @@ TEST(TfrtGpuBufferTest, Delete) {
   EXPECT_TRUE(destructed);
 }
 
-TEST(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+TEST_F(TfrtGpuBufferTest, IsDeviceShapeWhenStaticShape) {
   std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
   for (PrimitiveType t : {F32, F16, S8, BF16}) {
     Shape shape = ShapeUtil::MakeShape(t, {3, 2});
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> buffer,
-        client->BufferFromHostBuffer(
+        client_->BufferFromHostBuffer(
             data.data(), shape.element_type(), shape.dimensions(),
             /*byte_strides=*/std::nullopt,
             PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
-            client->memory_spaces()[0], /*device_layout=*/nullptr));
+            client_->memory_spaces()[0], /*device_layout=*/nullptr));
     EXPECT_EQ(buffer->on_device_shape(), shape);
     EXPECT_EQ(*buffer->logical_on_device_shape(), shape);
   }
 }
 
-TEST(TfrtGpuBufferTest, CopyPoisonedBuffer) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+TEST_F(TfrtGpuBufferTest, CopyPoisonedBuffer) {
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   const char* errmsg = "injected error";
 
-  for (auto src_memory_space : client->memory_spaces()) {
-    for (auto dst_memory_space : client->memory_spaces()) {
-      TF_ASSERT_OK_AND_ASSIGN(auto src_buffer, client->CreateErrorBuffer(
+  for (auto src_memory_space : client_->memory_spaces()) {
+    for (auto dst_memory_space : client_->memory_spaces()) {
+      TF_ASSERT_OK_AND_ASSIGN(auto src_buffer, client_->CreateErrorBuffer(
                                                    absl::InternalError(errmsg),
                                                    shape, src_memory_space));
 

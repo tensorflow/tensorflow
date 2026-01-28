@@ -407,9 +407,8 @@ class VifrtToIfrtOpConverter : public mlir::OpConversionPattern<VifrtOpTy> {
     mlir::ValueRange ifrt_operands = adaptor.getOperands();
 
     // Convert the IFRT op to a VIFRT equivalent op.
-    VifrtToIfrtOp<VifrtOpTy> ifrt_op =
-        rewriter.create<VifrtToIfrtOp<VifrtOpTy>>(vifrt_op.getLoc(), ifrt_types,
-                                                  ifrt_operands, ifrt_attrs);
+    VifrtToIfrtOp<VifrtOpTy> ifrt_op = VifrtToIfrtOp<VifrtOpTy>::create(
+        rewriter, vifrt_op.getLoc(), ifrt_types, ifrt_operands, ifrt_attrs);
 
     // Convert the VIFRT region types to IFRT region types.
     for (auto [vifrt_region, ifrt_region] :

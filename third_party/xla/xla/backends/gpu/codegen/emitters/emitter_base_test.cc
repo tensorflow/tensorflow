@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -88,6 +89,7 @@ class EmitterBaseTest : public HloHardwareIndependentTestBase {
   EmitterBaseTest() {
     mlir_context_.appendDialectRegistry(EmitterBase::GetDialectRegistry());
     mlir_context_.loadAllAvailableDialects();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   mlir::MLIRContext mlir_context_;

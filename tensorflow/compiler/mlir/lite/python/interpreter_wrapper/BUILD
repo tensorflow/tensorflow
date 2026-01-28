@@ -13,7 +13,7 @@ cc_library(
     hdrs = ["python_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -24,6 +24,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/lite:stateful_error_reporter",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )

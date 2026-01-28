@@ -15,6 +15,7 @@
 """Implementation of Neural Net (NN) functions."""
 
 import math
+import warnings
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -755,6 +756,14 @@ def depthwise_conv2d(input,
     filter = ops.convert_to_tensor(filter, name="filter_in")
     if rate is None:
       rate = [1, 1]
+
+    if any([_ > 1 for _ in rate]) and any([_ != 1 for _ in strides]):
+      warnings.warn(
+          "When dilation rate is greater than 1, "
+          "then all values of strides must be 1. "
+          f"Received: `dilation rate` {rate} and "
+          f"`strides` {strides}"
+      )
 
     # Use depthwise_conv2d_native if executing on TPU.
     if device_context.enclosing_tpu_context() is not None:

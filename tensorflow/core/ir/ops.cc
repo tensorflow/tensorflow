@@ -1214,9 +1214,8 @@ void GetIfLikeRegionOpSuccessorRegions(
     SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(
-        op.getOperation(),
-        ResultRange(op->result_begin(), std::prev(op->result_end())));
+    regions.emplace_back(RegionSuccessor::parent(
+        ResultRange(op->result_begin(), std::prev(op->result_end()))));
   } else {
     // Unknown successor.
     regions.emplace_back(&op.getThenRegion(),
@@ -1295,9 +1294,8 @@ void GetCaseLikeRegionOpSuccessorRegions(
   // All branch regions branch back to the parent op.
   if (!point.isParent()) {
     // Ignore the control token.
-    regions.emplace_back(
-        op.getOperation(),
-        ResultRange(op->result_begin(), std::prev(op->result_end())));
+    regions.emplace_back(RegionSuccessor::parent(
+        ResultRange(op->result_begin(), std::prev(op->result_end()))));
   } else {
     // Unknown successor. Add all of them.
     for (Region& branch : op.getBranches())
@@ -1378,7 +1376,7 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 
 template <typename WhileLikeRegionOp>
 static void GetWhileLikeRegionOpSuccessorRegions(
-    WhileLikeRegionOp op, RegionBranchPoint point ,
+    WhileLikeRegionOp op, RegionBranchPoint point,
     SmallVectorImpl<RegionSuccessor>& regions) {
   // The parent op and the body region always branch to the condition region.
   if (point.isParent() ||
@@ -1406,7 +1404,8 @@ static void GetWhileLikeRegionOpSuccessorRegions(
   }
   if (!cond || !*cond) {
     // Drop the control token.
-    regions.emplace_back(op.getOperation(), op.getResults().drop_back());
+    regions.emplace_back(
+        mlir::RegionSuccessor::parent(op.getResults().drop_back()));
   }
 }
 
@@ -1446,7 +1445,7 @@ void ForRegionOp::getSuccessorRegions(
                        GetLoopRegionDataArgs(getBodyRegion()).drop_front());
   if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
-  regions.emplace_back(getOperation(), getResults().drop_back());
+  regions.emplace_back(mlir::RegionSuccessor::parent(getResults().drop_back()));
 }
 
 BlockArgument ForRegionOp::getDataValueOf(BlockArgument ctl) {

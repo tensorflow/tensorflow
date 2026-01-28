@@ -36,5 +36,5 @@ def cc_library(name, deps = None, **kwargs):
     # alias of `empty`.
     if name != "empty":
         deps = deps + [Label("//xla/tsl:bazel_issue_21519")]  # buildifier: disable=list-append
-        deps = deps + [Label("@local_tsl//:bazel_issue_21519")]  # buildifier: disable=list-append
+        deps = deps + [Label("@tsl//:bazel_issue_21519")]  # buildifier: disable=list-append
     _cc_library(name = name, deps = deps, **kwargs)

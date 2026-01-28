@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -58,6 +59,10 @@ using ::testing::HasSubstr;
 
 class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
+  GpuIndexingPerformanceModelTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.

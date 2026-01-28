@@ -85,7 +85,7 @@ absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> GpuCliqueRendezvous::Join(
 
   // A callback for rendezvous to construct the GpuCliqueRendezvous.
   auto callback = [&](absl::Span<const RankData*> values) {
-    VLOG(3) << absl::StrFormat("ranks=[%s] Complete gpu clique rendezvous: %s",
+    VLOG(3) << absl::StrFormat("[ranks=%s] Complete gpu clique rendezvous: %s",
                                absl::StrJoin(values, ",", RankFormatter{}),
                                clique_key.ToString());
 

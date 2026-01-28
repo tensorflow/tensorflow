@@ -22,10 +22,10 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_xla//xla/tsl/profiler/utils:math_utils",
-        "@local_xla//xla/tsl/profiler/utils:tf_xplane_visitor",
         "@org_xprof//xprof/utils:gpu_event_stats",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/tsl/profiler/utils:math_utils",
+        "@xla//xla/tsl/profiler/utils:tf_xplane_visitor",
     ],
 )
 

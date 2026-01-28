@@ -99,13 +99,13 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         count_(count),
         traceme_metadata_(
             {{"buffer_size",
-              strings::Printf("%lld", static_cast<long long>(buffer_size))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(buffer_size))}}) {
     input_->Ref();
   }
 
   ~ShuffleDatasetBase() override { input_->Unref(); }
 
-  virtual string op_type() const = 0;
+  virtual std::string op_type() const = 0;
 
   const DataTypeVector& output_dtypes() const override {
     return input_->output_dtypes();
@@ -135,7 +135,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     {
@@ -144,7 +144,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         InitializeRandomAccessIndices();
       }
     }
-    int64 shuffled_index;
+    int64_t shuffled_index;
     {
       tf_shared_lock l(mu_);
       shuffled_index = shuffled_indices_[index];
@@ -153,7 +153,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return absl::OkStatus();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
     params.set_args(buffer_size_, seed_generator_->seed(),
                     seed_generator_->seed2(), count_);
@@ -161,14 +161,14 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(op_type(), prefix)},
         seed_generator_.get());
   }
 
   void InitializeRandomAccessIndices() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    const int64 cardinality = Cardinality();
+    const int64_t cardinality = Cardinality();
     shuffled_indices_ = std::vector<std::int64_t>(cardinality);
     std::iota(shuffled_indices_.begin(), shuffled_indices_.end(), 0);
     int64_t shuffled_index = 0;
@@ -620,7 +620,7 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -680,7 +680,7 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -735,7 +735,7 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -802,7 +802,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   int64_t count = 1;
   static std::atomic<int64_t> resource_id_counter(0);
-  const string& container = ctx->resource_manager()->default_container();
+  const std::string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 3) {
@@ -927,7 +927,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -985,7 +985,7 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
     }
   }
 
-  string op_type() const override { return kDatasetType; }
+  std::string op_type() const override { return kDatasetType; }
 
  protected:
   absl::Status AsGraphDefInternal(SerializationContext* ctx,
@@ -1067,7 +1067,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   RandomSeeds seeds(seed, seed2);
 
   static std::atomic<int64_t> resource_id_counter(0);
-  const string& container = ctx->resource_manager()->default_container();
+  const std::string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
   if (op_version_ == 2) {

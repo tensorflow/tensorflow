@@ -80,7 +80,7 @@ message FlatAttributeProto {
   oneof value {
     ScalarProto scalar = 1;
     ArrayProto array = 2;
-    string str = 3;
+    bytes str = 3;
   }
 }
 
@@ -92,7 +92,7 @@ message AttributeProto {
   oneof value {
     ScalarProto scalar = 1;
     ArrayProto array = 2;
-    string str = 3;
+    bytes str = 3;
     AttributesMapProto dict = 4;
   }
 }

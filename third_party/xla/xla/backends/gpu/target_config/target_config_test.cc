@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
 
@@ -32,7 +33,7 @@ using ::tsl::testing::StatusIs;
 
 struct GpuTargetConfigTestCase {
   std::string test_name;
-  std::string gpu_model;
+  GpuModel gpu_model;
   bool expect_ok;
 };
 
@@ -57,21 +58,37 @@ TEST_P(GetGpuTargetConfigTest, TestProtoRetrieval) {
 INSTANTIATE_TEST_SUITE_P(
     GetGpuTargetConfigTests, GetGpuTargetConfigTest,
     ::testing::ValuesIn<GpuTargetConfigTestCase>({
-        {"A100_PCIE_80", "a100_pcie_80", true},
-        {"A100_SXM_40", "a100_sxm_40", true},
-        {"A100_SXM_80", "a100_sxm_80", true},
-        {"A6000", "a6000", true},
-        {"B200", "b200", true},
-        {"B300", "b300", true},
-        {"H100_PCIE", "h100_pcie", true},
-        {"H100_SXM", "h100_sxm", true},
-        {"MI200", "mi200", true},
-        {"P100", "p100", true},
-        {"V100", "v100", true},
-        {"UnknownModel", "unknown_gpu", false},
+        {"A100_PCIE_80", GpuModel::A100_PCIE_80, true},
+        {"A100_SXM_40", GpuModel::A100_SXM_40, true},
+        {"A100_SXM_80", GpuModel::A100_SXM_80, true},
+        {"A6000", GpuModel::A6000, true},
+        {"B200", GpuModel::B200, true},
+        {"B300", GpuModel::B300, true},
+        {"H100_PCIE", GpuModel::H100_PCIE, true},
+        {"H100_SXM", GpuModel::H100_SXM, true},
+        {"MI200", GpuModel::MI200, true},
+        {"P100", GpuModel::P100, true},
+        {"V100", GpuModel::V100, true},
     }),
     [](const ::testing::TestParamInfo<GetGpuTargetConfigTest::ParamType>&
            info) { return info.param.test_name; });
+
+TEST(TargetConfigTest, CompareEqualFromSameProto) {
+  stream_executor::GpuTargetConfigProto config_proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        platform_name: "platform"
+        dnn_version_info { major: 2 }
+        runtime_version { major: 12 }
+        gpu_device_info { threads_per_block_limit: 5 }
+        device_description_str: "foo"
+      )pb",
+      &config_proto));
+
+  ASSERT_OK_AND_ASSIGN(auto config1, GpuTargetConfig::FromProto(config_proto));
+  ASSERT_OK_AND_ASSIGN(auto config2, GpuTargetConfig::FromProto(config_proto));
+  EXPECT_THAT(config1, ::testing::Eq(config2));
+}
 
 }  // namespace
 }  // namespace xla::gpu

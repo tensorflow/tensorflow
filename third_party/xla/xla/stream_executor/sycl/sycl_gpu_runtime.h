@@ -165,6 +165,23 @@ absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
 // only when the source and destination buffers do not overlap. Add support for
 // overlapping copies if needed via a SYCL kernel.
 
+enum class SyclMemcpyKind {
+  // TODO(intel-tf): Support kSyclMemcpyDefault to let the SYCL runtime infer
+  // the copy direction based on the pointer locations.
+  kSyclMemcpyDeviceToHost,
+  kSyclMemcpyHostToDevice,
+  kSyclMemcpyDeviceToDevice,
+};
+
+// Asynchronously copies data between host and device or between device buffers
+// using the given SYCL stream. The copy direction is determined by `kind`.
+// Does nothing and returns OK status if byte_count is zero.
+// The operation may return before the copy is complete, hence the caller must
+// ensure that the stream is synchronized before accessing the copied data.
+absl::Status SyclMemcpyAsync(::sycl::queue* stream_handle, void* dst,
+                             const void* src, size_t byte_count,
+                             SyclMemcpyKind kind) ABSL_ATTRIBUTE_NONNULL(1);
+
 // Copies data from a device buffer to a host buffer using the default SYCL
 // stream for the specified device ordinal. The copy is synchronous and blocks
 // until the operation is complete.

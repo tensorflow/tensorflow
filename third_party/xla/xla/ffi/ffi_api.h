@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/chain.h"
 
 // This is an implementation of XLA FFI API defined in `api/c_api.h` header. It
@@ -61,6 +62,7 @@ namespace xla::gpu {
 struct CollectiveParams;
 class CollectiveCliqueRequests;
 class CollectiveCliques;
+class CollectiveMemoryRequests;
 }  // namespace xla::gpu
 
 namespace xla::ffi {
@@ -82,7 +84,10 @@ struct CallOptions {
     se::DeviceAddressAllocator* allocator = nullptr;
     const xla::gpu::CollectiveParams* collective_params = nullptr;
     xla::gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
+    xla::gpu::CollectiveMemoryRequests* collective_memory_requests = nullptr;
     const xla::gpu::CollectiveCliques* collective_cliques = nullptr;
+    const stream_executor::GpuComputeCapability* gpu_compute_capability =
+        nullptr;
   };
 
   using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;

@@ -4554,6 +4554,61 @@ For more information on `result_accuracy` see
 For StableHLO information see
 [StableHLO - rsqrt](https://openxla.org/stablehlo/spec#rsqrt).
 
+## Scan
+
+See also
+[`XlaBuilder::Scan`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Applies a reduction function to an array across a given dimension, producing a
+final state and an array of intermediate values.
+
+**`Scan(inputs..., inits..., to_apply, scan_dimension,
+is_reverse, is_associative)`**
+
+| Arguments | Type | Semantics |
+| :--- | :--- | :--- |
+| `inputs` | Sequence of `m` `XlaOp`s | The arrays to scan. |
+| `inits` | Sequence of `k` `XlaOp`s | Initial carries. |
+| `to_apply` | `XlaComputation` | Computation of type `i_0, ..., i_{m-1}, c_0, ..., c_{k-1} -> (o_0, ..., o_{n-1}, c'_0, ..., c'_{k-1})`. |
+| `scan_dimension` | `int64` | The dimension to scan across. |
+| `is_reverse` | `bool` | If true, scan in reverse order. |
+| `is_associative` | `bool` (tri-state) | If true, the operation is associative. |
+
+The function `to_apply` is applied sequentially to elements in `inputs` along
+`scan_dimension`. If `is_reverse` is false, elements are processed in order
+`0` to `N-1`, where `N` is the size of `scan_dimension`. If `is_reverse` is
+true, elements are processed from `N-1` down to `0`.
+
+The `to_apply` function takes `m + k` operands:
+1. `m` current elements from `inputs`.
+2. `k` carry values from the previous step (or `inits` for the first element).
+
+The `to_apply` function returns a tuple of `n + k` values:
+1. `n` elements of `outputs`.
+2. `k` new carry values.
+
+The Scan operation produces a tuple of `n + k` values:
+1. The `n` output arrays, containing the output values for each step.
+2. The final `k` carry values after processing all elements.
+
+The types of the `m` inputs must match the types of the first `m` parameters of
+`to_apply` with an extra scan dimension. The types of the `n` outputs must match
+the types of the first `n` return values of `to_apply` with an extra scan
+dimension. The extra scan dimension among all inputs and outputs must have the
+same size `N`. The types of the last `k` parameters and return values of
+`to_apply` as well as the `k` inits must match.
+
+For example (`m, n, k == 1, N == 3`), for initial carry `i`, input `[a, b, c]`,
+function `f(x, c) -> (y, c')`, and `scan_dimension=0`, `is_reverse=false`:
+
+- Step 0: `f(a, i) -> (y0, c0)`
+- Step 1: `f(b, c0) -> (y1, c1)`
+- Step 2: `f(c, c1) -> (y2, c2)`
+
+The output of `Scan` is `([y0, y1, y2], c2)`.
+
+> **Note:** `Scan` is only found in HLO. It is not found in StableHLO.
+
 ## Scatter
 
 See also

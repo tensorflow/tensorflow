@@ -158,10 +158,6 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
     return definition_event_;
   }
 
-  absl::Span<const tsl::AsyncValueRef<CpuEvent>> UsageEvents() const {
-    return usage_events_;
-  }
-
   void AddUsageEvents(absl::Span<tsl::AsyncValueRef<CpuEvent>> events);
 
   // Return the usage events for the buffers. After
@@ -183,6 +179,10 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   absl::Status BlockForOperationsToComplete(
       PjRtMemorySpace* memory_space) override;
+
+  bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
+
+  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
 
  private:
   void ConfirmDonation() override;

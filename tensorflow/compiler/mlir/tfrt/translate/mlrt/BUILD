@@ -57,7 +57,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:resource_loader",
+        "@xla//xla/tsl/platform:resource_loader",
     ],
 )
 
@@ -73,8 +73,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

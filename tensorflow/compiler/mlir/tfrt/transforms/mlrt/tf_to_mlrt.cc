@@ -71,8 +71,8 @@ constexpr char kXlaLaunchOp[] = "XlaLaunch";
 mlir::Value CreateCustomDevice(mlir::Location loc, llvm::StringRef device_name,
                                mlir::ConversionPatternRewriter &rewriter) {
   if (device_name == kTpuHostDevice) {
-    return rewriter.create<tf_mlrt_tpu::GetTpuHostDeviceOp>(
-        loc, rewriter.getType<tf_mlrt::TFDeviceType>());
+    return tf_mlrt_tpu::GetTpuHostDeviceOp::create(
+        rewriter, loc, rewriter.getType<tf_mlrt::TFDeviceType>());
   }
 
   return nullptr;
@@ -139,8 +139,8 @@ class TFAsyncWhileOpConversion
   mlir::LogicalResult matchAndRewrite(
       tf_mlrt::TFAsyncWhileOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    auto new_op = rewriter.create<tf_mlrt::AsyncWhileOp>(
-        op.getLoc(), op.getResultTypes(), adaptor.getOperands(),
+    auto new_op = tf_mlrt::AsyncWhileOp::create(
+        rewriter, op.getLoc(), op.getResultTypes(), adaptor.getOperands(),
         op->getAttrs());
     rewriter.replaceOp(op, new_op.getResults());
     return mlir::success();
@@ -156,8 +156,8 @@ class TFAwaitOpConversion final
   mlir::LogicalResult matchAndRewrite(
       tf_mlrt::TFAwaitOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    auto new_op = rewriter.create<tf_mlrt::AwaitOp>(
-        op->getLoc(), rewriter.getType<tf_mlrt::TFTensorType>(),
+    auto new_op = tf_mlrt::AwaitOp::create(
+        rewriter, op->getLoc(), rewriter.getType<tf_mlrt::TFTensorType>(),
         adaptor.getFuture());
     rewriter.replaceOp(op, new_op.getResult());
     return mlir::success();
@@ -175,13 +175,13 @@ class TFPromiseOpConversion final
       mlir::ConversionPatternRewriter &rewriter) const override {
     if (llvm::isa<::mlrt::compiler::FutureType>(
             adaptor.getTensor().getType())) {
-      auto new_op = rewriter.create<tf_mlrt::PromiseFutureOp>(
-          op->getLoc(), adaptor.getPromise(), adaptor.getTensor());
+      auto new_op = tf_mlrt::PromiseFutureOp::create(
+          rewriter, op->getLoc(), adaptor.getPromise(), adaptor.getTensor());
       rewriter.replaceOp(op, new_op->getResults());
 
     } else {
-      auto new_op = rewriter.create<tf_mlrt::PromiseOp>(
-          op->getLoc(), adaptor.getPromise(), adaptor.getTensor());
+      auto new_op = tf_mlrt::PromiseOp::create(
+          rewriter, op->getLoc(), adaptor.getPromise(), adaptor.getTensor());
       rewriter.replaceOp(op, new_op->getResults());
     }
     return mlir::success();
@@ -201,8 +201,9 @@ class TFMapFnOpConversion
     result_types.resize(op->getResultTypes().size(),
                         rewriter.getType<tf_mlrt::TFTensorType>());
 
-    auto new_op = rewriter.create<tf_mlrt::MapFnOp>(
-        op.getLoc(), result_types, adaptor.getOperands(), op->getAttrs());
+    auto new_op =
+        tf_mlrt::MapFnOp::create(rewriter, op.getLoc(), result_types,
+                                 adaptor.getOperands(), op->getAttrs());
     rewriter.replaceOp(op, new_op.getResult());
     return mlir::success();
   }
@@ -236,9 +237,9 @@ class TFCallOpConversion : public mlir::OpConversionPattern<TFCallOp> {
         return mlir::failure();
     }
 
-    auto new_op = rewriter.create<mlir::func::CallOp>(
-        op.getLoc(), result_types, callee.getRootReference().getValue(),
-        adaptor.getOperands());
+    auto new_op = mlir::func::CallOp::create(
+        rewriter, op.getLoc(), result_types,
+        callee.getRootReference().getValue(), adaptor.getOperands());
     rewriter.replaceOp(op, new_op.getResults());
     return mlir::success();
   }
@@ -270,12 +271,12 @@ class CaseOpConversion : public mlir::OpConversionPattern<mlir::TF::CaseOp> {
     result_types.resize(op->getResultTypes().size(),
                         rewriter.getType<tf_mlrt::TFTensorType>());
 
-    auto index_operand = rewriter.create<tf_mlrt::TensorToIntOp>(
-        op.getLoc(), rewriter.getI32Type(), adaptor.getBranchIndex());
+    auto index_operand = tf_mlrt::TensorToIntOp::create(
+        rewriter, op.getLoc(), rewriter.getI32Type(), adaptor.getBranchIndex());
 
-    auto new_op = rewriter.create<mlrt::compiler::CaseOp>(
-        op.getLoc(), result_types, index_operand.getResult(), branches,
-        adaptor.getInput());
+    auto new_op = mlrt::compiler::CaseOp::create(
+        rewriter, op.getLoc(), result_types, index_operand.getResult(),
+        branches, adaptor.getInput());
 
     rewriter.replaceOp(op, new_op.getResults());
     return mlir::success();
@@ -325,8 +326,8 @@ class GetResourceOpConversion final
       mlir::ConversionPatternRewriter &rewriter) const override {
     llvm::SmallVector<mlir::Type> result_types(
         op.getNumResults(), rewriter.getType<tf_mlrt::TFTensorType>());
-    auto new_op = rewriter.create<tf_mlrt::GetResourceOp>(
-        op->getLoc(), result_types, op.getIndices());
+    auto new_op = tf_mlrt::GetResourceOp::create(rewriter, op->getLoc(),
+                                                 result_types, op.getIndices());
     rewriter.replaceOp(op, new_op->getResults());
     return mlir::success();
   }
@@ -350,8 +351,8 @@ class TFIfrtLoadVariableOpConversion
         return mlir::failure();
     }
 
-    auto new_op = rewriter.create<tf_mlrt::IfrtLoadVariableOp>(
-        op.getLoc(), result_types, adaptor.getOperands()[0],
+    auto new_op = tf_mlrt::IfrtLoadVariableOp::create(
+        rewriter, op.getLoc(), result_types, adaptor.getOperands()[0],
         op.getUsedByHostAttr());
     rewriter.replaceOp(op, new_op);
 
@@ -371,9 +372,9 @@ class IfrtRestoreVariableOpConversion
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfrtRestoreVariableOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    auto new_op = rewriter.create<tf_mlrt::IfrtRestoreVariableOp>(
-        op.getLoc(), adaptor.getOperands()[0], adaptor.getOperands()[1],
-        adaptor.getOperands()[2],
+    auto new_op = tf_mlrt::IfrtRestoreVariableOp::create(
+        rewriter, op.getLoc(), adaptor.getOperands()[0],
+        adaptor.getOperands()[1], adaptor.getOperands()[2],
         adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
         op.getRestoredDtypes(), op.getTruncateInCast());
     rewriter.replaceOp(op, new_op);
@@ -396,8 +397,8 @@ class IfrtResourceDeserializeOpConversion
       return op.emitError("tensor_name attribute not found");
     }
 
-    auto new_op = rewriter.create<tf_mlrt::MlrtIfrtResourceDeserializeOp>(
-        op.getLoc(), adaptor.getResourceVar(), adaptor.getInputDir(),
+    auto new_op = tf_mlrt::MlrtIfrtResourceDeserializeOp::create(
+        rewriter, op.getLoc(), adaptor.getResourceVar(), adaptor.getInputDir(),
         llvm::cast<mlir::StringAttr>(tensor_name_attr));
     rewriter.replaceOp(op, new_op);
 
@@ -617,8 +618,8 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
 
 mlir::Value GetPredicate(mlir::Operation *op, mlir::Value cond_operand,
                          mlir::ConversionPatternRewriter &rewriter) {
-  return rewriter.create<tf_mlrt::PredicateOp>(
-      op->getLoc(), rewriter.getI1Type(), cond_operand);
+  return tf_mlrt::PredicateOp::create(rewriter, op->getLoc(),
+                                      rewriter.getI1Type(), cond_operand);
 }
 
 class CondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
@@ -636,9 +637,9 @@ class CondOpConversion : public mlir::OpConversionPattern<mlir::TF::IfOp> {
 
     auto bool_cond = GetPredicate(op, adaptor.getCond(), rewriter);
 
-    auto new_op = rewriter.create<mlrt::compiler::CondOp>(
-        op.getLoc(), result_types, bool_cond, adaptor.getInput(), then_branch,
-        else_branch);
+    auto new_op = mlrt::compiler::CondOp::create(
+        rewriter, op.getLoc(), result_types, bool_cond, adaptor.getInput(),
+        then_branch, else_branch);
 
     rewriter.replaceOp(op, new_op.getResults());
 
@@ -699,8 +700,8 @@ class WhileOpConversion : public mlir::OpConversionPattern<mlir::TF::WhileOp> {
     if (!pred_fn) return mlir::failure();
 
     // Insert a call op to call the pred function for the first iteration.
-    auto call_pred_fn = rewriter.create<mlir::func::CallOp>(
-        op.getLoc(), pred_fn.getFunctionType().getResults(),
+    auto call_pred_fn = mlir::func::CallOp::create(
+        rewriter, op.getLoc(), pred_fn.getFunctionType().getResults(),
         pred_fn.getSymName(), adaptor.getOperands());
 
     if (!call_pred_fn) return mlir::failure();
@@ -714,8 +715,8 @@ class WhileOpConversion : public mlir::OpConversionPattern<mlir::TF::WhileOp> {
         adaptor.getOperands().getTypes().begin(),
         adaptor.getOperands().getTypes().end());  // = while_arg_types;
     while_result_types.push_back(rewriter.getI1Type());
-    auto new_op = rewriter.create<mlrt::compiler::WhileOp>(
-        op.getLoc(), while_result_types, call_pred_fn.getResult(0),
+    auto new_op = mlrt::compiler::WhileOp::create(
+        rewriter, op.getLoc(), while_result_types, call_pred_fn.getResult(0),
         adaptor.getOperands(), new_body_fn.getSymName());
 
     rewriter.replaceOp(op, new_op.getResults().drop_back());
@@ -764,16 +765,17 @@ mlir::func::FuncOp WhileOpConversion::GetPredicateFunction(
 
   auto func_type = rewriter.getFunctionType(arg_types, {rewriter.getI1Type()});
 
-  auto pred_fn =
-      rewriter.create<mlir::func::FuncOp>(op.getLoc(), pred_fn_name, func_type);
+  auto pred_fn = mlir::func::FuncOp::create(rewriter, op.getLoc(), pred_fn_name,
+                                            func_type);
 
   auto *block = pred_fn.addEntryBlock();
   rewriter.setInsertionPointToStart(block);
 
-  auto call_cond_fn = rewriter.create<mlir::func::CallOp>(
-      op.getLoc(), arg_types.take_front(), cond_fn, block->getArguments());
+  auto call_cond_fn =
+      mlir::func::CallOp::create(rewriter, op.getLoc(), arg_types.take_front(),
+                                 cond_fn, block->getArguments());
   mlir::Value bool_cond = GetPredicate(op, call_cond_fn.getResult(0), rewriter);
-  rewriter.create<mlir::func::ReturnOp>(op.getLoc(), bool_cond);
+  mlir::func::ReturnOp::create(rewriter, op.getLoc(), bool_cond);
 
   symbol_table_.insert(pred_fn);
 
@@ -811,23 +813,24 @@ mlir::func::FuncOp WhileOpConversion::GetWhileBodyFunction(
   body_result_types.push_back(rewriter.getI1Type());
 
   auto func_type = rewriter.getFunctionType(arg_types, body_result_types);
-  auto body_fn =
-      rewriter.create<mlir::func::FuncOp>(op.getLoc(), body_fn_name, func_type);
+  auto body_fn = mlir::func::FuncOp::create(rewriter, op.getLoc(), body_fn_name,
+                                            func_type);
 
   auto *block = body_fn.addEntryBlock();
   rewriter.setInsertionPointToStart(block);
 
   // Insert a call to the original body function.
   // The returned result type is also the original argument types.
-  auto call_original_body_fn = rewriter.create<mlir::func::CallOp>(
-      op.getLoc(), arg_types, original_body_fn, block->getArguments());
+  auto call_original_body_fn =
+      mlir::func::CallOp::create(rewriter, op.getLoc(), arg_types,
+                                 original_body_fn, block->getArguments());
 
   // Insert a call to the pred function, which contains a call to the original
   // cond function and the predicate kernel that converts the tensor to boolean
   // value.
-  auto call_pred_fn = rewriter.create<mlir::func::CallOp>(
-      op.getLoc(), pred_fn.getFunctionType().getResults(), pred_fn.getSymName(),
-      call_original_body_fn.getResults());
+  auto call_pred_fn = mlir::func::CallOp::create(
+      rewriter, op.getLoc(), pred_fn.getFunctionType().getResults(),
+      pred_fn.getSymName(), call_original_body_fn.getResults());
 
   llvm::SmallVector<mlir::Value, 4> body_results =
       call_original_body_fn.getResults();
@@ -836,7 +839,7 @@ mlir::func::FuncOp WhileOpConversion::GetWhileBodyFunction(
   auto bool_cond = call_pred_fn.getResult(0);
   body_results.push_back(bool_cond);
 
-  rewriter.create<mlir::func::ReturnOp>(op.getLoc(), body_results);
+  mlir::func::ReturnOp::create(rewriter, op.getLoc(), body_results);
 
   symbol_table_.insert(body_fn);
 
@@ -888,8 +891,8 @@ void CreateFallbackInitializationFunction(
     mlir::ModuleOp module, ExecuteOpRegistry &execute_op_registry) {
   mlir::OpBuilder builder(&module.getBodyRegion());
 
-  auto func_op = builder.create<mlir::func::FuncOp>(
-      module.getLoc(), "_tfrt_fallback_init",
+  auto func_op = mlir::func::FuncOp::create(
+      builder, module.getLoc(), "_tfrt_fallback_init",
       mlir::FunctionType::get(module.getContext(), /*inputs=*/{},
                               /*outputs=*/{}));
 
@@ -903,13 +906,13 @@ void CreateFallbackInitializationFunction(
       // There might be unused ops, and we don't need to create them at runtime.
       //
       // TODO(chky, deqiangc): Clean up unused ops before hand.
-      builder.create<tf_mlrt::CreateOp>(
-          func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
+      tf_mlrt::CreateOp::create(
+          builder, func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
           /*operands=*/mlir::ValueRange{}, op->getAttrs());
     }
   }
 
-  builder.create<mlir::func::ReturnOp>(func_op.getLoc());
+  mlir::func::ReturnOp::create(builder, func_op.getLoc());
 }
 
 // Move the tf_mlrt.await ops to right before their first uses to avoid
@@ -1108,7 +1111,8 @@ class TfToMlrtConversionPass
 
       if (mlir::isa<mlrt::compiler::FutureType>(inputs[0].getType())) {
         if (mlir::isa<tf_mlrt::TFTensorType>(desired_type)) {
-          return builder.create<tf_mlrt::AwaitOp>(loc, desired_type, inputs[0]);
+          return tf_mlrt::AwaitOp::create(builder, loc, desired_type,
+                                          inputs[0]);
         }
 
         return mlir::Value();
@@ -1196,8 +1200,8 @@ class TfToMlrtConversionPass
       if (!unused_futures.empty()) {
         auto builder =
             mlir::OpBuilder::atBlockTerminator(&func.getBody().front());
-        builder.create<::mlrt::compiler::AwaitAllControlOp>(func.getLoc(),
-                                                            unused_futures);
+        ::mlrt::compiler::AwaitAllControlOp::create(builder, func.getLoc(),
+                                                    unused_futures);
       }
     }
   }

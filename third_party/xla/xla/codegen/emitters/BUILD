@@ -47,6 +47,7 @@ xla_cc_test(
     deps = [
         ":computation_partitioner",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -119,8 +120,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:VectorDialect",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -134,6 +135,7 @@ xla_cc_test(
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
@@ -158,8 +160,8 @@ xla_cc_test(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -282,6 +284,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/runtime:work_cluster",
         "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",

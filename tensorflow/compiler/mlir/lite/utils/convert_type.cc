@@ -60,7 +60,7 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
         return tflite::TensorType_BOOL;
       case 4:
         if (itype.isUnsigned())
-          llvm_unreachable("invalid unsigned 4bit integer Type in conversion");
+          return tflite::TensorType_UINT4;
         else
           return tflite::TensorType_INT4;
       case 8:
@@ -118,6 +118,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getIntegerType(2);
     case tflite::TensorType_INT4:
       return builder.getIntegerType(4);
+    case tflite::TensorType_UINT4:
+      return builder.getIntegerType(4, /*isSigned=*/false);
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
     case tflite::TensorType_UINT64:
@@ -150,6 +152,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT4:
       return tensorflow::DT_INT8;
+    case tflite::TensorType_UINT4:
+      return tensorflow::DT_UINT4;
     case tflite::TensorType_INT8:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT16:
@@ -191,6 +195,8 @@ absl::StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
       return tflite::TensorType_FLOAT32;
     case tensorflow::DT_DOUBLE:
       return tflite::TensorType_FLOAT64;
+    case tensorflow::DT_UINT4:
+      return tflite::TensorType_UINT4;
     case tensorflow::DT_INT8:
       return tflite::TensorType_INT8;
     case tensorflow::DT_INT16:

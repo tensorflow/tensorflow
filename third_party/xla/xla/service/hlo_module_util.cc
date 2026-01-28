@@ -203,6 +203,7 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   }
 
   if (execution_options != nullptr) {
+    // LINT.IfChange
     if (execution_options->num_replicas() > 0) {
       config->set_replica_count(execution_options->num_replicas());
     } else {
@@ -253,6 +254,9 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     config->set_device_memory_size(execution_options->device_memory_size());
     config->set_use_shardy_partitioner(
         execution_options->use_shardy_partitioner());
+    // LINT.ThenChange(
+    //   //xla/service/hlo_runner_pjrt.cc
+    // )
   } else {
     config->set_replica_count(default_num_replicas);
     config->set_debug_options(GetDebugOptionsFromFlags());

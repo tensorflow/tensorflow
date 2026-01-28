@@ -324,7 +324,7 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   MeshAxesReplicaGroupList rg_abcd_across_multiple_axes_and_subaxes(
       mesh_abcd, {AxisRef(0), AxisRef(1, {1, 2}), AxisRef(3)});
   EXPECT_EQ(rg_abcd_across_multiple_axes_and_subaxes.ToString(),
-            "@mesh<a=2,b=4,c=4,d=2>([4,16]T(1,0)) {a,b:(1)2,d}");
+            "@mesh<a=2,b=4,c=4,d=2>, device_ids=([4,16]T(1,0)) {a,b:(1)2,d}");
 
   // Subaxes and random device assignment.
   Array<int64_t> array({{8, 3, 7, 5, 4, 2, 6, 0, 1, 9}});
@@ -334,7 +334,7 @@ TEST(MeshAxesReplicaGroupListTest, MeshAxesToString) {
   MeshAxesReplicaGroupList rg_ooo_across_ooo_5_2(mesh_ooo,
                                                  {AxisRef(0, {5, 2})});
   EXPECT_EQ(rg_ooo_across_ooo_5_2.ToString(),
-            "@mesh<ooo=10>(8,3,7,5,4,2,6,0,1,9) {ooo:(5)2}");
+            "@mesh<ooo=10>, device_ids=(8,3,7,5,4,2,6,0,1,9) {ooo:(5)2}");
 }
 
 TEST(MeshAxesReplicaGroupListTest, ValidatesIncompatibleAxes) {
@@ -429,6 +429,20 @@ TEST(MeshAxesReplicaGroupListTest, ToReplicaGroupV2) {
   EXPECT_EQ(replica_group_d_2_3_d_1_2.flattened_replica_groups(),
             replica_group_d_2_3_d_1_2.ToIotaReplicaGroupList()
                 .flattened_replica_groups());
+}
+
+TEST(MeshAxesReplicaGroupListTest, ToReplicaGroupV2WithComplexMesh) {
+  Mesh mesh(TileAssignment(/*dims=*/{8, 2}, /*reshape_dims=*/{2, 4, 2},
+                           /*transpose_perm=*/{2, 1, 0}),
+            {"a", "b"});
+
+  MeshAxesReplicaGroupList replica_group_a(mesh, {AxisRef(0)});
+  EXPECT_EQ(replica_group_a.ToIotaReplicaGroupList().flattened_replica_groups(),
+            replica_group_a.flattened_replica_groups());
+
+  MeshAxesReplicaGroupList replica_group_b(mesh, {AxisRef(1)});
+  EXPECT_EQ(replica_group_b.ToIotaReplicaGroupList().flattened_replica_groups(),
+            replica_group_b.flattened_replica_groups());
 }
 
 TEST(MeshAxesReplicaGroupListTest, ToCollectiveDeviceList) {

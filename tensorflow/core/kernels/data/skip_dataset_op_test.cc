@@ -11,7 +11,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/skip_dataset_op.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -25,7 +32,7 @@ class SkipDatasetParams : public DatasetParams {
   SkipDatasetParams(T input_dataset_params, int64_t count,
                     DataTypeVector output_dtypes,
                     std::vector<PartialTensorShape> output_shapes,
-                    string node_name)
+                    std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         count_(count) {
@@ -39,7 +46,8 @@ class SkipDatasetParams : public DatasetParams {
     return {CreateTensor<int64_t>(TensorShape({}), {count_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(SkipDatasetOp::kInputDataset);
     input_names->emplace_back(SkipDatasetOp::kCount);
@@ -54,7 +62,9 @@ class SkipDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return SkipDatasetOp::kDatasetType; }
+  std::string dataset_type() const override {
+    return SkipDatasetOp::kDatasetType;
+  }
 
  private:
   int64_t count_;

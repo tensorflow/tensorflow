@@ -36,8 +36,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -55,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -62,9 +66,9 @@ limitations under the License.
 #include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 
@@ -168,12 +172,31 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
   LoadMlirDialectsForTriton(*test->mlir_context());
+
+  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          computation, test->mlir_context(),
+          TritonEmitterConstraints::GetBuilder(
+              TestGpuDeviceInfo::RTXA6000DeviceInfo()));
+
+  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
+    return Internal(
+        "Unsupported fusion in EmitGeneric: %s",
+        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
+  }
+
+  const auto& symbolic_tile_analysis =
+      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
+
+  TF_ASSIGN_OR_RETURN(
+      Tiling tiling,
+      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
+          fusion, symbolic_tile_analysis, block_level_parameters));
+
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,
-      EmitXTileModule("xtile_dialect_fn",
-                      TritonEmitterConstraints::GetBuilder(
-                          TestGpuDeviceInfo::RTXA6000DeviceInfo()),
-                      fusion, block_level_parameters, *test->mlir_context()));
+      EmitXTileModule("xtile_dialect_fn", fusion, symbolic_tile_analysis,
+                      tiling, *test->mlir_context()));
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -188,9 +211,14 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateXTileIrAndFileCheck(
 absl::Status LowerXTileIrToTritonAndFileCheck(
     HloTestBaseWithMLIRContext* test, mlir::ModuleOp xtile_dialect_module,
     absl::string_view filecheck_pattern, const HloFusionInstruction& fusion) {
+  auto fusion_backend_config =
+      fusion.backend_config<GpuBackendConfig>()->fusion_backend_config();
+  BlockLevelParameters block_level_parameters =
+      BlockLevelParameters::FromBlockLevelFusionConfig(
+          fusion_backend_config.block_level_fusion_config());
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *test->mlir_context(), fusion,
-      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()));
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), block_level_parameters));
 
   std::string out;
   llvm::raw_string_ostream os(out);

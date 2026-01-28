@@ -66,7 +66,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -120,7 +120,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:logging",
     ],
 )

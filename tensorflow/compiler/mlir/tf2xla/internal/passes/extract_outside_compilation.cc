@@ -142,7 +142,7 @@ FuncOp BuildFunction(llvm::ArrayRef<Operation*> ops,
     results_after_mapping.push_back(mapping.lookupOrDefault(result));
   }
 
-  builder->create<ReturnOp>(ops.front()->getLoc(), results_after_mapping);
+  ReturnOp::create(*builder, ops.front()->getLoc(), results_after_mapping);
   return outlined_func;
 }
 
@@ -205,15 +205,15 @@ Operation* CreateSendFromHostOp(OpBuilder& builder, Location loc,
                                 llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
-        builder.create<mlir::TF::_XlaSendFromHostV2Op>(
-            loc, inputs,
+        mlir::TF::_XlaSendFromHostV2Op::create(
+            builder, loc, inputs,
             /*dynamic_key=*/compilation_key, device_ordinal,
             builder.getStringAttr(communication_key), device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
-      builder.create<mlir::TF::_XlaSendFromHostOp>(
-          loc, inputs,
+      mlir::TF::_XlaSendFromHostOp::create(
+          builder, loc, inputs,
           /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
           /*device_ordinal=*/builder.getI64IntegerAttr(0), device_type_attr),
@@ -228,14 +228,15 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
                               llvm::StringRef communication_key) {
   if (device_ordinal)
     return ApplyXlaHostTransferAttr(
-        builder.create<mlir::TF::_XlaRecvAtHostV2Op>(
-            loc, output_types, /*dynamic_key=*/compilation_key, device_ordinal,
-            builder.getStringAttr(communication_key), device_type_attr),
+        mlir::TF::_XlaRecvAtHostV2Op::create(
+            builder, loc, output_types, /*dynamic_key=*/compilation_key,
+            device_ordinal, builder.getStringAttr(communication_key),
+            device_type_attr),
         builder);
 
   return ApplyXlaHostTransferAttr(
-      builder.create<mlir::TF::_XlaRecvAtHostOp>(
-          loc, output_types, /*dynamic_key=*/compilation_key,
+      mlir::TF::_XlaRecvAtHostOp::create(
+          builder, loc, output_types, /*dynamic_key=*/compilation_key,
           builder.getStringAttr(communication_key),
           /*device_ordinal=*/builder.getI64IntegerAttr(0), device_type_attr),
       builder);
@@ -246,8 +247,9 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
 mlir::TF::IfRegionOp CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region,
                                                OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
-  auto host_side_if = builder.create<mlir::TF::IfRegionOp>(
-      if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.getCond(),
+  auto host_side_if = mlir::TF::IfRegionOp::create(
+      builder, if_region.getLoc(), llvm::SmallVector<Type, 4>{},
+      if_region.getCond(),
       /*is_stateless=*/false, if_region.get_thenFuncNameAttr(),
       if_region.get_elseFuncNameAttr());
 
@@ -255,15 +257,15 @@ mlir::TF::IfRegionOp CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region,
   auto& then_branch = host_side_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
-  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
-                                    /*operands=*/ArrayRef<Value>{});
+  mlir::TF::YieldOp::create(builder, if_region.getLoc(),
+                            /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.getElseBranch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
-  builder.create<mlir::TF::YieldOp>(if_region.getLoc(),
-                                    /*operands=*/ArrayRef<Value>{});
+  mlir::TF::YieldOp::create(builder, if_region.getLoc(),
+                            /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 // Creates a WhileRegionOp cond and body regions with yield op and
@@ -271,15 +273,15 @@ mlir::TF::IfRegionOp CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region,
 mlir::TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations,
                                         Location loc, OpBuilder& builder) {
   // Mark op as stateful due to side-effecting communication ops added later.
-  auto host_side_while = builder.create<mlir::TF::WhileRegionOp>(
-      loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
+  auto host_side_while = mlir::TF::WhileRegionOp::create(
+      builder, loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
       parallel_iterations, /*is_stateless=*/false, /*shape_invariant=*/false);
 
   // Create empty else branch region.
   auto& body = host_side_while.getBody();
   body.push_back(new Block);
   builder.setInsertionPointToEnd(&body.front());
-  builder.create<mlir::TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  mlir::TF::YieldOp::create(builder, loc, /*operands=*/ArrayRef<Value>{});
   return host_side_while;
 }
 
@@ -292,8 +294,8 @@ mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp
 CreateCompilationKeyPlaceholder(Location loc, OpBuilder& builder) {
   auto result_type =
       RankedTensorType::get({3}, builder.getType<mlir::TF::StringType>());
-  return builder.create<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>(
-      loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
+  return mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp::create(
+      builder, loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
 }
 
 // Creates a `tf_device.launch` to wrap cluster ops.
@@ -308,14 +310,14 @@ mlir::tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated Device op.
   // For TPU case, it is TPUReplicateMetadata op.
-  auto launch_op = builder.create<mlir::tf_device::LaunchOp>(
-      loc_op->getLoc(), builder.getStringAttr(host_device),
+  auto launch_op = mlir::tf_device::LaunchOp::create(
+      builder, loc_op->getLoc(), builder.getStringAttr(host_device),
       /*result_types=*/host_result_types);
 
   launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
-  builder.create<mlir::tf_device::ReturnOp>(loc_op->getLoc(),
-                                            return_value_from_host);
+  mlir::tf_device::ReturnOp::create(builder, loc_op->getLoc(),
+                                    return_value_from_host);
   return launch_op;
 }
 
@@ -564,15 +566,15 @@ LogicalResult CreateHostComputeMap(
                << "All inputs and outputs of map_outside_compilation should "
                   "have the same sharding.";
     }
-    auto in_manual = builder.create<mlir::TF::XlaSpmdFullToShardShapeOp>(
-        loc, shard_type, in, common_split_sharding, /*dim=*/-1,
+    auto in_manual = mlir::TF::XlaSpmdFullToShardShapeOp::create(
+        builder, loc, shard_type, in, common_split_sharding, /*dim=*/-1,
         /*unspecified_dims=*/builder.getI64ArrayAttr({}));
     manual_inputs.push_back(in_manual);
   }
 
   // Create the _XlaHostComputeMlirOp
-  auto host_compute = builder.create<mlir::TF::_XlaHostComputeMlirOp>(
-      loc, shard_output_types, manual_inputs,
+  auto host_compute = mlir::TF::_XlaHostComputeMlirOp::create(
+      builder, loc, shard_output_types, manual_inputs,
       /*send_key=*/builder.getStringAttr(args_communication_key),
       /*recv_key=*/builder.getStringAttr(retvals_communication_key),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module),
@@ -587,8 +589,9 @@ LogicalResult CreateHostComputeMap(
     if (!full_type_ranked)
       return original_op->emitOpError()
              << "map_outside_compilation must have ranked outputs";
-    auto out_full = builder.create<mlir::TF::XlaSpmdShardToFullShapeOp>(
-        loc, full_type, out, common_split_sharding, full_type_ranked.getShape(),
+    auto out_full = mlir::TF::XlaSpmdShardToFullShapeOp::create(
+        builder, loc, full_type, out, common_split_sharding,
+        full_type_ranked.getShape(),
         /*dim=*/-1,
         /*unspecified_dims=*/builder.getI64ArrayAttr({}));
     host_compute_out_ops.push_back(out_full);
@@ -612,8 +615,8 @@ void CreateHostComputeNotMap(OpBuilder& builder, Location loc,
   llvm::SmallVector<Type, 4> device_output_types;
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
-  auto host_compute = builder.create<mlir::TF::_XlaHostComputeMlirOp>(
-      loc, device_output_types, inputs,
+  auto host_compute = mlir::TF::_XlaHostComputeMlirOp::create(
+      builder, loc, device_output_types, inputs,
       builder.getStringAttr(args_communication_key),
       builder.getStringAttr(retvals_communication_key),
       /*host_mlir_module=*/builder.getStringAttr(serialized_func_module));
@@ -1100,8 +1103,8 @@ LogicalResult DecomposeControlFlow(mlir::tf_device::ClusterOp device_cluster,
       auto condition =
           while_op.getCond().front().getTerminator()->getOperand(0);
       builder.setInsertionPoint(while_op.getCond().front().getTerminator());
-      builder.create<mlir::TF::XlaSendToHostOp>(while_op.getLoc(), condition,
-                                                condition_send_recv_key);
+      mlir::TF::XlaSendToHostOp::create(builder, while_op.getLoc(), condition,
+                                        condition_send_recv_key);
       // device_ordinal0 is the ordinal of TPU_REPLICATED_CORE_0 and is only
       // used in the replicated case.
       Value device_ordinal0 = nullptr;
@@ -1114,8 +1117,8 @@ LogicalResult DecomposeControlFlow(mlir::tf_device::ClusterOp device_cluster,
           device_cluster->getAttrOfType<StringAttr>(
               mlir::TF::kCompileDeviceTypeAttr),
           condition_send_recv_key);
-      builder.create<mlir::TF::YieldOp>(while_op.getLoc(),
-                                        recv_condition_at_host->getResults());
+      mlir::TF::YieldOp::create(builder, while_op.getLoc(),
+                                recv_condition_at_host->getResults());
 
       if (failed(MoveToHostMultiCluster(
               device_cluster, &while_op.getCond().front(),
@@ -1288,8 +1291,9 @@ mlir::tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
                                      return_value_from_device);
 
   builder.setInsertionPoint(device_cluster);
-  auto parallel_execute_op = builder.create<mlir::tf_device::ParallelExecuteOp>(
-      device_cluster.getLoc(), num_regions, parallel_execute_result_types);
+  auto parallel_execute_op = mlir::tf_device::ParallelExecuteOp::create(
+      builder, device_cluster.getLoc(), num_regions,
+      parallel_execute_result_types);
   SmallVector<mlir::tf_device::LaunchOp, 4> core_to_host_launch;
   for (int core = 0; core < core_to_tmp_host_launch.size(); ++core) {
     Block& host_computation_block =
@@ -1311,8 +1315,8 @@ mlir::tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 
     // Create a return op for host computation block
     builder.setInsertionPointToEnd(&host_computation_block);
-    builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
-                                              host_launch_op->getResults());
+    mlir::tf_device::ReturnOp::create(builder, device_cluster.getLoc(),
+                                      host_launch_op->getResults());
   }
 
   // Move the launch body to last parallel_execute block.
@@ -1329,22 +1333,22 @@ mlir::tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
 
   // Create a empty device cluster op with same attribute but different return
   // type
-  auto new_device_cluster = builder.create<mlir::tf_device::ClusterOp>(
-      device_cluster.getLoc(), device_result_types,
+  auto new_device_cluster = mlir::tf_device::ClusterOp::create(
+      builder, device_cluster.getLoc(), device_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, device_cluster->getAttrs());
 
   new_device_cluster.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&new_device_cluster.GetBody());
 
   // Create return op for device computation region in the paralle_execute op
-  Operation* after_op_r = builder.create<mlir::tf_device::ReturnOp>(
-      new_device_cluster.getLoc(), device_results);
+  Operation* after_op_r = mlir::tf_device::ReturnOp::create(
+      builder, new_device_cluster.getLoc(), device_results);
 
   builder.setInsertionPointToEnd(&parallel_execute_device_block);
 
   // Create return op for the new device cluster op
-  builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
-                                            new_device_cluster.getResults());
+  mlir::tf_device::ReturnOp::create(builder, device_cluster.getLoc(),
+                                    new_device_cluster.getResults());
 
   MoveOldTpuClusterToNewTpuCluster(device_cluster, after_op_r);
 
@@ -1377,9 +1381,8 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
   // `map_outside_compilation` case `num_host_regions == num_cores_per_replica`.
   const int num_host_regions = core_to_host.size();
   const int num_regions = 1 + num_host_regions;
-  auto tmp_parallel_execute_op =
-      builder.create<mlir::tf_device::ParallelExecuteOp>(
-          device_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
+  auto tmp_parallel_execute_op = mlir::tf_device::ParallelExecuteOp::create(
+      builder, device_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
   SmallVector<Operation*, 4> core_to_host_insertion_point;
   SmallVector<mlir::tf_device::LaunchOp, 4> core_to_tmp_launch;
   SmallVector<Operation*, 4> compilation_key_ops;
@@ -1398,8 +1401,8 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
     core_to_tmp_launch.push_back(tmp_host_launch_op);
     // Create a tmp return op for tmp host computation block
     builder.setInsertionPointToEnd(&tmp_host_computation_block);
-    builder.create<mlir::tf_device::ReturnOp>(device_cluster.getLoc(),
-                                              llvm::ArrayRef<Value>{});
+    mlir::tf_device::ReturnOp::create(builder, device_cluster.getLoc(),
+                                      llvm::ArrayRef<Value>{});
     core_to_host_insertion_point.push_back(
         tmp_host_launch_op.GetBody().getTerminator());
 
@@ -1416,14 +1419,13 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
             compilation_key_op)
             .getProgram();
     if (has_tpu_device) {
-      device_ordinal_op =
-          builder.create<mlir::TF::_TPUDeviceOrdinalPlaceholderOp>(
-              device_cluster.getLoc(),
-              RankedTensorType::get({}, builder.getI64Type()),
-              builder.getI64IntegerAttr(core));
+      device_ordinal_op = mlir::TF::_TPUDeviceOrdinalPlaceholderOp::create(
+          builder, device_cluster.getLoc(),
+          RankedTensorType::get({}, builder.getI64Type()),
+          builder.getI64IntegerAttr(core));
     } else {
-      device_ordinal_op = builder.create<mlir::TF::ConstOp>(
-          device_cluster.getLoc(),
+      device_ordinal_op = mlir::TF::ConstOp::create(
+          builder, device_cluster.getLoc(),
           DenseIntElementsAttr::get(
               RankedTensorType::get({}, builder.getI64Type()),
               static_cast<int64_t>(0)));

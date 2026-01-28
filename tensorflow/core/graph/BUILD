@@ -1,5 +1,5 @@
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
 load(

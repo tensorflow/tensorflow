@@ -3684,6 +3684,180 @@ absl::StatusOr<XlaOp> XlaBuilder::ReduceInternal(
   });
 }
 
+XlaOp XlaBuilder::Scan(absl::Span<const XlaOp> inputs,
+                       absl::Span<const XlaOp> inits,
+                       const XlaComputation& computation,
+                       int64_t scan_dimension, bool is_reverse,
+                       TriState is_associative) {
+  return Scan(inputs, inits, AddSubComputation(computation), scan_dimension,
+              is_reverse, is_associative);
+}
+
+namespace {
+
+absl::Status VerifyScan(const ProgramShape& program_shape,
+                        absl::Span<const Shape* const> input_shapes,
+                        absl::Span<const Shape* const> init_shapes,
+                        int64_t scan_dimension) {
+  // Validate number of parameters
+  if (program_shape.parameters_size() !=
+      init_shapes.size() + input_shapes.size()) {
+    return InvalidArgument(
+        "Scan computation expects %d parameters, but got %d.",
+        init_shapes.size() + input_shapes.size(),
+        program_shape.parameters_size());
+  }
+
+  // Validate loop length
+  int64_t loop_length = -1;
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    const Shape* s = input_shapes[i];
+    if (scan_dimension < 0 || scan_dimension >= s->dimensions().size()) {
+      return InvalidArgument("Scan dimension %d out of bounds for operand %d",
+                             scan_dimension, i);
+    }
+    int64_t d = s->dimensions(scan_dimension);
+    if (loop_length == -1) {
+      loop_length = d;
+    } else if (loop_length != d) {
+      return InvalidArgument("Mismatching loop length");
+    }
+  }
+
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    int param_idx = i;
+    Shape expected_input_element_shape = *input_shapes[i];
+    expected_input_element_shape.DeleteDimension(scan_dimension);
+    if (!ShapeUtil::Compatible(expected_input_element_shape,
+                               program_shape.parameters(param_idx))) {
+      return InvalidArgument(
+          "Scan computation parameter %d shape %s does not match input "
+          "element shape %s",
+          param_idx,
+          ShapeUtil::HumanString(program_shape.parameters(param_idx)),
+          ShapeUtil::HumanString(expected_input_element_shape));
+    }
+  }
+
+  // Validate parameter shapes
+  for (int i = 0; i < init_shapes.size(); ++i) {
+    int param_idx = input_shapes.size() + i;
+    if (!ShapeUtil::Compatible(*init_shapes[i],
+                               program_shape.parameters(param_idx))) {
+      return InvalidArgument(
+          "Scan computation parameter %d shape %s does not match init shape "
+          "%s",
+          param_idx,
+          ShapeUtil::HumanString(program_shape.parameters(param_idx)),
+          ShapeUtil::HumanString(*init_shapes[i]));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<Shape> InferScanShape(
+    const ProgramShape& program_shape,
+    absl::Span<const Shape* const> input_shapes,
+    absl::Span<const Shape* const> init_shapes, int64_t scan_dimension) {
+  const Shape& result_shape = program_shape.result();
+  std::vector<Shape> scan_result_shapes;
+  if (result_shape.IsTuple()) {
+    for (const auto& s : result_shape.tuple_shapes()) {
+      scan_result_shapes.push_back(s);
+    }
+  } else {
+    scan_result_shapes.push_back(result_shape);
+  }
+
+  if (scan_result_shapes.size() < init_shapes.size()) {
+    return InvalidArgument(
+        "Scan computation must return at least %d elements (carries), but "
+        "got %d.",
+        init_shapes.size(), scan_result_shapes.size());
+  }
+
+  int64_t num_carries = init_shapes.size();
+  int64_t num_outputs = scan_result_shapes.size() - num_carries;
+
+  int64_t loop_length = -1;
+  if (!input_shapes.empty()) {
+    loop_length = input_shapes[0]->dimensions(scan_dimension);
+  }
+
+  // Construct final shape
+  std::vector<Shape> final_shapes;
+  final_shapes.reserve(num_outputs + num_carries);
+  for (int i = 0; i < num_outputs; ++i) {
+    Shape output_element_shape = scan_result_shapes[i];
+    // Create array shape by inserting loop_length at scan_dimension
+    std::vector<int64_t> dims(output_element_shape.dimensions().begin(),
+                              output_element_shape.dimensions().end());
+    dims.insert(dims.begin() + scan_dimension, loop_length);
+    final_shapes.push_back(
+        ShapeUtil::MakeShape(output_element_shape.element_type(), dims));
+  }
+  for (int i = 0; i < num_carries; ++i) {
+    // Verify carries
+    if (!ShapeUtil::Compatible(*init_shapes[i],
+                               scan_result_shapes[num_outputs + i])) {
+      return InvalidArgument(
+          "Scan computation result %d shape %s does not match init shape %s",
+          num_outputs + i,
+          ShapeUtil::HumanString(scan_result_shapes[num_outputs + i]),
+          ShapeUtil::HumanString(*init_shapes[i]));
+    }
+    final_shapes.push_back(scan_result_shapes[num_outputs + i]);
+  }
+
+  return ShapeUtil::MakeTupleShape(final_shapes);
+}
+
+}  // namespace
+
+XlaOp XlaBuilder::Scan(absl::Span<const XlaOp> inputs,
+                       absl::Span<const XlaOp> inits,
+                       XlaComputationId computation, int64_t scan_dimension,
+                       bool is_reverse, TriState is_associative) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    std::vector<const Shape*> init_shapes;
+    for (const auto& init : inits) {
+      TF_ASSIGN_OR_RETURN(const Shape* s, GetShapePtr(init));
+      init_shapes.push_back(s);
+    }
+    std::vector<const Shape*> input_shapes;
+    for (const auto& input : inputs) {
+      TF_ASSIGN_OR_RETURN(const Shape* s, GetShapePtr(input));
+      input_shapes.push_back(s);
+    }
+
+    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                        GetSubcomputationShape(computation));
+
+    TF_RETURN_IF_ERROR(
+        VerifyScan(program_shape, input_shapes, init_shapes, scan_dimension));
+
+    TF_ASSIGN_OR_RETURN(Shape final_shape,
+                        (InferScanShape(program_shape, input_shapes,
+                                        init_shapes, scan_dimension)));
+
+    int64_t num_carries = inits.size();
+    HloInstructionProto instr;
+    *instr.mutable_shape() = final_shape.ToProto();
+    instr.add_dimensions(scan_dimension);
+    instr.set_is_reverse(is_reverse);
+    instr.set_num_carries(num_carries);
+    instr.set_is_associative(is_associative);
+    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+
+    std::vector<XlaOp> all_operands;
+    all_operands.reserve(inits.size() + inputs.size());
+    all_operands.insert(all_operands.end(), inputs.begin(), inputs.end());
+    all_operands.insert(all_operands.end(), inits.begin(), inits.end());
+
+    return AddInstruction(std::move(instr), HloOpcode::kScan, all_operands);
+  });
+}
+
 XlaOp XlaBuilder::ReduceAll(XlaOp operand, XlaOp init_value,
                             XlaComputationId computation) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -5808,6 +5982,28 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
              absl::Span<const int64_t> dimensions_to_reduce) {
   return Reduce(builder, operands, init_values,
                 builder->AddSubComputation(computation), dimensions_to_reduce);
+}
+
+XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+           const XlaComputation& computation, int64_t scan_dimension,
+           bool is_reverse, TriState is_associative) {
+  if (inputs.empty()) {
+    return inits[0].builder()->Scan(inputs, inits, computation, scan_dimension,
+                                    is_reverse, is_associative);
+  }
+  return inputs[0].builder()->Scan(inputs, inits, computation, scan_dimension,
+                                   is_reverse, is_associative);
+}
+
+XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+           XlaComputationId computation, int64_t scan_dimension,
+           bool is_reverse, TriState is_associative) {
+  if (inputs.empty()) {
+    return inits[0].builder()->Scan(inputs, inits, computation, scan_dimension,
+                                    is_reverse, is_associative);
+  }
+  return inputs[0].builder()->Scan(inputs, inits, computation, scan_dimension,
+                                   is_reverse, is_associative);
 }
 
 XlaOp ReduceAll(const XlaOp operand, const XlaOp init_value,

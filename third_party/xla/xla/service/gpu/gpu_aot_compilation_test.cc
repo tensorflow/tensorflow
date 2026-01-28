@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -91,14 +92,14 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutable) {
   aot_options.set_executor(stream_exec);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           aot_results[0]->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
@@ -129,17 +130,18 @@ TEST_P(GpuAotCompilationTest, AotCompilationWithoutGpuDevice) {
   // Stream executor is not passed as an option.
   Compiler::GpuTargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler->PlatformId());
-  aot_options.set_gpu_target_config(gpu_target_config);
+  aot_options.set_gpu_topology(
+      GetSingleDeviceGpuTopology("", gpu_target_config));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           aot_results[0]->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.
@@ -244,14 +246,14 @@ TEST_P(GpuAotCompilationTest, ExportAndLoadExecutableWithTriton) {
   aot_options.set_executor(stream_exec);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler->CompileAheadOfTime(std::move(module), aot_options));
 
   // Serialize-deserialize AOT compilation result.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
                           aot_results[0]->SerializeAsString());
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
 
   // Load Executable from AOT compilation result.

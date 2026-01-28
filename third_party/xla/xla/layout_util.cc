@@ -90,7 +90,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (const SplitConfig& split_config : split_configs) {
     layout.add_split_configs(split_config);
   }
-  if (physical_shape != std::nullopt) {
+  if (physical_shape.has_value()) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
   }
   layout.set_dynamic_shape_metadata_prefix_bytes(
@@ -628,10 +628,13 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 
 /*static*/ std::optional<SplitConfig> LayoutUtil::GetSplitConfig(
     const Shape& shape) {
-  CHECK_LE(shape.layout().split_configs().size(), 1);
-  return shape.layout().split_configs().size() > 0
-             ? std::make_optional(shape.layout().split_configs(0))
-             : std::nullopt;
+  const absl::Span<const SplitConfig>& configs = shape.layout().split_configs();
+  CHECK_LE(configs.size(), 1);
+
+  if (configs.empty()) {
+    return std::nullopt;
+  }
+  return configs[0];
 }
 
 /*static*/ bool LayoutUtil::IsUntiledLayout(absl::Span<const Tile> tiles,

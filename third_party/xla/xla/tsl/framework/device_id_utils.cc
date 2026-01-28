@@ -67,8 +67,8 @@ void CheckValidTfDeviceId(const DeviceType& type,
                           const int visible_device_count,
                           const TfDeviceId tf_device_id) {
   PlatformDeviceId platform_device_id;
-  TF_CHECK_OK(DeviceIdManager::TfToPlatformDeviceId(type, tf_device_id,
-                                                    &platform_device_id));
+  CHECK_OK(DeviceIdManager::TfToPlatformDeviceId(type, tf_device_id,
+                                                 &platform_device_id));
   CHECK_LT(platform_device_id.value(), visible_device_count)  // Crash OK
       << "platform_device_id is outside discovered device range."
       << " TF " << type << " id: " << tf_device_id << ", platform " << type

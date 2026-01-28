@@ -32,7 +32,8 @@ mlir::LogicalResult LowerToLLVM(
                                           mlir::ConversionTarget&)>
         populate_platform_patterns =
             [](mlir::LLVMTypeConverter&, mlir::RewritePatternSet&,
-               mlir::ConversionTarget&) { return mlir::success(); });
+               mlir::ConversionTarget&) { return mlir::success(); },
+    bool lower_math_log1p = false);
 
 }  // namespace emitters
 }  // namespace xla

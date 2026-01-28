@@ -101,8 +101,8 @@ LogicalResult QuantizedConstRewrite::matchAndRewrite(
   // original const and the qbarrier that led to the quantization.
   auto fusedLoc = rewriter.getFusedLoc(
       {qbarrier.getArg().getDefiningOp()->getLoc(), qbarrier.getLoc()});
-  auto newConstOp = rewriter.create<arith::ConstantOp>(
-      fusedLoc, newConstValueType, cast<TypedAttr>(newConstValue));
+  auto newConstOp = arith::ConstantOp::create(
+      rewriter, fusedLoc, newConstValueType, cast<TypedAttr>(newConstValue));
   rewriter.replaceOpWithNewOp<StorageCastOp>(qbarrier, qbarrier.getType(),
                                              newConstOp);
   return success();

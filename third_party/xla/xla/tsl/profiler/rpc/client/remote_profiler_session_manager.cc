@@ -127,9 +127,7 @@ absl::Status RemoteProfilerSessionManager::Init() {
     ProfileRequest request = request_template;
     request.set_host_name(resolved_service_address);
     if (i < override_hostnames_list.size()) {
-      (*request.mutable_opts()
-            ->mutable_advanced_configuration())["override_hostname"]
-          .set_string_value(override_hostnames_list[i]);
+      request.mutable_opts()->set_override_hostname(override_hostnames_list[i]);
     }
 
     // Creation also issues Profile RPC asynchronously.

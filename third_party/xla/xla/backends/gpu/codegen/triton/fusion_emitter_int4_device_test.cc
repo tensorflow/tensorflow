@@ -335,38 +335,38 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 HloModule DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales
 
 lhs {
-  parameter_0 = s4[32,64,128] parameter(0)
-  parameter_1 = bf16[32,128] parameter(1)
-  w.s8 = s8[32,64,128] convert(parameter_0)
-  w.bf16 = bf16[32,64,128] convert(w.s8)
-  scales.broadcast = bf16[32,64,128] broadcast(parameter_1), dimensions={0,2}
-  ROOT weights.scaled = bf16[32,64,128] multiply(w.bf16, scales.broadcast)
+  parameter_0 = s4[32,64,128]{2,1,0:E(4)} parameter(0)
+  parameter_1 = bf16[32,128]{1,0} parameter(1)
+  w.s8 = s8[32,64,128]{2,1,0} convert(parameter_0)
+  w.bf16 = bf16[32,64,128]{2,1,0} convert(w.s8)
+  scales.broadcast = bf16[32,64,128]{2,1,0} broadcast(parameter_1), dimensions={0,2}
+  ROOT weights.scaled = bf16[32,64,128]{2,1,0} multiply(w.bf16, scales.broadcast)
 }
 
 rhs {
-  ROOT activations = bf16[32,64,256] parameter(0)
+  ROOT activations = bf16[32,64,256]{2,1,0} parameter(0)
 }
 
 DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales {
-  w = s4[32,64,128] parameter(0)
-  scales = bf16[32,128] parameter(1)
-  lhs = bf16[32,64,128] fusion(w, scales), kind=kCustom, calls=lhs,
+  w = s4[32,64,128]{2,1,0:E(4)} parameter(0)
+  scales = bf16[32,128]{1,0} parameter(1)
+  lhs = bf16[32,64,128]{2,1,0} fusion(w, scales), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  activations = bf16[32,64,256] parameter(2)
-  rhs = bf16[32,64,256] fusion(activations), kind=kCustom, calls=rhs,
+  activations = bf16[32,64,256]{2,1,0} parameter(2)
+  rhs = bf16[32,64,256]{2,1,0} fusion(activations), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  ROOT dot = f32[32,128,256] dot(lhs, rhs),
+  ROOT dot = f32[32,128,256]{2,1,0} dot(lhs, rhs),
     lhs_batch_dims={0}, lhs_contracting_dims={1},
     rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 
 ENTRY main {
-  w = s4[32,64,128] parameter(0)
-  scales = bf16[32,128] parameter(1)
-  p2 = bf16[32,64,256] parameter(2)
-  ROOT dot = f32[32,128,256] fusion(w, scales, p2),
+  w = s4[32,64,128]{2,1,0:E(4)} parameter(0)
+  scales = bf16[32,128]{1,0} parameter(1)
+  p2 = bf16[32,64,256]{2,1,0} parameter(2)
+  ROOT dot = f32[32,128,256]{2,1,0} fusion(w, scales, p2),
     kind=kCustom,
     calls=DotWithI4WeightsOnLhsFusedWithMultiplyByChannelScales,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
@@ -464,10 +464,13 @@ struct I4TestParams {
     return absl::StrReplaceAll(
         format, {{"${name}", name},
                  {"${lhs}", lhs},
+                 {"${lhs_layout}", lhs_layout},
                  {"${rhs}", rhs},
+                 {"${rhs_layout}", rhs_layout},
                  {"${lhs_contracting_dim}", absl::StrCat(lhs_contracting_dim)},
                  {"${rhs_contracting_dim}", absl::StrCat(rhs_contracting_dim)},
-                 {"${out}", out}});
+                 {"${out}", out},
+                 {"${out_layout}", out_layout}});
   }
   bool HasBatchDim() const {
     return std::vector<std::string>(absl::StrSplit(lhs, ',')).size() > 2;
@@ -475,10 +478,13 @@ struct I4TestParams {
 
   std::string name;         // The name of the test.
   std::string lhs;          // The lhs shape like "128,16".
+  std::string lhs_layout;   // The layout of the lhs shape.
   std::string rhs;          // The rhs shape like "128,256".
+  std::string rhs_layout;   // The layout of the rhs shape.
   int lhs_contracting_dim;  // The contracting dimension of the lhs.
   int rhs_contracting_dim;  // The contracting dimension of the rhs.
   std::string out;          // The output shape like "16,256".
+  std::string out_layout;   // The layout of the output shape.
 };
 
 class ParametrizedTritonTest : public TritonTest,
@@ -492,34 +498,34 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhs) {
 HloModule lhs_${name}
 
 lhs {
-  parameter_0 = s4[${lhs}] parameter(0)
-  w.s8 = s8[${lhs}] convert(parameter_0)
-  ROOT w.b16 = bf16[${lhs}] convert(w.s8)
+  parameter_0 = s4[${lhs}]{${lhs_layout}:E(4)} parameter(0)
+  w.s8 = s8[${lhs}]{${lhs_layout}} convert(parameter_0)
+  ROOT w.b16 = bf16[${lhs}]{${lhs_layout}} convert(w.s8)
 }
 
 rhs {
-  ROOT parameter_0 = bf16[${rhs}] parameter(0)
+  ROOT parameter_0 = bf16[${rhs}]{${rhs_layout}} parameter(0)
 }
 
 fusion {
-  parameter_0 = s4[${lhs}] parameter(0)
+  parameter_0 = s4[${lhs}]{${lhs_layout}:E(4)} parameter(0)
 
-  lhs = bf16[${lhs}] fusion(parameter_0), kind=kCustom, calls=lhs,
+  lhs = bf16[${lhs}]{${lhs_layout}} fusion(parameter_0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  parameter_1 = bf16[${rhs}] parameter(1)
-  rhs = bf16[${rhs}] fusion(parameter_1), kind=kCustom, calls=rhs,
+  parameter_1 = bf16[${rhs}]{${rhs_layout}} parameter(1)
+  rhs = bf16[${rhs}]{${rhs_layout}} fusion(parameter_1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = f32[${out}] dot(lhs, rhs),
+  ROOT dot = f32[${out}]{${out_layout}} dot(lhs, rhs),
     lhs_contracting_dims={${lhs_contracting_dim}},
     rhs_contracting_dims={${rhs_contracting_dim}}
 }
 
 ENTRY entry_computation {
-  w = s4[${lhs}] parameter(0)
-  a = bf16[${rhs}] parameter(1)
-  ROOT fusion = f32[${out}] fusion(w, a),
+  w = s4[${lhs}]{${lhs_layout}:E(4)} parameter(0)
+  a = bf16[${rhs}]{${rhs_layout}} parameter(1)
+  ROOT fusion = f32[${out}]{${out_layout}} fusion(w, a),
     kind=kCustom, calls=fusion, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
@@ -543,34 +549,34 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheLhsWithBatchDim) {
 HloModule lhs_${name}
 
 lhs {
-  parameter_0 = s4[${lhs}] parameter(0)
-  w.s8 = s8[${lhs}] convert(parameter_0)
-  ROOT w.b16 = bf16[${lhs}] convert(w.s8)
+  parameter_0 = s4[${lhs}]{${lhs_layout}:E(4)} parameter(0)
+  w.s8 = s8[${lhs}]{${lhs_layout}} convert(parameter_0)
+  ROOT w.b16 = bf16[${lhs}]{${lhs_layout}} convert(w.s8)
 }
 
 rhs {
-  ROOT parameter_0 = bf16[${rhs}] parameter(0)
+  ROOT parameter_0 = bf16[${rhs}]{${rhs_layout}} parameter(0)
 }
 
 fusion {
   parameter_0 = s4[${lhs}] parameter(0)
 
-  lhs = bf16[${lhs}] fusion(parameter_0), kind=kCustom, calls=lhs,
+  lhs = bf16[${lhs}]{${lhs_layout}} fusion(parameter_0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  parameter_1 = bf16[${rhs}] parameter(1)
-  rhs = bf16[${rhs}] fusion(parameter_1), kind=kCustom, calls=rhs,
+  parameter_1 = bf16[${rhs}]{${rhs_layout}} parameter(1)
+  rhs = bf16[${rhs}]{${rhs_layout}} fusion(parameter_1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  ROOT dot = f32[${out}] dot(lhs, rhs),
+  ROOT dot = f32[${out}]{${out_layout}} dot(lhs, rhs),
     lhs_batch_dims={0}, lhs_contracting_dims={${lhs_contracting_dim}},
     rhs_batch_dims={0}, rhs_contracting_dims={${rhs_contracting_dim}}
 }
 
 ENTRY entry_computation {
-  w = s4[${lhs}] parameter(0)
-  a = bf16[${rhs}] parameter(1)
-  ROOT fusion = f32[${out}] fusion(w, a),
+  w = s4[${lhs}]{${lhs_layout}:E(4)} parameter(0)
+  a = bf16[${rhs}]{${rhs_layout}} parameter(1)
+  ROOT fusion = f32[${out}]{${out_layout}} fusion(w, a),
     kind=kCustom, calls=fusion, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
@@ -594,34 +600,34 @@ TEST_P(ParametrizedTritonTest, Int4WeightsOnTheRhs) {
 HloModule rhs_${name}
 
 lhs {
-  ROOT parameter_0 = bf16[${lhs}] parameter(0)
+  ROOT parameter_0 = bf16[${lhs}]{${lhs_layout}} parameter(0)
 }
 
 rhs {
-  parameter_0 = s4[${rhs}] parameter(0)
-  w.s8 = s8[${rhs}] convert(parameter_0)
-  ROOT w.b16 = bf16[${rhs}] convert(w.s8)
+  parameter_0 = s4[${rhs}]{${rhs_layout}:E(4)} parameter(0)
+  w.s8 = s8[${rhs}]{${rhs_layout}} convert(parameter_0)
+  ROOT w.b16 = bf16[${rhs}]{${rhs_layout}} convert(w.s8)
 }
 
 fusion {
-  parameter_0 = bf16[${lhs}] parameter(0)
+  parameter_0 = bf16[${lhs}]{${lhs_layout}} parameter(0)
 
-  lhs = bf16[${lhs}] fusion(parameter_0), kind=kCustom, calls=lhs,
+  lhs = bf16[${lhs}]{${lhs_layout}} fusion(parameter_0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  parameter_1 = s4[${rhs}] parameter(1)
-  rhs = bf16[${rhs}] fusion(parameter_1), kind=kCustom, calls=rhs,
+  parameter_1 = s4[${rhs}]{${rhs_layout}:E(4)} parameter(1)
+  rhs = bf16[${rhs}]{${rhs_layout}} fusion(parameter_1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = f32[${out}] dot(lhs, rhs),
+  ROOT dot = f32[${out}]{${out_layout}} dot(lhs, rhs),
     lhs_contracting_dims={${lhs_contracting_dim}},
     rhs_contracting_dims={${rhs_contracting_dim}}
 }
 
 ENTRY entry_computation {
-  a = bf16[${lhs}] parameter(0)
-  w = s4[${rhs}] parameter(1)
-  ROOT fusion = f32[${out}] fusion(a, w),
+  a = bf16[${lhs}]{${lhs_layout}} parameter(0)
+  w = s4[${rhs}]{${rhs_layout}:E(4)} parameter(1)
+  ROOT fusion = f32[${out}]{${out_layout}} fusion(a, w),
     kind=kCustom, calls=fusion, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
@@ -639,23 +645,39 @@ ENTRY entry_computation {
 
 std::vector<I4TestParams> Int4TestCases() {
   return {
-      {"int4_dot_128_16_x_128_256", "128,16", "128,256", 0, 0, "16,256"},
-      {"int4_dot_128_16_x_256_128", "128,16", "256,128", 0, 1, "16,256"},
-      {"int4_dot_16_128_x_256_128", "16,128", "256,128", 1, 1, "16,256"},
-      {"int4_dot_16_128_x_128_256", "16,128", "128,256", 1, 0, "16,256"},
-      {"int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
-      {"int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
-      {"int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
-      {"int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
+      {"int4_dot_128_16_x_128_256", "128,16", "1,0", "128,256", "1,0", 0, 0,
+       "16,256", "1,0"},
+      {"int4_dot_128_16_x_256_128", "128,16", "1,0", "256,128", "1,0", 0, 1,
+       "16,256", "1,0"},
+      {"int4_dot_16_128_x_256_128", "16,128", "1,0", "256,128", "1,0", 1, 1,
+       "16,256", "1,0"},
+      {"int4_dot_16_128_x_128_256", "16,128", "1,0", "128,256", "1,0", 1, 0,
+       "16,256", "1,0"},
+      {"int4_dot_1_128_x_256_128", "1,128", "1,0", "256,128", "1,0", 1, 1,
+       "1,256", "1,0"},
+      {"int4_dot_128_1_x_256_128", "128,1", "1,0", "256,128", "1,0", 0, 1,
+       "1,256", "1,0"},
+      {"int4_dot_16_128_x_128_1", "16,128", "1,0", "128,1", "1,0", 1, 0, "16,1",
+       "1,0"},
+      {"int4_dot_16_128_x_1_128", "16,128", "1,0", "1,128", "1,0", 1, 1, "16,1",
+       "1,0"},
 
-      {"dot_8_128_16_x_8_128_256", "8,128,16", "8,128,256", 1, 1, "8,16,256"},
-      {"dot_8_128_16_x_8_256_128", "8,128,16", "8,256,128", 1, 2, "8,16,256"},
-      {"dot_8_16_128_x_8_256_128", "8,16,128", "8,256,128", 2, 2, "8,16,256"},
-      {"dot_8_16_128_x_8_128_256", "8,16,128", "8,128,256", 2, 1, "8,16,256"},
-      {"dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2, "8,1,256"},
-      {"dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2, "8,1,256"},
-      {"dot_8_16_128_x_8_128_1", "8,16,128", "8,128,1", 2, 1, "8,16,1"},
-      {"dot_8_16_128_x_8_1_128", "8,16,128", "8,1,128", 2, 2, "8,16,1"},
+      {"dot_8_128_16_x_8_128_256", "8,128,16", "2,1,0", "8,128,256", "2,1,0", 1,
+       1, "8,16,256", "2,1,0"},
+      {"dot_8_128_16_x_8_256_128", "8,128,16", "2,1,0", "8,256,128", "2,1,0", 1,
+       2, "8,16,256", "2,1,0"},
+      {"dot_8_16_128_x_8_256_128", "8,16,128", "2,1,0", "8,256,128", "2,1,0", 2,
+       2, "8,16,256", "2,1,0"},
+      {"dot_8_16_128_x_8_128_256", "8,16,128", "2,1,0", "8,128,256", "2,1,0", 2,
+       1, "8,16,256", "2,1,0"},
+      {"dot_8_1_128_x_8_256_128", "8,1,128", "2,1,0", "8,256,128", "2,1,0", 2,
+       2, "8,1,256", "2,1,0"},
+      {"dot_8_128_1_x_8_256_128", "8,128,1", "2,1,0", "8,256,128", "2,1,0", 1,
+       2, "8,1,256", "2,1,0"},
+      {"dot_8_16_128_x_8_128_1", "8,16,128", "2,1,0", "8,128,1", "2,1,0", 2, 1,
+       "8,16,1", "2,1,0"},
+      {"dot_8_16_128_x_8_1_128", "8,16,128", "2,1,0", "8,1,128", "2,1,0", 2, 2,
+       "8,16,1", "2,1,0"},
   };
 }
 
@@ -728,32 +750,32 @@ TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
 HloModule LHSWithMinorDimEqualTo1
 
 lhs {
-  lhs = s4[2,1024,1] parameter(0)
-  ROOT lhs_converted = bf16[2,1024,1] convert(lhs)
+  lhs = s4[2,1024,1]{2,1,0:E(4)} parameter(0)
+  ROOT lhs_converted = bf16[2,1024,1]{2,1,0} convert(lhs)
 }
 
 rhs {
-  ROOT rhs = bf16[2,64,1024] parameter(0)
+  ROOT rhs = bf16[2,64,1024]{2,1,0} parameter(0)
 }
 
 triton_computation {
-  p0 = s4[2,1024,1] parameter(0)
-  p1 = bf16[2,64,1024] parameter(1)
-  lhs = bf16[2,1024,1] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = s4[2,1024,1]{2,1,0:E(4)} parameter(0)
+  p1 = bf16[2,64,1024]{2,1,0} parameter(1)
+  lhs = bf16[2,1024,1]{2,1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  rhs = bf16[2,64,1024] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[2,64,1024]{2,1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  ROOT dot = bf16[2,1,64] dot(lhs, rhs),
+  ROOT dot = bf16[2,1,64]{2,1,0} dot(lhs, rhs),
       lhs_batch_dims={0}, lhs_contracting_dims={1},
       rhs_batch_dims={0}, rhs_contracting_dims={2}
 }
 
 ENTRY main {
-  lhs = s4[2,1024,1] parameter(0)
-  rhs = bf16[2,64,1024] parameter(1)
-  ROOT dot = bf16[2,1,64] fusion(lhs, rhs), kind=kCustom,
+  lhs = s4[2,1024,1]{2,1,0:E(4)} parameter(0)
+  rhs = bf16[2,64,1024]{2,1,0} parameter(1)
+  ROOT dot = bf16[2,1,64]{2,1,0} fusion(lhs, rhs), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",
        "block_level_fusion_config":{
@@ -772,32 +794,32 @@ TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
 HloModule RHSWithMinorDimEqualTo1
 
 lhs {
-  ROOT lhs = bf16[2,1024,64] parameter(0)
+  ROOT lhs = bf16[2,1024,64]{2,1,0} parameter(0)
 }
 
 rhs {
-  rhs = s4[2,1024,1] parameter(0)
-  ROOT rhs_converted = bf16[2,1024,1] convert(rhs)
+  rhs = s4[2,1024,1]{2,1,0:E(4)} parameter(0)
+  ROOT rhs_converted = bf16[2,1024,1]{2,1,0} convert(rhs)
 }
 
 triton_computation {
-  p0 = bf16[2,1024,64] parameter(0)
-  p1 = s4[2,1024,1] parameter(1)
-  lhs = bf16[2,1024,64] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = bf16[2,1024,64]{2,1,0} parameter(0)
+  p1 = s4[2,1024,1]{2,1,0:E(4)} parameter(1)
+  lhs = bf16[2,1024,64]{2,1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  rhs = bf16[2,1024,1] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[2,1024,1]{2,1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "64", "64"]}]}}}
-  ROOT dot = bf16[2,64,1] dot(lhs, rhs),
+  ROOT dot = bf16[2,64,1]{2,1,0} dot(lhs, rhs),
       lhs_batch_dims={0}, lhs_contracting_dims={1},
       rhs_batch_dims={0}, rhs_contracting_dims={1}
 }
 
 ENTRY main {
-  lhs = bf16[2,1024,64] parameter(0)
-  rhs = s4[2,1024,1] parameter(1)
-  ROOT dot = bf16[2,64,1] fusion(lhs, rhs), kind=kCustom,
+  lhs = bf16[2,1024,64]{2,1,0} parameter(0)
+  rhs = s4[2,1024,1]{2,1,0:E(4)} parameter(1)
+  ROOT dot = bf16[2,64,1]{2,1,0} fusion(lhs, rhs), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",
        "block_level_fusion_config":{
@@ -816,31 +838,31 @@ TEST_F(TritonTest, LHSNonMinorContractingDim) {
 HloModule LHSNonMinorContractingDim
 
 lhs {
-  lhs = s4[1024,8] parameter(0)
-  ROOT lhs_converted = bf16[1024,8] convert(lhs)
+  lhs = s4[1024,8]{1,0:E(4)} parameter(0)
+  ROOT lhs_converted = bf16[1024,8]{1,0} convert(lhs)
 }
 
 rhs {
-  ROOT rhs = bf16[1024,4] parameter(0)
+  ROOT rhs = bf16[1024,4]{1,0} parameter(0)
 }
 
 triton_computation {
-  p0 = s4[1024,8] parameter(0)
-  p1 = bf16[1024,4] parameter(1)
-  lhs = bf16[1024,8] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = s4[1024,8]{1,0:E(4)} parameter(0)
+  p1 = bf16[1024,4]{1,0} parameter(1)
+  lhs = bf16[1024,8]{1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  rhs = bf16[1024,4] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[1024,4]{1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = bf16[8,4] dot(lhs, rhs),
+  ROOT dot = bf16[8,4]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 
 ENTRY main {
-  p0 = s4[1024,8] parameter(0)
-  p1 = bf16[1024,4] parameter(1)
-  ROOT dot = bf16[8,4] fusion(p0, p1), kind=kCustom,
+  p0 = s4[1024,8]{1,0:E(4)} parameter(0)
+  p1 = bf16[1024,4]{1,0} parameter(1)
+  ROOT dot = bf16[8,4]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",
        "block_level_fusion_config":{
@@ -858,31 +880,31 @@ TEST_F(TritonTest, LHSMinorContractingDim) {
 HloModule LHSMinorContractingDim
 
 lhs {
-  lhs = s4[8,1024] parameter(0)
-  ROOT lhs_converted = bf16[8,1024] convert(lhs)
+  lhs = s4[8,1024]{1,0:E(4)} parameter(0)
+  ROOT lhs_converted = bf16[8,1024]{1,0} convert(lhs)
 }
 
 rhs {
-  ROOT rhs = bf16[1024,4] parameter(0)
+  ROOT rhs = bf16[1024,4]{1,0} parameter(0)
 }
 
 triton_computation {
-  p0 = s4[8,1024] parameter(0)
-  p1 = bf16[1024,4] parameter(1)
-  lhs = bf16[8,1024] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = s4[8,1024]{1,0:E(4)} parameter(0)
+  p1 = bf16[1024,4]{1,0} parameter(1)
+  lhs = bf16[8,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  rhs = bf16[1024,4] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[1024,4]{1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = bf16[8,4] dot(lhs, rhs),
+  ROOT dot = bf16[8,4]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY main {
-  p0 = s4[8,1024] parameter(0)
-  p1 = bf16[1024,4] parameter(1)
-  ROOT dot = bf16[8,4] fusion(p0, p1), kind=kCustom,
+  p0 = s4[8,1024]{1,0:E(4)} parameter(0)
+  p1 = bf16[1024,4]{1,0} parameter(1)
+  ROOT dot = bf16[8,4]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",
        "block_level_fusion_config":{
@@ -899,31 +921,31 @@ TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
 HloModule RHSTestWithNotMinorContractingDim
 
 lhs {
-  ROOT lhs = bf16[8,1024] parameter(0)
+  ROOT lhs = bf16[8,1024]{1,0} parameter(0)
 }
 
 rhs {
-  rhs = s4[1024,4] parameter(0)
-  ROOT rhs_converted = bf16[1024,4] convert(rhs)
+  rhs = s4[1024,4]{1,0:E(4)} parameter(0)
+  ROOT rhs_converted = bf16[1024,4]{1,0} convert(rhs)
 }
 
 triton_computation {
-  p0 = bf16[8,1024] parameter(0)
-  p1 = s4[1024,4] parameter(1)
-  lhs = bf16[8,1024] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = bf16[8,1024]{1,0} parameter(0)
+  p1 = s4[1024,4]{1,0:E(4)} parameter(1)
+  lhs = bf16[8,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  rhs = bf16[1024,4] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[1024,4]{1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = bf16[8,4] dot(lhs, rhs),
+  ROOT dot = bf16[8,4]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY main {
-  p0 = bf16[8,1024] parameter(0)
-  p1 = s4[1024,4] parameter(1)
-  ROOT dot = bf16[8,4] fusion(p0, p1), kind=kCustom,
+  p0 = bf16[8,1024]{1,0} parameter(0)
+  p1 = s4[1024,4]{1,0:E(4)} parameter(1)
+  ROOT dot = bf16[8,4]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",
        "block_level_fusion_config":{
@@ -938,30 +960,30 @@ ENTRY main {
 TEST_F(TritonTest, RHSTestWithMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
 lhs {
-  ROOT lhs = bf16[8,1024] parameter(0)
+  ROOT lhs = bf16[8,1024]{1,0} parameter(0)
 }
 
 rhs {
-  rhs = s4[4,1024] parameter(0)
-  ROOT rhs_converted = bf16[4,1024] convert(rhs)
+  rhs = s4[4,1024]{1,0:E(4)} parameter(0)
+  ROOT rhs_converted = bf16[4,1024]{1,0} convert(rhs)
 }
 
 triton_computation {
-  p0 = bf16[8,1024] parameter(0)
-  p1 = s4[4,1024] parameter(1)
-  lhs = bf16[8,1024] fusion(p0), kind=kCustom, calls=lhs,
+  p0 = bf16[8,1024]{1,0} parameter(0)
+  p1 = s4[4,1024]{1,0:E(4)} parameter(1)
+  lhs = bf16[8,1024]{1,0} fusion(p0), kind=kCustom, calls=lhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  rhs = bf16[4,1024] fusion(p1), kind=kCustom, calls=rhs,
+  rhs = bf16[4,1024]{1,0} fusion(p1), kind=kCustom, calls=rhs,
     backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
       "block_level_fusion_config":{"output_tiles":[{"sizes":["64", "64"]}]}}}
-  ROOT dot = bf16[8,4] dot(lhs, rhs),
+  ROOT dot = bf16[8,4]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY main {
-  p0 = bf16[8,1024] parameter(0)
-  p1 = s4[4,1024] parameter(1)
+  p0 = bf16[8,1024]{1,0} parameter(0)
+  p1 = s4[4,1024]{1,0:E(4)} parameter(1)
   ROOT dot = bf16[8,4] fusion(p0, p1), kind=kCustom,
     calls=triton_computation, backend_config={"fusion_backend_config":
       {"kind":"__triton_nested_gemm_fusion",

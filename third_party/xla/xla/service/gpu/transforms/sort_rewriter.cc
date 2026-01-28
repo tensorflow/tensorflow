@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -181,6 +180,28 @@ std::optional<SortComputationAnalysis> AnalyzeCompareOp(
                                  sort_order};
 }
 
+// Returns whether the argsort operation exceeds the memory threshold for CUB
+// sort rewrite.
+// The packing for CUB numpy order argsort consumes ~2x the memory of the input
+// because it creates packed values that combine keys and indices.
+bool IsNumpySortMemoryExpensive(const Shape& shape, PrimitiveType key_type,
+                                PrimitiveType value_type) {
+  const int64_t num_elements = ShapeUtil::ElementsIn(shape);
+  const int64_t memory_increase_bytes =
+      num_elements * (primitive_util::ByteWidth(key_type) +
+                      primitive_util::ByteWidth(value_type));
+
+  // Threshold is 2GB.
+  // Note: We can consider making this configurable via a flag in the future.
+  if (memory_increase_bytes >= 2LL * 1024 * 1024 * 1024) {
+    VLOG(2) << "Sort memory increase (" << memory_increase_bytes
+            << " bytes) exceeds the threshold for Numpy order argsort rewrite "
+               "(2GB).";
+    return true;
+  }
+  return false;
+}
+
 std::optional<SortComputationAnalysis> AnalyzeSortOp(
     const HloSortInstruction& sort_op) {
   auto computation = sort_op.called_computations().front();
@@ -207,17 +228,36 @@ std::optional<SortComputationAnalysis> AnalyzeSortOp(
         sort_key_type != F64) {
       return std::nullopt;
     }
-    // Sorting a pair of input tensors is not supported. The keys to sort on
-    // will be generated synthetically.
-    if (sort_op.operand_count() != 1) {
+    // Sorting a pair of input tensors is supported via key packing if the key
+    // is F16, BF16 or F32 and the value is S16 or S32.
+    if (sort_op.operand_count() == 2) {
+      // TODO: b/470413500 - add F8 types support.
+      if ((sort_key_type != F32 && sort_key_type != F16 &&
+           sort_key_type != BF16) ||
+          (sort_value_type != S32 && sort_value_type != S16)) {
+        return std::nullopt;
+      }
+      int total_bits = primitive_util::BitWidth(sort_key_type) +
+                       primitive_util::BitWidth(sort_value_type.value());
+      sort_key_type = primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(sort_key_type));
+      sort_value_type = primitive_util::UnsignedIntegralTypeForBitWidth(
+          total_bits <= 32 ? 32 : 64);
+
+      if (IsNumpySortMemoryExpensive(sort_op.operand(0)->shape(), sort_key_type,
+                                     *sort_value_type)) {
+        return std::nullopt;
+      }
+    } else if (sort_op.operand_count() == 1) {
+      // Cub cannot sort the original keys directly, hence treat them as values
+      // in a key-value pair sort.
+      sort_value_type = sort_key_type;
+      // The synthetic keys used for sorting are unsigned integers.
+      sort_key_type = primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(sort_key_type));
+    } else {
       return std::nullopt;
     }
-    // Cub cannot sort the original keys directly, hence treat them as values in
-    // a key-value pair sort.
-    sort_value_type = sort_key_type;
-    // The synthetic keys used for sorting are unsigned integers.
-    sort_key_type = primitive_util::UnsignedIntegralTypeForBitWidth(
-        primitive_util::BitWidth(sort_key_type));
   }
   return SortComputationAnalysis{
       sort_analysis->key_operand, sort_analysis->descending,
@@ -333,6 +373,136 @@ HloInstruction* AddNumpySortKey(HloInstruction* operand, PrimitiveType key_type,
       HloInstruction::CreateTernary(key_shape, HloOpcode::kSelect, is_negative,
                                     inverted_bits, inverted_sign));
   return sort_keys;
+}
+
+// Packs keys and values for argsort with Numpy order.
+// We pack the original key (casted to unsigned) and the value into a single
+// packed pair. The packed pair will be the second operand of
+// the sort (the payload).
+// PackedPair = (OriginalKey << ValueBitWidth) | Value
+std::pair<HloInstruction*, HloInstruction*> PackNumpySortPairs(
+    HloSortInstruction* sort_op, HloInstruction* original_keys,
+    HloInstruction* values, const SortComputationAnalysis& sort_analysis) {
+  PrimitiveType original_key_type = original_keys->shape().element_type();
+  PrimitiveType key_unsigned_type =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(original_key_type));
+  // 1. Synthesize Keys (F32 -> U32, F16/BF16 -> U16)
+  HloInstruction* synth_keys =
+      AddNumpySortKey(original_keys, key_unsigned_type, original_key_type);
+
+  // 2. Values
+  PrimitiveType value_type = values->shape().element_type();
+  PrimitiveType value_unsigned_type =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(value_type));
+  HloInstruction* values_unsigned =
+      sort_op->AddInstruction(HloInstruction::CreateBitcastConvert(
+          ShapeUtil::ChangeElementType(values->shape(), value_unsigned_type),
+          values));
+  if (sort_analysis.descending) {
+    values_unsigned = sort_op->AddInstruction(HloInstruction::CreateUnary(
+        values_unsigned->shape(), HloOpcode::kNot, values_unsigned));
+  }
+
+  // 3. Original Keys (as Unsigned Key Type)
+  HloInstruction* original_keys_unsigned =
+      sort_op->AddInstruction(HloInstruction::CreateBitcastConvert(
+          ShapeUtil::ChangeElementType(original_keys->shape(),
+                                       key_unsigned_type),
+          original_keys));
+
+  // 4. Pack Pair: (OriginalKey << ValueBitWidth) | Value
+  int total_bits = primitive_util::BitWidth(original_key_type) +
+                   primitive_util::BitWidth(value_type);
+  PrimitiveType packed_type = total_bits <= 32 ? U32 : U64;
+  Shape packed_shape =
+      ShapeUtil::ChangeElementType(synth_keys->shape(), packed_type);
+
+  HloInstruction* values_packed = sort_op->AddInstruction(
+      HloInstruction::CreateConvert(packed_shape, values_unsigned));
+  HloInstruction* orig_keys_packed = sort_op->AddInstruction(
+      HloInstruction::CreateConvert(packed_shape, original_keys_unsigned));
+
+  int shift_amount = primitive_util::BitWidth(value_type);
+  HloInstruction* constant_shift = sort_op->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+          packed_type, static_cast<uint64_t>(shift_amount))));
+  HloInstruction* broadcasted_shift = sort_op->AddInstruction(
+      HloInstruction::CreateBroadcast(packed_shape, constant_shift, {}));
+
+  HloInstruction* val_high = sort_op->AddInstruction(
+      HloInstruction::CreateBinary(packed_shape, HloOpcode::kShiftLeft,
+                                   orig_keys_packed, broadcasted_shift));
+  HloInstruction* packed_pairs =
+      sort_op->AddInstruction(HloInstruction::CreateBinary(
+          packed_shape, HloOpcode::kOr, val_high, values_packed));
+
+  return {synth_keys, packed_pairs};
+}
+
+// Unpacks the packed pair from argsort with Numpy order.
+// PackedPair = (OriginalKey << ValueBitWidth) | Value
+// Returns (OriginalKey, Value) if the key is the first operand,
+// otherwise returns (Value, OriginalKey).
+HloInstruction* UnpackNumpySortPairs(
+    HloSortInstruction* sort_op, HloInstruction* custom_call,
+    const SortComputationAnalysis& sort_analysis) {
+  Shape packed_shape = custom_call->shape().tuple_shapes(1);
+  HloInstruction* packed_pairs = sort_op->AddInstruction(
+      HloInstruction::CreateGetTupleElement(packed_shape, custom_call, 1));
+
+  Shape key_shape = sort_op->operand(sort_analysis.key_operand)->shape();
+  Shape value_shape = sort_op->operand(1 - sort_analysis.key_operand)->shape();
+  PrimitiveType packed_type = packed_shape.element_type();
+
+  int shift_amount = primitive_util::BitWidth(value_shape.element_type());
+  HloInstruction* constant_shift = sort_op->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(
+          packed_type, static_cast<uint64_t>(shift_amount))));
+  HloInstruction* broadcasted_shift = sort_op->AddInstruction(
+      HloInstruction::CreateBroadcast(packed_shape, constant_shift, {}));
+
+  // Extract Original Keys
+  HloInstruction* original_keys_packed = sort_op->AddInstruction(
+      HloInstruction::CreateBinary(packed_shape, HloOpcode::kShiftRightLogical,
+                                   packed_pairs, broadcasted_shift));
+
+  PrimitiveType original_key_type = key_shape.element_type();
+  PrimitiveType key_unsigned_type =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(original_key_type));
+
+  HloInstruction* original_keys_unsigned =
+      sort_op->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(original_keys_packed->shape(),
+                                       key_unsigned_type),
+          original_keys_packed));
+  HloInstruction* original_keys = sort_op->AddInstruction(
+      HloInstruction::CreateBitcastConvert(key_shape, original_keys_unsigned));
+
+  // Extract Values
+  PrimitiveType value_type = value_shape.element_type();
+  PrimitiveType value_unsigned_type =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(value_type));
+  HloInstruction* values_unsigned =
+      sort_op->AddInstruction(HloInstruction::CreateConvert(
+          ShapeUtil::ChangeElementType(packed_shape, value_unsigned_type),
+          packed_pairs));
+  if (sort_analysis.descending) {
+    values_unsigned = sort_op->AddInstruction(HloInstruction::CreateUnary(
+        values_unsigned->shape(), HloOpcode::kNot, values_unsigned));
+  }
+  HloInstruction* values = sort_op->AddInstruction(
+      HloInstruction::CreateBitcastConvert(value_shape, values_unsigned));
+
+  if (sort_analysis.key_operand == 0) {
+    return sort_op->AddInstruction(
+        HloInstruction::CreateTuple({original_keys, values}));
+  }
+  return sort_op->AddInstruction(
+      HloInstruction::CreateTuple({values, original_keys}));
 }
 
 bool IsCubSortFasterOnH100(int bitwidth, int batch_size, int num_elements,
@@ -454,8 +624,7 @@ bool ShouldRewriteCompatibleSort(se::DeviceDescription device_description,
 }
 
 bool IsCubCompatibleSort(const se::DeviceDescription& device_description,
-                         const HloSortInstruction* sort_op,
-                         absl::string_view platform_name) {
+                         const HloSortInstruction* sort_op) {
   VLOG(1) << "Sort instruction: " << sort_op->name();
   if (sort_op->operand_count() != 1 && sort_op->operand_count() != 2) {
     VLOG(2) << "Unsupported operand count: " << sort_op->operand_count();
@@ -517,12 +686,25 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
   }
   // For sorting in Numpy order, materialize synthetic keys and treat the
   // original input as values.
-  if (sort_analysis.sort_order == SortOrderType::kNumpyOrder) {
+  if (sort_analysis.sort_order == SortOrderType::kNumpyOrder &&
+      sort_op->operand_count() == 1) {
     sorting_pairs = true;
     keys = AddNumpySortKey(sort_op->mutable_operand(sort_analysis.key_operand),
                            sort_analysis.key_type,
                            sort_analysis.value_type.value());
     values = sort_op->mutable_operand(sort_analysis.key_operand);
+  }
+
+  // Support for argsort (sort pairs) with Numpy order.
+  // We pack the original key and the value into a single
+  // packed pair. The packed pair will be the second operand of the sort.
+  if (sort_analysis.sort_order == SortOrderType::kNumpyOrder &&
+      sort_op->operand_count() == 2) {
+    std::pair<HloInstruction*, HloInstruction*> packed = PackNumpySortPairs(
+        sort_op, sort_op->mutable_operand(sort_analysis.key_operand),
+        sort_op->mutable_operand(1 - sort_analysis.key_operand), sort_analysis);
+    keys = packed.first;
+    values = packed.second;
   }
 
   // Build the resulting shape for the custom call.
@@ -555,9 +737,14 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
         sort_op->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
             sort_op->shape(), custom_call, 0));
   } else if (sort_analysis.sort_order == SortOrderType::kNumpyOrder) {
-    // Discard the synthetic keys generated for sorting in Numpy order.
-    replacement = sort_op->AddInstruction(
-        HloInstruction::CreateGetTupleElement(values->shape(), custom_call, 1));
+    if (sort_op->operand_count() == 1) {
+      // Discard the synthetic keys generated for sorting in Numpy order.
+      replacement =
+          sort_op->AddInstruction(HloInstruction::CreateGetTupleElement(
+              values->shape(), custom_call, 1));
+    } else {
+      replacement = UnpackNumpySortPairs(sort_op, custom_call, sort_analysis);
+    }
   } else {
     replacement = UnpackResultPair(sort_op, custom_call,
                                    /*swap=*/sort_analysis.key_operand == 1);
@@ -575,8 +762,7 @@ absl::StatusOr<bool> SortRewriter::RunOnComputation(
   std::vector<HloSortInstruction*> sort_ops;
   for (auto* inst : computation->instructions()) {
     HloSortInstruction* sort = DynCast<HloSortInstruction>(inst);
-    if (sort != nullptr &&
-        IsCubCompatibleSort(device_description_, sort, platform_name_)) {
+    if (sort != nullptr && IsCubCompatibleSort(device_description_, sort)) {
       sort_ops.push_back(sort);
     }
   }

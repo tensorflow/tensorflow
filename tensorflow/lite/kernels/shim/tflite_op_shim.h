@@ -153,8 +153,8 @@ class TfLiteOpKernel {
     const flexbuffers::Map* attr_map = nullptr;
 
     ~UserData() {
-      if (impl) delete impl;
-      if (attr_map) delete attr_map;
+      delete impl;
+      delete attr_map;
     }
   };
 
@@ -167,7 +167,7 @@ class TfLiteOpKernel {
   }
 
   static void Free(TfLiteContext* context, void* buffer) {
-    if (buffer) delete static_cast<UserData*>(buffer);
+    delete static_cast<UserData*>(buffer);
   }
 
   // Resizes the Output Tensor to their shape. There are two cases:

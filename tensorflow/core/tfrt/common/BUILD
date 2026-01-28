@@ -1,5 +1,5 @@
 load(
-    "@local_xla//xla/tsl/platform:build_config_root.bzl",
+    "@xla//xla/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
@@ -46,8 +46,8 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
-        "@local_xla//xla/pjrt:utils",
         "@tf_runtime//:hostcontext",
+        "@xla//xla/pjrt:utils",
     ],
 )
 
@@ -64,9 +64,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "@com_google_absl//absl/log:check",
-        "@local_xla//xla/pjrt:pjrt_client",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -78,8 +78,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/tsl/concurrency:async_value",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/tsl/concurrency:async_value",
     ],
 )
 
@@ -104,13 +104,13 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/client:local_client",
-        "@local_xla//xla/pjrt:host_memory_allocator",
-        "@local_xla//xla/pjrt:local_device_state",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt:tf_pjrt_client",
-        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/client:local_client",
+        "@xla//xla/pjrt:host_memory_allocator",
+        "@xla//xla/pjrt:local_device_state",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt:tf_pjrt_client",
+        "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ],
 )
 
@@ -135,8 +135,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_xla//xla/pjrt:pjrt_client",
+        "@tsl//tsl/platform:errors",
+        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -159,8 +159,8 @@ cc_library(
         "//tensorflow/core/platform:refcount",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
-        "@local_xla//xla/pjrt:pjrt_client",
+        "@tsl//tsl/platform:errors",
+        "@xla//xla/pjrt:pjrt_client",
     ],
 )
 
@@ -175,12 +175,12 @@ tf_cc_test(
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -192,13 +192,13 @@ tf_cc_test(
         ":pjrt_util",
         "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:test",
+        "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -219,11 +219,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/service:gpu_plugin",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@tsl//tsl/platform:status_matchers",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/service:gpu_plugin",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -245,9 +245,9 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/tsl/framework:device_type",
+        "@tsl//tsl/platform:errors",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/tsl/framework:device_type",
     ],
 )
 
@@ -259,10 +259,10 @@ cc_library(
         ":pjrt_client_factory_registry",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
-        "@local_xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt/plugin/xla_cpu:cpu_client_options",
+        "@xla//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
     ],
     alwayslink = True,
 )
@@ -276,7 +276,7 @@ tf_cc_test(
         ":pjrt_cpu_client_registration",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -289,10 +289,10 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/pjrt:pjrt_client",
-        "@local_xla//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
-        "@local_xla//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/pjrt:pjrt_client",
+        "@xla//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "@xla//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
     ],
     alwayslink = True,
 )
@@ -322,7 +322,7 @@ tf_cuda_cc_test(
         ":pjrt_gpu_client_registration",
         "//tensorflow/core:framework_types_hdr",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/service:gpu_plugin",
+        "@tsl//tsl/platform:statusor",
+        "@xla//xla/service:gpu_plugin",
     ],
 )

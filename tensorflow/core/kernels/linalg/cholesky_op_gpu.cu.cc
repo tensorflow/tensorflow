@@ -156,7 +156,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     if (use_batched_solver) {
       // For small matrices or large batch sizes, we use the batched interface
       // from cuSolver.
-      auto output_reshaped_ptrs = solver->GetScratchSpace<uint8>(
+      auto output_reshaped_ptrs = solver->GetScratchSpace<uint8_t>(
           sizeof(Scalar*) * batch_size, "input_copt_ptrs",
           /* on_host */ true);
       const Scalar** output_reshaped_ptrs_base =
@@ -194,7 +194,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done, n](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {

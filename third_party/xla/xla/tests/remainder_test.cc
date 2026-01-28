@@ -18,12 +18,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 
 namespace xla {
 namespace {
 
-using NumericTest = ClientLibraryTestBase;
+using NumericTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(NumericTest, Remainder) {
   XlaBuilder builder("remainder");
@@ -34,7 +37,7 @@ TEST_F(NumericTest, Remainder) {
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, y_literal.shape(), "y");
   Rem(x, y);
-  ComputeAndCompare(&builder, {std::move(x_literal), std::move(y_literal)});
+  ComputeAndCompare(&builder, {&x_literal, &y_literal});
 }
 
 }  // namespace

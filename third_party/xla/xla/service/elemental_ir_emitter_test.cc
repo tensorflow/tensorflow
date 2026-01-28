@@ -33,8 +33,10 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
 
@@ -43,7 +45,8 @@ namespace {
 
 using std::nullopt;
 
-class ElementalIrEmitterExecutionTest : public HloTestBase {
+class ElementalIrEmitterExecutionTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
@@ -84,6 +87,9 @@ class ElementalIrEmitterExecutionTypedTest
   const std::string& TypeName() {
     return primitive_util::LowercasePrimitiveTypeName(
         primitive_util::NativeToPrimitiveType<T>());
+  }
+  int64_t BitWidth() {
+    return primitive_util::BitWidth(primitive_util::NativeToPrimitiveType<T>());
   }
 };
 
@@ -395,14 +401,18 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, CompareFloat) {
   if (std::is_same<TypeParam, tsl::float8_e4m3b11fnuz>()) {
     GTEST_SKIP() << "Skipping test for type " << tname;
   }
-  const auto hlo_text = absl::StrReplaceAll(R"(
+  const auto hlo_text = absl::StrReplaceAll(
+      R"(
   HloModule m
   ENTRY main {
-    p0 = ${tname}[4] parameter(0)
-    p1 = ${tname}[4] parameter(1)
-    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+    p0 = ${tname}[4]{0${element_size}} parameter(0)
+    p1 = ${tname}[4]{0${element_size}} parameter(1)
+    ROOT cmp = pred[4]{0} compare(p0, p1), direction=LT
 })",
-                                            {{"${tname}", tname}});
+      {{"${tname}", tname},
+       {"${element_size}", this->BitWidth() < 8
+                               ? absl::StrCat(":E(", this->BitWidth(), ")")
+                               : ""}});
   Literal lhs = LiteralUtil::CreateR1<TypeParam>(
       {TypeParam(1.), TypeParam(2.), TypeParam(3.), TypeParam(4.)});
   Literal rhs = LiteralUtil::CreateR1<TypeParam>(
@@ -448,15 +458,8 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
   }
   )",
                                             {{"${tname}", tname}});
-  HloModuleConfig config;
-  DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      HloTestBase::ParseAndReturnVerifiedModule(hlo_text, config));
-  EXPECT_TRUE(
-      HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
+  EXPECT_TRUE(ElementalIrEmitterExecutionTest::RunAndCompare(
+      hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
 
 TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,

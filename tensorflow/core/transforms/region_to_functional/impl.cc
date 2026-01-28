@@ -606,8 +606,9 @@ GraphFuncOp BasePattern::CreateFunc(Location loc, const Twine &sym_name,
   for (BlockArgument operand : GetLoopRegionDataArgs(region))
     arg_types.append({operand.getType(), dialect_.getControlType()});
   auto func_type = FunctionType::get(ctx_, arg_types, res_types);
-  auto func = OpBuilder(ctx_).create<GraphFuncOp>(loc, sym_name, func_type,
-                                                  /*generic=*/false);
+  auto builder = OpBuilder(ctx_);
+  auto func = GraphFuncOp::create(builder, loc, sym_name, func_type,
+                                  /*generic=*/false);
 
   attrs.append(func->getAttrs());
   func->setAttrs(attrs.getDictionary(ctx_));

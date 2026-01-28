@@ -28,7 +28,7 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
-        "@local_xla//xla/service:hlo_proto_py",
+        "@xla//xla/service:hlo_proto_py",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -51,6 +51,6 @@ tpu_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
-        "@local_xla//xla/service:hlo_proto_py",
+        "@xla//xla/service:hlo_proto_py",
     ] + tf_additional_xla_deps_py(),
 )

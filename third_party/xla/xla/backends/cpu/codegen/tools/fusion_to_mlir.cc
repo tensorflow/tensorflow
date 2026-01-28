@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/codegen/tools/test_lib.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 
@@ -33,8 +34,12 @@ namespace xla::cpu {
 absl::Status Run(const std::string& filename) {
   auto mlir_context = FusionCompiler::CreateContext();
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  auto fusion = DynCast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
+  auto* inst = module->entry_computation()->root_instruction();
+  while (inst && (inst->opcode() == HloOpcode::kTuple ||
+                  inst->opcode() == HloOpcode::kGetTupleElement)) {
+    inst = inst->mutable_operand(0);
+  }
+  auto fusion = DynCast<HloFusionInstruction>(inst);
   fusion->SetAndSanitizeName("main");
   TF_ASSIGN_OR_RETURN(
       KernelDefinition kernel_definition,

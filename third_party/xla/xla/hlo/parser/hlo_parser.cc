@@ -184,6 +184,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kScan:
     case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
@@ -1934,7 +1935,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
-      } else if (opcode == HloOpcode::kReduceScatter) {
+      }
+      if (opcode == HloOpcode::kReduceScatter) {
         return builder->AddInstruction(HloInstruction::CreateReduceScatter(
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
@@ -2104,6 +2106,15 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<std::string> async_execution_thread;
       attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
                                          &async_execution_thread};
+
+      optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+      if (opcode == HloOpcode::kAsyncStart) {
+        attrs["output_to_operand_aliasing"] = {/*required=*/false,
+                                               AttrTy::kInstructionAliasing,
+                                               &output_to_operand_aliasing};
+      }
       if (async_wrapped_opcode) {
         // Only generate async-wrapper for async-start.
         if (opcode == HloOpcode::kAsyncStart) {
@@ -2178,14 +2189,21 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
+
       if (opcode == HloOpcode::kAsyncStart) {
         // async_execution_thread only needs to be populated for async-start,
         // as the rest of the async chain will reference the root op.
         if (!async_execution_thread) {
           async_execution_thread = HloInstruction::kMainExecutionThread;
         }
-        return builder->AddInstruction(HloInstruction::CreateAsyncStart(
+        auto instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
             *shape, operands, *async_computation, *async_execution_thread));
+
+        if (output_to_operand_aliasing.has_value()) {
+          Cast<HloAsyncStartInstruction>(instr)->set_output_to_operand_aliasing(
+              std::move(*output_to_operand_aliasing));
+        }
+        return instr;
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(
@@ -2693,6 +2711,95 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       return builder->AddInstruction(
           HloInstruction::CreateMap(*shape, operands, *to_apply));
+    }
+    case HloOpcode::kScan: {
+      optional<HloComputation*> to_apply;
+      attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
+                           &to_apply};
+      optional<std::vector<int64_t>> dimensions;
+      attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
+                             &dimensions};
+      optional<bool> is_reverse = false;
+      attrs["is_reverse"] = {/*required=*/false, AttrTy::kBool, &is_reverse};
+      optional<bool> is_associative = false;
+      attrs["is_associative"] = {/*required=*/false, AttrTy::kBool,
+                                 &is_associative};
+      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
+          !ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+      if (dimensions->empty()) {
+        TokenError("expects at least 1 dimension");
+        return nullptr;
+      }
+
+      // Infer num_carries by matching the operands from the right to the
+      // parameters of to_apply.
+      int64_t num_carries = 0;
+      HloComputation* computation = *to_apply;
+      if (operands.size() != computation->num_parameters()) {
+        TokenError(StrCat("expects ", operands.size(),
+                          " operands to match the number of parameters of "
+                          "to_apply, but to_apply has ",
+                          computation->num_parameters(), " parameters"));
+        return nullptr;
+      }
+      for (int i = operands.size() - 1; i >= 0; --i) {
+        if (ShapeUtil::Compatible(
+                operands[i]->shape(),
+                computation->parameter_instruction(i)->shape())) {
+          num_carries++;
+        } else {
+          break;
+        }
+      }
+
+      if (num_carries == 0) {
+        TokenError("expects at least one carry operand");
+        return nullptr;
+      }
+      if (num_carries == operands.size()) {
+        TokenError("expects at least one input operand");
+        return nullptr;
+      }
+
+      if (!maybe_infer_shape([&]() -> absl::StatusOr<Shape> {
+            int64_t num_inputs = operands.size() - num_carries;
+            const Shape& root_shape =
+                to_apply.value()->root_instruction()->shape();
+            if (!root_shape.IsTuple()) {
+              return InvalidArgument("Scan computation result must be a tuple");
+            }
+
+            if (root_shape.tuple_shapes().size() != operands.size()) {
+              return InvalidArgument(
+                  "Scan computation result must be a tuple of size %d",
+                  operands.size());
+            }
+
+            std::vector<Shape> result_shapes;
+            result_shapes.reserve(operands.size());
+            for (int i = 0; i < num_inputs; ++i) {
+              const Shape& input_shape = operands[i]->shape();
+              Shape output_shape = input_shape;
+              output_shape.set_element_type(
+                  root_shape.tuple_shapes(i).element_type());
+              result_shapes.push_back(output_shape);
+            }
+            for (int i = num_inputs; i < operands.size(); ++i) {
+              result_shapes.push_back(root_shape.tuple_shapes(i));
+            }
+            return ShapeUtil::MakeTupleShape(result_shapes);
+          })) {
+        return nullptr;
+      }
+
+      int64_t num_inputs = operands.size() - num_carries;
+      return builder->AddInstruction(HloInstruction::CreateScan(
+          *shape, absl::MakeSpan(operands).subspan(0, num_inputs),
+          absl::MakeSpan(operands).subspan(num_inputs, num_carries), *to_apply,
+          dimensions->at(0), *is_reverse,
+          *is_associative ? TRI_STATE_TRUE : TRI_STATE_FALSE));
     }
     case HloOpcode::kReduce: {
       optional<HloComputation*> reduce_computation;
@@ -4182,7 +4289,8 @@ bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
       boolean_list->push_back(true);
       lexer_.Lex();
       return true;
-    } else if (lexer_.GetKind() == TokKind::kw_false) {
+    }
+    if (lexer_.GetKind() == TokKind::kw_false) {
       boolean_list->push_back(false);
       lexer_.Lex();
       return true;
@@ -5787,7 +5895,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = lhs[i];
       if (c == '?') {
         continue;
-      } else if (c == 'b') {
+      }
+      if (c == 'b') {
         dnums->set_input_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_input_feature_dimension(i);
@@ -5815,7 +5924,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = rhs[i];
       if (c == '?') {
         continue;
-      } else if (c == 'i') {
+      }
+      if (c == 'i') {
         dnums->set_kernel_input_feature_dimension(i);
       } else if (c == 'o') {
         dnums->set_kernel_output_feature_dimension(i);
@@ -5843,7 +5953,8 @@ bool HloParserImpl::ParseConvolutionDimensionNumbers(
       char c = out[i];
       if (c == '?') {
         continue;
-      } else if (c == 'b') {
+      }
+      if (c == 'b') {
         dnums->set_output_batch_dimension(i);
       } else if (c == 'f') {
         dnums->set_output_feature_dimension(i);

@@ -209,6 +209,14 @@ class GpuPerformanceModelBase {
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       int64_t num_threads_per_block);
 
+  // Estimates peak performance on the provided dtype using accelerated compute
+  // (i.e. Tensor Cores/Matrix Cores). The number is calculated assuming each
+  // FMA is 2 operations.
+  // Falls back to non-accelerated estimates if the provided device info does
+  // not have matrix unit information.
+  static int64_t CalculatePeakMatrixOpsPerNs(
+      const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype);
+
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
       int64_t num_blocks, int64_t num_threads_per_block);

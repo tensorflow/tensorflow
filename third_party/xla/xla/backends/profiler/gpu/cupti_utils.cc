@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"

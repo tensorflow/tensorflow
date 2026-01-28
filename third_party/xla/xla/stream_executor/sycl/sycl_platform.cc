@@ -31,7 +31,7 @@ limitations under the License.
 namespace stream_executor {
 namespace sycl {
 
-SyclPlatform::SyclPlatform() : name_("SYCL") {}
+SyclPlatform::SyclPlatform() : name_(kSyclPlatformId->ToName()) {}
 
 SyclPlatform::~SyclPlatform() {}
 

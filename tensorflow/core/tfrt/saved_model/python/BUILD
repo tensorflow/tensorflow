@@ -58,10 +58,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@tf_runtime//:hostcontext",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:refcount",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 

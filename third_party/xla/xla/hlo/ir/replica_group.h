@@ -55,6 +55,8 @@ class CollectiveDeviceListBase {
   CollectiveDeviceListBase(CollectiveDeviceListBase&&) = default;
   CollectiveDeviceListBase& operator=(CollectiveDeviceListBase&&) = default;
 
+  std::optional<IotaReplicaGroupList> MaybeConvertToIotaReplicaGroupList()
+      const;
   // This is strict equality, which means that two different types
   // can't be compared for functional equality (i.e. even though an
   // IotaReplicaGroup and a CollectiveDeviceList may correspond to the same
@@ -99,6 +101,9 @@ class CollectiveDeviceListBase {
   virtual std::string ToString(bool print_full_replica_group_list) const {
     return ToString();
   };
+
+  static std::unique_ptr<CollectiveDeviceListBase> DeviceListFromProto(
+      const HloInstructionProto& proto);
 
   virtual std::unique_ptr<CollectiveDeviceListBase> Clone() const = 0;
   virtual CollectiveDeviceListVersion version() const = 0;
@@ -184,6 +189,13 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
       : iota_tile_assignment_(IotaTileAssignment::Create(
             {num_replica_groups, num_devices_per_group}, reshape_dims,
             transpose_perm)),
+        num_replica_groups_(num_replica_groups),
+        num_devices_per_group_(num_devices_per_group) {}
+
+  explicit IotaReplicaGroupList(int64_t num_replica_groups,
+                                int64_t num_devices_per_group,
+                                const IotaTileAssignment& iota_tile_assignment)
+      : iota_tile_assignment_(iota_tile_assignment),
         num_replica_groups_(num_replica_groups),
         num_devices_per_group_(num_devices_per_group) {}
 

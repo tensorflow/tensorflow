@@ -119,6 +119,9 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, int axis,
     case kTfLiteBool:
       TF_LITE_CONCATENATION(bool);
       break;
+    case kTfLiteInt4:
+      TF_LITE_CONCATENATION(Int4);
+      break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported currently.",
                          TfLiteTypeGetName(output->type));
@@ -154,7 +157,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      input_type == kTfLiteUInt8 || input_type == kTfLiteInt8 ||
                      input_type == kTfLiteInt16 || input_type == kTfLiteInt32 ||
                      input_type == kTfLiteInt64 || input_type == kTfLiteBool ||
-                     input_type == kTfLiteUInt32);
+                     input_type == kTfLiteUInt32 || input_type == kTfLiteInt4);
 
   // Check to see if we can calculate the output now.
   bool all_inputs_at_prepare = true;
@@ -170,7 +173,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // will be the sum of inputs
   int sum_axis = t0->dims->size > 0 ? t0->dims->data[axis] : 1;
   // Check if we are concatenating constant scalars.
-  if (all_inputs_at_prepare && t0->dims->size == 0 && axis == 0) {
+  if (all_inputs_at_prepare && t0->dims->size == 0 && axis == 0 &&
+      input_type != kTfLiteInt4) {
     for (int i = 1; i < num_inputs; ++i) {
       const TfLiteTensor* t;
       TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i, &t));

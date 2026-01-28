@@ -5835,5 +5835,156 @@ ENTRY %main.117 (Arg_0.1: f32[10,1000,8000], Arg_1.2: f32[10,8000,1000], Arg_2.3
   EXPECT_EQ(dynamic_indices, expected_indices);
 }
 
+TEST_F(CollectivePipelinerTest, ForwardSubtractIndexWithGTELeaf) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(14)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) parameter(0)
+
+  get-tuple-element.256161 = s32[] get-tuple-element(param), index=0
+  constant.43667 = s32[] constant(1)
+  get-tuple-element.250973 = s32[] get-tuple-element(param), index=1
+  constant.43668 = s32[] constant(13)
+  constant.31596.clone.5 = s32[] constant(1)
+  multiply.6379 = s32[] multiply(get-tuple-element.256161, constant.31596.clone.5)
+  add.36255 = s32[] add(get-tuple-element.250973, multiply.6379)
+  sub.7624 = s32[] subtract(constant.43668, add.36255)
+  add = s32[] add(get-tuple-element.256161, constant.43667)
+  constant.2561 = s32[] constant(0)
+  get-tuple-element.395 = bf16[14,8,128] get-tuple-element(param), index=2
+  get-tuple-element.5 = bf16[14,8,128] get-tuple-element(param), index=3
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, sub.7624, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  dynamic-update-slice.35 = bf16[14,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, sub.7624, constant.2561, constant.2561)
+  ROOT tuple = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) tuple(add, get-tuple-element.250973, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[14,8,128] parameter(0)
+  tuple = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) tuple(c0, c0, p0, p0)
+  while = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[14,8,128] get-tuple-element(while), index=2
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicUpdateSlice(_, op::AllReduce(), _, _, _));
+  const HloInstruction* sliced = root->operand(1)->operand(0);
+  EXPECT_EQ(sliced->opcode(), HloOpcode::kDynamicSlice);
+  const HloInstruction* index = sliced->operand(1);
+  EXPECT_EQ(index->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(index->tuple_index(), 4);
+  const HloInstruction* while_inst = index->operand(0);
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_root =
+      while_inst->while_body()->root_instruction();
+  EXPECT_EQ(while_root->opcode(), HloOpcode::kTuple);
+  const HloInstruction* dyn_upd = while_root->operand(2);
+  EXPECT_EQ(dyn_upd->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* dyn_upd2 = dyn_upd->operand(0);
+  EXPECT_EQ(dyn_upd2->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* prev_ar = dyn_upd2->operand(1);
+  EXPECT_EQ(prev_ar->opcode(), HloOpcode::kAllReduce);
+  const HloInstruction* dyn_slice_top = prev_ar->operand(0);
+  EXPECT_EQ(dyn_slice_top->opcode(), HloOpcode::kDynamicSlice);
+  const HloInstruction* get_tuple_value = dyn_slice_top->operand(0);
+  const HloInstruction* get_tuple_index = dyn_slice_top->operand(1);
+  EXPECT_EQ(get_tuple_value->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(get_tuple_index->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(get_tuple_value->tuple_index(), 2);
+  EXPECT_EQ(get_tuple_index->tuple_index(), 4);
+}
+
+TEST_F(CollectivePipelinerTest, ForwardSinkSubtractIndexWithGTELeaf) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(14)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) parameter(0)
+
+  get-tuple-element.256161 = s32[] get-tuple-element(param), index=0
+  constant.43667 = s32[] constant(1)
+  get-tuple-element.250973 = s32[] get-tuple-element(param), index=1
+  constant.43668 = s32[] constant(13)
+  constant.31596.clone.5 = s32[] constant(1)
+  multiply.6379 = s32[] multiply(get-tuple-element.256161, constant.31596.clone.5)
+  add.36255 = s32[] add(get-tuple-element.250973, multiply.6379)
+  sub.7624 = s32[] subtract(constant.43668, add.36255)
+  add = s32[] add(get-tuple-element.256161, constant.43667)
+  constant.2561 = s32[] constant(0)
+  get-tuple-element.395 = bf16[14,8,128] get-tuple-element(param), index=2
+  get-tuple-element.5 = bf16[14,8,128] get-tuple-element(param), index=3
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, sub.7624, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  dynamic-update-slice.35 = bf16[14,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, sub.7624, constant.2561, constant.2561)
+  ROOT tuple = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) tuple(add, get-tuple-element.250973, dynamic-update-slice.35, get-tuple-element.5)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[14,8,128] parameter(0)
+  tuple = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) tuple(c0, c0, p0, p0)
+  while = (s32[], s32[], bf16[14,8,128], bf16[14,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[14,8,128] get-tuple-element(while), index=2
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true,
+                  /*level_to_operate_on=*/0,
+                  /*pipeline_use_tree=*/true,
+                  /*process_different_sized_ops=*/true,
+                  collective_pipeliner_utils::PipeliningDirection::kForwardSink)
+                  .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::GetTupleElement(
+                        op::Tuple(_, _, op::Reshape(op::AllReduce()), _)));
+  const HloInstruction* sunk_all_reduce =
+      root->operand(0)->operand(2)->operand(0);
+  EXPECT_EQ(sunk_all_reduce->opcode(), HloOpcode::kAllReduce);
+  EXPECT_THAT(sunk_all_reduce, op::AllReduce(op::GetTupleElement(op::While())));
+  const HloInstruction* while_inst = sunk_all_reduce->operand(0)->operand(0);
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_root =
+      while_inst->while_body()->root_instruction();
+  EXPECT_THAT(while_root, op::Tuple(_, _, _, _, op::DynamicUpdateSlice()));
+  const HloInstruction* dyn_upd = while_root->operand(4);
+  EXPECT_THAT(dyn_upd, op::DynamicUpdateSlice(_, op::Reshape(op::Multiply()), _,
+                                              _, _, _));
+}
+
 }  // namespace
 }  // namespace xla

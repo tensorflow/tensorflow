@@ -39,7 +39,7 @@ namespace data {
 class OptionsDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          const string& serialized_options)
+          const std::string& serialized_options)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         serialized_options_(serialized_options) {
@@ -85,7 +85,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->Get(ctx, index, out_tensors);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 

@@ -443,7 +443,7 @@ TEST_F(GCSFilesystemTest, GetChildren) {
     childrens.push_back(entries[i]);
   }
   std::sort(childrens.begin(), childrens.end());
-  EXPECT_EQ(std::vector<string>({"SubDir/", "TestFile.csv"}), childrens);
+  EXPECT_EQ(std::vector<std::string>({"SubDir/", "TestFile.csv"}), childrens);
 }
 
 TEST_F(GCSFilesystemTest, DeleteFile) {

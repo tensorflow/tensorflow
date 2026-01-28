@@ -34,7 +34,7 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-HostPlatform::HostPlatform() : name_("Host") {}
+HostPlatform::HostPlatform() : name_(kHostPlatformId->ToName()) {}
 
 HostPlatform::~HostPlatform() {}
 

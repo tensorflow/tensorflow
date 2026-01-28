@@ -50,6 +50,7 @@ limitations under the License.*/
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -166,7 +167,8 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
   if (!use_collective_kernel) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(params.clique_requests->RequestClique(clique_key));
+  TF_RETURN_IF_ERROR(
+      params.collective_clique_requests->RequestClique(clique_key));
 
   absl::MutexLock lock(mutex_);
   if (!per_stream_memory_.contains(params.executor)) {
@@ -181,7 +183,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     const int64_t kSignalBufferSize = xla::RoundUpTo<uint64_t>(
         kNumSignalFlags * sizeof(int32_t), kXlaAllocatedBufferAlignBytes);
     const int64_t kLocalBufferSize = xla::RoundUpTo<uint64_t>(
-        buffers_[0].source_buffer.size(), kXlaAllocatedBufferAlignBytes);
+        buffers_[0].source_buffer.slice.size(), kXlaAllocatedBufferAlignBytes);
     TF_ASSIGN_OR_RETURN(
         se::DeviceAddressHandle local_buffers_handle,
         AllocateMemory(params.executor, kLocalBufferSize * kNumBuffers,
@@ -335,9 +337,10 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   const CollectiveThunk::Buffer& buffer = buffers_[0];
   const PrimitiveType element_type = collective_config_.operand_element_type[0];
   se::DeviceAddressBase source_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer.source_buffer);
+      params.buffer_allocations->GetDeviceAddress(buffer.source_buffer.slice);
   se::DeviceAddressBase destination_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
+      params.buffer_allocations->GetDeviceAddress(
+          buffer.destination_buffer.slice);
 
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);
@@ -386,7 +389,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
                             state->metadata, /*num_parameters=*/kNumParameters,
                             /*num_devices=*/num_devices,
                             /*parameter_index=*/1));
-    std::array<se::KernelArgument, kAllReduceArgsCount> kernel_args = {
+    std::array<se::KernelArg, kAllReduceArgsCount> kernel_args = {
         source_buffer,
         destination_buffer,
         static_cast<int32_t>(state->rank.value()),

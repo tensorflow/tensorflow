@@ -169,6 +169,7 @@ message CompileOptionsProto {
   stream_executor.GpuTargetConfigProto target_config = 8;
   bool allow_in_place_mlir_modification = 9;
   PrecisionConfig.Precision matrix_unit_operand_precision = 10;
+  optional string compiler_variant = 11;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

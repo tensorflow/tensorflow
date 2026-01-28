@@ -235,7 +235,7 @@ struct MapMhloOpToScalarOpImpl<StdScalarOp> {
   Value operator()(Location loc, ArrayRef<Type> resultTypes,
                    ArrayRef<Type> /*argTypes*/, ValueRange args,
                    ArrayRef<NamedAttribute> attributes, OpBuilder* b) {
-    return b->template create<StdScalarOp>(loc, resultTypes, args, attributes);
+    return StdScalarOp::create(*b, loc, resultTypes, args, attributes);
   }
 };
 
@@ -246,8 +246,7 @@ struct MapMhloOpToScalarOpImpl<SupportedType, StdScalarOp, Args...> {
                    ArrayRef<NamedAttribute> attributes, OpBuilder* b) {
     Type elementType = getElementTypeOrSelf(argTypes.front());
     if (SupportedType{}(elementType)) {
-      return b->template create<StdScalarOp>(loc, resultTypes, args,
-                                             attributes);
+      return StdScalarOp::create(*b, loc, resultTypes, args, attributes);
     }
     return MapMhloOpToScalarOpImpl<Args...>{}(loc, resultTypes, argTypes, args,
                                               attributes, b);
@@ -337,11 +336,11 @@ inline Value mapMhloOpToStdScalarOp<mhlo::AbsOp>(
     // lmhlo.abs(x, result) ->  result = select((x > 0), x, sub(0, x))
     Value lhs = adaptor.getOperand();
     Value zeroIntval =
-        b->create<arith::ConstantOp>(loc, b->getZeroAttr(lhs.getType()));
-    auto lhsGtZero = b->create<ScalarIOp<CompareOp>>(
-        loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
-    auto negVal = b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
-    return b->create<::mlir::arith::SelectOp>(loc, lhsGtZero, lhs, negVal);
+        arith::ConstantOp::create(*b, loc, b->getZeroAttr(lhs.getType()));
+    auto lhsGtZero = ScalarIOp<CompareOp>::create(
+        *b, loc, arith::CmpIPredicate::sge, lhs, zeroIntval);
+    auto negVal = ScalarIOp<mhlo::SubtractOp>::create(*b, loc, zeroIntval, lhs);
+    return ::mlir::arith::SelectOp::create(*b, loc, lhsGtZero, lhs, negVal);
   }
   return nullptr;
 }
@@ -449,8 +448,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
     std::optional<arith::CmpIPredicate> predicate =
         getCmpPredicate<arith::CmpIPredicate>(comparisonDirection, !isUnsigned);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarIOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
-                                                 rhs);
+    return ScalarIOp<mhlo::CompareOp>::create(*b, loc, predicate.value(), lhs,
+                                              rhs);
   }
   if (auto floatType = mlir::dyn_cast<FloatType>(elementType)) {
     if (adaptor.getCompareType() &&
@@ -493,8 +492,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
         getCmpPredicate<arith::CmpFPredicate>(comparisonDirection,
                                               /*is_signed=*/true);
     assert(predicate.has_value() && "expected valid comparison direction");
-    return b->create<ScalarFOp<mhlo::CompareOp>>(loc, predicate.value(), lhs,
-                                                 rhs);
+    return ScalarFOp<mhlo::CompareOp>::create(*b, loc, predicate.value(), lhs,
+                                              rhs);
   }
   if (auto complexType = mlir::dyn_cast<ComplexType>(elementType))
     return cmpComplex(loc, lhs, rhs, comparisonDirection, b);
@@ -858,9 +857,9 @@ struct CompareSelectOpToStdScalarOp<SupportedType, StdCompareOp, Predicate,
       auto predicate = getCmpPredicate<Predicate>(
           comparisonDirection, !elementType.isUnsignedInteger());
       assert(predicate.has_value() && "expected valid comparison direction");
-      auto cmp = b->template create<StdCompareOp>(loc, predicate.getValue(),
-                                                  args[0], args[1]);
-      return b->create<::mlir::arith::SelectOp>(loc, cmp, args[0], args[1]);
+      auto cmp =
+          StdCompareOp::create(*b, loc, predicate.getValue(), args[0], args[1]);
+      return ::mlir::arith::SelectOp::create(*b, loc, cmp, args[0], args[1]);
     }
     return CompareSelectOpToStdScalarOp<Args...>::map(
         loc, comparisonDirection, resultTypes, argTypes, args, b);
@@ -1005,7 +1004,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::NegOp>(
     Value lhs = adaptor.getOperand();
     Value zeroIntval =
         arith::ConstantOp::create(*b, loc, b->getZeroAttr(lhs.getType()));
-    return b->create<ScalarIOp<mhlo::SubtractOp>>(loc, zeroIntval, lhs);
+    return ScalarIOp<mhlo::SubtractOp>::create(*b, loc, zeroIntval, lhs);
   }
   return nullptr;
 }
@@ -1062,8 +1061,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
   auto lb = ImplicitLocOpBuilder(loc, *b);
   // TODO: b/315868720 Consider alternate lowerings of mhlo::PowOp with integer
   // operands. Floating point can use std::powf
-  auto resultType = getElementTypeOrSelf(resultTypes.front());
-  if (mlir::isa<ComplexType, FloatType>(resultType)) {
+  auto elementType = getElementTypeOrSelf(resultTypes.front());
+  if (mlir::isa<ComplexType, FloatType>(elementType)) {
     return MapMhloOpToScalarOpImpl<IsFloatType, math::PowFOp, IsComplexType,
                                    complex::PowOp>{}(
         loc, resultTypes, argTypes, adaptor.getOperands(), attributes, b);
@@ -1071,11 +1070,14 @@ inline Value mapMhloOpToStdScalarOp<mhlo::PowOp>(
 
   // Exponentiation by squaring:
   // https://en.wikipedia.org/wiki/Exponentiation_by_squaring;
-  Value negOne =
-      arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, -1));
-  Value zero = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 0));
-  Value one = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 1));
-  Value two = arith::ConstantOp::create(lb, lb.getIntegerAttr(resultType, 2));
+  Value negOne = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                    lb.getIntegerAttr(elementType, -1));
+  Value zero = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                  lb.getIntegerAttr(elementType, 0));
+  Value one = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                 lb.getIntegerAttr(elementType, 1));
+  Value two = getConstantOrSplat(&lb, loc, resultTypes[0],
+                                 lb.getIntegerAttr(elementType, 2));
   Value step = arith::ConstantIndexOp::create(lb, 1);
   Value lowerBound = arith::ConstantIndexOp::create(lb, 0);
   // Everything else would overflow for any exponent > 1, as 2^64

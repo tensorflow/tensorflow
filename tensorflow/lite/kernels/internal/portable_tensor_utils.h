@@ -633,7 +633,8 @@ void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
 //   For 2-bit unpacking: e.g., `src_buffer = {0x12};` (num_elements = 4)
 //   will return `dst_buffer = {0x02, 0x00, 0x01, 0x00}` (sign extended).
 void UnpackPackedIntToInt8(const int8_t* src_buffer, int num_elements,
-                           int bit_width, int8_t* dst_buffer);
+                           int bit_width, int8_t* dst_buffer,
+                           bool unpack_unsigned = false);
 
 // Pack `src_buffer` into a densely packed buffer of int2 or int4 values.
 // Parameters:

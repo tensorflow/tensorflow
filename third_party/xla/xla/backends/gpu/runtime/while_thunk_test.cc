@@ -150,7 +150,7 @@ class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
     TF_ASSIGN_OR_RETURN(auto* executor, platform->ExecutorForDevice(0));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
                         executor->CreateStream());
-    se::StreamExecutorMemoryAllocator allocator(executor);
+    stream_executor::StreamExecutorAddressAllocator allocator(executor);
     Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
         ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
         stream.get(), stream.get(), nullptr, nullptr);

@@ -607,11 +607,12 @@ class EinsumOp : public OpKernel {
     ctx->set_output(0, std::move(output));
   }
 
-  string TraceString(const OpKernelContext& ctx, bool verbose) const override {
-    string op = profiler::TraceMeOp(name_view(), type_string_view());
-    string equation = absl::StrCat("(", equation_, ")");
+  std::string TraceString(const OpKernelContext& ctx,
+                          bool verbose) const override {
+    std::string op = profiler::TraceMeOp(name_view(), type_string_view());
+    std::string equation = absl::StrCat("(", equation_, ")");
     if (verbose) {
-      string shape = ShapeTraceString(ctx);
+      std::string shape = ShapeTraceString(ctx);
       if (!shape.empty()) {
         return tsl::profiler::TraceMeEncode(
             std::move(op), {{"equation", equation}, {"shape", shape}});
@@ -622,7 +623,7 @@ class EinsumOp : public OpKernel {
   }
 
  private:
-  string equation_;
+  std::string equation_;
   OperandLabels input_labels_;
   Labels output_labels_;
   std::vector<EinsumDimensionType> label_types_;

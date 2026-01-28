@@ -25,9 +25,7 @@ cc_library(
     hdrs = [
         "host_platform_id.h",
     ],
-    deps = [
-        "//xla/stream_executor:platform",
-    ],
+    deps = ["//xla/stream_executor:platform"],
 )
 
 cc_library(
@@ -135,7 +133,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )

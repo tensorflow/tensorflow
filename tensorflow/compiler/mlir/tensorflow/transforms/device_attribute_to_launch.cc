@@ -42,15 +42,15 @@ struct DeviceAttributeToLaunch
 void WrapOpInLaunch(Operation* op, llvm::StringRef device) {
   OpBuilder builder(op);
 
-  auto launch_op = builder.create<tf_device::LaunchOp>(
-      op->getLoc(), builder.getStringAttr(device),
+  auto launch_op = tf_device::LaunchOp::create(
+      builder, op->getLoc(), builder.getStringAttr(device),
       /*result_types=*/op->getResultTypes());
   op->replaceAllUsesWith(launch_op);
 
   launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
   auto* return_op =
-      builder.create<tf_device::ReturnOp>(op->getLoc(), op->getResults())
+      tf_device::ReturnOp::create(builder, op->getLoc(), op->getResults())
           .getOperation();
   MLIRContext* context = launch_op.getContext();
   op->removeAttr(StringAttr::get(context, kDeviceAttr));

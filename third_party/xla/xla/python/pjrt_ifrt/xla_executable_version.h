@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/xla_executable_abi_version.h"
 #include "xla/tsl/platform/errors.h"
 
 namespace xla {
@@ -35,15 +35,15 @@ namespace ifrt {
 struct XlaExecutableVersion
     : llvm::RTTIExtends<XlaExecutableVersion, ExecutableVersion> {
   XlaExecutableVersion() = default;
-  XlaExecutableVersion(uint64_t platform_id, std::string runtime_abi_version);
+  XlaExecutableVersion(uint64_t platform_id,
+                       std::unique_ptr<XlaExecutableAbiVersion> abi_version);
 
   // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
   // xla::PjRtPlatformId.
   uint64_t platform_id;
-  // Opaque string that identifies the runtime ABI version.
-  std::string runtime_abi_version;
+  std::unique_ptr<XlaExecutableAbiVersion> abi_version;
 
-  bool IsCompatibleWith(const ExecutableVersion& other) const override;
+  absl::Status IsCompatibleWith(const ExecutableVersion& other) const override;
 
   absl::Status ToProto(SerializedXlaExecutableVersion& executable_version_proto,
                        SerDesVersion version = SerDesVersion::current()) const;

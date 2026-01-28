@@ -67,6 +67,7 @@ ENTRY entry {
                     .value();
   ConditionalCanonicalizer pass;
   EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_FALSE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement(op::Conditional()));
 }
@@ -94,6 +95,7 @@ ENTRY entry {
                     .value();
   ConditionalCanonicalizer pass;
   EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_FALSE(pass.Run(module.get()).value());
 
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0)->users(),
               ElementsAre(op::Tuple(), op::Tuple()));
@@ -134,6 +136,7 @@ ENTRY entry {
                     .value();
   ConditionalCanonicalizer pass;
   EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_FALSE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0)->users(),
               ElementsAre(op::Tuple(), op::Tuple(), op::Tuple(), op::Tuple()));
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1)->users(),
@@ -175,6 +178,7 @@ ENTRY entry {
                     .value();
   ConditionalCanonicalizer pass;
   EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_FALSE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->parameter_instruction(0)->users(),
               UnorderedElementsAre(op::Tuple(), op::Tuple(), op::Call()));
   EXPECT_THAT(module->entry_computation()->parameter_instruction(1)->users(),
@@ -197,6 +201,58 @@ ENTRY entry {
   }
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(op::Conditional()), op::Call()));
+}
+
+TEST_F(ConditionalCanonicalizerTest, MixedConditionalStatus) {
+  // This test ensures that if we have multiple conditionals, where one changes
+  // and another doesn't, the pass correctly reports 'true'.
+  // We construct the module such that the non-canonical conditional is visited
+  // first, and the canonical one is visited last.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule MixedConditionalStatus
+
+true_branch_scalar {
+  param = s32[] parameter(0)
+  ROOT root = s32[] constant(0)
+}
+
+false_branch_scalar {
+  param = s32[] parameter(0)
+  ROOT root = s32[] constant(1)
+}
+
+true_branch_tuple {
+  ROOT param = (s32[]) parameter(0)
+}
+
+false_branch_tuple {
+  ROOT param = (s32[]) parameter(0)
+}
+
+ENTRY entry {
+  param0 = s32[] parameter(0)
+  branch = pred[] parameter(1)
+
+  // Non-canonical: scalar input/output
+  // This should be visited first because cond_tuple depends on it.
+  cond_scalar = s32[] conditional(branch, param0, param0),
+    true_computation=true_branch_scalar, false_computation=false_branch_scalar
+
+  // Wrap result in tuple to feed to next conditional
+  tuple_val = (s32[]) tuple(cond_scalar)
+
+  // Canonical: tuple input/output
+  // This should be visited last.
+  cond_tuple = (s32[]) conditional(branch, tuple_val, tuple_val),
+    true_computation=true_branch_tuple, false_computation=false_branch_tuple
+
+  ROOT root = tuple(cond_tuple)
+}
+)")
+                    .value();
+  ConditionalCanonicalizer pass;
+  EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_FALSE(pass.Run(module.get()).value());
 }
 
 }  // namespace

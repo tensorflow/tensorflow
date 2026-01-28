@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/host_offload_utils.h"
 #include "xla/side_effect_util.h"

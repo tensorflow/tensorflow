@@ -24,11 +24,9 @@ limitations under the License.
 
 namespace xla {
 
-// HLO pass that rewrites while loops to sink all-reduces that are only
-// accumulated into a buffer and not otherwise used in the loop body.
-// An all-reduce instruction can be sinked if its result is only added
-// to a number of accumulation buffers, and the accumulation buffers are not
-// used inside the loop.
+// HLO pass that sinks all-reduce instructions out of while loop bodies.
+// An all-reduce is sunk if its result is ONLY used to accumulate into buffers,
+// and those buffers are not used otherwise inside the loop.
 //
 // Pattern before this pass:
 // a = ...
@@ -36,6 +34,7 @@ namespace xla {
 //   b = ...
 //   c = all-reduce(b)
 //   a += c
+//
 // Pattern after this pass:
 // a = ...
 // d = 0

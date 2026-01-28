@@ -98,6 +98,12 @@ int main(int argc, char* argv[]) {
       tsl::Flag("result_output_file", &options.result_output_file,
                 "File to write a serialized xla.CompilationResult proto to. "
                 "Required if --output_file is not set."),
+      tsl::Flag("target_cpu", &options.cpu_options.target_cpu,
+                "The target cpu."),
+      tsl::Flag("target_features", &options.cpu_options.target_features,
+                "The target features."),
+      tsl::Flag("target_triple", &options.cpu_options.target_triple,
+                "The target triple."),
   };
 
   std::string usage = xla::xla_compile::kUsageHeader;

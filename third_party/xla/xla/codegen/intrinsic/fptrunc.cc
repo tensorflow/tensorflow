@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/fptrunc.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>
@@ -307,7 +308,16 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
 
   const uint64_t f8_mantissa_bits =
       primitive_util::SignificandWidth(to.element_type()) - 1;
-  const uint64_t exponent_bias_difference = fx_bias - f8_bias;
+  const int64_t exponent_bias_diff =
+      static_cast<int64_t>(fx_bias) - static_cast<int64_t>(f8_bias);
+  // Ensure we don't have a ridiculous bias difference that would exceed our
+  // source bit-width. For F16/F32/F64, a bias difference of 1 (15 vs 16) is
+  // perfectly fine.
+  DCHECK_LT(std::abs(exponent_bias_diff), (1LL << fx_exp_bits))
+      << "Bias difference is too large to represent in source type";
+  DCHECK_LT(fx_mantissa_bits - f8_mantissa_bits, 64)
+      << "Trying to shift by too many bits; " << fx_mantissa_bits << " "
+      << f8_mantissa_bits;
 
   const PrimitiveType ix_primitive_type =
       primitive_util::UnsignedIntegralTypeForBitWidth(fx_width);
@@ -318,7 +328,11 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   auto make_const = [&](uint64_t val, llvm::Type* type) -> llvm::Constant* {
     llvm::IntegerType* scalar_ty =
         llvm::IntegerType::get(context, type->getScalarSizeInBits());
-    llvm::Constant* scalar_const = llvm::ConstantInt::get(scalar_ty, val);
+    uint64_t mask = (scalar_ty->getBitWidth() == 64)
+                        ? ~0ULL
+                        : ((1ULL << scalar_ty->getBitWidth()) - 1);
+    llvm::Constant* scalar_const =
+        llvm::ConstantInt::get(scalar_ty, val & mask);
     if (type->isVectorTy()) {
       auto vec_ty = llvm::cast<llvm::FixedVectorType>(type);
       return llvm::ConstantVector::getSplat(vec_ty->getElementCount(),
@@ -359,8 +373,10 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
 
   llvm::Constant* nosign_mask = ix_const((1ULL << (fx_width - 1)) - 1);
   llvm::Constant* sign_mask = ix_const(1ULL << (fx_width - 1));
+  uint64_t min_normal_threshold =
+      (exponent_bias_diff > 0) ? (exponent_bias_diff + 1) : 1;
   llvm::Constant* min_normal_value =
-      ix_const((exponent_bias_difference + 1) << fx_mantissa_bits);
+      ix_const(min_normal_threshold << fx_mantissa_bits);
 
   using llvm::Value;
   Value* fx_as_int = b.CreateBitCast(from_value, ix_type);
@@ -386,8 +402,19 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
                               min_normal_value, fx_reduced);
 
   // Adjust the exponent bias.
-  fx_reduced = b.CreateSub(
-      fx_reduced, ix_const(exponent_bias_difference << fx_mantissa_bits));
+  if (exponent_bias_diff > 0) {
+    // Source bias is larger (standard case): Subtract the difference
+    fx_reduced = b.CreateSub(fx_reduced,
+                             ix_const(static_cast<uint64_t>(exponent_bias_diff)
+                                      << fx_mantissa_bits));
+  } else if (exponent_bias_diff < 0) {
+    // Destination bias is larger (F16 -> F8E5M2FNUZ): Add the difference
+    // Since `exponent_bias_diff` is negative, we negate it to get a positive
+    // value for the left shift.
+    fx_reduced = b.CreateAdd(fx_reduced,
+                             ix_const(static_cast<uint64_t>(-exponent_bias_diff)
+                                      << fx_mantissa_bits));
+  }  // If bias_diff == 0, we do nothing.
   // Shift mantissa into place.
   Value* f8_bits_shifted =
       b.CreateLShr(fx_reduced, ix_const(fx_mantissa_bits - f8_mantissa_bits));
@@ -399,15 +426,15 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
   const uint64_t max_finite_f8_exp =
       has_inf ? (1ULL << f8_exp_bits) - 2 : (1ULL << f8_exp_bits) - 1;
   const uint64_t max_finite_f8_man = (1ULL << f8_mantissa_bits) - 1;
-  const uint64_t max_finite_fx_exp =
-      max_finite_f8_exp + exponent_bias_difference;
+  const uint64_t max_finite_fx_exp = static_cast<uint64_t>(
+      static_cast<int64_t>(max_finite_f8_exp) + exponent_bias_diff);
   const uint64_t man_shift = fx_mantissa_bits - f8_mantissa_bits;
   const uint64_t max_finite_value_exp = max_finite_fx_exp << fx_mantissa_bits;
   const uint64_t max_finite_value_man = max_finite_f8_man << man_shift;
-  const uint64_t rounding_bits = (1ULL << man_shift) - 1;
-  const uint64_t max_finite_value =
+  const uint64_t rounding_bits = 1ULL << (man_shift - 1);
+  const uint64_t max_finite_repr =
       max_finite_value_exp | max_finite_value_man | rounding_bits;
-  Value* is_overflow = b.CreateICmpUGT(fx_abs_bits, ix_const(max_finite_value));
+  Value* is_overflow = b.CreateICmpUGT(fx_abs_bits, ix_const(max_finite_repr));
 
   // Handle format-specific overflow behavior.
   if (has_inf) {
@@ -437,6 +464,9 @@ absl::StatusOr<llvm::Function*> EmitFxxToF8E(llvm::Module* module,
                                        i8_const(f8_exp_mask));
     f8_bits = b.CreateSelect(is_inf_or_nan_input, inf_or_nan, finite_or_inf);
   } else {
+    DCHECK_GE(fx_exp_bits, f8_exp_bits) << "Trying to convert from a narrower "
+                                           "exponent bit width."
+                                        << fx_type << " " << to.name();
     // For fn/fnuz formats, overflow and input Inf/NaN become NaN.
     const uint64_t fx_exp_mask =
         ((1ULL << primitive_util::ExponentWidth(fx_type)) - 1)

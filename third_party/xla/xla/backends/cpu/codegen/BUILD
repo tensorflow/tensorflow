@@ -85,7 +85,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -198,11 +198,13 @@ cc_library(
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -250,12 +252,12 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToSCF",
         "@llvm-project//mlir:VectorTransforms",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
         "@stablehlo//:linalg_passes",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_passes_optimization",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 
@@ -295,11 +297,11 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
     ] + if_llvm_aarch64_available([
         "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]) + if_llvm_powerpc_available([
@@ -712,6 +714,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:loop_kernel_emitter",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/runtime:work_cluster",

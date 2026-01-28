@@ -41,6 +41,8 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -509,12 +511,15 @@ TEST(ThunkExecutorTest, Execute) {
 // execution on a non blocking IO callbacks thread pool.
 class NoOpAsyncThunk : public Thunk {
  public:
-  NoOpAsyncThunk(std::string name, BufferAllocation::Slice slice)
-      : Thunk(Kind::kKernel, Info{std::move(name)}), slice_(slice) {}
+  NoOpAsyncThunk(std::string name, BufferAllocation::Slice slice, Shape shape)
+      : Thunk(Kind::kKernel, Info{std::move(name)}),
+        slice_(slice),
+        shape_(shape) {}
 
   static std::unique_ptr<NoOpAsyncThunk> Create(std::string name,
-                                                BufferAllocation::Slice slice) {
-    return std::make_unique<NoOpAsyncThunk>(std::move(name), slice);
+                                                BufferAllocation::Slice slice,
+                                                Shape shape) {
+    return std::make_unique<NoOpAsyncThunk>(std::move(name), slice, shape);
   }
 
   tsl::AsyncValueRef<ExecuteEvent> Execute(const ExecuteParams&) final {
@@ -527,7 +532,7 @@ class NoOpAsyncThunk : public Thunk {
   }
 
   BufferUses buffer_uses() const override {
-    return BufferUses{BufferUse::Write(slice_)};
+    return BufferUses{BufferUse::Write(slice_, shape_)};
   }
 
   bool ExecutesOnExternalThreadPool() const override { return true; }
@@ -540,11 +545,13 @@ class NoOpAsyncThunk : public Thunk {
   }
 
   BufferAllocation::Slice slice_;
+  Shape shape_;
 };
 
 TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
   BufferAllocation alloc(/*index=*/0, /*size=*/60, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(S32, {5});
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/20);
   BufferAllocation::Slice slice1(&alloc, /*offset=*/20, /*size=*/20);
   BufferAllocation::Slice slice2(&alloc, /*offset=*/40, /*size=*/20);
@@ -553,7 +560,8 @@ TEST(ThunkExecutorTest, ExecuteOnCorrectThreadPool) {
 
   ThunkSequence sequence;
   for (int i = 0; i < 100; ++i) {
-    sequence.push_back(NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3]));
+    sequence.push_back(
+        NoOpAsyncThunk::Create(absl::StrCat(i), slices[i % 3], shape));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(

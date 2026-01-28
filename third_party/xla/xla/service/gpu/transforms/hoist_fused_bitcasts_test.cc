@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -77,6 +78,9 @@ class HoistFusedBitcastsReshapeTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<HloOpcode> {
  protected:
+  HoistFusedBitcastsReshapeTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
@@ -810,6 +814,82 @@ CHECK-NOT: bitcast
 CHECK: }
 CHECK ENTRY {{.*}} {
 CHECK: bitcast
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_P(HoistFusedBitcastsReshapeTest,
+       BitcastsWithSize1DimensionsSeparatedAreHoistedUpThroughTransposes) {
+  const HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+triton_dot {
+  lhs = f32[16,24,320] parameter(0)
+  rhs = f32[320,2] parameter(1)
+  dot = f32[16,24,2] dot(lhs, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+
+  bitcast = f32[1, 384, 2] $0(dot)
+  ROOT transpose = f32[1, 2, 384] transpose(bitcast), dimensions={0, 2, 1}
+}
+
+ENTRY e {
+  p0 = f32[16,24,320] parameter(0)
+  p1 = f32[320,2] parameter(1)
+  ROOT result = f32[1,2,384] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  std::unique_ptr<VerifiedHloModule> module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)));
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: {{.*}} {
+CHECK-NEXT: [[p0:[^ ]+]] = f32[16,24,320]{2,1,0} parameter(0)
+CHECK-NEXT: [[p1:[^ ]+]] = f32[320,2]{1,0} parameter(1)
+CHECK-NEXT: [[dot:[^ ]+]] = f32[16,24,2]{2,1,0} dot([[p0]], [[p1]])
+CHECK-NEXT: ROOT {{.*}} = f32[2,16,24]{2,1,0} transpose([[dot]]), dimensions={2,0,1}
+CHECK: }
+CHECK: ENTRY {{.*}} {
+CHECK: [[fusion:[^ ]+]] = f32[2,16,24]{2,1,0} fusion
+CHECK: bitcast([[fusion]])
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_P(HoistFusedBitcastsReshapeTest,
+       BitcastBetweenDotAndTransposeWithDegenerateDimension) {
+  HloOpcode opcode = GetParam();
+  absl::string_view hlo = R"(
+triton_dot {
+  lhs = f32[16,16] parameter(0)
+  rhs = f32[16,16] parameter(1)
+  dot = f32[16,16] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = f32[1, 2, 128] $0(dot)
+  ROOT transpose = f32[1, 128, 2] transpose(bitcast), dimensions={0, 2, 1}
+}
+
+ENTRY entry {
+  p0 = f32[16,16] parameter(0)
+  p1 = f32[16,16] parameter(1)
+  ROOT fusion = f32[1, 128, 2] fusion(p0, p1),
+    kind=kCustom, calls=triton_dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"16", "block_n":"16", "block_k":"16",
+          "split_k":"1", "num_stages":"1", "num_warps":"1", "num_ctas":"1"
+        }
+      }
+    }
+}
+)";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      RunHoistFusedBitcasts(absl::Substitute(hlo, HloOpcodeString(opcode)),
+                            /*expect_change=*/false);
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: bitcast
+CHECK: transpose
 )"),
       IsOkAndHolds(true));
 }

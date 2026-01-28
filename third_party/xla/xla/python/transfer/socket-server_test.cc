@@ -55,6 +55,7 @@ TEST(ServerTest, Basic) {
   CHECK_EQ(s.Await().value(), msg);
   absl::SleepFor(absl::Seconds(2));
   conn = {};
+  serverb->WaitForQuiesce();
 }
 
 TEST(ServerTest, DelayedConnect) {
@@ -80,6 +81,7 @@ TEST(ServerTest, DelayedConnect) {
   CHECK_EQ(s.Await().value(), msg);
   absl::SleepFor(absl::Seconds(2));
   conn = {};
+  serverb->WaitForQuiesce();
 }
 
 }  // namespace

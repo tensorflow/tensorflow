@@ -33,7 +33,7 @@ xla_cc_binary(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:NVPTXCodeGen",  # buildcleaner: keep
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_platform",
     ]),

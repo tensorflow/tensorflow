@@ -43,6 +43,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     const ThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver = std::nullopt);
 

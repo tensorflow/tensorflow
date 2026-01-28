@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {

@@ -468,6 +468,9 @@ class Env {
   // Copies current thread name to "name". Returns true if success.
   virtual bool GetCurrentThreadName(std::string* name) = 0;
 
+  // Returns true if the current thread is a cooperatively scheduled fiber.
+  virtual bool IsCurrentThreadFiber() { return false; }
+
   // \brief Schedules the given closure on a thread-pool.
   //
   // NOTE(mrry): This closure may block.
@@ -572,6 +575,9 @@ class EnvWrapper : public Env {
   }
   bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
+  }
+  bool IsCurrentThreadFiber() override {
+    return target_->IsCurrentThreadFiber();
   }
   void SchedClosure(absl::AnyInvocable<void()> closure) override {
     target_->SchedClosure(std::move(closure));

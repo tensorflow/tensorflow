@@ -141,8 +141,8 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       initial_value = mlir::Attribute();
     }
     opToName[globalTensor] = name;
-    auto variableOp = globalBuilder.create<ml_program::GlobalOp>(
-        globalTensor.getLoc(), name, globalTensor.getType(),
+    auto variableOp = ml_program::GlobalOp::create(
+        globalBuilder, globalTensor.getLoc(), name, globalTensor.getType(),
         globalTensor.getIsMutable(), initial_value,
         /*visibility=*/globalBuilder.getStringAttr("private"));
     variableOp.setPrivate();
@@ -159,8 +159,8 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
-      auto load = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), op.getValue().getType(), sym);
+      auto load = mlir::ml_program::GlobalLoadOp::create(
+          builder, op.getLoc(), op.getValue().getType(), sym);
       op.getValue().replaceAllUsesWith(load.getResult());
       op.erase();
     });
@@ -169,8 +169,8 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       success &= !!sym;
       if (!success) return;
       OpBuilder builder(op);
-      builder.create<mlir::ml_program::GlobalStoreOp>(op.getLoc(), sym,
-                                                      op.getValue());
+      mlir::ml_program::GlobalStoreOp::create(builder, op.getLoc(), sym,
+                                              op.getValue());
       op.erase();
     });
     if (!success) return failure();
@@ -183,8 +183,9 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
       if (auto global = tf_saved_model::LookupBoundInputOfType<
               tf_saved_model::GlobalTensorOp>(func, i, syms)) {
         OpBuilder builder(func.getBody());
-        auto dummy = builder.create<TF::VarHandleOp>(
-            global.getLoc(), func.getArgument(i).getType(), "dummy", "dummy");
+        auto dummy = TF::VarHandleOp::create(builder, global.getLoc(),
+                                             func.getArgument(i).getType(),
+                                             "dummy", "dummy");
         func.getArgument(i).replaceAllUsesWith(dummy.getResult());
         argsToErase.set(i);
       }

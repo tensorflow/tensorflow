@@ -37,6 +37,7 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_event",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
@@ -61,6 +62,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:abstract_tracked_device_buffer",
+        "//xla/pjrt:async_work_runner",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_allocator",
@@ -74,6 +76,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/pjrt:raw_buffer",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:transpose",
@@ -91,7 +94,9 @@ cc_library(
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
+        "//xla/runtime:process_id",
         "//xla/service:buffer_assignment",
+        "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:computation_placer_hdr",
         "//xla/service:executable",
@@ -108,6 +113,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
@@ -121,6 +127,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
@@ -128,6 +135,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -139,15 +147,18 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
         "@eigen_archive//:eigen3",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:unbounded_work_queue",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda([
         # keep sorted
         "@local_config_cuda//cuda:cuda_headers",
@@ -172,6 +183,7 @@ xla_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/algorithm:container",
@@ -230,9 +242,9 @@ xla_test(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
-        "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -283,8 +295,15 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:stacktrace",
+        "@tsl//tsl/platform:stacktrace",
     ],
+)
+
+cc_library(
+    name = "thread_checker",
+    srcs = ["thread_checker.cc"],
+    hdrs = ["thread_checker.h"],
+    deps = ["@com_google_absl//absl/log:check"],
 )
 
 xla_cc_test(
@@ -339,6 +358,7 @@ xla_cc_test(
     deps = [
         ":gpu_event",
         ":tfrt_gpu_client",
+        ":thread_checker",
         ":tracked_gpu_device_buffer",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -353,6 +373,6 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )

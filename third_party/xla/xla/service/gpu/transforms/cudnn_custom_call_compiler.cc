@@ -378,7 +378,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
       se::gpu::GetCudnnFlashAttentionBackwardOperationGraph(
           dnn_support, q, k, p, v, d_output, dq, dk, dv, bias, dbias,
           dropout_rate, config.seed(), config.fmha_scale(), dropout_rate > 0.0,
-          bias != std::nullopt, dnn_mask_type, force_deterministic,
+          bias.has_value(), dnn_mask_type, force_deterministic,
           sliding_window_length, max_seg_per_batch, score_mod));
   return graph;
 }

@@ -81,8 +81,8 @@ cc_library(
         "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir/framework/transforms:passes",
-        "@local_xla//xla/mlir_hlo:all_passes",
+        "@xla//xla/mlir/framework/transforms:passes",
+        "@xla//xla/mlir_hlo:all_passes",
     ],
 )
 
@@ -207,9 +207,9 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir/framework/ir:xla_framework",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",
+        "@xla//xla/mlir/framework/ir:xla_framework",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
     ],
 )
 
@@ -242,8 +242,8 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate_registration",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:translate_registration",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:translate_registration",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:translate_registration",
     ],
 )
 

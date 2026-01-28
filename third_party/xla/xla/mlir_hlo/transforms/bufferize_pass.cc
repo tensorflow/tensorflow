@@ -245,7 +245,19 @@ struct ComputeOpAndFuncBufferizePass
         .addDynamicallyLegalOp<vector::TransferWriteOp, vector::TransferReadOp>(
             isLegalOp);
 
-    return applyPartialConversion(getOperation(), target, std::move(patterns));
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns))))
+      return failure();
+
+    // All to_buffer ops on constants can be safely marked as read only since
+    // constants are immutable. This fix is for
+    // https://github.com/llvm/llvm-project/pull/172595.
+    getOperation()->walk([](bufferization::ToBufferOp toBuffer) {
+      if (toBuffer.getTensor().getDefiningOp<arith::ConstantOp>()) {
+        toBuffer.setReadOnly(true);
+      }
+    });
+    return success();
   }
 };
 

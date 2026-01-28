@@ -158,9 +158,13 @@ Service::Service(const ServiceOptions& options,
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
       se::StreamExecutor* executor = stream_executors.at(i);
       const auto& description = executor->GetDeviceDescription();
-      LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
-                             description.name(),
-                             description.platform_version());
+      LOG(INFO) << StrFormat(
+          "  StreamExecutor [%d]: %s, %s"
+          " (Driver: %v; Runtime: %v; Toolkit: %v; DNN: %v)",
+          i, description.name(), description.platform_version(),
+          description.driver_version(), description.runtime_version(),
+          description.compile_time_toolkit_version(),
+          description.dnn_version());
     }
   } else {
     VLOG(1) << "XLA compile-only service constructed";
@@ -286,7 +290,7 @@ Service::BuildExecutables(const HloModuleProto* module_proto,
   return std::move(executables);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 Service::BuildAotResults(
     const HloModuleProto* module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -307,7 +311,7 @@ Service::BuildAotResults(
   aot_options.set_run_backend_only(run_backend_only);
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
   return std::move(aot_results);
 }

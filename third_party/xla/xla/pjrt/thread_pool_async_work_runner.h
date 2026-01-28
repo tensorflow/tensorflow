@@ -16,13 +16,20 @@ limitations under the License.
 #ifndef XLA_PJRT_THREAD_POOL_ASYNC_WORK_RUNNER_H_
 #define XLA_PJRT_THREAD_POOL_ASYNC_WORK_RUNNER_H_
 
+#include <memory>
+#include <string>
+
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
 std::unique_ptr<AsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
     tsl::thread::ThreadPool* pool);
+
+std::unique_ptr<AsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
+    const std::string& name, const tsl::ThreadOptions& thread_options);
 
 }  // namespace xla
 

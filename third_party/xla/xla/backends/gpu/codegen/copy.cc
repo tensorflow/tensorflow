@@ -29,22 +29,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -142,16 +145,24 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
 
   const auto* src_instr =
       &SkipOptionalBitcast(root.GetOperand(source_operand_index)).instruction();
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice src_buffer,
       ir_emitter_context.buffer_assignment().GetUniqueSlice(src_instr, {}));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
+      Shape src_shape,
+      ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(src_instr,
+                                                                    {}));
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice dst_buffer,
       ir_emitter_context.buffer_assignment().GetUniqueSlice(&fusion, {}));
+  ASSIGN_OR_RETURN(
+      Shape dst_shape,
+      ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(&fusion,
+                                                                    {}));
 
   FusionEmissionResult result;
 
-  TF_ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
+  ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
   const auto& memcpy_config =
       config.fusion_backend_config().dynamic_memcpy_config();
   DynamicMemcpyThunk::Offsets offsets;
@@ -164,8 +175,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
   result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
-      /*source_buffer=*/src_buffer,
-      /*destination_buffer=*/dst_buffer,
+      /*source_buffer=*/ShapedSlice{src_buffer, src_shape},
+      /*destination_buffer=*/ShapedSlice{dst_buffer, dst_shape},
       /*mem_size=*/ShapeUtil::ByteSizeOfElements(*copy_shape), offsets));
   return result;
 }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -62,6 +63,7 @@ class SoftmaxRewriterTritonTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  protected:
+  SoftmaxRewriterTritonTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   mlir::MLIRContext mlir_context_;
   GpuAliasInfo alias_info_{device_info_};

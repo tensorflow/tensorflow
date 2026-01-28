@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -281,16 +282,57 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 
   CompileOptions compile_options;
 
-  compile_options.executable_build_options.set_device_assignment(
-      device_assignment);
+  // LINT.IfChange
   compile_options.executable_build_options.set_num_partitions(
       module->config().num_partitions());
   compile_options.executable_build_options.set_num_replicas(
       module->config().replica_count());
-  compile_options.executable_build_options.set_run_backend_only(
-      !run_hlo_passes);
+  compile_options.executable_build_options.set_use_spmd_partitioning(
+      module->config().use_spmd_partitioning());
+  compile_options.executable_build_options
+      .set_allow_spmd_sharding_propagation_to_parameters(
+          module->config().allow_spmd_sharding_propagation_to_parameters());
+  compile_options.executable_build_options
+      .set_allow_spmd_sharding_propagation_to_output(
+          module->config().allow_spmd_sharding_propagation_to_output());
+  compile_options.executable_build_options.set_use_auto_spmd_partitioning(
+      module->config().use_auto_spmd_partitioning());
+  compile_options.executable_build_options
+      .set_auto_spmd_partitioning_mesh_shape(std::vector<int64_t>(
+          module->config().auto_spmd_partitioning_mesh_shape().begin(),
+          module->config().auto_spmd_partitioning_mesh_shape().end()));
+  compile_options.executable_build_options.set_auto_spmd_partitioning_mesh_ids(
+      std::vector<int64_t>(
+          module->config().auto_spmd_partitioning_mesh_ids().begin(),
+          module->config().auto_spmd_partitioning_mesh_ids().end()));
+  compile_options.executable_build_options.set_exec_time_optimization_effort(
+      module->config().exec_time_optimization_effort());
+  compile_options.executable_build_options.set_memory_fitting_effort(
+      module->config().memory_fitting_effort());
+  compile_options.executable_build_options.set_optimization_level(
+      module->config().optimization_level());
+  compile_options.executable_build_options.set_memory_fitting_level(
+      module->config().memory_fitting_level());
+  compile_options.executable_build_options.set_deduplicate_hlo(
+      module->config().deduplicate_hlo());
   *compile_options.executable_build_options.mutable_debug_options() =
       module->config().debug_options();
+  compile_options.executable_build_options.set_device_assignment(
+      device_assignment);
+  compile_options.executable_build_options.set_fdo_profile(
+      std::string(module->config().fdo_profile()));
+  compile_options.executable_build_options.set_alias_passthrough_params(
+      module->config().alias_passthrough_params());
+  compile_options.executable_build_options.set_device_memory_size(
+      module->config().device_memory_size());
+  compile_options.executable_build_options.set_use_shardy_partitioner(
+      module->config().use_shardy_partitioner());
+  // LINT.ThenChange(
+  //   //xla/service/hlo_module_util.cc
+  // )
+
+  compile_options.executable_build_options.set_run_backend_only(
+      !run_hlo_passes);
   *compile_options.executable_build_options.mutable_comp_envs() =
       module->comp_envs();
 
@@ -311,9 +353,6 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 
   compile_options.executable_build_options.set_result_layout(
       module->entry_computation_layout().result_shape());
-
-  compile_options.executable_build_options.set_use_spmd_partitioning(
-      module->config().use_spmd_partitioning());
 
   return compile_options;
 }
@@ -662,6 +701,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                      absl::InternalError("No result for replica."));
 
         {
+          RunId run_id = RunId::CreateUniqueId();
           // NB: `pool` is joined on destruction.
           tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
                                        options.num_devices);
@@ -676,10 +716,14 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                 PjRtLoadedExecutable * pjrt_executable,
                 executable->GetOrLoadExecutable(pjrt_client_.get()));
             pool.Schedule([&per_replica_results, i, pjrt_executable,
+                           // Add 1 to the launch ID to avoid a zero, because
+                           // zero means that launch id is not set.
+                           launch_id = run_id.ToInt() + 1,
                            args = argument_buffer_slices[i],
                            device_ptr = id_to_device_ptr[i]]() {
               std::optional<Future<>> returned_future = {};
               xla::ExecuteOptions options;
+              options.launch_id = launch_id;
               per_replica_results[i] = pjrt_executable->ExecuteSharded(
                   args, device_ptr, options,
                   /*returned_future=*/returned_future,
@@ -944,7 +988,8 @@ absl::StatusOr<DeviceAssignment> HloRunnerPjRt::GetDefaultDeviceAssignment(
   return pjrt_client_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
-// Split-phase HloRunnerPjRt implementations:
+// HloRunnerPjRt implementations for AoT use cases (i.e., compilation being a
+// phase distinct from execution):
 
 namespace {
 
@@ -981,7 +1026,7 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
   return absl::StrCat(absl::BytesToHexString(fingerprint_bytes_view), ".bin");
 }
 
-inline absl::StatusOr<DeviceAssignment> SplitPhaseDefaultDeviceAssignment(
+inline absl::StatusOr<DeviceAssignment> AotDefaultDeviceAssignment(
     int num_replicas, int num_partitions) {
   DeviceAssignment device_assignment(num_replicas, num_partitions);
   device_assignment.FillIota(0);
@@ -1012,7 +1057,7 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 absl::StatusOr<DeviceAssignment>
 CompilePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
+  return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
@@ -1050,8 +1095,8 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
           "indicates that their fingerprints are the same. If you wish to "
           "avoid this issue in a test, you can either force their fingerprints "
           "to be different through some superficial change in the module (e.g. "
-          "the module name), or by disabling split compilation by setting "
-          "precompile_test = False in the corresponding xla_test.",
+          "the module name), or by disabling ahead-of-time compilation by "
+          "setting aot_compile_test = False in the corresponding xla_test.",
           module->name(), filename));
     }
   }
@@ -1062,7 +1107,7 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 absl::StatusOr<DeviceAssignment>
 ExecutePhaseHloRunnerPjRt::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
-  return SplitPhaseDefaultDeviceAssignment(num_replicas, num_partitions);
+  return AotDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 }  // namespace xla

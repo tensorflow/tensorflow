@@ -1,0 +1,17 @@
+// RUN: hlo-extractor %s --instruction=add | FileCheck %s
+
+HloModule test
+
+ENTRY %entry {
+  param.0 = f32[4]{0} parameter(0)
+  tuple.0 = (f32[4]{0}, f32[4]{0}) rng-bit-generator(f32[4]{0} param.0), algorithm=rng_default
+  negate = f32[4]{0} negate(f32[4]{0} param.0)
+  tuple.1 = ((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple(tuple.0, negate)
+  element = f32[4]{0} get-tuple-element(((f32[4]{0}, f32[4]{0}), f32[4]{0}) tuple.1), index=1
+  ROOT add = f32[4]{0} add(element, param.0)
+}
+
+// CHECK: ENTRY
+// CHECK-NEXT: parameter(0)
+// CHECK-NEXT: parameter(1)
+// CHECK-NEXT: add

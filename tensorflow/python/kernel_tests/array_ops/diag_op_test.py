@@ -17,6 +17,7 @@ import itertools
 
 import numpy as np
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -94,7 +95,7 @@ def repack_diagonals_in_tests(tests, align=None):
 
 # Test cases shared by MatrixDiagV2, MatrixDiagPartV2, and MatrixSetDiagV2.
 def square_cases(align=None):
-# pyformat: disable
+  # pyformat: disable
   mat = np.array([[[1, 2, 3, 4, 5],
                    [6, 7, 8, 9, 1],
                    [3, 4, 5, 6, 7],
@@ -166,12 +167,13 @@ def square_cases(align=None):
                             [0, 0, 0, 8, 9],
                             [0, 0, 0, 0, 5],
                             [0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0]]]))  # pyformat: enable
+                            [0, 0, 0, 0, 0]]]))
+  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
 def tall_cases(align=None):
-# pyformat: disable
+  # pyformat: disable
   mat = np.array([[[1, 2, 3],
                    [4, 5, 6],
                    [7, 8, 9],
@@ -252,12 +254,13 @@ def tall_cases(align=None):
                             [0, 0, 3],
                             [0, 0, 0],
                             [0, 0, 0],
-                            [0, 0, 0]]]))  # pyformat: enable
+                            [0, 0, 0]]]))
+  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
 def fat_cases(align=None):
-# pyformat: disable
+  # pyformat: disable
   mat = np.array([[[1, 2, 3, 4],
                    [5, 6, 7, 8],
                    [9, 1, 2, 3]],
@@ -310,7 +313,8 @@ def fat_cases(align=None):
                             [0, 0, 2, 3]],
                            [[4, 5, 6, 7],
                             [0, 9, 1, 2],
-                            [0, 0, 5, 6]]]))  # pyformat: enable
+                            [0, 0, 5, 6]]]))
+  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
@@ -764,6 +768,30 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertAllEqual(np.diag(grad_input_val), grad_vals[1])
       self.assertAllEqual(grad_input_val - np.diag(np.diag(grad_input_val)),
                           grad_vals[0])
+
+  @test_util.run_deprecated_v1
+  def testInvalidDiagRankAtEval(self):
+    config = config_pb2.ConfigProto()
+    config.graph_options.optimizer_options.global_jit_level = (
+        config_pb2.OptimizerOptions.OFF
+    )
+    with self.session(config=config, use_gpu=False):
+      with ops.device("/cpu:0"):
+        v = array_ops.placeholder(dtype=dtypes_lib.float32)
+        d = array_ops.placeholder(dtype=dtypes_lib.float32)
+        # Input rank 3
+        input_shape = (2, 3, 4)
+        # Diag rank 1. Triggers check because rank <= 3-2=1.
+        diag_shape = (10,)
+        k = (-1, 1)
+
+        with self.assertRaisesOpError(
+            "Diagonal tensor rank must be large enough to contain a "
+            "diagonal-count dimension"
+        ):
+          array_ops.matrix_set_diag(v, d, k=k).eval(
+              feed_dict={v: np.zeros(input_shape), d: np.zeros(diag_shape)}
+          )
 
 
 class MatrixDiagPartTest(test.TestCase):

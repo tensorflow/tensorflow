@@ -115,9 +115,9 @@ class AssetSinkingPass : public impl::AssetSinkingPassBase<AssetSinkingPass> {
 
         RankedTensorType type = RankedTensorType::get(
             {}, TF::StringType::get(builder.getContext()));
-        auto const_op = builder.create<TF::ConstOp>(
-            builder.getUnknownLoc(),
-            DenseStringElementsAttr::get(type, {filename}));
+        auto const_op =
+            TF::ConstOp::create(builder, builder.getUnknownLoc(),
+                                DenseStringElementsAttr::get(type, {filename}));
 
         it = const_ops.insert({asset.getSymName(), const_op}).first;
       }
@@ -153,12 +153,12 @@ absl::Status AddSessionInitializerAndInlineCheckpoint(
   StringAttr func_name = main_func.getSymNameAttr();
   llvm::SmallVector<mlir::Attribute, 2> func_names = {
       mlir::SymbolRefAttr::get(builder.getContext(), func_name)};
-  builder.create<tf_saved_model::SessionInitializerOp>(
-      module->getLoc(), builder.getArrayAttr(func_names));
+  tf_saved_model::SessionInitializerOp::create(
+      builder, module->getLoc(), builder.getArrayAttr(func_names));
   // Create AssetOp; this holds the checkpoint_path.
   // TODO(b/318761632): Cleanup usage of string literals, instead use constants.
-  auto asset_op = builder.create<tf_saved_model::AssetOp>(
-      module->getLoc(),
+  auto asset_op = tf_saved_model::AssetOp::create(
+      builder, module->getLoc(),
       /*sym_name=*/
       builder.getStringAttr("__tf_saved_model_variables"),  // Val unimportant.
       /*filename=*/

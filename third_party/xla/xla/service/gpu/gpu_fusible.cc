@@ -64,8 +64,20 @@ bool ContainsTransposeWithSmallMostMinorDim(const HloFusionAdaptor& fusion,
       return false;
     }
     const HloInstruction& transpose = instr.instruction();
-    // We can assume that TransposeDimensionGrouper pass has run, so no need
-    // to try to combine adjacent dimensions.
+    // The kLoop emitter operates on the original transpose, but it handles the
+    // index calculation. The critical factor for performance (coalescing) is
+    // the size of the contiguous memory block being accessed in the minor
+    // dimension. Normalization reveals this true physical dimension size by
+    // merging adjacent logical dimensions. If this normalized dimension is
+    // large enough, the unrolled accesses will be coalesced, justifying the
+    // unroll factor.
+    absl::InlinedVector<int64_t, 3> permutation;
+    auto normalized_dims_or = ShapeUtil::GetNormalizedLogicalTransposeShape(
+        transpose.operand(0)->shape(), transpose.shape(),
+        transpose.dimensions(), permutation);
+    if (normalized_dims_or.ok()) {
+      return normalized_dims_or.value().back() < unroll_factor;
+    }
     return transpose.shape().dimensions().back() < unroll_factor;
   });
 }

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
@@ -100,7 +101,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Slide")});
     }
@@ -113,7 +114,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return strings::StrCat("SlidingWindowDatasetOp(", window_size_, ", ",
                              window_shift_, ", ", window_stride_, ", ",
                              drop_remainder_, ")::Dataset");

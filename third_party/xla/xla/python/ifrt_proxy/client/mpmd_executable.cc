@@ -79,8 +79,7 @@ MpmdLoadedExecutable::MpmdLoadedExecutable(
 
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointMpmdLoadedExecutableCreate");
-  auto [promise, future] =
-      tsl::Future<std::shared_ptr<MpmdMetadata>>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<std::shared_ptr<MpmdMetadata>>();
   mpmd_metadata_future_ = std::move(future);
 
   auto req = std::make_unique<LoadedExecutableMpmdMetadataRequest>();

@@ -35,9 +35,13 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
+#include "rocm/include/hip/hip_bf16.h"
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_fp16.h"
+<<<<<<< HEAD
 #include "rocm/include/hip/hip_bf16.h"
+=======
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 #endif
 
 #include "tensorflow/core/platform/types.h"
@@ -518,11 +522,19 @@ namespace detail {
 template <int N, typename T>
 __device__ T* AddressSpaceHint(T* ptr) {
 #if defined(TENSORFLOW_USE_ROCM)
+<<<<<<< HEAD
    using AS = __attribute__((address_space(N))) T*;
    auto ptr_ =  reinterpret_cast<AS>(reinterpret_cast<uintptr_t>(ptr));
    return (T*)(ptr_);
 #else
    return ptr; // NOOP
+=======
+  using AS = __attribute__((address_space(N))) T*;
+  auto ptr_ = reinterpret_cast<AS>(reinterpret_cast<uintptr_t>(ptr));
+  return (T*)(ptr_);
+#else
+  return ptr;  // NOOP
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 #endif
 }
 
@@ -577,6 +589,7 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #endif
   uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
   uint32_t shift = (intptr & 0x2) * 8U;
+<<<<<<< HEAD
   uint32_t mask =  0xFFFF0000U >> shift;
 
   assert(!(intptr & 0x1));  // should be 2-aligned.
@@ -587,6 +600,21 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
     return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc)) << shift) |
            (arg & mask);
   });
+=======
+  uint32_t mask = 0xFFFF0000U >> shift;
+
+  assert(!(intptr & 0x1));  // should be 2-aligned.
+  uint32* address = reinterpret_cast<uint32*>(intptr & ~0x3);
+  uint32 result =
+      GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32 arg) {
+        uint16_t high = static_cast<uint16_t>(arg >> shift);
+        Eigen::half acc =
+            accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+        return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc))
+                << shift) |
+               (arg & mask);
+      });
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
   return Eigen::numext::bit_cast<Eigen::half>(
       static_cast<uint16_t>(result >> shift));
 }
@@ -660,7 +688,11 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
                    value);
 }
 
+<<<<<<< HEAD
 #if !defined(TENSORFLOW_USE_ROCM)
+=======
+#if GOOGLE_CUDA
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 __device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
   return detail::GpuAtomicCasHelper(
@@ -674,7 +706,11 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
 }
 #endif
 
+<<<<<<< HEAD
 #if (__CUDA_ARCH__ < 600)
+=======
+#if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                     [value](double a) { return a + value; });
@@ -682,11 +718,14 @@ __device__ inline double GpuAtomicAdd(double* ptr, double value) {
 #endif
 
 #if TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
 template <typename T>
 __device__ T GpuAtomicAddShared(T* dst, T val) {
   return atomicAdd(detail::AddressSpaceHint<3>(dst), val);
 }
 
+=======
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 namespace detail {
 
 template <typename P, typename T, typename F>
@@ -702,7 +741,12 @@ __device__ inline T GpuAtomicAddHalfHelper(T* ptr, T value, F add) {
     uint32_t i;
   } u;
 
+<<<<<<< HEAD
   u.i = static_cast<uint32_t>(Eigen::numext::bit_cast<uint16_t>(value)) << shift;
+=======
+  u.i = static_cast<uint32_t>(Eigen::numext::bit_cast<uint16_t>(value))
+        << shift;
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 
   // Performs + (T)0 on adjacent location, so this is not idempotent with
   // regards to its bit pattern. Should be fine as long as that locations is
@@ -716,10 +760,16 @@ __device__ inline T GpuAtomicAddHalfHelper(T* ptr, T value, F add) {
 __device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
 #if __has_builtin(__builtin_amdgcn_global_atomic_fadd_v2bf16)
+<<<<<<< HEAD
   return detail::GpuAtomicAddHalfHelper<short>(
       ptr, value, [](auto p, auto v) {
         return __builtin_amdgcn_global_atomic_fadd_v2bf16(p, v);
       });
+=======
+  return detail::GpuAtomicAddHalfHelper<short>(ptr, value, [](auto p, auto v) {
+    return __builtin_amdgcn_global_atomic_fadd_v2bf16(p, v);
+  });
+>>>>>>> d9b8eff015ef8f3a3091783a397f13cbbe7a5a2d
 #else
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::bfloat16 a) { return a + value; });

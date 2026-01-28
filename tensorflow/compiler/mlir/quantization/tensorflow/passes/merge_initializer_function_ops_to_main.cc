@@ -287,8 +287,8 @@ IslandOp CreateNoOpWithControlDependencies(
     const ArrayRef<Value> control_dependencies) {
   auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
 
-  auto wrapper_island_op = builder.create<IslandOp>(
-      loc, /*outputs=*/TypeRange{},
+  auto wrapper_island_op = IslandOp::create(
+      builder, loc, /*outputs=*/TypeRange{},
       /*control=*/tf_executor::ControlType::get(builder.getContext()),
       /*controlInputs=*/control_dependencies);
   wrapper_island_op.getBody().emplaceBlock();
@@ -297,8 +297,8 @@ IslandOp CreateNoOpWithControlDependencies(
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointToStart(&wrapper_island_op.GetBody());
 
-  builder.create<TF::NoOp>(loc);
-  builder.create<tf_executor::YieldOp>(loc);
+  TF::NoOp::create(builder, loc);
+  tf_executor::YieldOp::create(builder, loc);
 
   return wrapper_island_op;
 }
@@ -314,7 +314,7 @@ void AddFetchOperandToMain(GraphOp main_graph_op, const Value fetch_operand) {
   fetches.emplace_back(fetch_operand);
 
   auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
-  builder.create<FetchOp>(main_graph_op.getLoc(), std::move(fetches));
+  FetchOp::create(builder, main_graph_op.getLoc(), std::move(fetches));
 }
 
 // Creates a new Location for the initializer function. This creates a loc by

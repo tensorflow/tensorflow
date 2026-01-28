@@ -687,17 +687,17 @@ class ImportShardingsPass
 
     OpBuilder opBuilder = mlir::OpBuilder::atBlockBegin(moduleOp.getBody());
     // Create a global mesh containing all the axes.
-    symbolTable.insert(opBuilder.create<MeshOp>(
-        moduleOp.getLoc(), kGlobalMeshName,
-        MeshAttr::get(moduleOp.getContext(), namedAxes)));
+    symbolTable.insert(
+        MeshOp::create(opBuilder, moduleOp.getLoc(), kGlobalMeshName,
+                       MeshAttr::get(moduleOp.getContext(), namedAxes)));
 
     SmallDenseMap<int64_t, StringRef> deviceIdToMaximalMeshName;
     for (int64_t deviceId : deviceIdsForMaximalMesh) {
       // Create a mesh name with its deviceId as a suffix for each maximal mesh.
       std::string meshName = absl::StrCat("maximal_mesh_", deviceId);
-      auto meshOp = opBuilder.create<MeshOp>(
-          moduleOp.getLoc(), meshName,
-          MeshAttr::getMaximal(moduleOp.getContext(), deviceId));
+      auto meshOp =
+          MeshOp::create(opBuilder, moduleOp.getLoc(), meshName,
+                         MeshAttr::getMaximal(moduleOp.getContext(), deviceId));
       symbolTable.insert(meshOp);
       deviceIdToMaximalMeshName[deviceId] = meshOp.getSymName();
     }

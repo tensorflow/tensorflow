@@ -30,8 +30,8 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
         "@stablehlo//:stablehlo_ops",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

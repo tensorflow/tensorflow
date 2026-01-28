@@ -128,10 +128,6 @@ TEST_P(SingleDeviceShardingTest, IndexDomains) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(shape)));
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
@@ -153,13 +149,6 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
 
   {  // Disassemble static shape.
     Shape shape({10, 20});
-    {
-      TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-      ASSERT_THAT(disassembled, SizeIs(1));
-      const auto& [result_shape, result_sharding] = disassembled[0];
-      EXPECT_EQ(shape, result_shape);
-      EXPECT_EQ(*result_sharding, *sharding);
-    }
     {
       TF_ASSERT_OK_AND_ASSIGN(
           auto disassembled,
@@ -185,14 +174,6 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
         DynamicShape dynamic_shape,
         DynamicShape::Create(Shape({10, 20}),
                              BoundedDynamicShapeTag({true, true})));
-    {
-      TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                              sharding->Disassemble(dynamic_shape));
-      ASSERT_THAT(disassembled, SizeIs(1));
-      const auto& [result_shape, result_sharding] = disassembled[0];
-      EXPECT_EQ(dynamic_shape, result_shape);
-      EXPECT_EQ(*result_sharding, *sharding);
-    }
     {
       TF_ASSERT_OK_AND_ASSIGN(
           auto disassembled,
@@ -291,7 +272,8 @@ TEST_P(OpaqueShardingTest, FailedToDisassemble) {
   ShardingRef sharding = OpaqueSharding::Create(device_list, MemoryKind());
 
   EXPECT_THAT(
-      sharding->Disassemble(Shape({30})),
+      sharding->Disassemble(Shape({30}),
+                            SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have shard shape information")));
@@ -300,7 +282,8 @@ TEST_P(OpaqueShardingTest, FailedToDisassemble) {
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({30}), BoundedDynamicShapeTag({true})));
   EXPECT_THAT(
-      sharding->Disassemble(dynamic_shape),
+      sharding->Disassemble(dynamic_shape,
+                            SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have shard shape information")));
@@ -311,7 +294,8 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
   ShardingRef sharding = OpaqueSharding::Create(device_list, MemoryKind());
 
   EXPECT_THAT(
-      sharding->IndexDomains(Shape({30})),
+      sharding->IndexDomains(Shape({30}),
+                             SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
@@ -474,15 +458,6 @@ TEST_P(ConcreteShardingTest, Disassemble) {
 
   {
     EXPECT_THAT(
-        sharding->Disassemble(Shape({20})),
-        absl_testing::StatusIs(
-            tsl::error::INVALID_ARGUMENT,
-            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
-                      "but the ConcreteSharding contains non-addressable "
-                      "devices. Saw 6 devices, with 4 addressable devices")));
-  }
-  {
-    EXPECT_THAT(
         sharding->Disassemble(Shape({20}),
                               SingleDeviceShardSemantics::kAllShards),
         absl_testing::StatusIs(
@@ -532,19 +507,11 @@ TEST_P(ConcreteShardingTest, DisassembleDynamicShape) {
   };
   auto sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                            dynamic_shape, shard_dynamic_shapes);
-  EXPECT_THAT(sharding->Disassemble(Shape({20})),
+  EXPECT_THAT(sharding->Disassemble(
+                  Shape({20}), SingleDeviceShardSemantics::kAddressableShards),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("ConcreteSharding holds dynamic shape")));
-  {
-    EXPECT_THAT(
-        sharding->Disassemble(DynamicShape(dynamic_shape)),
-        absl_testing::StatusIs(
-            tsl::error::INVALID_ARGUMENT,
-            HasSubstr("SingleDeviceShardSemantics::kAllShards was requested, "
-                      "but the ConcreteSharding contains non-addressable "
-                      "devices. Saw 6 devices, with 4 addressable devices")));
-  }
   {
     EXPECT_THAT(
         sharding->Disassemble(DynamicShape(dynamic_shape),
@@ -580,7 +547,8 @@ TEST_P(ConcreteShardingTest, DisassembleFailsForUnexpectedShape) {
   ShardingRef sharding = ConcreteSharding::Create(device_list, MemoryKind(),
                                                   Shape({30}), shard_shapes);
 
-  EXPECT_THAT(sharding->Disassemble(Shape({40})),
+  EXPECT_THAT(sharding->Disassemble(Shape({40}),
+                                    SingleDeviceShardSemantics::kAllShards),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("ConcreteSharding can only disassemble")));
@@ -596,8 +564,6 @@ TEST_P(ConcreteShardingTest, IndexDomainsFullyAddressable) {
   ShardingRef sharding = ConcreteSharding::Create(
       device_list, MemoryKind(), Shape({15}), shard_shapes, index_domains);
 
-  EXPECT_THAT(sharding->IndexDomains(Shape({15})),
-              absl_testing::IsOkAndHolds(ElementsAreArray(index_domains)));
   EXPECT_THAT(sharding->IndexDomains(Shape({15}),
                                      SingleDeviceShardSemantics::kAllShards),
               absl_testing::IsOkAndHolds(ElementsAreArray(index_domains)));
@@ -646,7 +612,8 @@ TEST_P(ConcreteShardingTest, IndexDomainsMissing) {
                                                   Shape({30}), shard_shapes);
 
   EXPECT_THAT(
-      sharding->IndexDomains(Shape({30})),
+      sharding->IndexDomains(Shape({30}),
+                             SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("ConcreteSharding does not have index "
                                        "domain information")));
@@ -660,7 +627,8 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
   ShardingRef sharding = ConcreteSharding::Create(
       device_list, MemoryKind(), Shape({30}), shard_shapes, index_domains);
 
-  EXPECT_THAT(sharding->IndexDomains(Shape({1})),
+  EXPECT_THAT(sharding->IndexDomains(Shape({1}),
+                                     SingleDeviceShardSemantics::kAllShards),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("ConcreteSharding must have the same number "
@@ -808,17 +776,6 @@ TEST_P(ConcreteEvenShardingTest, Disassemble) {
                                    Shape({5}), /*is_fully_replicated=*/false);
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                            sharding->Disassemble(Shape({30})));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({5}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(Shape({30}),
@@ -853,7 +810,8 @@ TEST_P(ConcreteEvenShardingTest, DisassembleFailsForUnexpectedShape) {
       ConcreteEvenSharding::Create(device_list, MemoryKind(), Shape({30}),
                                    Shape({15}), /*is_fully_replicated=*/false);
 
-  EXPECT_THAT(sharding->Disassemble(Shape({40})),
+  EXPECT_THAT(sharding->Disassemble(Shape({40}),
+                                    SingleDeviceShardSemantics::kAllShards),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("ConcreteEvenSharding can only disassemble")));
@@ -867,7 +825,8 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
                                    Shape({5}), /*is_fully_replicated=*/false);
 
   EXPECT_THAT(
-      sharding->IndexDomains(Shape({30})),
+      sharding->IndexDomains(Shape({30}),
+                             SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
@@ -1040,17 +999,6 @@ TEST_P(ShardingParamShardingTest, Disassemble) {
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled,
-                            param_sharding->Disassemble(Shape({6, 6})));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({3, 2}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         param_sharding->Disassemble(Shape({6, 6}),
@@ -1087,7 +1035,8 @@ TEST_P(ShardingParamShardingTest, DisassembleFailsWhenRankNotMatch) {
       ShardingRef param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  EXPECT_THAT(param_sharding->Disassemble(Shape({6, 6, 6})),
+  EXPECT_THAT(param_sharding->Disassemble(
+                  Shape({6, 6, 6}), SingleDeviceShardSemantics::kAllShards),
               absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Numbers of dimensions don't match. From "
@@ -1103,7 +1052,8 @@ TEST_P(ShardingParamShardingTest, DisassembleFailsForUnevenSharding) {
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   EXPECT_THAT(
-      param_sharding->Disassemble(Shape({7, 6})),
+      param_sharding->Disassemble(Shape({7, 6}),
+                                  SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("Uneven shard is not supported. dim: 7, dim_shards: 2")));
@@ -1117,17 +1067,6 @@ TEST_P(ShardingParamShardingTest, IndexDomain) {
       ShardingRef param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                            param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                            IndexDomain(Index({0, 2}), Shape({3, 2})),
-                            IndexDomain(Index({0, 4}), Shape({3, 2})),
-                            IndexDomain(Index({3, 0}), Shape({3, 2})),
-                            IndexDomain(Index({3, 2}), Shape({3, 2})),
-                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -1164,17 +1103,6 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithPermutation) {
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                            param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 2})),
-                            IndexDomain(Index({0, 4}), Shape({3, 2})),
-                            IndexDomain(Index({3, 2}), Shape({3, 2})),
-                            IndexDomain(Index({0, 2}), Shape({3, 2})),
-                            IndexDomain(Index({3, 0}), Shape({3, 2})),
-                            IndexDomain(Index({3, 4}), Shape({3, 2}))));
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         param_sharding->IndexDomains(Shape({6, 6}),
@@ -1209,17 +1137,6 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
       ShardingRef param_sharding,
       ShardingParamSharding::Create(param, device_list, MemoryKind()));
 
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains,
-                            param_sharding->IndexDomains(Shape({6, 6})));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({0, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6})),
-                            IndexDomain(Index({3, 0}), Shape({3, 6}))));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,

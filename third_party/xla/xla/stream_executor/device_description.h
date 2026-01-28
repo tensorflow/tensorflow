@@ -22,18 +22,76 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
+
+// Describes the capabilities and performance characteristics of a specific
+// execution unit within a device, such as scalar units (e.g., CUDA Cores) or
+// matrix units (e.g., Tensor Cores).
+class ExecutionUnitDescription {
+ public:
+  // Information about operations on a particular datatype.
+  struct RateInfo {
+    int32_t units_per_core = 0;
+    float clock_rate_ghz = 0.;
+    // Note: Here FMA is counted as 1 operation. Models that count FMA as 2 ops
+    // need to multiply this number by 2 in their calculations.
+    int32_t ops_per_clock = 0;
+
+    bool operator==(const RateInfo& rhs) const {
+      return units_per_core == rhs.units_per_core &&
+             clock_rate_ghz == rhs.clock_rate_ghz &&
+             ops_per_clock == rhs.ops_per_clock;
+    }
+
+    bool operator!=(const RateInfo& rhs) const { return !(*this == rhs); }
+  };
+
+  // Sets or overwrites the `RateInfo` for a specific `dtype`.
+  void SetRateInfo(xla::PrimitiveType dtype, RateInfo rate_info) {
+    rate_infos_[dtype] = rate_info;
+  }
+
+  // Returns the `RateInfo` for a specific `dtype`, or `std::nullopt` if
+  // no information is available for the given dtype.
+  std::optional<RateInfo> GetRateInfo(xla::PrimitiveType dtype) const {
+    auto it = rate_infos_.find(dtype);
+    if (it == rate_infos_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  ExecutionUnitDescriptionProto ToProto() const;
+
+  static absl::StatusOr<ExecutionUnitDescription> FromProto(
+      const ExecutionUnitDescriptionProto& proto);
+
+  bool operator==(const ExecutionUnitDescription& other) const {
+    return rate_infos_ == other.rate_infos_;
+  }
+
+  bool operator!=(const ExecutionUnitDescription& other) const {
+    return !(*this == other);
+  }
+
+ private:
+  absl::flat_hash_map<xla::PrimitiveType, RateInfo> rate_infos_;
+};
 
 class GpuComputeCapability {
  public:
@@ -41,6 +99,9 @@ class GpuComputeCapability {
   GpuComputeCapability(const CudaComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {}
   explicit GpuComputeCapability(const RocmComputeCapability& compute_capability)
+      : compute_capability_(compute_capability) {}
+  explicit GpuComputeCapability(
+      const OneAPIComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {}
 
   GpuComputeCapability& operator=(
@@ -55,12 +116,22 @@ class GpuComputeCapability {
     return *this;
   }
 
+  GpuComputeCapability& operator=(
+      const OneAPIComputeCapability& compute_capability) {
+    compute_capability_ = compute_capability;
+    return *this;
+  }
+
   bool IsCuda() const {
     return std::holds_alternative<CudaComputeCapability>(compute_capability_);
   }
 
   bool IsRocm() const {
     return std::holds_alternative<RocmComputeCapability>(compute_capability_);
+  }
+
+  bool IsOneAPI() const {
+    return std::holds_alternative<OneAPIComputeCapability>(compute_capability_);
   }
 
   const CudaComputeCapability* cuda_compute_capability() const {
@@ -71,8 +142,15 @@ class GpuComputeCapability {
     return std::get_if<RocmComputeCapability>(&compute_capability_);
   }
 
+  const OneAPIComputeCapability* oneapi_compute_capability() const {
+    return std::get_if<OneAPIComputeCapability>(&compute_capability_);
+  }
+
   std::string ToString() const {
     if (auto ptr = cuda_compute_capability()) {
+      return ptr->ToString();
+    }
+    if (auto ptr = oneapi_compute_capability()) {
       return ptr->ToString();
     }
     return rocm_compute_capability()->ToString();
@@ -94,7 +172,8 @@ class GpuComputeCapability {
   }
 
  private:
-  std::variant<CudaComputeCapability, RocmComputeCapability>
+  std::variant<CudaComputeCapability, RocmComputeCapability,
+               OneAPIComputeCapability>
       compute_capability_;
 };
 
@@ -106,6 +185,11 @@ struct DeviceInterconnectInfo {
   std::string cluster_uuid;
   // ID of the fabric clique to which this GPU belongs.
   std::string clique_id;
+
+  bool operator==(const DeviceInterconnectInfo& other) const {
+    return active_links == other.active_links &&
+           cluster_uuid == other.cluster_uuid && clique_id == other.clique_id;
+  }
 };
 
 // Data that describes the execution target of the StreamExecutor, in terms of
@@ -167,6 +251,26 @@ class DeviceDescription {
   // Number of floating point operations one core (SM, compute unit) can execute
   // in parallel. Corresponds to the number of "CUDA cores" for NVIDIA devices.
   int fpus_per_core() const { return fpus_per_core_; }
+
+  // Returns a pointer to the description of the scalar execution unit, or
+  // nullptr if not available.
+  // These units are typically referred to as "CUDA Cores" or "FP32/FP64/INT32
+  // Cores" on NVIDIA and "Stream Processors" on AMD devices.
+  const ExecutionUnitDescription* scalar_unit_description() const {
+    return scalar_unit_description_.has_value()
+               ? &scalar_unit_description_.value()
+               : nullptr;
+  }
+
+  // Returns a pointer to the description of the matrix execution unit, or
+  // nullptr if not available.
+  // These units are known as "Tensor Cores" on NVIDIA and "Matrix Cores" on
+  // AMD.
+  const ExecutionUnitDescription* matrix_unit_description() const {
+    return matrix_unit_description_.has_value()
+               ? &matrix_unit_description_.value()
+               : nullptr;
+  }
 
   // Returns the limit on the thread dimensionality values in each of the
   // respective dimensions. These limits affect what constitutes a legitimate
@@ -237,6 +341,11 @@ class DeviceDescription {
   // If a ROCm compute capability is not available, the default gfx_arch will
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
+
+  // Returns the oneAPI compute capability if we're running on the sycl
+  // platform. If a oneAPI compute capability is not available, the generation
+  // will be 0 which is invalid.
+  OneAPIComputeCapability oneapi_compute_capability() const;
 
   const GpuComputeCapability& gpu_compute_capability() const;
 
@@ -312,6 +421,11 @@ class DeviceDescription {
 
   static absl::StatusOr<DeviceDescription> FromProto(
       const GpuDeviceInfoProto& proto);
+
+  bool operator==(const DeviceDescription& other) const;
+  bool operator!=(const DeviceDescription& other) const {
+    return !(*this == other);
+  }
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
@@ -393,6 +507,10 @@ class DeviceDescription {
     gpu_compute_capability_ = RocmComputeCapability(std::move(gcn_arch_name));
   }
 
+  void set_oneapi_compute_capability(uint32_t ip_version) {
+    gpu_compute_capability_ = OneAPIComputeCapability(ip_version);
+  }
+
   void set_numa_node(int value) { numa_node_ = value; }
   void set_core_count(int value) { core_count_ = value; }
   void set_fpus_per_core(int value) { fpus_per_core_ = value; }
@@ -402,11 +520,17 @@ class DeviceDescription {
     interconnect_info_ = std::move(info);
   }
 
+  void set_scalar_unit_description(ExecutionUnitDescription descr) {
+    scalar_unit_description_ = std::move(descr);
+  }
+
+  void set_matrix_unit_description(ExecutionUnitDescription descr) {
+    matrix_unit_description_ = std::move(descr);
+  }
+
  private:
   // For description of the following members, see the corresponding accessor
   // above.
-  //
-  // N.B. If another field is added, update ToMap() above.
   std::string device_vendor_ = kUndefinedString;
   std::string platform_version_ = kUndefinedString;
   std::string pci_bus_id_ = kUndefinedString;
@@ -450,6 +574,9 @@ class DeviceDescription {
   int fpus_per_core_ = kUninitialized<int>;
   bool ecc_enabled_ = false;
 
+  std::optional<ExecutionUnitDescription> scalar_unit_description_;
+  std::optional<ExecutionUnitDescription> matrix_unit_description_;
+
   SemanticVersion driver_version_{0, 0, 0};
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
@@ -457,6 +584,8 @@ class DeviceDescription {
 
   DeviceInterconnectInfo interconnect_info_;
 };
+
+std::string MakeComputeCapabilityAttributeString(const DeviceDescription& desc);
 
 // Returns whether the given thread_dim is acceptable given the limits described
 // in device_description. For detailed reasons for failing the predicate, enable

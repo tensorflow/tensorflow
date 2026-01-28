@@ -1494,6 +1494,14 @@ TEST(OpVersionTest, VersioningCastTest) {
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt2);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteUInt4);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
+
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteBFloat16);
   fake_op_sig.outputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);

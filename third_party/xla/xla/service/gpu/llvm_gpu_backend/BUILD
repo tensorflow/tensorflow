@@ -56,8 +56,8 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
 
@@ -112,9 +112,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/profiler/lib:scoped_annotation",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -214,9 +214,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:random",
+        "@tsl//tsl/profiler/lib:traceme",
     ] + if_oss([
         # keep sorted
         ":amdgpu_device_lib_data",
@@ -254,7 +254,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:cuda_root_path",
+        "@tsl//tsl/platform:cuda_root_path",
     ],
 )
 
@@ -309,7 +309,7 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -336,8 +336,8 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -350,8 +350,8 @@ xla_cc_test(
         ":load_ir_module",
         "//xla/tests:xla_internal_test_main",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -362,7 +362,7 @@ xla_cc_test(
         ":nvptx_utils",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -373,8 +373,8 @@ xla_cc_test(
     deps = [
         ":utils",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -407,7 +407,7 @@ cc_library(
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:errors",
     ],
 )
 

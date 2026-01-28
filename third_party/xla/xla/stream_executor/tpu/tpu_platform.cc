@@ -43,7 +43,7 @@ namespace tpu {
 const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
-TpuPlatform::TpuPlatform() : name_("TPU") {
+TpuPlatform::TpuPlatform() : name_(kId->ToName()) {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
   CHECK(platform_ != nullptr);
 }

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -53,6 +54,7 @@ ENTRY main {
 )"));
 
   mlir::MLIRContext mlir_ctx;
+  RegisterSymbolicExprStorage(&mlir_ctx);
   auto fusion = module->entry_computation()->root_instruction();
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
 

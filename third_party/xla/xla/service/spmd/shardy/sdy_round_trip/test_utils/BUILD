@@ -33,7 +33,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:UBDialect",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -171,7 +171,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     auto scratch = jax::PopulateArgs(&args, instruction, sharding);
     c_fns_->propagate_user_sharding(c_fns_, &args);
     auto status_or_result = jax::ConsumeResults(&args);
-    TF_CHECK_OK(status_or_result.status());
+    CHECK_OK(status_or_result.status());
     return *status_or_result;
   }
   std::optional<HloSharding> InferShardingFromOperands(
@@ -180,7 +180,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
     auto scratch = jax::PopulateArgs(&args, instruction);
     c_fns_->infer_sharding(c_fns_, &args);
     auto status_or_result = jax::ConsumeResults(&args);
-    TF_CHECK_OK(status_or_result.status());
+    CHECK_OK(status_or_result.status());
     return *status_or_result;
   }
   bool IsCustomCallShardable(const HloInstruction* instruction) const override {

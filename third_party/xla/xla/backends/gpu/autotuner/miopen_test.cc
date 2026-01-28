@@ -109,7 +109,7 @@ TEST_F(MIOpenBackendTest, GetSupportedConfigsFromMIOpenCustomCall) {
   ASSERT_THAT(configs, IsOkAndHolds(SizeIs(1)));
   MIOpenBackendConfig algorithm_config;
   ASSERT_TRUE((*configs)[0]->UnpackTo(&algorithm_config));
-  EXPECT_EQ(algorithm_config.algo_id(), -1);
+  EXPECT_NE(algorithm_config.algo_id(), 0);
 }
 
 TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
@@ -124,7 +124,7 @@ TEST_F(MIOpenBackendTest, GetDefaultConfigFromMIOpenCustomCall) {
   TF_ASSERT_OK(config);
   MIOpenBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
-  EXPECT_EQ(algorithm_config.algo_id(), -1);
+  EXPECT_EQ(algorithm_config.algo_id(), 0);
 }
 
 TEST_F(MIOpenBackendTest, ApplyConfigToMIOpenCustomCall) {

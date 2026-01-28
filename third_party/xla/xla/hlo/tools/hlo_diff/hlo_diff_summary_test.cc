@@ -506,7 +506,7 @@ subtract.0 = f32[] subtract(constant.0, constant.1)
                                 /*left_unmatched_instruction_count=*/3,
                                 /*right_unmatched_instruction_count=*/0)),
                   FieldsAre(
-                      /*fingerprint=*/2981450499210857672U,
+                      /*fingerprint=*/17054993356582648155U,
                       /*computation_groups=*/
                       UnorderedElementsAre(FieldsAre(
                           /*left_computations=*/IsEmpty(),

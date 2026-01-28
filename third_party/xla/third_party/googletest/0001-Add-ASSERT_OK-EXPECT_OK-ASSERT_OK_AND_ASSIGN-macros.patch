@@ -33,7 +33,7 @@ index c78fb8ee..69b33572 100644
 @@ -95,3 +95,4 @@ GTEST_API_ void InitGoogleMock();
  }  // namespace testing
  
-+#include "gmock/internal/xla-gmock-macros.h"
++#include "gmock/internal/xla-gmock-macros.h"  // IWYU pragma: export
  #endif  // GOOGLEMOCK_INCLUDE_GMOCK_GMOCK_H_
 diff --git a/googlemock/include/gmock/internal/xla-gmock-macros.h b/googlemock/include/gmock/internal/xla-gmock-macros.h
 new file mode 100644

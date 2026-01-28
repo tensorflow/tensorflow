@@ -7200,9 +7200,7 @@ TfLiteStatus SubgraphInvoke(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void SubgraphFree(TfLiteContext* context, void* buffer) {
-  if (buffer != nullptr) {
-    delete static_cast<Subgraph*>(buffer);
-  }
+  delete static_cast<Subgraph*>(buffer);
 }
 
 const TfLiteRegistration kSubgraphRegistration = {

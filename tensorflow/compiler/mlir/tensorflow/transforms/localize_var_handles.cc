@@ -96,12 +96,12 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     // So use IteratorOp instead. (The latter is using LookupOrCreate for
     // the resource, and we use it to just look up.
     // See core/kernels/data/iterator_ops.cc.)
-    resource_op = builder.create<TF::IteratorOp>(
-        op->getLoc(), resource.getType(), shared_name, container,
+    resource_op = TF::IteratorOp::create(
+        builder, op->getLoc(), resource.getType(), shared_name, container,
         it.getOutputTypes(), it.getOutputShapes());
   } else {
-    resource_op = builder.create<TF::VarHandleOp>(
-        op->getLoc(), resource.getType(), container, shared_name);
+    resource_op = TF::VarHandleOp::create(
+        builder, op->getLoc(), resource.getType(), container, shared_name);
   }
   op->setOperand(0, resource_op->getResult(0));
 }

@@ -108,10 +108,8 @@ class ClientServerTest : public ::testing::Test {
       config.shutdown_barrier_timeout = init_and_shutdown_timeout;
     }
     config.cluster_register_with_barrier = cluster_register_with_barrier;
-    tensorflow::CoordinatedJob job;
-    job.set_name("agent");
-    job.set_num_tasks(num_nodes);
-    config.coordinated_job_list.push_back(job);
+    config.job_name = "agent";
+    config.num_tasks = num_nodes;
     auto service =
         std::make_unique<CoordinationService>(tsl::Env::Default(), config);
     return config;

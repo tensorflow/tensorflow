@@ -930,7 +930,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       done(s);
     };
 
-    profiler::ScopedAnnotation annotation("MakeTensorFromProto");
+    tsl::profiler::ScopedAnnotation annotation("MakeTensorFromProto");
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);

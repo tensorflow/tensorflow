@@ -351,9 +351,9 @@ class ShardMapImportPass
         llvm::sort(manualAxes, mesh.getAxisNameComparator());
       }
 
-      auto manualComputationOp = builder.create<ManualComputationOp>(
-          op->getLoc(), resultTypes, newOperands, inShardings, outShardings,
-          manualAxes);
+      auto manualComputationOp = ManualComputationOp::create(
+          builder, op->getLoc(), resultTypes, newOperands, inShardings,
+          outShardings, manualAxes);
 
       // Inline or clone the called function.
       mlir::Region& manualComputationRegion = manualComputationOp.getRegion();

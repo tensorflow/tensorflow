@@ -35,30 +35,6 @@ namespace xla {
 
 [[maybe_unused]] char CompileOnlyMemory::ID = 0;
 [[maybe_unused]] char CompileOnlyDevice::ID = 0;
-[[maybe_unused]] char CompileOnlyIfrtCompiler::ID = 0;
 [[maybe_unused]] char CompileOnlyIfRtClient::ID = 0;
-
-absl::StatusOr<ifrt::ExecutableRef> CompileOnlyIfrtCompiler::Compile(
-    std::unique_ptr<ifrt::Program> program, const ifrt::Topology& topology,
-    std::unique_ptr<ifrt::CompileOptions> options) {
-  const auto* xla_program = llvm::dyn_cast<ifrt::HloProgram>(program.get());
-  if (xla_program == nullptr) {
-    return absl::InvalidArgumentError(
-        "CompileOnlyIfrtCompiler requires an HloProgram");
-  }
-  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
-                      ifrt::GetXlaCompileOptions(std::move(options)));
-  // Unlike PjRt-IFRT, device ID translation is unnecessary because
-  // `CompileOnlyIfrtClient` does not support device ID mapping.
-  const auto* pjrt_topology = llvm::dyn_cast<ifrt::PjRtTopology>(&topology);
-  if (pjrt_topology == nullptr) {
-    return absl::InvalidArgumentError(
-        "CompileOnlyIfrtCompiler requires a PjRtTopology");
-  }
-  return ifrt::PjRtExecutable::Create(
-      xla_program->mlir_module(),
-      std::move(xla_compile_options->compile_options),
-      *pjrt_topology->description());
-}
 
 }  // namespace xla

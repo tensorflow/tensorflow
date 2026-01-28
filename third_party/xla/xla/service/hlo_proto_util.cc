@@ -24,17 +24,25 @@ namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment) {
-  BufferAssignmentProto proto_assignment = assignment.ToProto();
-  HloProto proto = MakeHloProto(module);
-  proto.mutable_buffer_assignment()->Swap(&proto_assignment);
+  HloProto proto;
+  MakeHloProto(module, assignment, &proto);
   return proto;
 }
 
+void MakeHloProto(const HloModule& module, const BufferAssignment& assignment,
+                  HloProto* proto) {
+  MakeHloProto(module, proto);
+  assignment.ToProto(proto->mutable_buffer_assignment());
+}
+
 HloProto MakeHloProto(const HloModule& module) {
-  HloModuleProto proto_module = module.ToProto();
   HloProto proto;
-  proto.mutable_hlo_module()->Swap(&proto_module);
+  MakeHloProto(module, &proto);
   return proto;
+}
+
+void MakeHloProto(const HloModule& module, HloProto* proto) {
+  module.ToProto(proto->mutable_hlo_module());
 }
 
 absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(

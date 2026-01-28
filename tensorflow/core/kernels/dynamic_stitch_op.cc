@@ -45,7 +45,7 @@ template <class T>
 class DynamicStitchOpImplBase : public OpKernel {
  public:
   explicit DynamicStitchOpImplBase(OpKernelConstruction* c,
-                                   const string& op_name)
+                                   const std::string& op_name)
       : OpKernel(c) {
     // Compute expected input signature
     const DataType dt = DataTypeToEnum<T>::v();
@@ -95,8 +95,8 @@ class DynamicStitchOpImplBase : public OpKernel {
     }
     for (const Tensor& indices : *indices_inputs) {
       if (indices.NumElements() > 0) {
-        Eigen::Tensor<int32, 0, Eigen::RowMajor> m =
-            indices.flat<int32>().maximum();
+        Eigen::Tensor<int32_t, 0, Eigen::RowMajor> m =
+            indices.flat<int32_t>().maximum();
         max_index = std::max(m(), max_index);
       }
       if (data_elements_size) {
@@ -107,7 +107,7 @@ class DynamicStitchOpImplBase : public OpKernel {
     *first_dim_size = max_index + 1;
 
     for (const Tensor& indices : *indices_inputs) {
-      auto indices_vec = indices.flat<int32>();
+      auto indices_vec = indices.flat<int32_t>();
 
       for (int i = 0; i < indices_vec.size(); i++) {
         int32_t index = internal::SubtleMustCopy(indices_vec(i));
@@ -204,7 +204,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       // implicitly using atomics to make sure the last index is the final
       // write.
       const int slice_size = merged->flat_outer_dims<T>().dimension(1);
-      GpuDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
+      GpuDeviceArrayOnHost<int32_t> indices_flat(c, first_dim_size);
       GpuDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
       OP_REQUIRES_OK(c, indices_flat.Init());
       OP_REQUIRES_OK(c, data_flat.Init());
@@ -218,7 +218,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
       // sum of indices_inputs[i].NumElements() for compute indices_flat value.
       int32_t base_size = 0;
       for (int i = 0; i < indices_inputs.size(); ++i) {
-        auto indices_vec = indices_inputs[i].flat<int32>();
+        auto indices_vec = indices_inputs[i].flat<int32_t>();
         auto data_ptr_base = data_inputs[i].template flat<T>().data();
         for (int j = 0; j < indices_vec.size(); ++j) {
           // indices_flat's indices represent the indices of output.
@@ -276,7 +276,7 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
       const size_t slice_bytes = slice_size * sizeof(T);
       auto OnInputNumber = [&](int input_num) {
         const Tensor& indices = indices_inputs[input_num];
-        auto indices_vec = indices.flat<int32>();
+        auto indices_vec = indices.flat<int32_t>();
         const Tensor& data = data_inputs[input_num];
         auto data_flat =
             data.shaped<T, 2>({indices_vec.dimension(0), slice_size});

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 
 namespace stream_executor {
 
@@ -73,6 +74,8 @@ class MockStream : public Stream {
   MOCK_METHOD(CudaComputeCapability, GetCudaComputeCapability, (),
               (const, override));
   MOCK_METHOD(RocmComputeCapability, GetRocmComputeCapability, (),
+              (const, override));
+  MOCK_METHOD(OneAPIComputeCapability, GetOneAPIComputeCapability, (),
               (const, override));
   MOCK_METHOD((std::variant<StreamPriority, int>), priority, (),
               (const, override));

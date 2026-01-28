@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
@@ -42,6 +43,12 @@ namespace xla {
 
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
+  if (IsEarlyExitCompilation(compile_options_)) {
+    ExecutableAndOptionsProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
+                        compile_options_.ToProto());
+    return proto.SerializeAsString();
+  }
   std::string serialized;
   if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
           executables_)) {
@@ -237,28 +244,35 @@ StreamExecutorExecutable::GetOutputMemoryKinds() const {
   return out;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
+absl::StatusOr<std::unique_ptr<LocalExecutable>>
 StreamExecutorExecutable::ConsumeExecutable(
     LocalClient* client, const CompileOptions& compile_options) {
   if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
           executables_)) {
-    return std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
+    auto tmp = std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
         std::move(executables_));
+    if (tmp.size() == 0) {
+      return absl::InternalError("No local executable");
+    }
+    if (tmp.size() > 1) {
+      return absl::InternalError(
+          "ConsumeExecutable is not supported for more than one executable.");
+    }
+    return std::move(tmp[0]);
   } else if (std::holds_alternative<
                  std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
     auto aot_executables =
         std::get<std::vector<std::unique_ptr<CompiledModule>>>(
             std::move(executables_));
-    std::vector<std::unique_ptr<LocalExecutable>> local_executables;
-    local_executables.reserve(aot_executables.size());
-    for (int i = 0; i < aot_executables.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<LocalExecutable> local_executable,
-          client->Load(std::move(aot_executables[i]),
-                       compile_options.executable_build_options));
-      local_executables.push_back(std::move(local_executable));
+    if (aot_executables.size() == 0) {
+      return absl::InternalError("No local executable");
     }
-    return local_executables;
+    if (aot_executables.size() > 1) {
+      return absl::InternalError(
+          "ConsumeExecutable is not supported for more than one executable.");
+    }
+    return client->Load(std::move(aot_executables[0]),
+                        compile_options.executable_build_options);
   }
   return absl::UnimplementedError("Unsupported executable type.");
 }

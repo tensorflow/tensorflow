@@ -21,14 +21,45 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
+
+ExecutionUnitDescriptionProto ExecutionUnitDescription::ToProto() const {
+  ExecutionUnitDescriptionProto proto;
+  for (const auto& [type, info] : rate_infos_) {
+    auto& entry = (*proto.mutable_rate_infos())[type];
+    entry.set_clock_rate_ghz(info.clock_rate_ghz);
+    entry.set_units_per_core(info.units_per_core);
+    entry.set_ops_per_clock(info.ops_per_clock);
+  }
+  return proto;
+}
+
+absl::StatusOr<ExecutionUnitDescription> ExecutionUnitDescription::FromProto(
+    const ExecutionUnitDescriptionProto& proto) {
+  ExecutionUnitDescription desc;
+  for (const auto& [type_int, info_proto] : proto.rate_infos()) {
+    if (!xla::PrimitiveType_IsValid(type_int)) {
+      VLOG(2) << "Invalid PrimitiveType encountered, ExecutionUnitDescription "
+                 "might be malformed: "
+              << type_int;
+      continue;
+    }
+    desc.SetRateInfo(
+        static_cast<xla::PrimitiveType>(type_int),
+        RateInfo{info_proto.units_per_core(), info_proto.clock_rate_ghz(),
+                 info_proto.ops_per_clock()});
+  }
+  return desc;
+}
 
 absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
     const GpuDeviceInfoProto& proto) {
@@ -61,8 +92,23 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
     device_description.gpu_compute_capability_ =
         RocmComputeCapability(proto.rocm_compute_capability());
   }
+  if (proto.has_oneapi_compute_capability()) {
+    device_description.gpu_compute_capability_ =
+        OneAPIComputeCapability(proto.oneapi_compute_capability());
+  }
   device_description.core_count_ = proto.core_count();
   device_description.fpus_per_core_ = proto.fpus_per_core();
+
+  if (proto.has_scalar_unit_description()) {
+    TF_ASSIGN_OR_RETURN(
+        device_description.scalar_unit_description_,
+        ExecutionUnitDescription::FromProto(proto.scalar_unit_description()));
+  }
+  if (proto.has_matrix_unit_description()) {
+    TF_ASSIGN_OR_RETURN(
+        device_description.matrix_unit_description_,
+        ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
+  }
 
   return device_description;
 }
@@ -74,6 +120,9 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   }
   if (auto* ptr = gpu_compute_capability_.rocm_compute_capability()) {
     *proto.mutable_rocm_compute_capability() = ptr->ToProto();
+  }
+  if (auto* ptr = gpu_compute_capability_.oneapi_compute_capability()) {
+    *proto.mutable_oneapi_compute_capability() = ptr->ToProto();
   }
 
   proto.set_threads_per_block_limit(threads_per_block_limit_);
@@ -93,11 +142,51 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_device_memory_size(device_memory_size_);
   proto.set_registers_per_core_limit(registers_per_core_limit_);
   proto.set_registers_per_block_limit(registers_per_block_limit_);
+  if (scalar_unit_description_.has_value()) {
+    *proto.mutable_scalar_unit_description() =
+        scalar_unit_description_->ToProto();
+  }
+  if (matrix_unit_description_.has_value()) {
+    *proto.mutable_matrix_unit_description() =
+        matrix_unit_description_->ToProto();
+  }
   return proto;
 }
 
 std::string DeviceDescription::ToString() const {
   return ToGpuProto().DebugString();
+}
+
+bool DeviceDescription::operator==(const DeviceDescription& other) const {
+  return name_ == other.name_ && device_vendor_ == other.device_vendor_ &&
+         platform_version_ == other.platform_version_ &&
+         driver_version_ == other.driver_version_ &&
+         runtime_version_ == other.runtime_version_ &&
+         compile_time_toolkit_version_ == other.compile_time_toolkit_version_ &&
+         dnn_version_ == other.dnn_version_ && model_str_ == other.model_str_ &&
+         pci_bus_id_ == other.pci_bus_id_ && numa_node_ == other.numa_node_ &&
+         core_count_ == other.core_count_ &&
+         fpus_per_core_ == other.fpus_per_core_ &&
+         thread_dim_limit_ == other.thread_dim_limit_ &&
+         block_dim_limit_ == other.block_dim_limit_ &&
+         threads_per_block_limit_ == other.threads_per_block_limit_ &&
+         threads_per_core_limit_ == other.threads_per_core_limit_ &&
+         threads_per_warp_ == other.threads_per_warp_ &&
+         registers_per_core_limit_ == other.registers_per_core_limit_ &&
+         registers_per_block_limit_ == other.registers_per_block_limit_ &&
+         device_address_bits_ == other.device_address_bits_ &&
+         device_memory_size_ == other.device_memory_size_ &&
+         l2_cache_size_ == other.l2_cache_size_ &&
+         memory_bandwidth_ == other.memory_bandwidth_ &&
+         pcie_bandwidth_ == other.pcie_bandwidth_ &&
+         clock_rate_ghz_ == other.clock_rate_ghz_ &&
+         ecc_enabled_ == other.ecc_enabled_ &&
+         gpu_compute_capability_ == other.gpu_compute_capability_ &&
+         shared_memory_per_core_ == other.shared_memory_per_core_ &&
+         shared_memory_per_block_ == other.shared_memory_per_block_ &&
+         shared_memory_per_block_optin_ ==
+             other.shared_memory_per_block_optin_ &&
+         interconnect_info_ == other.interconnect_info_;
 }
 
 const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
@@ -119,8 +208,15 @@ RocmComputeCapability DeviceDescription::rocm_compute_capability() const {
   return RocmComputeCapability{};
 }
 
-bool ThreadDimOk(const DeviceDescription &device_description,
-                 const ThreadDim &thread_dim) {
+OneAPIComputeCapability DeviceDescription::oneapi_compute_capability() const {
+  if (auto* ptr = gpu_compute_capability_.oneapi_compute_capability()) {
+    return *ptr;
+  }
+  return OneAPIComputeCapability{};
+}
+
+bool ThreadDimOk(const DeviceDescription& device_description,
+                 const ThreadDim& thread_dim) {
   const int64_t total_threads = thread_dim.x * thread_dim.y * thread_dim.z;
   const int64_t threads_per_block_limit =
       device_description.threads_per_block_limit();
@@ -130,7 +226,7 @@ bool ThreadDimOk(const DeviceDescription &device_description,
     return false;
   }
 
-  const auto &limit = device_description.thread_dim_limit();
+  const auto& limit = device_description.thread_dim_limit();
   bool ok = thread_dim.x <= limit.x && thread_dim.y <= limit.y &&
             thread_dim.z <= limit.z;
   if (!ok) {
@@ -140,9 +236,9 @@ bool ThreadDimOk(const DeviceDescription &device_description,
   return ok;
 }
 
-void CalculateDimensionality(const DeviceDescription &device_description,
-                             int64_t element_count, int64_t *threads_per_block,
-                             int64_t *block_count) {
+void CalculateDimensionality(const DeviceDescription& device_description,
+                             int64_t element_count, int64_t* threads_per_block,
+                             int64_t* block_count) {
   *threads_per_block = device_description.threads_per_block_limit();
   *block_count = tsl::MathUtil::CeilOfRatio(element_count, *threads_per_block);
   if (*block_count == 1) {
@@ -156,6 +252,9 @@ GpuComputeCapabilityProto GpuComputeCapability::ToProto() const {
   if (IsCuda()) {
     *proto.mutable_cuda_compute_capability() =
         cuda_compute_capability()->ToProto();
+  } else if (IsOneAPI()) {
+    *proto.mutable_oneapi_compute_capability() =
+        oneapi_compute_capability()->ToProto();
   } else {
     *proto.mutable_rocm_compute_capability() =
         rocm_compute_capability()->ToProto();
@@ -177,7 +276,27 @@ absl::StatusOr<GpuComputeCapability> GpuComputeCapability::FromProto(
         RocmComputeCapability::FromProto(proto.rocm_compute_capability()));
   }
 
+  if (proto.has_oneapi_compute_capability()) {
+    return GpuComputeCapability(
+        OneAPIComputeCapability::FromProto(proto.oneapi_compute_capability()));
+  }
+
   return absl::InvalidArgumentError(
       "The serialized GpuComputeCapability has no compute capability set.");
 }
+
+std::string MakeComputeCapabilityAttributeString(
+    const DeviceDescription& desc) {
+  GpuComputeCapability cc = desc.gpu_compute_capability();
+  if (cc.IsCuda()) {
+    auto* nvcc = cc.cuda_compute_capability();
+    return absl::StrCat(nvcc->major, ".", nvcc->minor);
+  }
+  if (cc.IsRocm()) {
+    auto* rocmcc = cc.rocm_compute_capability();
+    return rocmcc->gfx_version();
+  }
+  return "unknown";
+}
+
 }  // namespace stream_executor

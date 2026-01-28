@@ -26,11 +26,11 @@
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "tsl/platform/test.h"
 
@@ -77,7 +77,7 @@ class RpcHelperTest : public ::testing::Test {
   RpcHelperTest() : requests_(kMaxFlushTimeout) {
     session_ = std::make_shared<MockClientSession>();
     IfrtProxyVersion version;
-    version.set_protocol_version(kClientMaxVersion);
+    version.set_protocol_version(protocol_version::kClientMax);
     version.set_ifrt_serdes_version_number(
         SerDesVersion::current().version_number().value());
     rpc_helper_ = std::make_shared<RpcHelper>(version, session_);

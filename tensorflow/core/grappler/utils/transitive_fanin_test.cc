@@ -30,14 +30,15 @@ namespace {
 class TransitiveFaninTest : public ::testing::Test {
  protected:
   struct NodeConfig {
-    NodeConfig(string name, std::vector<string> inputs)
+    NodeConfig(std::string name, std::vector<std::string> inputs)
         : name(std::move(name)), inputs(std::move(inputs)) {}
-    NodeConfig(string name, string op, std::vector<string> inputs)
+    NodeConfig(std::string name, std::string op,
+               std::vector<std::string> inputs)
         : name(std::move(name)), op(std::move(op)), inputs(std::move(inputs)) {}
 
-    string name;
-    string op;
-    std::vector<string> inputs;
+    std::string name;
+    std::string op;
+    std::vector<std::string> inputs;
   };
 
   static GraphDef CreateGraph(const std::vector<NodeConfig>& nodes) {
@@ -47,7 +48,7 @@ class TransitiveFaninTest : public ::testing::Test {
       NodeDef node_def;
       node_def.set_name(node.name);
       node_def.set_op(node.op);
-      for (const string& input : node.inputs) {
+      for (const std::string& input : node.inputs) {
         node_def.add_input(input);
       }
       *graph.add_node() = std::move(node_def);
@@ -66,7 +67,7 @@ TEST_F(TransitiveFaninTest, NoPruning) {
   });
 
   GraphDef output_graph;
-  const std::vector<string> terminal_nodes = {"1"};
+  const std::vector<std::string> terminal_nodes = {"1"};
   TF_EXPECT_OK(SetTransitiveFaninGraph(graph, &output_graph, terminal_nodes));
   NodeMap node_map(&output_graph);
   ASSERT_TRUE(node_map.NodeExists("1"));
@@ -85,7 +86,7 @@ TEST_F(TransitiveFaninTest, PruneNodesUnreachableFromSingleTerminalNode) {
   });
 
   GraphDef output_graph;
-  const std::vector<string> terminal_nodes = {"1"};
+  const std::vector<std::string> terminal_nodes = {"1"};
   TF_EXPECT_OK(SetTransitiveFaninGraph(graph, &output_graph, terminal_nodes));
   NodeMap node_map(&output_graph);
   ASSERT_TRUE(node_map.NodeExists("1"));
@@ -106,7 +107,7 @@ TEST_F(TransitiveFaninTest, PruneNodesUnreachableFromMultipleTerminalNodes) {
   });
 
   GraphDef output_graph;
-  const std::vector<string> terminal_nodes = {"1", "5"};
+  const std::vector<std::string> terminal_nodes = {"1", "5"};
   TF_EXPECT_OK(SetTransitiveFaninGraph(graph, &output_graph, terminal_nodes));
   NodeMap node_map(&output_graph);
   ASSERT_TRUE(node_map.NodeExists("1"));
@@ -128,11 +129,11 @@ TEST_F(TransitiveFaninTest, InvalidGraphOrTerminalNodes) {
   });
 
   GraphDef output_graph;
-  const std::vector<string> terminal_nodes = {"1", "5"};
+  const std::vector<std::string> terminal_nodes = {"1", "5"};
   auto s = SetTransitiveFaninGraph(graph, &output_graph, terminal_nodes);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(), "Graph does not contain input 6 of node 5.");
-  const std::vector<string> invalid_terminal_nodes = {"0", "1", "5"};
+  const std::vector<std::string> invalid_terminal_nodes = {"0", "1", "5"};
   s = SetTransitiveFaninGraph(graph, &output_graph, invalid_terminal_nodes);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(s.message(), "Graph does not contain terminal node 0.");

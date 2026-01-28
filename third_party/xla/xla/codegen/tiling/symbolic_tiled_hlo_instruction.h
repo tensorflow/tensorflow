@@ -52,7 +52,8 @@ class SymbolicTiledHloInstruction {
     symbolic_tile_ = std::move(symbolic_tile);
   }
   const SymbolicTile& symbolic_tile() const {
-    CHECK(symbolic_tile_.has_value()) << "Symbolic tile was not computed";
+    CHECK(symbolic_tile_.has_value())
+        << "Symbolic tile was not computed for " << hlo_->ToString();
     return *symbolic_tile_;
   }
 

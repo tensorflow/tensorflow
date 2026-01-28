@@ -123,9 +123,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<ArrayRef>, MakeArrayFromHostBuffer,
               (const void* data, DType dtype, Shape shape,
                std::optional<absl::Span<const int64_t>> byte_strides,
-               ShardingRef sharding, HostBufferSemantics semantics,
+               ShardingRef sharding, LayoutRef layout,
+               HostBufferSemantics semantics,
                std::function<void()> on_done_with_host_buffer),
               (final));
+  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
+  using xla::ifrt::Client::MakeArrayFromHostBuffer;
+
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               MakeArraysFromHostBufferShards,
               (absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
@@ -159,6 +163,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (absl::Span<const ValueRef> values), (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
+  MOCK_METHOD(
+      void, CancelExecution,
+      (xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+       absl::Status error),
+      (final));
   MOCK_METHOD(absl::string_view, runtime_type, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_name, (), (const, final));
   MOCK_METHOD(absl::string_view, platform_version, (), (const, final));
@@ -191,6 +200,13 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
   MOCK_METHOD(absl::StatusOr<CustomLayoutRef>, GetDefaultLayout,
               (DType dtype, const Shape& shape, const ShardingRef& sharding),
               (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>,
+      SubscribeToAttributeChanges,
+      (absl::Span<xla::ifrt::Device* const> devices,
+       std::optional<absl::Span<const std::string>> attribute_names,
+       xla::ifrt::OnDeviceAttributeChangeCallback callback),
+      (final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }
@@ -205,11 +221,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
 
 class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
  public:
-  MOCK_METHOD(absl::StatusOr<ExecutableRef>, Compile,
+  MOCK_METHOD(tsl::Future<ExecutableRef>, Compile,
               (std::unique_ptr<Program> program, const Topology& topology,
                std::unique_ptr<CompileOptions> options),
               (final));
-  MOCK_METHOD(absl::StatusOr<LoadedExecutableRef>, CompileAndLoad,
+  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, CompileAndLoad,
               (std::unique_ptr<Program> program,
                std::unique_ptr<CompileOptions> options),
               (final));
@@ -217,7 +233,7 @@ class MockCompiler : public llvm::RTTIExtends<MockCompiler, Compiler> {
               (const xla::ifrt::ExecutableVersion& executable_version,
                const xla::ifrt::DeviceListRef& devices),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<LoadedExecutableRef>, DeserializeLoadedExecutable,
+  MOCK_METHOD(tsl::Future<LoadedExecutableRef>, DeserializeLoadedExecutable,
               (absl::string_view serialized,
                std::unique_ptr<DeserializeExecutableOptions> options),
               (final));

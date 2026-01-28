@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -272,6 +273,64 @@ ENTRY entry {
       FindInstruction(module.get(), "call"), {0}));
   EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
       FindInstruction(module.get(), "call"), {1}));
+}
+
+TEST_F(HloReplicationAnalysisTest, MultipleCallSites) {
+  const std::string module_str = R"(
+HloModule MultipleCallSites
+
+fusion_computation {
+  fusion_p0 = f32[] parameter(0)
+  fusion_p1 = f32[] parameter(1)
+  add = f32[] add(fusion_p0, fusion_p0)
+  multiply = f32[] multiply(add, fusion_p1)
+  ROOT tuple = (f32[], f32[]) tuple(add, multiply)
+}
+
+call_body {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT fusion = (f32[], f32[]) fusion(a, b), kind=kLoop, calls=fusion_computation
+}
+
+ENTRY entry {
+  param = (f32[], f32[]) parameter(0)
+  get-tuple-element = f32[] get-tuple-element(param), index=0
+  get-tuple-element.1 = f32[] get-tuple-element(param), index=1
+  call0 = (f32[], f32[]) call(get-tuple-element, get-tuple-element.1), to_apply=call_body
+  call1 = (f32[], f32[]) call(get-tuple-element.1, get-tuple-element), to_apply=call_body
+  ROOT ret = tuple(call0, call1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str));
+  auto param = module->entry_computation()->parameter_instruction(0);
+  param->set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool>{true, false});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
+                          HloReplicationAnalysis::Run(
+                              module.get(), /*cross_partition_spmd=*/false));
+  EXPECT_TRUE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "get-tuple-element"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "get-tuple-element.1"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "add"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "multiply"), {}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "fusion"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "fusion"), {1}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "call0"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "call0"), {1}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "call1"), {0}));
+  EXPECT_FALSE(analysis->HloInstructionIsReplicatedAt(
+      FindInstruction(module.get(), "call1"), {1}));
 }
 
 TEST_F(HloReplicationAnalysisTest, SimpleWhileLoop) {

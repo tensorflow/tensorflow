@@ -103,6 +103,14 @@ class Array {
     Fill(value);
   }
 
+  // Creates a new array with the specified dimensions and initialize
+  // every cell with values from the list of flattened_values.
+  Array(absl::Span<const int64_t> sizes, absl::Span<const T> flattened_values)
+      : Array(sizes, no_default_init_t{}) {
+    CHECK_EQ(flattened_values.size(), num_elements());
+    std::copy(flattened_values.begin(), flattened_values.end(), begin());
+  }
+
   // Creates a 2D array from the given nested initializer list. The outer
   // initializer list is the first dimension, the inner is the second dimension.
   // For example, {{1, 2, 3}, {4, 5, 6}} results in an array with n1=2 and n2=3.

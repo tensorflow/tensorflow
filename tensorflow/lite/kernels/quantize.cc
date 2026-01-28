@@ -114,6 +114,30 @@ void AffineQuantizeToInt4(const tflite::QuantizationParams& op_params,
                                      /*bit_width=*/4, output_data);
 }
 
+void AffineQuantizeToUInt4(const tflite::QuantizationParams& op_params,
+                           const RuntimeShape& input_shape,
+                           const float* input_data,
+                           const RuntimeShape& output_shape,
+                           int8_t* output_data) {
+  const int32_t zero_point = op_params.zero_point;
+  const double scale = op_params.scale;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  // Unsigned int4 has range [0, 15].
+  constexpr int32_t min_val = 0;
+  constexpr int32_t max_val = 15;
+  std::vector<int8_t> quantized_buffer(flat_size);
+  for (int i = 0; i < flat_size; i++) {
+    const float val = input_data[i];
+    int32_t unclamped =
+        static_cast<int32_t>(TfLiteRound(val / static_cast<float>(scale))) +
+        zero_point;
+    int32_t clamped = std::min(std::max(unclamped, min_val), max_val);
+    quantized_buffer[i] = clamped;
+  }
+  tensor_utils::PackInt8IntoDenseInt(quantized_buffer.data(), flat_size,
+                                     /*bit_width=*/4, output_data);
+}
+
 void ReportError(TfLiteContext* context, TfLiteType input_type,
                  TfLiteType output_type) {
   TF_LITE_KERNEL_LOG(
@@ -149,7 +173,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, output->type == kTfLiteUInt8 ||
                                 output->type == kTfLiteInt8 ||
                                 output->type == kTfLiteInt16 ||
-                                output->type == kTfLiteInt4);
+                                output->type == kTfLiteInt4 ||
+                                output->type == kTfLiteUInt4);
   } else {
     // Requantize use case.
     if (input->type == kTfLiteInt16) {
@@ -248,6 +273,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           case kTfLiteInt4: {
             AffineQuantizeToInt4(op_params, input_shape, input_data,
                                  output_shape, GetTensorData<int8_t>(output));
+            return kTfLiteOk;
+          }
+          case kTfLiteUInt4: {
+            AffineQuantizeToUInt4(op_params, input_shape, input_data,
+                                  output_shape, GetTensorData<int8_t>(output));
             return kTfLiteOk;
           }
           case kTfLiteInt8:

@@ -45,10 +45,14 @@ TEST(CubSortThunkTest, ProtoRoundTrip) {
       execution_stream_id: 1
     }
     cub_sort_thunk {
-      type: F32
-      value_type: F32
-      operands { offset: 0 size: 4 buffer_allocation_index: 0 }
-      results { offset: 0 size: 4 buffer_allocation_index: 1 }
+      operands {
+        slice { offset: 0 size: 4 buffer_allocation_index: 0 }
+        shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
+      }
+      results {
+        slice { offset: 0 size: 4 buffer_allocation_index: 1 }
+        shape { element_type: F32 dimensions: 1 is_dynamic_dimension: false }
+      }
       scratch { offset: 0 size: 1024 buffer_allocation_index: 2 }
       descending: true
       batch_size: 1

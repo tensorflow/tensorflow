@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
+#include "tensorflow/core/platform/mutex.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
@@ -117,6 +118,80 @@ TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
   EXPECT_EQ(sorted_active_list[1], 4);
   EXPECT_EQ(sorted_active_list[2], 3);
   EXPECT_EQ(sorted_active_list[3], 1);
+}
+
+TEST(RunHandlerUtilTest, PriorityExecutionTest) {
+  // Set up a pool with 1 intra-op thread and 1 inter-op thread. The frist
+  // request will be scheduled immediately and be blocked until the rest of the
+  // two requests are enqueued. The execution order of the latter two requests
+  // should follow the priority.
+  int num_threads = 1;
+  RunHandlerPool::Options pool_options;
+  pool_options.num_intra_op_threads = num_threads;
+  pool_options.num_inter_op_threads = num_threads;
+  pool_options.num_threads_in_sub_thread_pool = {1};
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(pool_options));
+
+  RunHandlerOptions options;
+
+  options.priority = 2;
+  auto handler_med = pool->Get(2, 0, options);
+
+  options.priority = 3;
+  auto handler_high = pool->Get(1, 0, options);
+
+  options.priority = 1;
+  auto handler_low = pool->Get(3, 0, options);
+
+  std::vector<int64_t> sorted_active_list =
+      pool->GetActiveHandlerPrioritiesForTesting();
+  EXPECT_EQ(sorted_active_list.size(), 3);
+  EXPECT_EQ(sorted_active_list[0], 3);
+  EXPECT_EQ(sorted_active_list[1], 2);
+  EXPECT_EQ(sorted_active_list[2], 1);
+
+  absl::Notification start_block;
+  absl::Notification continue_block;
+
+  // Block the worker on the low priority handler.
+  handler_low->ScheduleInterOpClosure(TaskFunction([&]() {
+    start_block.Notify();
+    continue_block.WaitForNotification();
+  }));
+
+  start_block.WaitForNotification();
+
+  std::vector<int> execution_order;
+  tensorflow::mutex mu;
+  tensorflow::BlockingCounter counter(2);
+
+  // Schedule task on medium priority handler.
+  handler_med->ScheduleInterOpClosure(TaskFunction([&]() {
+    {
+      tensorflow::mutex_lock l(mu);
+      execution_order.push_back(2);
+    }
+    counter.DecrementCount();
+  }));
+
+  // Schedule task on high priority handler.
+  handler_high->ScheduleInterOpClosure(TaskFunction([&]() {
+    {
+      tensorflow::mutex_lock l(mu);
+      execution_order.push_back(3);
+    }
+    counter.DecrementCount();
+  }));
+
+  continue_block.Notify();
+  counter.Wait();
+
+  // The worker should pick tasks from high priority handlers first because
+  // after finishing the task on the low priority handler, it iterates from the
+  // beginning of the sorted list (high, med, low).
+  EXPECT_EQ(execution_order.size(), 2);
+  EXPECT_EQ(execution_order[0], 3);
+  EXPECT_EQ(execution_order[1], 2);
 }
 
 TEST(RunHandlerUtilTest, IntraOpThreadPool) {

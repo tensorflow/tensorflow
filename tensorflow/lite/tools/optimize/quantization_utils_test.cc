@@ -21,6 +21,7 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 

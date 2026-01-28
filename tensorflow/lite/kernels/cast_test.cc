@@ -515,6 +515,25 @@ TEST(CastOpModel, CastBFloat16ToFloat16) {
                   /*max_abs_err=*/0.05f)));
 }
 
+TEST(CastOpModel, CastUint4ToFloat) {
+  CastOpModel m({TensorType_UINT4, {1, 6}}, {TensorType_FLOAT32, {1, 6}});
+  m.SetUInt4Input({15, 0, 1, 8, 7, 2});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({15.f, 0.f, 1.f, 8.f, 7.f, 2.f}));
+}
+
+TEST(CastOpModel, CastFloatToUint4) {
+  CastOpModel m({TensorType_FLOAT32, {1, 6}}, {TensorType_UINT4, {1, 6}});
+  m.PopulateTensor<float>(m.input(), {15.f, 0.f, 1.f, 8.f, 7.f, 2.f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<int8_t> unpacked(6);
+  tensor_utils::UnpackPackedIntToInt8(
+      reinterpret_cast<const int8_t*>(m.GetOutputTensor(0)->data.int8), 6,
+      /*bit_width=*/4, unpacked.data(), /*unpack_unsigned=*/true);
+  EXPECT_THAT(unpacked, ElementsAreArray({15, 0, 1, 8, 7, 2}));
+}
+
 TEST(CastOpModel, CastConstInputCachingWorks) {
   // This tests the implementation of a performance optimization. If that
   // optimization is changed, this test will likely break/need to be updated.

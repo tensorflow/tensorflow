@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/rendezvous.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
@@ -56,8 +57,8 @@ struct CollectiveConfig {
 
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
-  CollectiveOpGroupMode group_mode;
-  bool use_symmetric_buffer;
+  CollectiveOpGroupMode group_mode = COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
+  bool use_symmetric_buffer = false;
 
   CollectiveConfigProto ToProto() const;
   static CollectiveConfig FromProto(const CollectiveConfigProto& proto);
@@ -91,13 +92,12 @@ class CollectiveDoneThunk;
 // Thunk base class for XLA:GPU collective operations.
 class CollectiveThunk : public Thunk {
  public:
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
-                  AsyncStreamKind stream_kind);
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync, bool is_p2p);
 
   struct Buffer {
     int64_t element_count;
-    BufferAllocation::Slice source_buffer;
-    BufferAllocation::Slice destination_buffer;
+    ShapedSlice source_buffer;
+    ShapedSlice destination_buffer;
     int64_t source_memory_space;
     int64_t destination_memory_space;
 
@@ -130,8 +130,7 @@ class CollectiveThunk : public Thunk {
       absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
 
   CollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                  std::shared_ptr<AsyncEvents> async_events,
-                  AsyncStreamKind stream_kind);
+                  std::shared_ptr<AsyncEvents> async_events, bool is_p2p);
 
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);
@@ -154,16 +153,7 @@ class CollectiveThunk : public Thunk {
     async_events_ = async_events;
   }
 
-  CollectiveStreamId nccl_stream_id() const {
-    return xla::gpu::GetCollectiveStreamId(IsAsync(), GetAsyncStreamId(),
-                                           GetAsyncStreamKind());
-  }
-
-  ExecutionStreamId nccl_execution_stream_id() const {
-    return ExecutionStreamId(execution_stream_id().value() +
-                             nccl_stream_id().value());
-  }
-
+  bool IsP2PCollective() const { return is_p2p_; }
   absl::StatusOr<CollectiveThunkProto> ToCollectiveThunkProto() const;
 
  protected:
@@ -185,12 +175,10 @@ class CollectiveThunk : public Thunk {
                                              Communicator& comm) = 0;
 
   virtual const CollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
   virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
   bool IsAsync() const { return async_events_ != nullptr; }
 
  private:
-  const AsyncStreamKind stream_kind_;
   // NCCL stream id assigned by execution stream assignment.
   CollectiveStreamId stream_id_ = CollectiveStreamId(0);
 
@@ -205,6 +193,7 @@ class CollectiveThunk : public Thunk {
   // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
   // sure that all NCCL resources are allocated just once.
   RendezvousFlag first_call_rendezvous_flag_;
+  bool is_p2p_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -215,8 +204,7 @@ class CollectiveDoneThunk : public Thunk {
  public:
   CollectiveDoneThunk(
       Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      AsyncStreamKind async_stream_kind);
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -225,8 +213,7 @@ class CollectiveDoneThunk : public Thunk {
   ExecutionStreamId nccl_execution_stream_id() const {
     return ExecutionStreamId(
         execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, stream_id_, stream_kind_)
-            .value());
+        xla::gpu::GetCollectiveStreamId(true, stream_id_).value());
   }
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
@@ -244,7 +231,6 @@ class CollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind stream_kind_ = AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
   // NCCL stream id assigned by execution stream assignment.
   CollectiveStreamId stream_id_ = CollectiveStreamId(1);
 };
@@ -285,7 +271,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 //===----------------------------------------------------------------------===//
 
-// Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
+// Helper over GetGpuCliqueKey that builds clique key.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
     bool include_participant_groups = true);

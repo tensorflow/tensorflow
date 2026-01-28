@@ -4,7 +4,7 @@ TF profiler build macros for use in OSS.
 """
 
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")

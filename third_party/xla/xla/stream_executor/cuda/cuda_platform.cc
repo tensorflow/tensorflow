@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -73,7 +74,7 @@ static absl::Status PlatformInitialize() {
 
 }  // namespace
 
-CudaPlatform::CudaPlatform() : name_("CUDA") {}
+CudaPlatform::CudaPlatform() : name_(cuda::kCudaPlatformId->ToName()) {}
 
 CudaPlatform::~CudaPlatform() {
   nvmlReturn_t shutdown_result = nvmlShutdown();

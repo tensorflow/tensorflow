@@ -684,8 +684,8 @@ struct TransposeMicroKernel {
     }
     for (int i = 0; i < bs; ++i) {
       for (int j = 0; j < bs; ++j) {
-        *reinterpret_cast<T*>(b + i * ldb + j * sizeof(T)) =
-            *reinterpret_cast<T const*>(a + j * lda + i * sizeof(T));
+        std::memcpy(b + i * ldb + j * sizeof(T), a + j * lda + i * sizeof(T),
+                    sizeof(T));
       }
     }
   }

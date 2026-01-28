@@ -40,8 +40,8 @@ xla_cc_binary(
         "@llvm-project//mlir:RegisterAllPasses",  # buildcleaner: keep
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 

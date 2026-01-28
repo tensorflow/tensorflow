@@ -133,6 +133,9 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   if (tensor.type == tflite::TensorType_UINT8) {
     is_signed = false;
     storage_type = mlir::IntegerType::get(builder.getContext(), 8);
+  } else if (tensor.type == tflite::TensorType_UINT4) {
+    is_signed = false;
+    storage_type = mlir::IntegerType::get(builder.getContext(), 4);
   }
 
   if (!storage_type) {
@@ -278,11 +281,14 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
     bool truncate) {
   mlir::Type elem_type = shaped_type.getElementType();
   unsigned bit_width;
+  bool is_signed;
   if (auto itype = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
     bit_width = itype.getWidth();
+    is_signed = !itype.isUnsigned();
   } else if (auto qtype =
                  mlir::dyn_cast<mlir::quant::QuantizedType>(elem_type)) {
     bit_width = qtype.getStorageTypeIntegralWidth();
+    is_signed = qtype.isSigned();
     shaped_type = tensorflow::GetTypeFromTFTensorShape(shaped_type.getShape(),
                                                        qtype.getStorageType());
   } else {
@@ -310,12 +316,20 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
           shaped_type, ArrayRef<char>(i2Values)));
     }
     case 4: {
-      auto i4Values = tflite::UnpackDenseLowBitIntoInt8(
-          buffer, shaped_type.getNumElements(), /*bit_width=*/4);
-      // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
-      // check which doesn't work with int4 because int4_t doesn't exist.
-      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
-          shaped_type, ArrayRef<char>(i4Values)));
+      if (is_signed) {
+        auto i4Values = tflite::UnpackDenseLowBitIntoInt8(
+            buffer, shaped_type.getNumElements(), /*bit_width=*/4);
+        // Use `getFromRawBuffer()` instead of `get()` to bypass a templated
+        // size check which doesn't work with int4 because int4_t doesn't
+        // exist.
+        return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+            shaped_type, ArrayRef<char>(i4Values)));
+      } else {
+        auto ui4Values = tflite::UnpackDenseLowBitIntoUint8(
+            buffer, shaped_type.getNumElements(), /*bit_width=*/4);
+        return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+            shaped_type, ArrayRef<char>(ui4Values)));
+      }
     }
     case 8: {
       return mlir::ElementsAttr(

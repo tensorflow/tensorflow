@@ -41,7 +41,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
 // TODO(jpienaar): This is a workaround until behavior is established.
 template <typename OpTy, typename... Args>
 OpTy CreateTfOp(RewriterBase &b, Operation *op, Args &&...args) {
-  auto ret = b.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
+  auto ret = OpTy::create(b, op->getLoc(), std::forward<Args>(args)...);
   CopyDeviceAndUnderscoredAttributes(op, ret.getOperation());
   return ret;
 }

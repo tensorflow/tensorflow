@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/status_macros.h"
@@ -34,8 +35,14 @@ namespace gpu {
 absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
     const HloModule& module, mlir::MLIRContext& mlir_context) {
   auto data = std::make_unique<EmitterData>();
-  data->fusion = DynCast<HloFusionInstruction>(
-      module.entry_computation()->root_instruction());
+  {
+    auto* inst = module.entry_computation()->root_instruction();
+    while (inst && (inst->opcode() == HloOpcode::kTuple ||
+                    inst->opcode() == HloOpcode::kGetTupleElement)) {
+      inst = inst->mutable_operand(0);
+    }
+    data->fusion = DynCast<HloFusionInstruction>(inst);
+  }
   TF_RET_CHECK(data->fusion != nullptr) << "Root instruction must be a fusion";
   data->device.emplace(TestGpuDeviceInfo::RTXA6000DeviceInfo());
   data->analysis.emplace(

@@ -34,12 +34,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
@@ -341,10 +342,12 @@ ConvertThunksToCommandBuffer(
     std::vector<std::unique_ptr<Thunk>> thunks_to_convert,
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
+  bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,
-      ConvertToCommands(thunks_to_convert,
-                        ConvertToCommandsOptions{synchronization_mode}));
+      ConvertToCommands(
+          thunks_to_convert,
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "command_buffer";
@@ -352,6 +355,12 @@ ConvertThunksToCommandBuffer(
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
   }
+  VLOG(2) << "Creating command buffer thunk with the following thunks: "
+          << absl::StrJoin(
+                 thunks_to_convert, ", ",
+                 [](std::string* out, const std::unique_ptr<Thunk>& thunk) {
+                   absl::StrAppend(out, thunk->thunk_info().profile_annotation);
+                 });
   return std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),

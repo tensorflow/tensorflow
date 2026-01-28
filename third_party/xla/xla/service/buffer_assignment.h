@@ -571,6 +571,7 @@ class BufferAssignment {
 
   // Convert BufferAssignment to or from a proto.
   BufferAssignmentProto ToProto() const;
+  void ToProto(BufferAssignmentProto* proto) const;
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);

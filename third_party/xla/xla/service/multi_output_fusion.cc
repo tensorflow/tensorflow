@@ -320,7 +320,7 @@ void MultiOutputFusion::UpdateReachability(
   auto instr2_i = reachability_->GetIndex(instr2);
   for (auto& instr_and_index : instrs_to_update) {
     HloInstruction* instr = instr_and_index.first;
-    if (skip != std::nullopt && (*skip)(instr)) {
+    if (skip.has_value() && skip.value()(instr)) {
       continue;
     }
     auto instr_i = instr_and_index.second;

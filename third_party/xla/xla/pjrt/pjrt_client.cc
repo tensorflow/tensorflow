@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -141,7 +142,7 @@ xla::Future<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral() {
   if (!host_shape.ok()) {
     return xla::Future<std::shared_ptr<Literal>>(host_shape.status());
   }
-  auto [promise, future] = xla::Future<std::shared_ptr<Literal>>::MakePromise();
+  auto [promise, future] = xla::MakePromise<std::shared_ptr<Literal>>();
   auto shared_literal = std::make_shared<Literal>();
   Literal* literal = shared_literal.get();
   LazyToLiteral([literal, host_shape = *std::move(

@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -1217,7 +1218,7 @@ TEST_F(CuDnnFusionRewriteTest,
        DoNotExecuteGemmFusionWithCuDnnWhenNotSupported) {
   // Dimension size 61 does not satisfy the requirement on alignment
   // (multiple of 2).
-  MatchOptimizedHlo(R"(
+  const std::string hlo = R"(
 ENTRY e {
   p0 = f16[20,40,61] parameter(0)
   p0n = f16[20,40,61] negate(p0)
@@ -1225,14 +1226,17 @@ ENTRY e {
   ROOT r = f16[20,40,80] dot(p0n, p1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
     lhs_contracting_dims={2}, rhs_contracting_dims={2}
-})",
-                    R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: fusion
-; CHECK-NOT: cudnn
-)");
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  // Triton backend is disabled meaning that the compilation should fail.
+  auto status = CompileToExecutable(std::move(module)).status();
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.ToString(),
+      ::testing::HasSubstr("Autotuner could not find any supported configs"));
 }
 
 TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {

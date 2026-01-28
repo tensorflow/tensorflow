@@ -68,7 +68,7 @@ class IrEmitterContext {
   IrEmitterContext(const HloModule* hlo_module,
                    const BufferAssignment* buffer_assignment,
                    const ExecutionStreamAssignment* execution_stream_assignment,
-                   std::string platform_name,
+                   absl::string_view platform_name,
                    const se::DeviceDescription& gpu_device_info,
                    mlir::MLIRContext* mlir_context,
                    llvm::LLVMContext* llvm_context, bool emit_kernels,
@@ -76,7 +76,7 @@ class IrEmitterContext {
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
-        platform_name_(std::move(platform_name)),
+        platform_name_(platform_name),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
         llvm_context_(llvm_context),
@@ -159,7 +159,7 @@ class IrEmitterContext {
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
   const ExecutionStreamAssignment* execution_stream_assignment_;
-  std::string platform_name_;
+  absl::string_view platform_name_;
   const se::DeviceDescription& gpu_device_info_;
   mlir::MLIRContext* mlir_context_;
   llvm::LLVMContext* llvm_context_;

@@ -29,8 +29,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -155,7 +157,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
                       BufferUse::MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, kLength),
                               /*shmem_bytes=*/0);

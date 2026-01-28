@@ -83,6 +83,7 @@ cc_library(
 xla_cc_test(
     name = "sol_latency_estimator_test",
     srcs = ["sol_latency_estimator_test.cc"],
+    tags = ["pjrt_migration_candidate"],
     deps = [
         ":collective_interpolator",
         ":sol_gpu_cost_model",
@@ -157,6 +158,8 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
@@ -176,7 +179,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -207,7 +210,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -287,8 +290,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -300,8 +303,9 @@ xla_cc_test(
         ":hlo_op_profiles",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test_helpers",
         "//xla/service:hlo_cost_analysis",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -345,6 +349,7 @@ xla_cc_test(
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -357,7 +362,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -398,6 +402,7 @@ xla_cc_test(
         ":gpu_performance_model_base",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -535,6 +540,7 @@ xla_cc_test(
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
@@ -583,12 +589,12 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
-        "//xla/backends/gpu/codegen/triton:tiled_emitter_constraints",
         "//xla/codegen/tiling:affine_map_evaluator",
         "//xla/codegen/tiling:constraint_expression",
         "//xla/codegen/tiling:symbolic_tile",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
+        "//xla/codegen/xtile/codegen:tiled_emitter_constraints",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:interval",
         "//xla/hlo/ir:hlo",
@@ -612,6 +618,7 @@ xla_cc_test(
     deps = [
         ":triton_emitter_constraints",
         "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -669,6 +676,7 @@ xla_cc_test(
         "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_schedule",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_traversal",
@@ -688,7 +696,7 @@ tf_proto_library(
     name = "hlo_op_profile_proto",
     srcs = ["hlo_op_profile.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         "//xla/service:hlo_proto",
     ],
 )
@@ -714,7 +722,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_protobuf//:protobuf",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -762,8 +770,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
     ] + if_cuda([
         # keep sorted
         "//xla/backends/profiler/gpu:cupti_buffer_events",
@@ -807,9 +815,9 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -827,6 +835,8 @@ xla_test(
     args = if_google(["--heap_check="]),
     backends = ["gpu"],
     local_defines = if_cuda(["GOOGLE_CUDA"]),
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
     deps = [
         ":hlo_op_profiler_lib",
         "//xla:xla_data_proto_cc",
@@ -1028,7 +1038,7 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -1149,6 +1159,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )

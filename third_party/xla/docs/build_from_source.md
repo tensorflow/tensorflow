@@ -162,7 +162,7 @@ You should now be in the `/jax` directory within the container
 /usr/local/bin/bazel build \
   --config=cuda_libraries_from_stubs \
   --verbose_failures=true \
-  @local_xla//xla/tools/multihost_hlo_runner:hlo_runner_main
+  @xla//xla/tools/multihost_hlo_runner:hlo_runner_main
 ```
 
 Optionally, you can overwrite `HERMETIC` envs, e.g.:

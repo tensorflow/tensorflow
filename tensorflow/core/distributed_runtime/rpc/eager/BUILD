@@ -42,7 +42,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/tsl/distributed_runtime:call_options",
+        "@xla//xla/tsl/distributed_runtime:call_options",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -61,8 +61,8 @@ cc_library(
         "//tensorflow/core/protobuf:eager_service_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
-        "@local_xla//xla/tsl/distributed_runtime/rpc:grpc_call",
+        "@xla//xla/tsl/distributed_runtime/rpc:async_service_interface",
+        "@xla//xla/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -84,6 +84,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

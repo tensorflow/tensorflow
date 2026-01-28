@@ -117,8 +117,8 @@ T GetUpdatedWhileOp(T while_op, const U& argument_types,
       new_operands.emplace_back(operands[i]);
     }
   }
-  auto new_while_op = builder.create<T>(while_op->getLoc(), new_operand_types,
-                                        new_operands, while_op->getAttrs());
+  auto new_while_op = T::create(builder, while_op->getLoc(), new_operand_types,
+                                new_operands, while_op->getAttrs());
   int new_index = 0;
   for (int i = 0; i < num_operands; ++i) {
     if (!skip_indices.test(i)) {
@@ -132,7 +132,7 @@ T GetUpdatedWhileOp(T while_op, const U& argument_types,
 // Creates a constant op that holds 'tensor_elements'.
 TF::ConstOp GetConstOpFromElementsAttr(ElementsAttr tensor_elements,
                                        OpBuilder builder, Location loc) {
-  return builder.create<TF::ConstOp>(loc, tensor_elements);
+  return TF::ConstOp::create(builder, loc, tensor_elements);
 }
 
 // Replace usage of 'read_variable_op' with 'value'.

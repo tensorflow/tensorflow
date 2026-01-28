@@ -123,10 +123,11 @@ LogicalResult UpdateRegionReplicateVariantOps(
         return failure();
 
       OpBuilder builder(op);
-      auto const_op = builder.create<TF::ConstOp>(
-          op->getLoc(), DenseIntElementsAttr::get(
-                            RankedTensorType::get({}, builder.getI64Type()),
-                            {device_ordinal}));
+      auto const_op = TF::ConstOp::create(
+          builder, op->getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get({}, builder.getI64Type()),
+              {device_ordinal}));
       op->replaceAllUsesWith(const_op);
       op->erase();
       return WalkResult::advance();
@@ -167,16 +168,17 @@ LogicalResult ExpandReplicateIntoReplicas(
 
   // Replace replicate terminator with YieldOp.
   builder.setInsertionPoint(&terminator);
-  builder.create<tf_executor::YieldOp>(terminator.getLoc(),
-                                       terminator.getOperands());
+  tf_executor::YieldOp::create(builder, terminator.getLoc(),
+                               terminator.getOperands());
   terminator.erase();
 
   builder.setInsertionPoint(island_op);
   IRMapping mapping;
   for (int i : llvm::seq<int>(0, num_replicas)) {
     // Create new island for replica.
-    auto replica = builder.create<tf_executor::IslandOp>(
-        island_op.getLoc(), output_types, control_type, replica_inputs);
+    auto replica =
+        tf_executor::IslandOp::create(builder, island_op.getLoc(), output_types,
+                                      control_type, replica_inputs);
 
     // Map block arg to replica arg.
     mapping.clear();
@@ -308,13 +310,13 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
       island_operands.push_back(replica.getControl());
 
     builder.setInsertionPoint(island_op);
-    auto island_sink = builder.create<tf_executor::IslandOp>(
-        island_op.getLoc(), llvm::ArrayRef<Type>{},
+    auto island_sink = tf_executor::IslandOp::create(
+        builder, island_op.getLoc(), llvm::ArrayRef<Type>{},
         tf_executor::ControlType::get(island_op.getContext()), island_operands);
     island_sink.getBody().push_back(new Block);
     builder.setInsertionPointToEnd(&island_sink.GetBody());
-    builder.create<tf_executor::YieldOp>(island_op.getLoc(),
-                                         llvm::ArrayRef<Value>{});
+    tf_executor::YieldOp::create(builder, island_op.getLoc(),
+                                 llvm::ArrayRef<Value>{});
     island_op.getControl().replaceAllUsesWith(island_sink.getControl());
   }
 
@@ -332,7 +334,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
       fetches.append(unused_replica_controls.begin(),
                      unused_replica_controls.end());
       builder.setInsertionPoint(fetch);
-      builder.create<tf_executor::FetchOp>(fetch.getLoc(), fetches);
+      tf_executor::FetchOp::create(builder, fetch.getLoc(), fetches);
       fetch.erase();
     }
   } else {

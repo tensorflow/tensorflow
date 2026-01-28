@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/tools/test_lib.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +31,22 @@ limitations under the License.
 #include "xla/tools/hlo_module_loader.h"
 
 namespace xla {
+
+static void FlattenIntoHelper(std::vector<HloInstruction*>& elements,
+                              HloComputation::Builder& builder,
+                              HloInstruction* value) {
+  const auto& result_shape = value->shape();
+  if (result_shape.IsTuple()) {
+    for (int64_t i = 0; i < result_shape.tuple_shapes().size(); ++i) {
+      FlattenIntoHelper(
+          elements, builder,
+          builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+              result_shape.tuple_shapes()[i], value, i)));
+    }
+  } else {
+    elements.push_back(value);
+  }
+}
 
 absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
     absl::string_view filename) {
@@ -49,10 +66,24 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
          module->entry_computation()->parameter_instructions()) {
       params.push_back(*builder.AddParameter(param->Clone(/*suffix=*/"")));
     }
-    builder.AddInstruction(HloInstruction::CreateFusion(
+    auto* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
         module->entry_computation()->root_instruction()->shape(),
         HloInstruction::FusionKind::kLoop /* irrelevant */, params,
         module->entry_computation()));
+    auto result_shape = fusion->shape();
+    if (result_shape.IsTuple()) {
+      bool needs_flattening = false;
+      for (auto& leaf_shape : result_shape.tuple_shapes()) {
+        if (leaf_shape.IsTuple()) {
+          needs_flattening = true;
+        }
+      }
+      if (needs_flattening) {
+        std::vector<HloInstruction*> elements;
+        FlattenIntoHelper(elements, builder, fusion);
+        builder.AddInstruction(HloInstruction::CreateTuple(elements));
+      }
+    }
 
     auto* new_entry = module->AddComputationAndUnifyNamesAndIds(
         builder.Build(), /*is_entry=*/false);

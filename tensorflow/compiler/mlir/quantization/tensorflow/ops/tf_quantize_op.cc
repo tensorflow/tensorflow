@@ -68,7 +68,7 @@ func::FuncOp PrepareFunctionRegister(PatternRewriter& rewriter, Value input_val,
                         {create_unknown_output_shape});
 
   func::FuncOp quantization_func =
-      rewriter.create<func::FuncOp>(input_op->getLoc(), func_name, func_type);
+      func::FuncOp::create(rewriter, input_op->getLoc(), func_name, func_type);
 
   OpBuilder::InsertionGuard guard = OpBuilder::InsertionGuard(rewriter);
   ArrayRef<Type> inputs = quantization_func.getFunctionType().getInputs();
@@ -88,7 +88,7 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
     func::FuncOp& quantization_func, Operation* quantized_op,
     StringRef func_name, IRRewriter::InsertPoint original_point,
     Type quantize_result_type) {
-  rewriter.create<func::ReturnOp>(input.getLoc(), ArrayRef<Value>({output}));
+  func::ReturnOp::create(rewriter, input.getLoc(), ArrayRef<Value>({output}));
 
   quantization_func.setVisibility(func::FuncOp::Visibility::Private);
   SymbolTable symbol_table(quantized_op->getParentOfType<ModuleOp>());
@@ -100,8 +100,8 @@ TF::PartitionedCallOp FinalizeFunctionRegister(
 
   rewriter.restoreInsertionPoint(original_point);
 
-  auto quantize_call = rewriter.create<TF::PartitionedCallOp>(
-      quantized_op->getLoc(), quantize_result_type, input,
+  auto quantize_call = TF::PartitionedCallOp::create(
+      rewriter, quantized_op->getLoc(), quantize_result_type, input,
       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr, func_name_attr,
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
   return quantize_call;
@@ -186,9 +186,9 @@ std::optional<Value> AddUniformQuantizeOps(PatternRewriter& rewriter,
 
   rewriter.setInsertionPointAfter(op);
   auto const_op =
-      rewriter.create<TF::ConstOp>(op.getLoc(), new_type, tensor_proto_attr);
-  auto new_identity_op = rewriter.create<TF::IdentityOp>(
-      op->getLoc(), const_op.getType(), const_op);
+      TF::ConstOp::create(rewriter, op.getLoc(), new_type, tensor_proto_attr);
+  auto new_identity_op = TF::IdentityOp::create(rewriter, op->getLoc(),
+                                                const_op.getType(), const_op);
   return new_identity_op.getResult();
 }
 
@@ -203,24 +203,25 @@ Operation* LogicsForUniformDequanization(PatternRewriter& rewriter,
   UnrankedTensorType create_unknown_input_shape =
       CreateUnknownShapeFromElementType(original_input_tensor_type);
   auto new_cast_op =
-      rewriter.create<TF::CastOp>(loc, create_unknown_input_shape, input_val);
+      TF::CastOp::create(rewriter, loc, create_unknown_input_shape, input_val);
   // TODO - b/278949920: Enable Per-Channel Quantization for XLA Opset
   auto qtype = mlir::dyn_cast<UniformQuantizedType>(quant_type);
   TensorType scale_type = RankedTensorType::get({}, rewriter.getF32Type());
-  Value scale_op = rewriter.create<TF::ConstOp>(
-      loc, scale_type,
+  Value scale_op = TF::ConstOp::create(
+      rewriter, loc, scale_type,
       DenseFPElementsAttr::get(scale_type,
                                {static_cast<float>(qtype.getScale())}));
 
   if (original_input_tensor_type.getElementType().isBF16()) {
     // Add bf16 cast op after scale to match with the next op's data
     // type.
-    scale_op = rewriter.create<TF::CastOp>(
-        loc, UnrankedTensorType::get(rewriter.getBF16Type()), scale_op);
+    scale_op = TF::CastOp::create(
+        rewriter, loc, UnrankedTensorType::get(rewriter.getBF16Type()),
+        scale_op);
   }
 
-  auto mul_op = rewriter.create<TF::MulOp>(loc, new_cast_op.getType(), scale_op,
-                                           new_cast_op);
+  auto mul_op = TF::MulOp::create(rewriter, loc, new_cast_op.getType(),
+                                  scale_op, new_cast_op);
   return mul_op;
 }
 

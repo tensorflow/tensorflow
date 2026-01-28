@@ -44,7 +44,7 @@ pybind_extension(
         ":intn",
         ":mxfloat",
         "@eigen_archive//:eigen3",
-        "@local_xla//third_party/py/numpy:headers",
+        "@xla//third_party/py/numpy:headers",
     ],
 )
 

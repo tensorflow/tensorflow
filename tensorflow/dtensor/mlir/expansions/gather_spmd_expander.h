@@ -188,9 +188,8 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
     new_operands[1] = indices;
 
     mlir::Operation* new_gather =
-        builder
-            .create<OpType>(op->getLoc(), op->getResultTypes(),
-                            mlir::ValueRange(new_operands), op->getAttrs())
+        OpType::create(builder, op->getLoc(), op->getResultTypes(),
+                       mlir::ValueRange(new_operands), op->getAttrs())
             .getOperation();
 
     op->getResult(0).replaceAllUsesWith(new_gather->getResult(0));

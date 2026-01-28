@@ -225,8 +225,8 @@ class AutotuneMap {
   template <class Group, class Params, class Cfg, class Hash>
   friend class AutotuneSingleton;
 
-  std::string GetActionSummary(StringPiece action, const Parameters& params,
-                               const Config& config) {
+  std::string GetActionSummary(absl::string_view action,
+                               const Parameters& params, const Config& config) {
     return strings::Printf("autotune_map %s %s: %s -> (%s)", name_.c_str(),
                            string(action).c_str(), params.ToString().c_str(),
                            config.ToString().c_str());

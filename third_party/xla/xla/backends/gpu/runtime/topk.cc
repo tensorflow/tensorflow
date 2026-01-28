@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/topk_kernel.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -63,9 +63,8 @@ size_t EstimateOptimalNumThreads(size_t n, size_t k, size_t batch_size) {
 }
 
 // Returns a packing spec for invoking the TopK kernel.
-se::KernelArgumentsPackingSpec CreateTopKArgsPacking(size_t num_elements,
-                                                     size_t k) {
-  se::KernelArgumentsPackingSpec spec;
+se::KernelArgsPackingSpec CreateTopKArgsPacking(size_t num_elements, size_t k) {
+  se::KernelArgsPackingSpec spec;
   spec.AddAddressArgument(0);  // data
   spec.AddConstantArgument(num_elements);
   spec.AddAddressArgument(1);  // top_elements

@@ -47,7 +47,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 4 + s0),"
   "domain: d0 in [0, 63], s0 in [0, 3]">
-func.func @simple_read(%arg0: tensor<256xf16>) -> (f16) {
+func.func @simple_read2(%arg0: tensor<256xf16>) -> (f16) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c4 = arith.constant 4 : index
@@ -65,7 +65,7 @@ func.func @simple_read(%arg0: tensor<256xf16>) -> (f16) {
   return %outer : f16
 }
 // CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 * 4), domain: d0 in [0, 63]">
-// CHECK-LABEL: @simple_read
+// CHECK-LABEL: @simple_read2
 // CHECK-SAME:     (%[[ARG0:.*]]: tensor
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
@@ -82,7 +82,7 @@ func.func @simple_read(%arg0: tensor<256xf16>) -> (f16) {
 
 #map = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
   "domain: d0 in [0, 63], s0 in [0, 7]">
-func.func @simple_read(%arg0: tensor<512xi8>) -> (i8) {
+func.func @simple_read3(%arg0: tensor<512xi8>) -> (i8) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c8 = arith.constant 8 : index
@@ -100,7 +100,7 @@ func.func @simple_read(%arg0: tensor<512xi8>) -> (i8) {
   return %outer : i8
 }
 // CHECK: #[[$MAP:.*]] = #xla.indexing_map<"(d0) -> (d0 * 8), domain: d0 in [0, 63]">
-// CHECK-LABEL: @simple_read
+// CHECK-LABEL: @simple_read3
 // CHECK-SAME:     (%[[ARG0:.*]]: tensor
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
@@ -112,6 +112,31 @@ func.func @simple_read(%arg0: tensor<512xi8>) -> (i8) {
 // CHECK-NEXT:    scf.for %[[J:.*]] = %[[C0]]
 // CHECK-NEXT:      vector.extract %[[V]][%[[J]]]
 // CHECK-NEXT:      addi
+
+// -----
+
+#map = #xla.indexing_map<"(d0)[s0] -> ((((d0 * 4 + s0) floordiv 3) mod 16) * 3 + (d0 * 4 + s0) mod 3),"
+  "domain: d0 in [0, 15], s0 in [0, 3]">
+func.func @read_with_non_simplified_indexing_map(%arg0: tensor<48xi8>) -> (i8) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c16 = arith.constant 16 : index
+  %cst = arith.constant 0 : i8
+  %outer = scf.for %i = %c0 to %c16 step %c1 iter_args(%iter = %cst) -> i8 {
+    %inner = scf.for %j = %c0 to %c4 step %c1 iter_args(%iter1 = %iter) -> i8 {
+      %idx = xla.apply_indexing #map(%i)[%j]
+      %extracted = tensor.extract %arg0[%idx] : tensor<48xi8>
+      %added = arith.addi %iter1, %extracted : i8
+      scf.yield %added : i8
+    }
+    scf.yield %inner : i8
+  }
+  return %outer : i8
+}
+// Currently we are not able to vectorize this!
+// CHECK-LABEL: @read_with_non_simplified_indexing_map
+// CHECK-NOT: vector.transfer_read
 
 // -----
 

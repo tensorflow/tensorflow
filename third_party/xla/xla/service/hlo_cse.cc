@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -238,6 +239,14 @@ bool HloCSE::ShouldEliminateInstruction(const HloInstruction* instruction) {
       instruction->opcode() != HloOpcode::kPartitionId &&
       instruction->opcode() != HloOpcode::kReplicaId) {
     return false;
+  }
+
+  const FrontendAttributes& frontend_attributes =
+      instruction->frontend_attributes();
+  if (frontend_attributes.IsInitialized()) {
+    if (frontend_attributes.map().contains(kMustFuseAttr)) {
+      return false;
+    }
   }
 
   // Skip instructions which have side effects.

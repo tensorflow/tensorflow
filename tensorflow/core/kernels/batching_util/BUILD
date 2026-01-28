@@ -126,8 +126,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/platform:criticality",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -142,8 +142,8 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/platform:criticality",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -223,11 +223,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/platform:criticality",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -247,10 +247,10 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//xla/tsl/platform:criticality",
+        "@tsl//tsl/profiler/lib:connected_traceme",
+        "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/platform:criticality",
     ],
     alwayslink = 1,
 )
@@ -478,7 +478,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//xla/tsl/platform:criticality",
+        "@xla//xla/tsl/platform:criticality",
     ],
 )
 
@@ -495,7 +495,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -529,13 +529,13 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:status",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
-        "@local_xla//xla/tsl/lib/monitoring:test_utils",
-        "@local_xla//xla/tsl/platform:criticality",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:refcount",
+        "@tsl//tsl/platform:status",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/monitoring:cell_reader",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
+        "@xla//xla/tsl/platform:criticality",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

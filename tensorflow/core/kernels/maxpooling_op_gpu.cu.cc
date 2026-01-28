@@ -330,20 +330,24 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     include_batch_in_index: whether to include batch dimension in flattened
 //         index of `argmax`.
 template <typename dtype>
-__global__ void MaxPoolGradBackward(const int nthreads,
-                                    const dtype* __restrict__ top_diff,
-                                    const int64_t* __restrict__ mask,
-                                    const int top_offset,
-                                    const int bottom_offset,
-                                    dtype* __restrict__ bottom_diff,
-                                    const bool include_batch_in_index) {
+__global__ void MaxPoolGradBackward(
+    const int nthreads, const dtype* __restrict__ top_diff,
+    const int64_t* __restrict__ mask, const int top_offset,
+    const int bottom_offset, dtype* __restrict__ bottom_diff,
+    const bool include_batch_in_index, const int input_size) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     const int offset =
         include_batch_in_index ? 0 : (index / bottom_offset) * top_offset;
-    bottom_diff[index] = top_diff[offset + mask[index]];
+    int64_t index_value = mask[index];
+    int64_t read_index = offset + index_value;
+
+    if (read_index >= 0 && read_index < input_size) {
+      bottom_diff[index] = top_diff[read_index];
+    } else {
+      bottom_diff[index] = dtype(0);
+    }
   }
 }
-
 #undef GPU_1D_KERNEL_LOOP
 }  // namespace
 
@@ -462,7 +466,7 @@ bool MaxPoolGradBackwardWithArgmax<T>::operator()(
   TF_CHECK_OK(GpuLaunchKernel(
       MaxPoolGradBackward<T>, config.block_count, config.thread_per_block, 0,
       d.stream(), output_size, top_diff, mask, top_offset, bottom_offset,
-      bottom_diff, include_batch_in_index));
+      bottom_diff, include_batch_in_index, input_size));
   return d.ok();
 }
 

@@ -113,9 +113,6 @@ static auto FindRepeatedFieldValue(google::protobuf::RepeatedField<int>* list, T
 }
 
 // Returns a `DebugOptions` setter for repeated enum flag of type `T`.
-// NOLINTBEGIN(readability-function-cognitive-complexity)
-// We disable the cognitive complexity check here because we need to return a
-// lambda function.
 template <typename T>
 static auto SetterForRepeatedEnum(
     absl::string_view flag_name, absl::string_view enum_prefix,
@@ -159,7 +156,6 @@ static auto SetterForRepeatedEnum(
     return true;
   };
 }
-// NOLINTEND(readability-function-cognitive-complexity)
 
 }  // namespace
 
@@ -244,19 +240,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::DYNAMIC_SLICE_FUSION);
-  opts.add_xla_gpu_enable_command_buffer(
-      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::LHS);
   opts.set_xla_gpu_command_buffer_unroll_loops(false);
   opts.set_xla_cmd_buffer_trace_cache_size(16);
 
-  opts.set_xla_gpu_collectives_use_persistent_cliques(false);
-
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
   opts.set_xla_gpu_enable_fast_min_max(false);
-  opts.set_xla_gpu_strict_conv_algorithm_picker(true);
 
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
@@ -449,17 +440,19 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
   opts.set_xla_gpu_enable_scatter_determinism_expander(false);
+  opts.set_xla_gpu_unsupported_disable_nested_gemm_fusions(false);
+  opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
-  opts.set_xla_gpu_unsupported_enable_all_reduce_decomposer(false);
   opts.set_xla_gpu_experimental_use_autotuner_pass(false);
   opts.set_xla_gpu_experimental_enable_fusion_autotuner(true);
   opts.set_xla_gpu_experimental_allow_unroll_factor_eight(true);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
-  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
+  // TODO(b/449025971): Set to true once the issue is fixed.
+  opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
   opts.set_xla_disable_automatic_host_compute_offload(false);
   opts.set_xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled(
@@ -473,15 +466,23 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
+  opts.set_xla_early_exit_with_layouts(false);
+  opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
 
-  opts.add_xla_gpu_experimental_autotune_backends(
-      DebugOptions::AUTOTUNE_BACKEND_CUDNN);
   opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_TRITON);
   opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_CUBLAS);
   opts.add_xla_gpu_experimental_autotune_backends(
       DebugOptions::AUTOTUNE_BACKEND_CUBLASLT);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_CUDNN);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_ROCBLAS);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT);
+  opts.add_xla_gpu_experimental_autotune_backends(
+      DebugOptions::AUTOTUNE_BACKEND_MIOPEN);
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
@@ -1280,12 +1281,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_crash_on_verification_failures(),
       "Crashes the program on extra verification failures, e.g. cuDNN cross "
       "checking failures"));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_strict_conv_algorithm_picker",
-      bool_setter_for(&DebugOptions::set_xla_gpu_strict_conv_algorithm_picker),
-      debug_options->xla_gpu_strict_conv_algorithm_picker(),
-      "Upgrades warnings to failures when all algorithms fail conv "
-      "autotuning."));
+  flag_list->push_back(tsl::Flag("xla_gpu_strict_conv_algorithm_picker",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_autotune_level",
       int32_setter_for(&DebugOptions::set_xla_gpu_autotune_level),
@@ -1721,12 +1719,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_cublaslt),
                 debug_options->xla_gpu_enable_cublaslt(),
                 "Use cuBLASLt for GEMMs when possible."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_collectives_use_persistent_cliques",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_collectives_use_persistent_cliques),
-      debug_options->xla_gpu_collectives_use_persistent_cliques(),
-      "Use persistent per-process XLA:GPU collectives cliques"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_command_buffer",
       SetterForRepeatedEnum<DebugOptions::CommandBufferCmdType>(
@@ -2410,6 +2402,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "  '+cudnn,-cublas' (adds/removes from defaults)\n"
       "Available: cudnn, triton, cublas, cublaslt."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_all_fusions_with_triton",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_all_fusions_with_triton),
+      debug_options->xla_gpu_experimental_all_fusions_with_triton(),
+      "Experimental: If true, autotune all fusions with block level emitter."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_gemm_autotuner_override_file",
       string_setter_for(
           &DebugOptions::set_xla_gpu_gemm_autotuner_override_file),
@@ -2539,11 +2537,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(
           &DebugOptions::set_xla_gpu_enable_scatter_determinism_expander),
       debug_options->xla_gpu_enable_scatter_determinism_expander(),
-      "Enable the scatter determinism expander, an optimized pass that "
-      "rewrites scatter operations to ensure deterministic behavior with high "
-      "performance."
+      "Makes scatter ops deterministic and enables the use of the scatter "
+      "determinism expander. This is an optimized pass that rewrites scatter "
+      "operations to ensure deterministic behavior with high performance. If "
+      "the optimization pass does not support a particular scater op, it will "
+      "be made deterministic using a slower implementation. "
       "Note that even when this flag is disabled, scatter operations may still "
-      "be deterministic, although with additional overhead."));
+      "be deterministic, with the slower implemntation. This is the case when "
+      "'xla_gpu_exclude_nondeterministic_ops' is enabled."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_enable_all_reduce_decomposer",
       bool_setter_for(
@@ -2570,6 +2571,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Internal: Enable the RaggedAllToAllMultiHostDecomposer, an experimental "
       "pass to decompose ragged-all-to-all operation in intra-host and "
       "inter-host parts."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_unsupported_disable_nested_gemm_fusions",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_unsupported_disable_nested_gemm_fusions),
+      debug_options->xla_gpu_unsupported_disable_nested_gemm_fusions(),
+      "Enable the new pipeline that does not use nesting at HLO level"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_unsupported_override_fast_interconnect_slice_size",
       int64_setter_for(
@@ -2842,6 +2849,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "'warning', and 'fail'. 'none' is the default. If other than 'none' "
       "value is provided, additional thunks will be added to detect and "
       "warn or fail the execution if Infs are detected."));
+  flag_list->push_back(tsl::Flag(
+      "xla_early_exit_with_layouts",
+      bool_setter_for(&DebugOptions::set_xla_early_exit_with_layouts),
+      debug_options->xla_early_exit_with_layouts(),
+      "If true, exit early from the layout assignment pass after assigning "
+      "layouts to entry computations."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

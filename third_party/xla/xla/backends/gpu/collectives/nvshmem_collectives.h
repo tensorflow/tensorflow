@@ -52,13 +52,6 @@ class NvshmemCollectives : public GpuCollectives {
 
   bool IsImplemented() const final { return true; }
 
-  bool IsGlobalConfig() const final { return false; }
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) final {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   CreateCommunicators(const CliqueKey& clique_key,
                       const std::optional<CliqueIds>& clique_ids,
@@ -76,7 +69,8 @@ class NvshmemCollectives : public GpuCollectives {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::Status InitializeTopology(Topology topology) final;
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final;
 };
 
 }  // namespace xla::gpu

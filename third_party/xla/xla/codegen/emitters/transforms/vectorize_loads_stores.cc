@@ -42,11 +42,13 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {

@@ -21,18 +21,21 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "riegeli/bytes/string_writer.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/compiler.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util/split_proto/split_gpu_executable_writer.h"
 
 namespace xla::gpu {
 
@@ -42,7 +45,7 @@ namespace xla::gpu {
 // Unlike `LegacyGpuAotCompilationResult`, this result contains the entire
 // optimized executable, including the Thunks, as opposed to just the optimized
 // HLO.
-class GpuAotCompilationResult : public AotCompilationResult {
+class GpuAotCompilationResult : public CompiledModule {
  public:
   static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromProto(
       GpuExecutableProto executable) {
@@ -55,10 +58,9 @@ class GpuAotCompilationResult : public AotCompilationResult {
   }
 
   absl::StatusOr<std::string> SerializeAsString() const final {
-    std::string serialized = executable_.SerializeAsString();
-    if (serialized.empty()) {
-      return absl::InternalError("Failed to serialize GpuExecutableProto.");
-    }
+    std::string serialized;
+    TF_RETURN_IF_ERROR(WriteSplitGpuExecutable(
+        executable_, std::make_unique<riegeli::StringWriter<>>(&serialized)));
     return serialized;
   }
 
@@ -73,7 +75,8 @@ class GpuAotCompilationResult : public AotCompilationResult {
     };
     return GpuExecutable::FromProto(
         executable_, stream_exec->GetDeviceDescription(),
-        stream_exec->GetPlatform()->Name(), symbol_resolver);
+        stream_exec->GetPlatform()->Name(), GetDebugOptionsFromFlags(),
+        symbol_resolver);
   }
 
   const HloModule* optimized_module() const final { return hlo_module_.get(); };

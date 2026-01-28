@@ -38,8 +38,17 @@ jobs:
     timeout-minutes: 10
     continue-on-error: true
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be  # v1.3.1
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
       - name: "Checking out repository"
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: "Install bazelisk"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"

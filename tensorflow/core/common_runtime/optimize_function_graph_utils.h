@@ -43,8 +43,8 @@ constexpr absl::Duration kCachingThresholdDuration = absl::Seconds(3);
 // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
 // corresponding resource lives. This ensures that the Placer assigns ops that
 // access these resources to the appropriate devices.
-absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
-                            const std::vector<string>& output_devices,
+absl::Status PinArgsAndRets(const std::vector<std::string>& input_devices,
+                            const std::vector<std::string>& output_devices,
                             const DeviceSet& device_set,
                             const std::vector<Node*>& arg_nodes,
                             const std::vector<Node*>& ret_nodes,
@@ -55,7 +55,7 @@ absl::Status PinArgsAndRets(const std::vector<string>& input_devices,
 // before graph partitioning); returns error if optimization fails. Note that
 // the `input_lib_def` will be used only if the lib_def in `options` is nullptr.
 absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
@@ -69,7 +69,7 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 // passes fails.
 absl::StatusOr<OptimizedFunctionGraphInfo>
 OptimizeFunctionGraphOrReadFromFileCache(
-    const string& function_name, AttrSlice attrs,
+    const std::string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
@@ -80,7 +80,7 @@ OptimizeFunctionGraphOrReadFromFileCache(
 // subgraph result (maps from device name to the subgraph); returns error if any
 // optimization or partitioning step fails.
 absl::StatusOr<
-    std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+    std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
     const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,

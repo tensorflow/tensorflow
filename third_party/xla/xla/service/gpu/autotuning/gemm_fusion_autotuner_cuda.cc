@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

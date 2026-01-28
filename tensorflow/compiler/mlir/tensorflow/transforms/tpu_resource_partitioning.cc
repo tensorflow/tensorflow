@@ -201,15 +201,15 @@ LogicalResult PartitionResourceReadsWrites(
       partitioned_output_types.push_back(GetResourceSubtype(input.getType()));
     }
 
-    auto partitioned_output = builder.create<TF::TPUPartitionedOutputV2Op>(
-        cluster_func->getLoc(), partitioned_output_types, result,
+    auto partitioned_output = TF::TPUPartitionedOutputV2Op::create(
+        builder, cluster_func->getLoc(), partitioned_output_types, result,
         partitioned_input.getPartitionDimsAttr(),
         partitioned_input.get_XlaShardingAttr(),
         partitioned_input.get_XlaShardingV2Attr());
     for (auto [i, value] : llvm::enumerate(partitioned_output.getOutput())) {
       const auto& resource = packed_input ? inputs[0] : inputs[i];
-      builder.create<TF::AssignVariableOp>(
-          assign_var->getLoc(), /*resource=*/resource, /*value=*/value);
+      TF::AssignVariableOp::create(builder, assign_var->getLoc(),
+                                   /*resource=*/resource, /*value=*/value);
     }
     assign_var.erase();
   }
@@ -243,16 +243,16 @@ LogicalResult PartitionResourceReadsWrites(
       // If a read variable op already doesn't exist for this input, create it
       auto search = read_variable_ops.find(input);
       if (search == read_variable_ops.end()) {
-        auto partitioned_read = builder.create<TF::ReadVariableOp>(
-            read_var->getLoc(), GetResourceSubtype(input), input);
+        auto partitioned_read = TF::ReadVariableOp::create(
+            builder, read_var->getLoc(), GetResourceSubtype(input), input);
         search = read_variable_ops.insert({input, partitioned_read.getValue()})
                      .first;
       }
       partitioned_reads.push_back(search->second);
     }
 
-    auto partitioned_read = builder.create<TF::TPUPartitionedInputV2Op>(
-        partitioned_input->getLoc(), read_var.getValue().getType(),
+    auto partitioned_read = TF::TPUPartitionedInputV2Op::create(
+        builder, partitioned_input->getLoc(), read_var.getValue().getType(),
         partitioned_reads, partitioned_input.getPartitionDimsAttr(),
         partitioned_input.getIsPackedAttr(),
         partitioned_input.get_XlaShardingAttr(),

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-// Next ID: 15
+// Next ID: 16
 message ProfileOptions {
   // Some default value of option are not proto3 default value. Use this version
   // to determine if we should use default option value instead of proto3
@@ -100,6 +100,9 @@ message ProfileOptions {
   // Identifier of the profiling session. This will be used as the subdirectory
   // under the repository path. If not set, the current timestamp will be used.
   string session_id = 14;
+
+  // If set, this hostname will be used to name the profile file.
+  string override_hostname = 15;
 }
 
 // Options for remote profiler session manager.

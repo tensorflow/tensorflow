@@ -330,9 +330,9 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
     Type expressed_type = const_op->getResult(0).getType();
     Type cast_type = quant_type.castFromExpressedType(expressed_type);
     rewriter.setInsertionPointAfter(const_op);
-    auto q = rewriter.create<Q>(const_op->getLoc(), cast_type,
-                                const_op->getResult(0));
-    auto dq = rewriter.create<DQ>(const_op->getLoc(), expressed_type, q);
+    auto q = Q::create(rewriter, const_op->getLoc(), cast_type,
+                       const_op->getResult(0));
+    auto dq = DQ::create(rewriter, const_op->getLoc(), expressed_type, q);
     op.setOperand(input_index, dq.getResult());
     return success();
   }
@@ -400,7 +400,7 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
     rewriter.setInsertionPointAfter(stats_op);
     Type result_type = quant_type.castFromExpressedType(stats_op.getType());
     auto q =
-        rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.getArg());
+        Q::create(rewriter, stats_op.getLoc(), result_type, stats_op.getArg());
     rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
     return success();
   }
@@ -639,10 +639,10 @@ class PropagateReshapedPerAxisQuantDim
         reshape_op.getLoc(), reshape_op.getType().getShape(), new_element_type);
 
     rewriter.setInsertionPointAfter(reshape_op);
-    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
-        reshape_op.getLoc(), new_tensor_type, q_op.getArg());
-    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
-        new_q_op.getLoc(), reshape_op.getResult().getType(),
+    auto new_q_op = quantfork::QuantizeCastOp::create(
+        rewriter, reshape_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = quantfork::DequantizeCastOp::create(
+        rewriter, new_q_op.getLoc(), reshape_op.getResult().getType(),
         new_q_op.getResult());
     reshape_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
     new_q_op.setOperand(reshape_op.getResult());
@@ -733,10 +733,10 @@ class PropagateTransposedPerAxisQuantDim
         new_element_type);
 
     rewriter.setInsertionPointAfter(transpose_op);
-    auto new_q_op = rewriter.create<quantfork::QuantizeCastOp>(
-        transpose_op.getLoc(), new_tensor_type, q_op.getArg());
-    auto new_dq_op = rewriter.create<quantfork::DequantizeCastOp>(
-        new_q_op.getLoc(), transpose_op.getResult().getType(),
+    auto new_q_op = quantfork::QuantizeCastOp::create(
+        rewriter, transpose_op.getLoc(), new_tensor_type, q_op.getArg());
+    auto new_dq_op = quantfork::DequantizeCastOp::create(
+        rewriter, new_q_op.getLoc(), transpose_op.getResult().getType(),
         new_q_op.getResult());
     transpose_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
     new_q_op.setOperand(transpose_op.getResult());

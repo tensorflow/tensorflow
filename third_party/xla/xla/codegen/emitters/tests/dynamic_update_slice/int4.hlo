@@ -4,19 +4,19 @@
 // RUN: cpu_test_correctness %s
 
 fusion {
-  input = s4[100,9] parameter(0)
-  slice = s4[100,6] parameter(1)
+  input = s4[100,9]{1,0:E(4)} parameter(0)
+  slice = s4[100,6]{1,0:E(4)} parameter(1)
   c0 = s32[] constant(0)
-  ROOT dus = s4[100,9] dynamic-update-slice(input, slice, c0, c0)
+  ROOT dus = s4[100,9]{1,0:E(4)} dynamic-update-slice(input, slice, c0, c0)
 }
 
 ENTRY main {
-  %param_0 = s4[100,9] parameter(0)
-  %param_1 = s4[100,6] parameter(1)
+  %param_0 = s4[100,9]{1,0:E(4)} parameter(0)
+  %param_1 = s4[100,6]{1,0:E(4)} parameter(1)
   // On CPU the input/output alias, this is resulting in a double free so we
   // need to copy the input.
-  %param_0_copy = s4[100,9] copy(%param_0)
-  ROOT %fusion = s4[100,9] fusion(%param_0_copy, %param_1), kind=kLoop, calls=fusion
+  %param_0_copy = s4[100,9]{1,0:E(4)} copy(%param_0)
+  ROOT %fusion = s4[100,9]{1,0:E(4)} fusion(%param_0_copy, %param_1), kind=kLoop, calls=fusion
 }
 
 // CHECK: vector.transfer_read

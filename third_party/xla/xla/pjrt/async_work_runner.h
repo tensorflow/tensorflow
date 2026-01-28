@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_ASYNC_WORK_RUNNER_H_
 #define XLA_PJRT_ASYNC_WORK_RUNNER_H_
 
+#include <memory>
+
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -27,6 +30,7 @@ namespace xla {
 // pool (or concurrent work queue).
 class AsyncWorkRunner {
  public:
+  AsyncWorkRunner();
   virtual ~AsyncWorkRunner() = default;
 
   // `work` euqueued by `Schedule` may run on the calling thread.
@@ -34,6 +38,14 @@ class AsyncWorkRunner {
   virtual void ScheduleWhenReady(
       absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
       absl::AnyInvocable<void() &&> work) = 0;
+
+  // Returns an tsl::Executor implementation that is backed by this async work
+  // runner. The returned executor is owned by the async work runner and its
+  // lifetime is bound to the lifetime of the thread pool itself.
+  virtual tsl::Executor& AsExecutor() { return *executor_; }
+
+ private:
+  std::unique_ptr<tsl::Executor> executor_;
 };
 
 }  // namespace xla

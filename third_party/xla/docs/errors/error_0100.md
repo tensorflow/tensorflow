@@ -1,42 +1,53 @@
 # Error code: 0100
 
-**Category:** Buffer allocation failure - TPU
+**Category:** Runtime: Buffer Allocation Failure
 
-**Type:** Runtime
+This error indicates that XLA:TPU runtime’s memory allocator failed to find a
+suitable block of memory on the accelerator’s HBM for the requested allocation.
 
-## Error log example
+**Sample Error Message:**
 
 ```
 ValueError: RESOURCE_EXHAUSTED: Error allocating device buffer: Attempting to allocate 8.00M. That was not possible. There are 6.43M free.; (0x0x1_HBM0)
 ```
 
-## Why do these happen?
+**XLA backends:** TPU
 
-XLA:TPU runtime’s memory allocator failed to find a suitable block of memory on
-the accelerator’s HBM for the requested operation. These operations are
-typically user initiated buffer allocations via
+## Overview
+
+This error is thrown on
+
+- failures of user-initiated buffer allocation via
 [`jax.device_put`](https://docs.jax.dev/en/latest/_autosummary/jax.device_put.html)
-or allocations for program outputs. These failures stem from a couple of
-reasons: - Out of Memory (OOM) - The user is trying to allocate a chunk of
+or
+- failures of user-scheduled program's output allocations.
+
+These failures are typically caused due to a couple of reasons:
+
+- **Out of Memory (OOM):** The user is trying to allocate a chunk of
 memory that is larger than the total amount of free memory available on the
-TPU’s HBM. - Memory Fragmentation - The allocation fails because **no single
+TPU’s HBM.
+- **Memory Fragmentation:** The allocation fails because **no single
 contiguous free block** in the memory space is large enough to satisfy the
 requested size. The total amount of free memory is sufficient for the
 allocation, but it is scattered across the memory space in small, non-contiguous
 blocks.
 
 The TPU runtime has a number of mechanisms in-place to retry allocation failures
-including: - If there are queued deallocations, the runtime retries failed
-allocations, - On OOMs caused by a fragmentation the runtime can automatically
-trigger a defragmentation and a retry. - The TPU runtime prioritizes buffer
-allocations over keeping programs loaded. If a buffer allocation fails due to
-insufficient HBM, the system will evict loaded TPU programs until enough memory
-is available for the buffer.
+including:
+
+- If there are queued deallocations, the runtime retries failed
+allocations,
+- On OOMs caused by a fragmentation the runtime can automatically
+trigger a defragmentation and a retry.
+- The TPU runtime prioritizes buffer allocations over keeping programs loaded.
+If a buffer allocation fails due to insufficient HBM, the system will evict
+loaded TPU programs until enough memory is available for the buffer.
 
 So an error encountered after the above mitigations typically require user
 action.
 
-## How can a user fix their program when they do happen?
+## Debugging
 
 -   Reduce your model's memory footprint:
     -   Decrease Batch Size: Reducing the batch size directly lowers memory
@@ -61,7 +72,7 @@ action.
         intended. Holding on to `jax.Array` objects might prevent automatic
         de-allocation even after program compilation is completed.
 
-## How can a user debug these failures?
+### Tooling
 
 Enable the `tpu_log_allocations_on_oom` flag for which the allocator will dump a
 detailed report of all current allocations when an OOM occurs, which can be

@@ -103,7 +103,7 @@ GpuNormDescriptorProto GpuNormDescriptor::ToProto() const {
   if (dbias_shape.has_value()) {
     *proto.mutable_dbias_shape() = dbias_shape->ToProto();
   }
-  proto.set_scratch_size(scratch_size);
+  *proto.mutable_scratch_shape() = scratch_shape.ToProto();
   return proto;
 }
 
@@ -141,7 +141,8 @@ absl::StatusOr<GpuNormDescriptor> GpuNormDescriptor::FromProto(
     TF_ASSIGN_OR_RETURN(descriptor.dbias_shape,
                         Shape::FromProto(proto.dbias_shape()));
   }
-  descriptor.scratch_size = proto.scratch_size();
+  TF_ASSIGN_OR_RETURN(descriptor.scratch_shape,
+                      Shape::FromProto(proto.scratch_shape()));
   return descriptor;
 }
 

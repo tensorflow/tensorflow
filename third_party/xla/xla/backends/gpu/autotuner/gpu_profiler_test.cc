@@ -132,7 +132,8 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
         PlatformUtil::GetStreamExecutors(platform).value();
     stream_exec_ = executors[0];
     allocator_ =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec_);
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            stream_exec_);
   }
   se::StreamExecutor* stream_exec_;
   std::unique_ptr<se::DeviceAddressAllocator> allocator_;
@@ -232,7 +233,7 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreSame) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_exec_);
   TF_ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer output,
                           CreateTestBuffer(allocator.get(), stream_exec_,
@@ -249,7 +250,7 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
   auto profiler = GpuProfiler::Create(stream_exec_, options, allocator_.get());
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_exec_);
   TF_ASSERT_OK_AND_ASSIGN(ScopedShapedBuffer output,
                           CreateTestBuffer(allocator.get(), stream_exec_,
@@ -267,7 +268,7 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreSame) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_exec_);
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer output,
@@ -287,7 +288,7 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWithTupleShapeAreDifferent) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
-      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_exec_);
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer reference,

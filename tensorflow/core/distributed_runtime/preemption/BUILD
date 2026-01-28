@@ -14,7 +14,7 @@ cc_library(
     name = "preemption_sync_manager",
     hdrs = ["preemption_sync_manager.h"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
+        "@xla//xla/tsl/distributed_runtime/preemption:preemption_sync_manager",
     ],
 )
 
@@ -35,7 +35,7 @@ tf_kernel_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )

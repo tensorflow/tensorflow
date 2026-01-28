@@ -253,6 +253,9 @@ class Stream {
   // Returns the RocmComputeCapability for this stream.
   virtual RocmComputeCapability GetRocmComputeCapability() const = 0;
 
+  // Returns the OneAPIComputeCapability for this stream.
+  virtual OneAPIComputeCapability GetOneAPIComputeCapability() const = 0;
+
   // Gets priority for a stream.
   virtual std::variant<StreamPriority, int> priority() const = 0;
 

@@ -57,7 +57,7 @@ class HloExpandTest : public ::testing::Test {
 
 TEST_F(HloExpandTest, CholeskyHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path};
   HloOpt(additional_flags);
 
@@ -76,7 +76,7 @@ ENTRY %main.3 () -> f64[3,3] {
 
 TEST_F(HloExpandTest, SpmdHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "spmd.hlo");
+                                           "tests", "data", "spmd.hlo");
   std::vector<std::string> additional_flags = {"--spmd_expander", hlo_path};
   HloOpt(additional_flags);
 
@@ -104,7 +104,7 @@ ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
 
 TEST_F(HloExpandTest, CholeskyExpanderHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path,
                                                "--expand_all"};
   HloOpt(additional_flags);
@@ -131,7 +131,7 @@ TEST_F(HloExpandTest, InvalidArgc) {
 
 TEST_F(HloExpandTest, InvalidInputFileExtension) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "foo.bar");
+                                           "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {hlo_path};
   HloOpt(additional_flags);
 
@@ -157,9 +157,9 @@ TEST_F(HloExpandTest, InvalidInputFormat) {
 
 TEST_F(HloExpandTest, InvalidOutputFileExtension) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
-  std::string output_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                              "tools", "tests", "foo.bar");
+                                           "tests", "data", "cholesky.hlo");
+  std::string output_path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "tools", "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {"--input_format=", hlo_path,
                                                "--output_file=" + output_path};
   HloOpt(additional_flags);
@@ -174,7 +174,7 @@ TEST_F(HloExpandTest, InvalidOutputFileExtension) {
 
 TEST_F(HloExpandTest, InvalidOutputFormat) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=", hlo_path,
                                                "--output_format=foo"};
   HloOpt(additional_flags);
@@ -189,7 +189,7 @@ TEST_F(HloExpandTest, InvalidOutputFormat) {
 
 TEST_F(HloExpandTest, InvalidFile) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "foo.bar");
+                                           "tests", "data", "foo.bar");
   std::vector<std::string> additional_flags = {"--input_format=hlo", hlo_path};
   HloOpt(additional_flags);
 
@@ -202,7 +202,7 @@ TEST_F(HloExpandTest, InvalidFile) {
 
 TEST_F(HloExpandTest, UnsupportedOutputFormat) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "cholesky.hlo");
+                                           "tests", "data", "cholesky.hlo");
   std::vector<std::string> additional_flags = {"--input_format=hlo",
                                                "--output_format=pb", hlo_path};
   HloOpt(additional_flags);
@@ -217,8 +217,9 @@ TEST_F(HloExpandTest, UnsupportedOutputFormat) {
 }
 
 TEST_F(HloExpandTest, VerificationFailure) {
-  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
-                                           "tests", "invalid_concat.hlo");
+  std::string hlo_path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "tests", "data",
+                        "invalid_concat.hlo");
   std::vector<std::string> additional_flags = {"--verify_hlo", hlo_path};
   HloOpt(additional_flags);
 

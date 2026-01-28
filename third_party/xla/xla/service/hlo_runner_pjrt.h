@@ -87,6 +87,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> DeserializeExecutable(
       absl::string_view serialized) const override;
 
+  using HloRunnerInterface::ExecuteWithExecutable;
   absl::StatusOr<std::vector<absl::StatusOr<Literal>>> ExecuteWithExecutable(
       OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
       int64_t num_repeats) override;

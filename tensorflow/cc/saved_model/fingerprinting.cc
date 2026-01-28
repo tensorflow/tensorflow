@@ -44,9 +44,9 @@ limitations under the License.
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
 #include "tensorflow/cc/saved_model/fingerprinting_utils.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
-#endif
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#endif
 // IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
 // IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 
@@ -152,12 +152,23 @@ absl::StatusOr<uint64_t> RegularizeAndHashSavedObjectGraph(
   return result_hash;
 }
 
+void SetFingerprintUUID(FingerprintDef* fingerprint_def) {
+  // Assign a random UUID to the fingerprint. This can happen regardless of
+  // whether the SavedModel was read successfully. It serves as a unique
+  // identifier for the model even in situations where the SavedModel is
+  // non-existent or unreadable.
+  fingerprint_def->set_uuid(CreateRandomUUID());
+}
+
 // Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
 // (.index) in `export_dir`.
 absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
     absl::string_view export_dir, std::string pb_file) {
   // Version of the code that produced the fingerprint.
-  const int kFingerprintProducer = 1;
+  // Note corresponding version definition in
+  // FingerprintingUtils.cc:CreateFingerprintDefCpb() and in
+  // Fingerprinting.cc:CreateReducedFingerprintDef()
+  const int kFingerprintProducer = 4;
 
   SavedModel saved_model;
   TF_RETURN_IF_ERROR(ReadBinaryProto(Env::Default(), pb_file, &saved_model));
@@ -182,8 +193,23 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
   fingerprint_def.set_saved_object_graph_hash(object_graph_hash);
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
-  // Assign a random UUID to the fingerprint.
-  fingerprint_def.set_uuid(CreateRandomUUID());
+  SetFingerprintUUID(&fingerprint_def);
+  // Set version of the fingerprint.
+  VersionDef* version = fingerprint_def.mutable_version();
+  version->set_producer(kFingerprintProducer);
+
+  return fingerprint_def;
+}
+
+absl::StatusOr<FingerprintDef> CreateReducedFingerprintDef() {
+  // Version of the code that produced the fingerprint.
+  // Note corresponding version definition in
+  // FingerprintingUtils.cc:CreateFingerprintDefCpb() and in
+  // Fingerprinting.cc:CreateFingerprintDefPb()
+  const int kFingerprintProducer = 5;
+
+  FingerprintDef fingerprint_def;
+  SetFingerprintUUID(&fingerprint_def);
   // Set version of the fingerprint.
   VersionDef* version = fingerprint_def.mutable_version();
   version->set_producer(kFingerprintProducer);
@@ -198,15 +224,25 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
   std::string prefix = io::JoinPath(export_dir, kSavedModelFilenamePrefix);
 
 #if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
-  TF_ASSIGN_OR_RETURN(bool only_contains_pb,
-                      tools::proto_splitter::OnlyContainsPb(prefix));
-  if (only_contains_pb) {
-    return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+  absl::StatusOr<bool> only_contains_pb =
+      tools::proto_splitter::OnlyContainsPb(prefix);
+  // TODO: b/455882293 - Enable reporting errors if the .[c]pb files are
+  // important but still missing.
+  if (only_contains_pb.ok()) {
+    if (*only_contains_pb) {
+      return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+    }
+    return CreateFingerprintDefCpb(export_dir, absl::StrCat(prefix, ".cpb"));
   }
-
-  return CreateFingerprintDefCpb(export_dir, absl::StrCat(prefix, ".cpb"));
-#else
-  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+  // At this point we have neither saved_model.pb nor saved_model.cpb.
+  return CreateReducedFingerprintDef();  // Only sets the UUID.
+#else  // The following runs on Windows and Mac.
+  absl::StatusOr<FingerprintDef> fingerprint_def =
+      CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+  if (!fingerprint_def.ok()) {
+    return CreateReducedFingerprintDef();
+  }
+  return fingerprint_def;
 #endif
 }
 

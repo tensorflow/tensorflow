@@ -155,6 +155,5 @@ void TfLiteAsyncKernelSetFinish(
 }
 
 void TfLiteAsyncKernelDelete(TfLiteAsyncKernel* async_kernel) {
-  if (!async_kernel) return;
   delete async_kernel;
 }

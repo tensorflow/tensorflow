@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -107,7 +108,7 @@ LogicalIdThunk<logical_id_kind>::Execute(const ExecuteParams& params) {
 
 template <LogicalIdKind logical_id_kind>
 Thunk::BufferUses LogicalIdThunk<logical_id_kind>::buffer_uses() const {
-  return {BufferUse::Write(logical_id_buffer_)};
+  return {BufferUse::Write(logical_id_buffer_, ShapeUtil::MakeShape(S32, {}))};
 }
 
 template class LogicalIdThunk<LogicalIdKind::kReplicaId>;

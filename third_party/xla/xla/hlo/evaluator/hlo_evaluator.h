@@ -234,6 +234,14 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     trace_mac_handler_ = std::move(handler);
   }
 
+  using EvalLiteralHandler = std::function<void(const HloInstruction* hlo,
+                                                const LiteralSlice& literal)>;
+  // Sets a handler that is called during evaluation for each literal, e.g., in
+  // case we want them dumped to a file.
+  void set_eval_literal_handler(EvalLiteralHandler handler) {
+    eval_literal_handler_ = std::move(handler);
+  }
+
   // Returns the result of a matrix multiply `lhs x rhs`.
   static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
       const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
@@ -463,6 +471,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Sets the evaluated literal for the given instruction.
   void SetEvaluatedLiteralFor(const HloInstruction* hlo, Literal literal) {
+    if (eval_literal_handler_) {
+      eval_literal_handler_(hlo, literal);
+    }
     state_.set_evaluated(hlo, std::move(literal));
   }
 
@@ -611,10 +622,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Optional handler for tracing MAC operations (eg in dot and convolution).
   TraceMACHandler trace_mac_handler_;
 
+  // Optional handler exercised when evaluating literals.
+  EvalLiteralHandler eval_literal_handler_;
+
   // TODO(ezhulenev): Move cache members to EvaluationState.
   std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
 
-  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
+  // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the
   // instruction at only the given shape index.
   //

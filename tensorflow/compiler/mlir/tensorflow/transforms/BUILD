@@ -73,7 +73,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
 
@@ -652,12 +652,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:error_logging",
-        "@local_xla//xla:window_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/hlo/builder:sharding_builder",
-        "@local_xla//xla/mlir_hlo",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
@@ -665,6 +659,12 @@ cc_library(
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
         "@stablehlo//:vhlo_ops",
+        "@tsl//tsl/platform:error_logging",
+        "@xla//xla:window_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -754,7 +754,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -798,18 +798,18 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:window_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/service:shape_inference",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/util:env_var",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
+        "@xla//xla:shape_util",
+        "@xla//xla:window_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/service:shape_inference",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -1044,11 +1044,11 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
-        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/stream_executor/tpu:c_api_conversions",
+        "@xla//xla/stream_executor/tpu:tpu_api",
     ],
 )
 
@@ -1068,7 +1068,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -1079,6 +1079,6 @@ tf_cc_test(
         ":shape_inference_pass",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env",
     ],
 )

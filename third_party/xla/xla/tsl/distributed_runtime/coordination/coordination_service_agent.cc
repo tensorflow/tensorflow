@@ -37,14 +37,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
@@ -952,7 +950,7 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
         if (s.ok()) {
           // This would correspond to the request counter.
           barrier_counter_[barrier_id] = response->counter();
-        } else if (s.GetPayload(BarrierErrorPayloadKey()) != std::nullopt) {
+        } else if (s.GetPayload(BarrierErrorPayloadKey()).has_value()) {
           // Note that response is discarded if an error is returned, so we need
           // to parse from the error message.
           barrier_counter_[barrier_id] = GetBarrierCounterFromError(s);

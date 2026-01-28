@@ -155,7 +155,7 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
                                          se::DeviceMemoryBase buffer,
                                          bool donate_buffer, int device_ordinal,
                                          se::DeviceMemoryAllocator* allocator) {
-  xla::MaybeOwningDeviceMemory* in_buffer =
+  xla::MaybeOwningDeviceAddress* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
     // Here we pass ownership of the buffer to execution_input without releasing
@@ -857,9 +857,12 @@ absl::Status RunPjRtExecutable(
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtClient* pjrt_client, xla::PjRtLoadedExecutable* executable,
     OpKernelContext* ctx) {
-  const bool use_pjrt_tensor_buffer = ctx->device()
-                                          ->tensorflow_accelerator_device_info()
-                                          ->use_pjrt_tensor_buffer;
+  const CompositeDevice::AcceleratorDeviceInfo* accelerator_device_info =
+      ctx->device()->tensorflow_accelerator_device_info();
+  const bool use_pjrt_tensor_buffer =
+      (accelerator_device_info == nullptr)
+          ? true
+          : accelerator_device_info->use_pjrt_tensor_buffer;
 
   const DeviceType& device_type = GetDeviceType(ctx);
   const int pjrt_device_id =

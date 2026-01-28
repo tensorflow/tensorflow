@@ -68,13 +68,12 @@ class EventMgr {
   // be brief and non-blocking since it executes in the one thread used for all
   // such callbacks and also buffer deletions.
   void ThenExecute(se::Stream* stream, std::function<void()> func) {
-    ToFreeVector to_free;
+    std::unique_ptr<se::Event> e = PopOrCreateEvent();
+    stream->RecordEvent(e.get()).IgnoreError();
     {
       mutex_lock l(mu_);
-      EnqueueCallback(stream, std::move(func));
-      PollEvents(stream, &to_free);
+      EnqueueCallback(stream, std::move(func), std::move(e));
     }
-    FreeMemory(to_free);
   }
 
  private:
@@ -105,7 +104,8 @@ class EventMgr {
 
   // Set up `func` to be called once `stream` completes all its outstanding
   // work.
-  void EnqueueCallback(se::Stream* stream, std::function<void()> func)
+  void EnqueueCallback(se::Stream* stream, std::function<void()> func,
+                       std::unique_ptr<se::Event> e)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // This function should be called at roughly the same tempo as QueueTensors()
@@ -116,6 +116,10 @@ class EventMgr {
   void PollEvents(se::Stream* stream, ToFreeVector* to_free)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Events are created on demand, and repeatedly reused.  There is no
+  // limit placed here on the number of allocated Events.
+  std::unique_ptr<se::Event> PopOrCreateEvent();
+
   // An internal polling loop that runs at a low frequency to clear straggler
   // Events.
   void PollLoop();
@@ -125,7 +129,9 @@ class EventMgr {
   void StopPollingLoop();
 
   // A stack of unused events
-  std::vector<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
+  mutex free_events_mu_;
+  std::vector<std::unique_ptr<se::Event>> free_events_
+      TF_GUARDED_BY(free_events_mu_);
 
   // Callbacks waiting on their events to complete.
   absl::flat_hash_map<

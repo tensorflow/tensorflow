@@ -20,14 +20,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/error/debug_me_context_util.h"
-#include "xla/tsl/platform/debug_me_context.h"
 #include "tsl/platform/platform.h"
 
 namespace xla::error {
 namespace {
-
-using ::testing::HasSubstr;
 
 // We will use kInvalidArgument for all single-value tests.
 constexpr ErrorCode kTestCode = ErrorCode::kInvalidArgument;
@@ -49,7 +45,8 @@ TEST(ErrorCodesTest, GetErrorCodeAndName) {
 
 TEST(ErrorCodesTest, GetErrorUrl) {
   // Should produce the documentation URL using the string_id.
-  EXPECT_EQ(GetErrorUrl(kTestCode), "https://openxla.org/xla/errors#e0002");
+  EXPECT_EQ(GetErrorUrl(kTestCode),
+            "https://openxla.org/xla/errors/error_0002");
 }
 
 TEST(ErrorCodesTest, FactoryFunctionWithNoArgs) {
@@ -60,8 +57,8 @@ TEST(ErrorCodesTest, FactoryFunctionWithNoArgs) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
-            "E0002: InvalidArgument:\nMy Test "
-            "error\nhttps://openxla.org/xla/errors#e0002");
+            "E0002: InvalidArgument:\nMy Test error\nSee "
+            "https://openxla.org/xla/errors/error_0002 for more details.");
 #if defined(PLATFORM_GOOGLE)
   auto location = status.GetSourceLocations().front();
   EXPECT_THAT(location.file_name(), testing::EndsWith("error_codes_test.cc"));
@@ -77,31 +74,13 @@ TEST(ErrorCodesTest, FactoryFunctionWithArgs) {
   EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
-            "E0002: InvalidArgument:\nTest error: Something was "
-            "wrong\nhttps://openxla.org/xla/errors#e0002");
+            "E0002: InvalidArgument:\nTest error: Something was wrong\nSee "
+            "https://openxla.org/xla/errors/error_0002 for more details.");
 
 #if defined(PLATFORM_GOOGLE)
   auto location = status.GetSourceLocations().front();
   EXPECT_THAT(location.file_name(), testing::EndsWith("error_codes_test.cc"));
 #endif  // PLATFORM_GOOGLE
-}
-
-TEST(ErrorCodesTest, FactoryFunctionNoDebugPayloadIfContextIsEmpty) {
-  absl::Status status_no_context = InvalidArgument("Test error no context");
-  EXPECT_FALSE(
-      status_no_context.GetPayload(kDebugContextPayloadUrl).has_value());
-}
-
-TEST(ErrorCodesTest, FactoryFunctionAttachesDebugPayloadIfContextIsActive) {
-  tsl::DebugMeContext<DebugMeContextKey> context(DebugMeContextKey::kHloPass,
-                                                 "MyTestPass");
-  absl::Status status_with_context = InvalidArgument("Test error with context");
-
-  auto payload = status_with_context.GetPayload(kDebugContextPayloadUrl);
-  EXPECT_TRUE(payload.has_value());
-  std::string payload_str(payload.value());
-  EXPECT_THAT(payload_str, HasSubstr("HLO Passes"));
-  EXPECT_THAT(payload_str, HasSubstr("MyTestPass"));
 }
 
 }  // namespace

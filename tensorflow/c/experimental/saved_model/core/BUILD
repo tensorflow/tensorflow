@@ -305,6 +305,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

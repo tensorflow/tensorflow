@@ -472,10 +472,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/testlib:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -511,9 +511,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/testlib:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )

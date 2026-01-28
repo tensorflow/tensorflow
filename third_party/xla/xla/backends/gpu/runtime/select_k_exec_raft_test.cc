@@ -90,7 +90,7 @@ void RunSelectKTest() {
   se::StreamExecutor* stream_executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   int device_ordinal = stream_executor->device_ordinal();
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
 
   std::uint32_t batch = 4;
   std::uint32_t n = 4096;

@@ -345,10 +345,10 @@ void CreateVerifier(Operation* quantizing_op, Operation* quantized_op,
   BoolAttr log =
       rewriter.getBoolAttr(quant_params.numeric_verify_spec.log_if_failed_flag);
   // Verify the quantized value by sending the result to the verifier.
-  rewriter.create<VerifierT>(
-      quantizing_op->getLoc(), quantized_op->getResult(result_idx).getType(),
-      quantized_op->getResult(result_idx), quantizing_op->getResult(result_idx),
-      tolerance, log);
+  VerifierT::create(rewriter, quantizing_op->getLoc(),
+                    quantized_op->getResult(result_idx).getType(),
+                    quantized_op->getResult(result_idx),
+                    quantizing_op->getResult(result_idx), tolerance, log);
 }
 
 template <>

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package stream_executor;
+
+option java_multiple_files = true;
+option java_outer_classname = "KernelArgumentPackingSpec";
+
+message KernelArgPackingRelocationProto {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_BITS64_ABSOLUTE = 1;
+  }
+
+  Kind kind = 1;
+  int32 argument_index = 2;
+  int64 offset = 3;
+}
+
+message KernelArgPackingSpecProto {
+  repeated KernelArgPackingRelocationProto relocations = 1;
+  bytes data = 2;
+}
+
+message KernelArgsPackingSpecProto {
+  repeated KernelArgPackingSpecProto kernel_arguments = 1;
+}

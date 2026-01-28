@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -94,11 +95,21 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
 
   // Collect pointers to device buffers from all participating ranks.
   std::vector<void*> param_to_peers_ptrs;
+  param_to_peers_ptrs.reserve(num_parameters * clique_key.num_devices());
+
+  absl::flat_hash_map<int, std::vector<se::DeviceAddressBase>>
+      peer_to_parameters(clique_key.num_devices());
+
   for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
     TF_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
                         device_parameters->at<DeviceParameters>(peer));
-    for (se::DeviceAddressBase peer_parameter : peer_parameters) {
-      param_to_peers_ptrs.push_back(peer_parameter.opaque());
+    peer_to_parameters[peer.value()] = std::move(peer_parameters);
+  }
+
+  for (int parameter = 0; parameter < num_parameters; ++parameter) {
+    for (int peer = 0; peer < clique_key.num_devices(); ++peer) {
+      param_to_peers_ptrs.push_back(
+          peer_to_parameters[peer][parameter].opaque());
     }
   }
 

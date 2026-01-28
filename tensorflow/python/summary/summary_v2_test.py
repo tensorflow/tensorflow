@@ -69,6 +69,88 @@ class SummaryV2Test(test.TestCase):
     mock_scalar_v2.assert_not_called()
 
   @test_util.run_v2_only
+  def test_tf_summary_scalar_invalid_step_shapes_raise(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    invalid_steps = [
+        (),  # empty tuple
+        [],  # empty list
+        [1, 2],  # non-scalar list
+        (1, 2),  # non-scalar tuple
+        array_ops.ones((2,)),  # rank-1 tensor
+        array_ops.ones((1, 1)),  # rank-2 tensor
+    ]
+
+    with writer.as_default(step=1):
+      for step in invalid_steps:
+        with self.assertRaises(ValueError):
+          summary_ops_v2.scalar('loss', 0.5, step=step)
+
+  @test_util.run_v2_only
+  def test_tf_summary_histogram_invalid_step_raises(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    with writer.as_default(step=1):
+      with self.assertRaises(ValueError):
+        summary_ops_v2.histogram(
+            'h',
+            array_ops.ones((10,)),
+            step=(),
+        )
+
+  @test_util.run_v2_only
+  def test_tf_summary_image_invalid_step_raises(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    image = array_ops.ones((1, 4, 4, 3))
+
+    with writer.as_default(step=1):
+      with self.assertRaises(ValueError):
+        summary_ops_v2.image(
+            'img',
+            image,
+            step=(),
+        )
+
+  @test_util.run_v2_only
+  def test_tf_summary_audio_invalid_step_raises(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    audio = array_ops.ones((1, 16000, 1))
+
+    with writer.as_default(step=1):
+      with self.assertRaises(ValueError):
+        summary_ops_v2.audio(
+            'audio',
+            audio,
+            sample_rate=16000,
+            max_outputs=1,
+            step=(),
+        )
+
+  @test_util.run_v2_only
+  def test_tf_summary_write_invalid_step_raises(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    with writer.as_default(step=1):
+      with self.assertRaises(ValueError):
+        summary_ops_v2.write(
+            tag='tag',
+            tensor=constant_op.constant(1.0),
+            step=(),
+        )
+
+  @test_util.run_v2_only
+  def test_tf_summary_trace_export_invalid_step_raises(self):
+    writer = summary_ops_v2.create_summary_file_writer(self.get_temp_dir())
+
+    with writer.as_default():
+      summary_ops_v2.trace_on(graph=True)
+
+      with self.assertRaises(ValueError):
+        summary_ops_v2.trace_export('trace', step=())
+
+  @test_util.run_v2_only
   def test_scalar_summary_v2__family(self):
     """Tests `family` arg handling when scalar v2 is invoked."""
     with test.mock.patch.object(

@@ -465,7 +465,7 @@ xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  auto [promise, future] = xla::Future<>::MakePromise();
+  auto [promise, future] = xla::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
       [promise = std::move(promise).ToShared(), c_event,
        c_api](PJRT_Error* error) mutable {
@@ -1107,6 +1107,8 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   args.extension_start = nullptr;
   args.executable = executable;
   args.peak_memory_in_bytes = 0;
+  args.total_size_in_bytes = 0;
+
   RETURN_STATUS_IF_PJRT_ERROR(
       api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
   xla::CompiledMemoryStats results;
@@ -1122,6 +1124,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
   results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
   results.peak_memory_in_bytes = args.peak_memory_in_bytes;
+  results.total_size_in_bytes = args.total_size_in_bytes;
   return results;
 }
 

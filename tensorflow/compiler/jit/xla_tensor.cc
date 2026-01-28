@@ -29,15 +29,16 @@ namespace tensorflow {
   return xla_tensor;
 }
 
-/*static*/ se::DeviceMemoryBase XlaTensor::DeviceMemoryFromTensor(
+/*static*/ stream_executor::DeviceAddressBase XlaTensor::DeviceMemoryFromTensor(
     const Tensor& tensor) {
   const XlaTensor* xla_tensor = FromTensor(&tensor);
   if (xla_tensor) {
     CHECK(xla_tensor->has_shaped_buffer());
     return xla_tensor->shaped_buffer().root_buffer();
   } else {
-    return se::DeviceMemoryBase(const_cast<char*>(tensor.tensor_data().data()),
-                                tensor.tensor_data().size());
+    return stream_executor::DeviceAddressBase(
+        const_cast<char*>(tensor.tensor_data().data()),
+        tensor.tensor_data().size());
   }
 }
 
@@ -53,7 +54,7 @@ absl::Status XlaTensor::AllocateShapedBuffer(DataType dtype,
   for (auto& index_to_buffer : shaped_buffer.buffers()) {
     xla::Shape subshape =
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
-    uint64 size =
+    uint64_t size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
     TF_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
                         client->backend().memory_allocator()->Allocate(

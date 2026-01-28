@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
 #include "mlir/Pass/Pass.h"
 
 namespace stream_executor {
@@ -55,6 +57,7 @@ std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
 std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass();
+std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

@@ -171,6 +171,89 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
                clamped_start_indices.data(), output_data);
 }
 
+void update_slice_int4(int current_dim, int max_dim,
+                       const int32_t* output_stride,
+                       const int32_t* update_stride,
+                       const int32_t* update_shape, const int8_t* update_data,
+                       int update_idx, const int32_t* indices_data,
+                       int8_t* output_data, int output_idx) {
+  if (current_dim == max_dim) return;
+  output_idx += indices_data[current_dim] * output_stride[current_dim];
+  if (current_dim == max_dim - 1) {
+    for (int i = 0; i < update_shape[max_dim - 1]; ++i) {
+      // In 4-bit packed data, each byte holds two 4-bit elements.
+      // The lower 4 bits (0x0F) store the even-indexed element, and the upper
+      // 4 bits (0xF0) store the odd-indexed element.
+      int8_t update_val = update_data[(update_idx + i) / 2];
+      if ((update_idx + i) % 2 == 0) {
+        update_val &= 0x0F;
+      } else {
+        update_val = (update_val >> 4) & 0x0F;
+      }
+      int8_t& output_byte = output_data[(output_idx + i) / 2];
+      if ((output_idx + i) % 2 == 0) {
+        // Update the lower 4 bits of the output byte.
+        output_byte = (output_byte & 0xF0) | (update_val & 0x0F);
+      } else {
+        // Update the upper 4 bits of the output byte.
+        output_byte = (output_byte & 0x0F) | ((update_val << 4) & 0xF0);
+      }
+    }
+  } else {
+    for (int i = 0; i < update_shape[current_dim]; ++i) {
+      update_slice_int4(current_dim + 1, max_dim, output_stride, update_stride,
+                        update_shape, update_data, update_idx, indices_data,
+                        output_data, output_idx);
+      output_idx += output_stride[current_dim];
+      update_idx += update_stride[current_dim];
+    }
+  }
+}
+
+void DynamicUpdateSliceInt4(const TfLiteTensor* input,
+                            const TfLiteTensor* update,
+                            const int64_t* indices_data, TfLiteTensor* output) {
+  const auto& input_shape = GetTensorShape(input);
+  const auto& update_shape = GetTensorShape(update);
+  const int8_t* update_data =
+      reinterpret_cast<const int8_t*>(update->data.data);
+  int8_t* output_data = reinterpret_cast<int8_t*>(output->data.data);
+
+  const int input_dims = input_shape.DimensionsCount();
+  // If the update is the entirety of the output, then simply copy it and
+  // return.
+  if (input_shape.FlatSize() == update_shape.FlatSize()) {
+    memcpy(output_data, update_data, input->bytes);
+    return;
+  }
+  std::vector<int> clamped_start_indices =
+      ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
+
+  // If the operation is not done in-place, copy the input data to the output.
+  if (input->data.data != output->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
+
+  // Update tensor has no elements. Skip.
+  if (update_shape.FlatSize() == 0) {
+    return;
+  }
+
+  std::vector<int> output_stride(input_dims);
+  std::vector<int> update_stride(input_dims);
+  output_stride[input_dims - 1] = 1;
+  update_stride[input_dims - 1] = 1;
+  const int32_t* input_shape_data = input_shape.DimsData();
+  const int32_t* update_shape_data = update_shape.DimsData();
+  for (int i = input_dims - 2; i >= 0; --i) {
+    output_stride[i] = output_stride[i + 1] * input_shape_data[i + 1];
+    update_stride[i] = update_stride[i + 1] * update_shape_data[i + 1];
+  }
+  update_slice_int4(0, input_dims, output_stride.data(), update_stride.data(),
+                    update_shape.DimsData(), update_data, 0,
+                    clamped_start_indices.data(), output_data, 0);
+}
+
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* operand;
   TF_LITE_ENSURE_OK(context,
@@ -214,6 +297,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteBool:
       DynamicUpdateSlice<bool>(operand, update, indices_data_i64.data(),
                                output);
+      break;
+    case kTfLiteInt4:
+      DynamicUpdateSliceInt4(operand, update, indices_data_i64.data(), output);
       break;
     case kTfLiteInt8:
       DynamicUpdateSlice<int8_t>(operand, update, indices_data_i64.data(),

@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250814.0", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
@@ -22,7 +22,7 @@ bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
 bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
-bazel_dep(name = "riegeli", version = "0.0.0-20250822-9f2744d", repo_name = "com_google_riegeli")
+bazel_dep(name = "riegeli", version = "0.0.0-20250822-9f2744d")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -45,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-HCxTCgVOnos8gR7CHtimh/yGW+w6u8j/Zb64KbHWeuQ=",
-    strip_prefix = "rules_ml_toolchain-6734d2a174bf29e731d3f473743d1cc1a86100c3",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/6734d2a174bf29e731d3f473743d1cc1a86100c3.tar.gz"],
+    integrity = "sha256-VMGjV/cfYR79tIkevUvL5K6236fkc/FP1+ytUGIJZhY=",
+    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -66,8 +66,6 @@ single_version_override(
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
         "//third_party/absl:rules_cc.patch",
-        "//third_party/absl:check_op.patch",
-        "//third_party/absl:check_op_2.patch",
     ],
 )
 
@@ -189,16 +187,16 @@ remote_execution_configure = use_extension("//third_party/extensions:remote_exec
 use_repo(remote_execution_configure, "local_config_remote_execution")
 
 ### From @rules_ml_toolchain
-cuda_configure = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_configure.bzl", "cuda_configure_ext")
+cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
 use_repo(cuda_configure, "local_config_cuda")
 
-nccl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:nccl_configure.bzl", "nccl_configure_ext")
+nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
 
-sycl_configure = use_extension("@rules_ml_toolchain//third_party/extensions:sycl_configure.bzl", "sycl_configure_ext")
+sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
 
-cuda_redist_init_ext = use_extension("@rules_ml_toolchain//third_party/extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
 use_repo(cuda_redist_init_ext, "cuda_cudart")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")

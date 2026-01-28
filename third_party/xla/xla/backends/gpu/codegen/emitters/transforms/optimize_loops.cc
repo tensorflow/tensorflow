@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/service/gpu/gpu_fusible.h"
 
 namespace xla {
@@ -162,8 +162,7 @@ class OptimizeLoopsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateOptimizeLoopsPass() {
+std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass() {
   return std::make_unique<OptimizeLoopsPass>();
 }
 

@@ -264,13 +264,14 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
   Value scattered_start_indices = TF::TensorScatterUpdateOp::create(
       builder, loc, empty_start_indices,
       /*indices=*/
-      builder.create<TF::ReshapeOp>(
-          loc, RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
+      TF::ReshapeOp::create(
+          builder, loc,
+          RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
           Create1DConstValue<int64_t>(builder, loc, indices),
           Create1DConstValue<int64_t>(builder, loc, {index_map_size, 1})),
       /*value=*/
-      builder.create<TF::CastOp>(
-          loc,
+      TF::CastOp::create(
+          builder, loc,
           RankedTensorType::get(
               mlir::cast<ShapedType>(start_indices.getType()).getShape(),
               builder.getI64Type()),
@@ -286,8 +287,8 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
       operand,
       /*start_indices=*/scattered_start_indices,
       /*slice_sizes=*/
-      builder.create<TF::CastOp>(
-          loc,
+      TF::CastOp::create(
+          builder, loc,
           RankedTensorType::get(
               mlir::cast<ShapedType>(slice_sizes.getType()).getShape(),
               builder.getI64Type()),

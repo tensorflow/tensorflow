@@ -49,7 +49,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -99,7 +99,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -185,7 +185,6 @@ cc_library(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

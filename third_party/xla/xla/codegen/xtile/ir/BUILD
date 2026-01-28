@@ -106,6 +106,7 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

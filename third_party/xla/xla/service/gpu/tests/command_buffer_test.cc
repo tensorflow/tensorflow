@@ -78,6 +78,9 @@ class CommandBufferTest
       public ::testing::WithParamInterface<
           DebugOptions::CommandBufferSchedulingMode> {
  protected:
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
@@ -297,6 +300,9 @@ TEST_P(CommandBufferTest, TracedCustomCalls) {
 }
 
 TEST_P(CommandBufferTest, TrueFalseConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -356,6 +362,9 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 }
 
 TEST_P(CommandBufferTest, IndexConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -423,6 +432,9 @@ TEST_P(CommandBufferTest, IndexConditional) {
 }
 
 TEST_P(CommandBufferTest, WhileLoop) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -623,6 +635,10 @@ ENTRY main.49 {
 }
 
 TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
+  if (GpuExecutor() != nullptr) {
+    GTEST_SKIP() << "This test leads to segfault in CommandBuffer #36087";
+  }
+
   constexpr absl::string_view hlo_text = R"(
     dynamic_slice {
       p0 = s32[4,8,8]{2,1,0} parameter(0)
@@ -911,7 +927,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   // Flatten tuple parameter into individual leaves for PJRT replicated execute.
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
   ASSERT_EQ(results.size(), 2);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));

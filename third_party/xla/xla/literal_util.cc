@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/random/uniform_int_distribution.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -84,9 +84,9 @@ Literal ConvertType(LiteralSlice literal) {
               dest[i] = static_cast<ToNativeT>(src[i]);
             }
           } else {
-            TF_CHECK_OK(result.CopyFrom(literal,
-                                        /*dest_shape_index=*/shape_index,
-                                        /*src_shape_index=*/shape_index));
+            CHECK_OK(result.CopyFrom(literal,
+                                     /*dest_shape_index=*/shape_index,
+                                     /*src_shape_index=*/shape_index));
           }
         }
       });
@@ -684,7 +684,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   }
   Literal literal(ShapeUtil::MakeTupleShapeWithPtrs(element_shapes));
   for (int i = 0, end = elements.size(); i < end; ++i) {
-    TF_CHECK_OK(literal.CopyFrom(*elements[i], /*dest_shape_index=*/{i}));
+    CHECK_OK(literal.CopyFrom(*elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
 }
@@ -698,7 +698,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   }
   Literal literal(ShapeUtil::MakeTupleShapeWithPtrs(element_shapes));
   for (int i = 0, end = elements.size(); i < end; ++i) {
-    TF_CHECK_OK(literal.CopyFrom(elements[i], /*dest_shape_index=*/{i}));
+    CHECK_OK(literal.CopyFrom(elements[i], /*dest_shape_index=*/{i}));
   }
   return literal;
 }
@@ -712,7 +712,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   }
   Literal literal(ShapeUtil::MakeTupleShapeWithPtrs(element_shapes));
   for (int64_t i = 0, end = elements.size(); i < end; ++i) {
-    TF_CHECK_OK(
+    CHECK_OK(
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }
   return literal;
@@ -784,7 +784,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           }
           if constexpr (primitive_type_constant == PRED) {
             absl::uniform_int_distribution<int> generator(0, 1);
-            TF_CHECK_OK(literal.Populate<bool>(
+            CHECK_OK(literal.Populate<bool>(
                 [&](absl::Span<const int64_t> /*indices*/) {
                   return generator(*engine);
                 }));

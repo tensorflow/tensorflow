@@ -134,8 +134,8 @@ std::string GpuCliqueKey::ToString() const {
     group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
   }
   return absl::StrFormat(
-      "devices=[%s]; is_p2p=%d%s; root_device=%lld; "
-      "num_local_participants=%lld; incarnations=[%s]",
+      "devices=[%s]; is_p2p=%d%s; root=%lld; local_participants=%lld; "
+      "incarnations=[%s]",
       absl::StrJoin(devices(), ","), is_p2p_, group_string,
       root_device_.value(), num_local_participants_,
       absl::StrJoin(incarnations_, ", ",

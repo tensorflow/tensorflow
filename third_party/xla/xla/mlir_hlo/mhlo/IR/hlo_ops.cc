@@ -33,7 +33,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -4389,6 +4388,192 @@ LogicalResult XlaRngGetAndUpdateStateOp::inferReturnTypes(
   inferredReturnTypes.push_back(mlir::RankedTensorType::get(
       {2}, mlir::IntegerType::get(ctx, 64, IntegerType::Unsigned)));
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ScanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ScanOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  ScanOp::Adaptor adaptor(operands, attributes, properties, regions);
+  if (regions.empty() || regions.front()->empty()) {
+    return emitOptionalError(location, "ScanOp region is empty");
+  }
+  auto* terminator = regions.front()->front().getTerminator();
+  size_t numCarries = adaptor.getInits().size();
+  if (terminator->getNumOperands() < numCarries) {
+    return emitOptionalError(location, "ScanOp body must return at least ",
+                             numCarries, " values (carries)");
+  }
+  size_t numOuputs = terminator->getNumOperands() - numCarries;
+
+  // Find the scan dimension size. If the scan dimension is dynamic, the
+  // output dimension size will be dynamic as well.
+  int64_t dim = adaptor.getDimension();
+  int64_t dimSize = ShapedType::kDynamic;
+  for (auto [i, type] : llvm::enumerate(adaptor.getInputs().getTypes())) {
+    auto inputType = dyn_cast<RankedTensorType>(type);
+    if (!inputType) {
+      return emitOptionalError(location, "operand ", i, " is not ranked");
+    }
+    if (dim >= inputType.getRank()) {
+      return emitOptionalError(location, "scan dimension of operand ", i,
+                               " is out of bounds");
+    }
+    dimSize = inputType.getDimSize(dim);
+    if (dimSize == ShapedType::kDynamic) {
+      break;
+    }
+  }
+
+  for (auto [i, type] : llvm::enumerate(terminator->getOperands().getTypes())) {
+    auto resultType = dyn_cast<RankedTensorType>(type);
+    if (!resultType) {
+      return emitOptionalError(location, "terminator operand ", i,
+                               " is not ranked");
+    }
+    SmallVector<int64_t> shape(resultType.getShape().begin(),
+                               resultType.getShape().end());
+    if (i < numOuputs) {
+      shape.insert(std::next(shape.begin(), dim), dimSize);
+    }
+    inferredReturnShapes.emplace_back(shape, resultType.getElementType());
+  }
+
+  return success();
+}
+
+LogicalResult ScanOp::verify() {
+  if (getInits().size() != getCarries().size()) {
+    return emitOpError() << "requires the number of inits ("
+                         << getInits().size() << ") and carries ("
+                         << getCarries().size() << ") to be equal";
+  }
+
+  // Check that the scan dimension is in bounds for all operands. Also check
+  // that all operands have the same scan dimension size.
+  int64_t dim = getDimension();
+  int64_t dimSize = ShapedType::kDynamic;
+  for (auto [i, type] : llvm::enumerate(getInputs().getTypes())) {
+    auto inputType = dyn_cast<RankedTensorType>(type);
+    if (!inputType) {
+      return emitOpError() << "operand " << i << " is not ranked";
+    }
+    if (dim >= inputType.getRank()) {
+      return emitOpError() << "scan dimension of operand " << i
+                           << " is out of bounds";
+    }
+    if (inputType.isDynamicDim(dim)) {
+      continue;
+    }
+    dimSize = inputType.getDimSize(dim);
+    if (dimSize != ShapedType::kDynamic &&
+        dimSize != inputType.getDimSize(dim)) {
+      return emitOpError() << "scan dimension size of operand " << i
+                           << " does not match previous operands";
+    }
+    dimSize = inputType.getDimSize(dim);
+  }
+
+  Block& bodyBlock = getBody().front();
+  if (bodyBlock.getNumArguments() != getNumOperands()) {
+    return emitOpError() << "expects " << getNumOperands()
+                         << " arguments in the body, but got "
+                         << bodyBlock.getNumArguments();
+  }
+
+  // Check that the operand types are compatible with the body arguments.
+  for (auto [i, type] : llvm::enumerate(getOperands().getTypes())) {
+    auto argType = dyn_cast<RankedTensorType>(type);
+    if (!argType) {
+      return emitOpError() << "operand " << i << " is not ranked";
+    }
+    if (i < getInputs().size()) {
+      auto argShape = llvm::to_vector(argType.getShape());
+      argShape.erase(std::next(argShape.begin(), dim));
+      argType = argType.clone(argShape);
+    }
+    if (!hlo::isCompatibleForHloTypeInference(
+            argType, bodyBlock.getArgument(i).getType())) {
+      return emitOpError() << "operand and body argument " << i
+                           << " are incompatible";
+    }
+  }
+
+  // Compatibility of terminator operands and result types is checked by
+  // InferTensorType trait.
+
+  return success();
+}
+
+ParseResult ScanOp::parse(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inits;
+  int64_t dimension = 0;
+  Region* body = result.addRegion();
+  FunctionType funcType;
+
+  if (parser.parseOperandList(inputs, OpAsmParser::Delimiter::Paren) ||
+      parser.parseKeyword("inits") ||
+      parser.parseOperandList(inits, OpAsmParser::Delimiter::Paren) ||
+      parser.parseKeyword("dimension") || parser.parseEqual() ||
+      parser.parseInteger(dimension) || parser.parseRegion(*body) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(funcType)) {
+    return failure();
+  }
+
+  size_t numInputs = inputs.size();
+  size_t numCarries = inits.size();
+  if (funcType.getInputs().size() != numInputs + numCarries) {
+    return parser.emitError(
+        parser.getNameLoc(),
+        "operand types must match the number of inputs and inits");
+  }
+  if (funcType.getResults().size() < numCarries) {
+    return parser.emitError(
+        parser.getNameLoc(),
+        "not enough result types to cover the required carries");
+  }
+
+  auto inputTypes = funcType.getInputs().take_front(numInputs);
+  auto initTypes = funcType.getInputs().take_back(numCarries);
+  if (parser.resolveOperands(inputs, inputTypes, parser.getNameLoc(),
+                             result.operands) ||
+      parser.resolveOperands(inits, initTypes, parser.getNameLoc(),
+                             result.operands)) {
+    return failure();
+  }
+  result.addTypes(funcType.getResults());
+
+  Builder& builder = parser.getBuilder();
+  result.addAttribute(ScanOp::getDimensionAttrName(result.name),
+                      builder.getI64IntegerAttr(dimension));
+  result.addAttribute(
+      ScanOp::getOperandSegmentSizeAttr(),
+      builder.getDenseI32ArrayAttr({(int32_t)numInputs, (int32_t)numCarries}));
+  size_t numOutputs = funcType.getNumResults() - numCarries;
+  result.addAttribute(
+      ScanOp::getResultSegmentSizeAttr(),
+      builder.getDenseI32ArrayAttr({(int32_t)numOutputs, (int32_t)numCarries}));
+
+  return success();
+}
+
+void ScanOp::print(OpAsmPrinter& p) {
+  p << "(";
+  p.printOperands(getInputs());
+  p << ") inits (";
+  p.printOperands(getInits());
+  p << ") dimension=" << getDimension() << " ";
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/true);
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
+                                           "resultSegmentSizes"});
+  p << " : ";
+  p.printFunctionalType(*this);
 }
 
 //===----------------------------------------------------------------------===//

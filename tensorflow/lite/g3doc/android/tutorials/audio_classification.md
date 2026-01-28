@@ -24,11 +24,11 @@ in this tutorial allows you to switch between the
 [YAMNet/classifier](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1),
 a model that recognizes sounds, and a model that recognizes specific spoken
 words, that was
-[trained](https://www.tensorflow.org/lite/models/modify/model_maker/speech_recognition)
-using the TensorFlow Lite [Model
-Maker](https://www.tensorflow.org/lite/models/modify/model_maker) tool. The
-models run predictions on audio clips that contain 15600 individual samples per
-clip and are about 1 second in length.
+[trained](https://ai.google.dev/edge/litert/libraries/modify/speech_recognition)
+using the TensorFlow Lite
+[Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker) tool.
+The models run predictions on audio clips that contain 15600 individual samples
+per clip and are about 1 second in length.
 
 ## Setup and run example
 
@@ -132,10 +132,10 @@ such as default minimum accuracy thresholds for predictions and labels for words
 or sounds that the model can recognize.
 
 A TensorFlow Lite model includes a `*.tflite` file containing the model. The
-model file contains the prediction logic and typically includes [metadata](../../models/convert/metadata)
-about how to interpret prediction results, such as prediction class names. Model
-files should be stored in the `src/main/assets` directory of your development
-project, as in the code example:
+model file contains the prediction logic and typically includes
+[metadata](../../models/convert/metadata.md) about how to interpret prediction
+results, such as prediction class names. Model files should be stored in the
+`src/main/assets` directory of your development project, as in the code example:
 
 -   `<project>/src/main/assets/yamnet.tflite`
 
@@ -211,7 +211,7 @@ data used to train the model.
 The
 [YAMNet/classifier model](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1)
 and the customized
-[speech commands](https://www.tensorflow.org/lite/models/modify/model_maker/speech_recognition)
+[speech commands](https://ai.google.dev/edge/litert/libraries/modify/speech_recognition)
 models used in this code example accepts Tensor data objects that represent
 single-channel, or mono, audio clips recorded at 16kHz in 0.975 second clips
 (15600 samples). Running predictions on new audio data, your app must transform
@@ -342,14 +342,15 @@ To stop audio recording and classification:
 
 In your Android app, after you process an audio clip, the model produces a list
 of predictions which your app code must handle by executing additional business
-logic, displaying results to the user, or taking other actions.  The output of
+logic, displaying results to the user, or taking other actions. The output of
 any given TensorFlow Lite model varies in terms of the number of predictions it
 produces (one or many), and the descriptive information for each prediction. In
 the case of the models in the example app, the predictions are either a list of
 recognized sounds or words. The AudioClassifier options object used in the code
 example lets you set the maximum number of predictions with the
-`setMaxResults()` method, as shown in [Initialize the ML
-model](#Initialize_the_ML_model) section.
+`setMaxResults()` method, as shown in
+[Initialize the ML model](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/android/tutorials/audio_classification.md#initialize-the-ml-model)
+section.
 
 To get the prediction results from the model:
 
@@ -394,8 +395,8 @@ identified sounds or words in the app user interface.
 
 You can find additional TensorFlow Lite models for audio processing on
 [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=audio-embedding,audio-pitch-extraction,audio-event-classification,audio-stt)
-and through the [Pre-trained models
-guide](https://www.tensorflow.org/lite/models/trained) page. For more
-information about implementing machine learning in your mobile application with
-TensorFlow Lite, see the [TensorFlow Lite Developer
-Guide](https://www.tensorflow.org/lite/guide).
+and through the
+[Pre-trained models guide](https://www.tensorflow.org/lite/models/trained) page.
+For more information about implementing machine learning in your mobile
+application with TensorFlow Lite, see the
+[TensorFlow Lite Developer Guide](https://www.tensorflow.org/lite/guide).

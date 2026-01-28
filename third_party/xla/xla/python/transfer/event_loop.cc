@@ -34,6 +34,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -192,10 +193,11 @@ PollEventLoop* PollEventLoop::GetDefault() {
 
 class SocketListener::Handler : public PollEventLoop::Handler {
  public:
-  Handler(int fd, int accept_flags,
-          absl::AnyInvocable<void(int socket_fd, const SocketAddress& addr)>
-              on_accept)
-      : on_accept_(std::move(on_accept)),
+  using AcceptHandler =
+      absl::AnyInvocable<void(int socket_fd, const SocketAddress& addr)>;
+
+  Handler(int fd, int accept_flags, AcceptHandler on_accept)
+      : on_accept_(std::make_shared<AcceptHandler>(std::move(on_accept))),
         fd_(fd),
         accept_flags_(accept_flags) {}
   ~Handler() override { close(fd_); }
@@ -216,11 +218,21 @@ class SocketListener::Handler : public PollEventLoop::Handler {
       LOG(WARNING) << cfd_or.status();
       return true;
     }
-    on_accept_(*cfd_or, recv_addr);
+    std::shared_ptr<AcceptHandler> on_accept;
+    {
+      absl::MutexLock l(mu_);
+      on_accept = on_accept_;
+    }
+    (*on_accept)(*cfd_or, recv_addr);
     return true;
   }
 
   void Shutdown() {
+    std::shared_ptr<AcceptHandler> on_accept;
+    {
+      absl::MutexLock l(mu_);
+      std::swap(on_accept, on_accept_);
+    }
     auto* l = loop();
     shutdown_requested_.store(true);
     l->SendWake(this);
@@ -246,7 +258,8 @@ class SocketListener::Handler : public PollEventLoop::Handler {
   }
 
  private:
-  absl::AnyInvocable<void(int socket_fd, const SocketAddress& addr)> on_accept_;
+  absl::Mutex mu_;
+  std::shared_ptr<AcceptHandler> on_accept_ ABSL_GUARDED_BY(mu_);
   std::atomic<bool> shutdown_requested_{false};
   int fd_;
   int accept_flags_;

@@ -32,13 +32,18 @@ cc_library(
     name = "passes",
     srcs = [
         "convert_elementwise_0d_tensor_to_scalar_pass.cc",
+        "lower_stablehlo_to_xtile.cc",
         "verify_legal_xtile_ops.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

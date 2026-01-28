@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 
 #include <cstdint>
+#include <optional>
 #include <set>
 
 #include "absl/status/status.h"
@@ -81,6 +82,18 @@ se::DeviceAddressBase BufferAllocations::GetDeviceAddress(
       << " size " << base.size();
 
   return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
+}
+
+std::optional<BufferAllocation::Index> BufferAllocations::FindAllocationIndex(
+    const se::DeviceAddressBase& addr) const {
+  for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
+    char* buf = static_cast<char*>(buffers_[i].opaque());
+    char* ptr = static_cast<char*>(addr.opaque());
+    if (ptr >= buf && ptr <= buf + buffers_[i].size()) {
+      return i;
+    }
+  }
+  return std::nullopt;
 }
 
 }  // namespace gpu

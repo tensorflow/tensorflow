@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_DISTRIBUTED_IN_MEMORY_KEY_VALUE_STORE_H_
 #define XLA_PJRT_DISTRIBUTED_IN_MEMORY_KEY_VALUE_STORE_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace xla {
 
@@ -40,6 +43,14 @@ class InMemoryKeyValueStore : public KeyValueStoreInterface {
                                   absl::Duration timeout) override;
 
   absl::StatusOr<std::string> TryGet(absl::string_view key) override;
+
+  // Async version of `Get`. The `done` callback is invoked when the key-value
+  // becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override;
 
   absl::Status Set(absl::string_view key, absl::string_view value) override;
 

@@ -106,10 +106,10 @@ _test_size_override = {
         "@com_googlesource_code_re2//:re2",
     ] + select({
         "//conditions:default": [
-            "@local_tsl//tsl/platform:env",
-            "@local_tsl//tsl/platform:status",
-            "@local_xla//xla/tsl/platform:subprocess",
-            "@local_xla//xla/tsl/util:command_line_flags",
+            "@tsl//tsl/platform:env",
+            "@tsl//tsl/platform:status",
+            "@xla//xla/tsl/platform:subprocess",
+            "@xla//xla/tsl/util:command_line_flags",
         ],
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib",
@@ -655,7 +655,7 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
         "@com_google_absl//absl/strings",
-        "@local_xla//third_party/python_runtime:headers",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -727,8 +727,8 @@ pybind_extension(
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

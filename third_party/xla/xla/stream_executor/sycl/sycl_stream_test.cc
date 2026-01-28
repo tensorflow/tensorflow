@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/sycl/sycl_event.h"
+#include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tests/llvm_irgen_test_base.h"
@@ -52,23 +53,22 @@ using ::testing::UnorderedElementsAreArray;
 
 class SyclStreamTest : public xla::LlvmIrGenTestBase {
  public:
-  // TODO(intel-tf): Use SyclExecutor once it is implemented.
-  StreamExecutor* executor_;
+  std::optional<SyclExecutor> executor_;
 
  private:
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_,
-                            platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    executor_.emplace(platform, kDefaultDeviceOrdinal);
+    ASSERT_THAT(executor_->Init(), absl_testing::IsOk());
   }
 };
 
 TEST_F(SyclStreamTest, CreateWithNonDefaultPriority) {
   // SYCL doesn't support stream priorities yet, so we expect creation to fail
   // if a non-default priority is requested.
-  EXPECT_THAT(SyclStream::Create(executor_,
+  EXPECT_THAT(SyclStream::Create(&executor_.value(),
                                  /*enable_multiple_streams=*/false,
                                  /*priority=*/StreamPriority::Highest),
               absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
@@ -80,7 +80,7 @@ TEST_F(SyclStreamTest, Memset32) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -117,7 +117,7 @@ TEST_F(SyclStreamTest, MemZero) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -153,7 +153,7 @@ TEST_F(SyclStreamTest, MemcpyHostToDeviceAndBack) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -184,7 +184,7 @@ TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -207,7 +207,7 @@ TEST_F(SyclStreamTest, MemcpyDeviceToDevice) {
 
 TEST_F(SyclStreamTest, DoHostCallbackAndBlockHostUntilDone) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -222,7 +222,7 @@ TEST_F(SyclStreamTest, DoHostCallbackAndBlockHostUntilDone) {
 
 TEST_F(SyclStreamTest, LaunchKernel) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -267,7 +267,8 @@ TEST_F(SyclStreamTest, LaunchKernel) {
   KernelLoaderSpec spec = KernelLoaderSpec::CreateCudaCubinInMemorySpec(
       spirv_binary, kernel_name, 3);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto add, AddKernel::Create(executor_, spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add,
+                          AddKernel::Create(&executor_.value(), spec));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -293,7 +294,7 @@ TEST_F(SyclStreamTest, LaunchKernel) {
 
 TEST_F(SyclStreamTest, SetName) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
@@ -304,11 +305,12 @@ TEST_F(SyclStreamTest, SetName) {
 
 TEST_F(SyclStreamTest, WaitForEvent) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/false,
                                              /*priority=*/std::nullopt));
 
-  TF_ASSERT_OK_AND_ASSIGN(SyclEvent event, SyclEvent::Create(executor_));
+  TF_ASSERT_OK_AND_ASSIGN(SyclEvent event,
+                          SyclEvent::Create(&executor_.value()));
 
   EXPECT_THAT(stream->WaitFor(&event), absl_testing::IsOk());
 
@@ -329,11 +331,11 @@ TEST_F(SyclStreamTest, WaitForEvent) {
 
 TEST_F(SyclStreamTest, MultipleStreams) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream1,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/true,
                                              /*priority=*/std::nullopt));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SyclStream> stream2,
-                          SyclStream::Create(executor_,
+                          SyclStream::Create(&executor_.value(),
                                              /*enable_multiple_streams=*/true,
                                              /*priority=*/std::nullopt));
 

@@ -31,11 +31,11 @@ namespace codegen_utils {
 Value emitNumElementsComputation(OpBuilder& b, Location loc, Value memref) {
   int rank = mlir::cast<MemRefType>(memref.getType()).getRank();
   Value numElements;
-  numElements = b.create<mlir::arith::ConstantOp>(
-      loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
+  numElements = mlir::arith::ConstantOp::create(
+      b, loc, b.getIndexType(), b.getIntegerAttr(b.getIndexType(), 1));
   for (int r = 0; r < rank; ++r) {
-    auto dimSize = b.create<memref::DimOp>(loc, memref, r);
-    numElements = b.create<arith::MulIOp>(loc, numElements, dimSize);
+    auto dimSize = memref::DimOp::create(b, loc, memref, r);
+    numElements = arith::MulIOp::create(b, loc, numElements, dimSize);
   }
   return numElements;
 }
@@ -63,7 +63,7 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   Value tmpAccMul = shape[rank - 1];
   dimAccMulVec.push_back(tmpAccMul);
   for (int i = rank - 2; i > 0; --i) {
-    tmpAccMul = b.create<arith::MulIOp>(loc, tmpAccMul, shape[i]);
+    tmpAccMul = arith::MulIOp::create(b, loc, tmpAccMul, shape[i]);
     dimAccMulVec.push_back(tmpAccMul);
   }
   Value blockIndex = linearIndex;
@@ -72,9 +72,9 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
     if (i == rank - 1) {
       index = blockIndex;
     } else {
-      index = b.create<arith::DivUIOp>(loc, blockIndex, dimAccMulVec.back());
+      index = arith::DivUIOp::create(b, loc, blockIndex, dimAccMulVec.back());
       blockIndex =
-          b.create<arith::RemUIOp>(loc, blockIndex, dimAccMulVec.back());
+          arith::RemUIOp::create(b, loc, blockIndex, dimAccMulVec.back());
       dimAccMulVec.pop_back();
     }
     result.push_back(index);
@@ -94,7 +94,7 @@ SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
   // shape = [a, b, c, d]
   SmallVector<Value, 4> shapeVec;
   for (int i = 0; i < rank; ++i) {
-    shapeVec.push_back(b.create<memref::DimOp>(loc, memref, i));
+    shapeVec.push_back(memref::DimOp::create(b, loc, memref, i));
   }
 
   return calcMultiDimIndex(b, loc, linearIndex, shapeVec);

@@ -204,11 +204,9 @@ bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
 CoordinationService::CoordinationService(tsl::Env* env, const Config& config)
     : env_(*env), config_(config) {
   LOG(INFO) << "Initializing CoordinationService";
-  for (const auto& job : config_.coordinated_job_list) {
-    for (int i = 0; i < job.num_tasks(); ++i) {
-      const std::string task_name = GetTaskName(job.name(), i);
-      cluster_state_.emplace(task_name, std::make_unique<TaskState>(task_name));
-    }
+  for (int i = 0; i < config.num_tasks; ++i) {
+    const std::string task_name = GetTaskName(config.job_name, i);
+    cluster_state_.emplace(task_name, std::make_unique<TaskState>(task_name));
   }
   StartCheckStaleness();
 }
@@ -740,7 +738,7 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
 
   // Disconnect task.
   task_state->Disconnect(
-      /*grace_period_duration_us=*/absl::ToInt64Milliseconds(
+      /*grace_period_duration_us=*/absl::ToInt64Microseconds(
           config_.heartbeat_timeout));
   LeaveOngoingBarriers(task, "task disconnected");
   RefreshAliveness();

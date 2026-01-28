@@ -1,0 +1,17 @@
+edition = "2023";
+
+package xla;
+
+option java_package = "org.openxla";
+option java_multiple_files = true;
+option java_outer_classname = "PjrtAbiVersion";
+
+message PjRtRuntimeAbiVersionProto {
+  uint64 platform = 1;
+  bytes version = 2;
+}
+
+message PjRtExecutableAbiVersionProto {
+  uint64 platform = 1;
+  bytes version = 2;
+}

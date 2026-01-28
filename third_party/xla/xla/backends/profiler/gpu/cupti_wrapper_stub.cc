@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <type_traits>
+#include <cstddef>
+#include <cstdint>
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"

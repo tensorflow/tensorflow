@@ -9,6 +9,8 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
+* Support for Python 3.9 has been removed starting with TF 2.21.
+
 ### Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -26,6 +28,7 @@
     * Adds support for int2/int4 in tfl.cast .
     * Adds support for SRQ int2 in tfl.fully_connected.
     * Adds support for int4 in tfl.slice.
+    * Adds support for uint4 type.
 
 ### Bug Fixes and Other Changes
 

@@ -132,8 +132,15 @@
     *   Added a new op `LoadedExecutableFetchExecuteResult` for reading
         execution results.
 
-## Version kkDevicePlatformName
+## Version kDevicePlatformName
 
 *   Added date: 2025-12-13
 *   Changes:
     *   Added `Device::PlatformName()` for getting the platform of a device.
+
+## Version kMakeArrayFromHostBufferWithLayout
+
+*   Added date: 2026-01-20
+*   Changes:
+    *   Added support for `Client::MakeArrayFromHostBuffer` with a non-null
+        `layout` argument.

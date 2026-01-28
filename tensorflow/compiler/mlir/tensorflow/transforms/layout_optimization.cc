@@ -159,21 +159,21 @@ void LayoutAssignmentPass::runOnOperation() {
 
     // Permute arguments into the target data format.
     builder.setInsertionPoint(op);
-    auto arg_perm = builder.create<ConstOp>(loc, perm_attr(args_permutation));
+    auto arg_perm = ConstOp::create(builder, loc, perm_attr(args_permutation));
 
     for (int64_t arg : layout_sensitive_interface.GetLayoutDependentArgs()) {
-      op->setOperand(
-          arg, builder.create<TransposeOp>(loc, op->getOperand(arg), arg_perm));
+      op->setOperand(arg, TransposeOp::create(builder, loc, op->getOperand(arg),
+                                              arg_perm));
     }
 
     // Permute results back to the original data format.
     builder.setInsertionPointAfter(op);
-    auto res_perm = builder.create<ConstOp>(loc, perm_attr(res_permutation));
+    auto res_perm = ConstOp::create(builder, loc, perm_attr(res_permutation));
 
     for (int64_t res : layout_sensitive_interface.GetLayoutDependentResults()) {
       OpResult result = op->getResult(res);
 
-      auto transposed_res = builder.create<TransposeOp>(loc, result, res_perm);
+      auto transposed_res = TransposeOp::create(builder, loc, result, res_perm);
       result.replaceAllUsesWith(transposed_res);
       transposed_res.setOperand(0, result);
     }
@@ -274,7 +274,7 @@ void MoveTransposeBefore(Operation* op, SmallVector<Operation*, 8>* work_list) {
     // If no transpose available for using, create new one.
     if (!transpose)
       transpose =
-          builder.create<TransposeOp>(loc, operand.get(), permutation_op);
+          TransposeOp::create(builder, loc, operand.get(), permutation_op);
 
     operand.set(transpose);
   }
@@ -429,7 +429,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
       transpose.setOperand(1, permutation_op);
       transpose.getResult().setType(mlir::cast<TensorType>(original_type[idx]));
     } else {
-      transpose = builder.create<TransposeOp>(loc, result, permutation_op);
+      transpose = TransposeOp::create(builder, loc, result, permutation_op);
     }
 
     // Forward all users to the transpose operation.

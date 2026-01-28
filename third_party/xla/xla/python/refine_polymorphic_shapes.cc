@@ -320,32 +320,15 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
   if (!module) {
     return absl::InvalidArgumentError("Cannot parse module.");
   }
-  // TODO(b/420837831): Remove this once we don't need to fall back to GSPMD.
-  // Don't run the Shardy round trip import pipeline if the module has
-  // GSPMD attrs or ops. This is because the loaded checkpoint targets GSPMD,
-  // And so there are no Shardy ops to import. This may happen when loading an
-  // old GSPMD checkpoint in JAX, with Shardy enabled.
-  if (enable_shardy && !xla::sdy::hasGspmdAttrsOrOps(*module)) {
-    mlir::PassManager pm(module.get()->getName(),
-                         mlir::OpPassManager::Nesting::Implicit);
-    // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` after 6 months.
-    // NOTE: JAX shape refinement has `@shape_assertion` custom calls that
-    // require constant folding. As such, we cannot import constants here just
-    // yet. We have to delay it until after shape refinement.
-    xla::sdy::addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/false);
-    mlir::BaseScopedDiagnosticHandler diag_handler(module.get()->getContext());
-    if (mlir::failed(pm.run(*module))) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Error importing Sdy dialect: ",
-                       diag_handler.ConsumeStatus().ToString()));
-    }
-  }
 
   TF_RETURN_IF_ERROR(RefinePolymorphicShapes(*module, enable_shape_assertions));
   if (validate_static_shapes) TF_RETURN_IF_ERROR(ValidateStaticShapes(*module));
   if (mlir::failed(mlir::writeBytecodeToFile(*module, os))) {
     return absl::InternalError("Cannot serialize module.");
   }
+  // NOTE: JAX shape refinement has `@shape_assertion` custom calls that
+  // require constant folding. As such, we have to delay it until after shape
+  // refinement.
   if (enable_shardy) {
     mlir::PassManager pm(module.get()->getName(),
                          mlir::OpPassManager::Nesting::Implicit);

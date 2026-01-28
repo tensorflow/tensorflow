@@ -51,7 +51,7 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
-        "@local_tsl//tsl/platform:gif_internal_hdrs",
+        "@tsl//tsl/platform:gif_internal_hdrs",
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
@@ -68,10 +68,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@gif",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:tstring",
-        "@local_tsl//tsl/platform:types",
-        "@local_xla//xla/tsl/platform:types",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:tstring",
+        "@tsl//tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 

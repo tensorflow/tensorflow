@@ -38,10 +38,10 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:path",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -79,8 +79,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

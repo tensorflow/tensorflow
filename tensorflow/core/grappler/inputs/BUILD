@@ -35,7 +35,7 @@ tf_cc_test(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:portable_gif_internal",
@@ -70,8 +71,7 @@ cc_library(
         "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/kernels:aggregate_ops",
-        "//tensorflow/core/platform:strcat",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
 )
 

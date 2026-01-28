@@ -20,11 +20,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "xla/tests/split_phase_utils.h"
 
 namespace xla {
 namespace {
@@ -46,29 +47,29 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
   new_options.instruction_can_change_layout_func =
       std::move(options.instruction_can_change_layout_func);
   new_options.swallow_execution_errors =
-      HasPjRtSplitPhaseAwareSwallowExecutionErrors();
+      HasPjRtAotAwareSwallowExecutionErrors();
   return new_options;
 }
 }  // namespace
 
 HloPjRtTestBase::HloPjRtTestBase(HloPjRtTestBaseOptions options)
-    : HloPjRtTestBase(GetPjRtClientForTest(), std::move(options)) {}
+    : HloPjRtTestBase(GetPjRtClientForTest().release(), std::move(options)) {}
 
-HloPjRtTestBase::HloPjRtTestBase(std::unique_ptr<PjRtClient> client,
+HloPjRtTestBase::HloPjRtTestBase(PjRtClient* client,
                                  HloPjRtTestBaseOptions options)
     : HloPjRtTestBase(
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
-              client.get()),
-          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client.get()),
-          std::move(client), std::move(options)) {}
+              client),
+          GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
+          absl::WrapUnique(client), std::move(options)) {}
 
 HloPjRtTestBase::HloPjRtTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
     DeviceShapeSizeFn device_shape_size_fn, std::unique_ptr<PjRtClient> client,
     HloPjRtTestBaseOptions options)
-    : HloRunnerAgnosticTestBase(
-          MakeHloRunnerPjRtSplitPhaseAware(std::move(client)),
-          std::move(device_shape_representation_fn),
-          std::move(device_shape_size_fn), BuildOptions(std::move(options))) {}
+    : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
+                                std::move(device_shape_representation_fn),
+                                std::move(device_shape_size_fn),
+                                BuildOptions(std::move(options))) {}
 
 }  // namespace xla

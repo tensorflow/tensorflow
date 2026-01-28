@@ -615,8 +615,8 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
   TfLiteTensor* tensor =
       interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
-  if (tensor->type == kTfLiteInt4) {
-    return python_utils::SetInt4Tensor(tensor, array, tensor_index);
+  if (tensor->type == kTfLiteInt4 || tensor->type == kTfLiteUInt4) {
+    return python_utils::Set4BitTensor(tensor, array, tensor_index);
   }
 
   TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
@@ -821,7 +821,7 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
     size_t numpy_bytes = tensor->bytes;
-    if (tensor->type == kTfLiteInt4) {
+    if (tensor->type == kTfLiteInt4 || tensor->type == kTfLiteUInt4) {
       // Numpy doesn't have int4 type, so we double the size of the buffer
       // to hold int8 type for each (4-bit packed) element.
       numpy_bytes *= 2;
@@ -839,6 +839,17 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
         int8_t byte = tensor_data[i];
         int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
         int8_t upper = static_cast<int8_t>(byte >> 4);
+        numpy_data[2 * i] = lower;
+        numpy_data[2 * i + 1] = upper;
+      }
+    } else if (tensor->type == kTfLiteUInt4) {
+      uint8_t* tensor_data = reinterpret_cast<uint8_t*>(tensor->data.raw);
+      uint8_t* numpy_data = static_cast<uint8_t*>(data);
+      // Unpack each 4-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        uint8_t byte = tensor_data[i];
+        uint8_t lower = byte & 0x0F;
+        uint8_t upper = byte >> 4;
         numpy_data[2 * i] = lower;
         numpy_data[2 * i + 1] = upper;
       }

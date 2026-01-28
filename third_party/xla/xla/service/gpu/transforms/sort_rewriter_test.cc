@@ -19,10 +19,13 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,9 +36,9 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/transforms/estimate_cub_scratch_size.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/platform_util.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
@@ -47,23 +50,49 @@ namespace {
 
 namespace m = ::xla::match;
 
-class SortRewriterTest
-    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
-      public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {
+std::string GetNumpyOrderComparator(
+    const absl::string_view type_name, const absl::string_view direction,
+    const bool argsort = false, const absl::string_view index_type_name = "") {
+  std::string params = absl::Substitute(
+      "  lhs = $0[] parameter(0)\n  rhs = $0[] parameter(1)", type_name);
+  if (argsort) {
+    absl::StrAppend(&params,
+                    absl::Substitute("\n  p2 = $0[] parameter(2)\n  p3 = $0[] "
+                                     "parameter(3)",
+                                     index_type_name));
+  }
+
+  constexpr char kBody[] = R"(
+  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
+  c_nan = $0[] constant(nan)
+  c_zero = $0[] constant(0)
+  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
+  lhs_no_neg_zero = $0[] select(lhs_is_zero, c_zero, lhs)
+  lhs_no_neg_zero_or_nan = $0[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
+  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
+  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
+  rhs_no_neg_zero = $0[] select(rhs_is_zero, c_zero, rhs)
+  rhs_no_neg_zero_or_nan = $0[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
+  ROOT compare = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, type=TOTALORDER
+)";
+
+  return absl::StrCat("numpy_order_comparator {\n", params,
+                      absl::Substitute(kBody, type_name, direction), "}");
+}
+
+class SortRewriterTestBase
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   void SetUp() override {
     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>::SetUp();
     SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
-    TF_ASSERT_OK_AND_ASSIGN(test_platform_, PlatformUtil::GetPlatform("gpu"));
   }
 
   bool RunModuleAndPass(HloModule* module) {
     auto cloned = module->Clone();
-    const std::string& platform_name = GetTestPlatform()->Name();
-    bool changed =
-        SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo(), platform_name)
-            .Run(module)
-            .value();
+    bool changed = SortRewriter(TestGpuDeviceInfo::CudaOrRocmDeviceInfo())
+                       .Run(module)
+                       .value();
     if (changed) {
       // Here we run an end to end test to make sure that SortRewriter does
       // not introduce an incorrect rewrite. To do this, we need to clone the
@@ -78,14 +107,11 @@ class SortRewriterTest
     auto config = instruction->backend_config<xla::SortOptions>();
     EXPECT_EQ(config->descending(), descending);
   }
-
-  const stream_executor::Platform* GetTestPlatform() const {
-    return test_platform_;
-  }
-
- private:
-  stream_executor::Platform* test_platform_ = nullptr;
 };
+
+class SortRewriterTest
+    : public SortRewriterTestBase,
+      public ::testing::WithParamInterface<std::tuple<PrimitiveType, bool>> {};
 
 // Basic sort: ascending.
 TEST_F(SortRewriterTest, SortKeysLessThan) {
@@ -103,7 +129,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -131,7 +157,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -159,7 +185,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -191,7 +217,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -218,7 +244,7 @@ ENTRY %main {
       dimensions={0}, is_stable=true, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 0),
@@ -245,7 +271,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(m::CustomCall(), 1),
@@ -275,7 +301,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -295,7 +321,7 @@ ENTRY %main {
   ROOT %sort = f32[1000,4] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -314,7 +340,7 @@ ENTRY %main {
   ROOT %sort = u8[100,<=100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -333,7 +359,7 @@ ENTRY %main {
   ROOT %sort = u8[<=100,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -353,7 +379,7 @@ ENTRY %main {
   ROOT %sort = pred[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -374,7 +400,7 @@ ENTRY %main {
   ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -398,7 +424,7 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -419,7 +445,7 @@ ENTRY %main {
   ROOT %sort = f32[100] sort(%input), dimensions={0}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_FALSE(RunModuleAndPass(module.get()));
 }
 
@@ -439,28 +465,28 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << "Skipping CUDA-specific test";
   }
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), "CUDA");
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 70
   hlo = absl::Substitute(kHloTmpl, "70");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -480,28 +506,28 @@ ENTRY %main {
   ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  if (xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm") {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << "Skipping CUDA-specific test";
   }
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA");
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 
   // Batch 3
   hlo = absl::Substitute(kHloTmpl, "3");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_FALSE(changed);
 
   // Batch 31
   hlo = absl::Substitute(kHloTmpl, "31");
-  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
   EXPECT_TRUE(changed);
 }
 
@@ -521,7 +547,7 @@ ENTRY %main {
   ROOT %sort = f32[10,100] sort(%input), dimensions={1}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -549,7 +575,7 @@ ENTRY %main {
   ROOT %sort = f32[10,10,10] sort(%input), dimensions={2}, to_apply=%compare
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
   EXPECT_TRUE(RunModuleAndPass(module.get()));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -580,10 +606,9 @@ ENTRY %main {
     // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[{{[0-9]+}}]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
   )";
 
-  auto platform_name = absl::AsciiStrToUpper(
-      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto device_list = [platform_name]() -> std::vector<se::DeviceDescription> {
-    if (platform_name == "CUDA") {
+  bool is_cuda = test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda);
+  auto device_list = [is_cuda]() -> std::vector<se::DeviceDescription> {
+    if (is_cuda) {
       return {TestGpuDeviceInfo::RTXA6000DeviceInfo(),
               TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
     } else {
@@ -593,39 +618,26 @@ ENTRY %main {
   };
 
   for (const auto& device_desc : device_list()) {
-    RunAndFilecheckHloRewrite(kHlo, SortRewriter(device_desc, platform_name),
+    RunAndFilecheckHloRewrite(kHlo, SortRewriter(device_desc),
                               kExpectedPattern);
   }
 }
 
 TEST_P(SortRewriterTest, SortNumpyOrder) {
-  constexpr char kHloTpl[] = R"(
-numpy_order_comparator {
-  lhs = $0[] parameter(0)
-  lhs_is_nan = pred[] compare(lhs, lhs), direction=NE
-  c_nan = $0[] constant(nan)
-  c_zero = $0[] constant(0)
-  lhs_is_zero = pred[] compare(lhs, c_zero), direction=EQ
-  lhs_no_neg_zero = $0[] select(lhs_is_zero, c_zero, lhs)
-  lhs_no_neg_zero_or_nan = $0[] select(lhs_is_nan, c_nan, lhs_no_neg_zero)
-  rhs = $0[] parameter(1)
-  rhs_is_nan = pred[] compare(rhs, rhs), direction=NE
-  rhs_is_zero = pred[] compare(rhs, c_zero), direction=EQ
-  rhs_no_neg_zero = $0[] select(rhs_is_zero, c_zero, rhs)
-  rhs_no_neg_zero_or_nan = $0[] select(rhs_is_nan, c_nan, rhs_no_neg_zero)
-  ROOT compare.20017 = pred[] compare(lhs_no_neg_zero_or_nan, rhs_no_neg_zero_or_nan), direction=$1, type=TOTALORDER
-}
+  auto [dtype, direction] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(dtype);
+  std::string direction_str = direction ? "LT" : "GT";
 
+  std::string hlo_str =
+      absl::StrCat(GetNumpyOrderComparator(type_name, direction_str),
+                   absl::Substitute(R"(
 ENTRY main {
   p = $0[16,128] parameter(0)
   ROOT sort = $0[16,128] sort(p), dimensions={1}, is_stable=true, to_apply=numpy_order_comparator
-})";
-  auto [dtype, direction] = GetParam();
-  std::string hlo_str = absl::Substitute(
-      kHloTpl, primitive_util::LowercasePrimitiveTypeName(dtype),
-      direction ? "LT" : "GT");
+})",
+                                    type_name));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
   EXPECT_TRUE(RunModuleAndPass(module.get())) << module->ToString();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
@@ -646,9 +658,78 @@ INSTANTIATE_TEST_SUITE_P(
           std::get<1>(info.param) ? "_asc" : "_desc");
     });
 
+TEST_F(SortRewriterTest, NoRewriteLargeInputNumpyOrder) {
+  std::string hlo_str = absl::StrCat(
+      GetNumpyOrderComparator("f32", "LT", /*argsort=*/true, "s32"),
+      R"(
+ENTRY main {
+  // 300,000,000 elements * 8 bytes (4 for f32 + 4 for s32) = 2.4 GB > 2 GB
+  p = f32[300000000] parameter(0)
+  i = s32[300000000] parameter(1)
+  ROOT sort = (f32[300000000], s32[300000000]) sort(p, i), dimensions={0}, is_stable=true, to_apply=numpy_order_comparator
+})");
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  // Should not rewrite because input size is too large.
+  EXPECT_FALSE(RunModuleAndPass(module.get()));
+}
+
 TEST_F(SortRewriterTest, AlwaysUsesCubSort) {
   EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
+
+class SortRewriterArgsortTest
+    : public SortRewriterTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, bool, PrimitiveType>> {};
+
+TEST_P(SortRewriterArgsortTest, SortNumpyOrderArgsort) {
+  auto [key_type, ascending, index_type] = GetParam();
+  std::string type_name = primitive_util::LowercasePrimitiveTypeName(key_type);
+  std::string direction_str = ascending ? "LT" : "GT";
+  std::string index_type_name =
+      primitive_util::LowercasePrimitiveTypeName(index_type);
+
+  std::string hlo_str =
+      absl::StrCat(GetNumpyOrderComparator(type_name, direction_str,
+                                           /*argsort=*/true, index_type_name),
+                   absl::Substitute(R"(
+ENTRY main {
+  p = $0[16,128] parameter(0)
+  i = $1[16,128] iota(), iota_dimension=1
+  ROOT sort = ($0[16,128], $1[16,128]) sort(p, i), dimensions={1}, is_stable=true, to_apply=numpy_order_comparator
+})",
+                                    type_name, index_type_name));
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+  bool changed = RunModuleAndPass(module.get());
+  bool should_use_cub = key_type != F64;
+  if (should_use_cub) {
+    EXPECT_TRUE(changed) << module->ToString();
+    EXPECT_THAT(module->entry_computation()->instructions(),
+                ::testing::Contains(GmockMatch(m::CustomCall(
+                    {kCubDeviceRadixSortUnassignedScratchSizeTarget}))));
+  } else {
+    EXPECT_FALSE(changed) << module->ToString();
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SortRewriterArgsort, SortRewriterArgsortTest,
+    ::testing::Combine(::testing::Values(F16, BF16, F32, F64),
+                       ::testing::Bool(), ::testing::Values(S16, S32)),
+    [](const ::testing::TestParamInfo<SortRewriterArgsortTest::ParamType>&
+           info) {
+      PrimitiveType key_type = std::get<0>(info.param);
+      bool ascending = std::get<1>(info.param);
+      PrimitiveType index_type = std::get<2>(info.param);
+      bool should_use_cub = key_type != F64;
+      return absl::StrCat(
+          primitive_util::LowercasePrimitiveTypeName(key_type),
+          ascending ? "_asc" : "_desc", "_",
+          primitive_util::LowercasePrimitiveTypeName(index_type),
+          should_use_cub ? "_cub" : "_nocub");
+    });
 
 }  // namespace
 }  // namespace gpu

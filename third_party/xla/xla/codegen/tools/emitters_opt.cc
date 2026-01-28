@@ -28,9 +28,11 @@ limitations under the License.
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -48,6 +50,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
@@ -65,13 +68,15 @@ int main(int argc, char** argv) {
       mlir::mhlo::MhloDialect, mlir::scf::SCFDialect,
       mlir::tensor::TensorDialect, mlir::vector::VectorDialect, xla::XlaDialect,
       xla::cpu::XlaCpuDialect, xla::gpu::XlaGpuDialect,
-      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect>();
+      xla::xtile::XTileDialect, mlir::stablehlo::StablehloDialect,
+      mlir::ROCDL::ROCDLDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
   mlir::registerInliner();
   xla::emitters::registerTransformsPasses();
+  xla::emitters::registerTransformsLLVMGPUPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();
@@ -82,6 +87,7 @@ int main(int argc, char** argv) {
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       registry);
   mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+  mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
 
   mlir::registerPassPipeline(
       "xla-test-optimize",

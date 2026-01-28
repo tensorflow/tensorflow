@@ -52,7 +52,7 @@ TEST(PrintBufferContentsTest, PrintBufferContents) {
   TF_ASSERT_OK(stream->Memset32(&arg1, 0x12345678, 10 * sizeof(int32_t)));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  std::vector<stream_executor::KernelArgument> kernel_args;
+  std::vector<stream_executor::KernelArg> kernel_args;
   kernel_args.push_back(arg1);
   stream_executor::TensorMap tensor_map;
   for (int i = 0; i < 128; ++i) {

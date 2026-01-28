@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {

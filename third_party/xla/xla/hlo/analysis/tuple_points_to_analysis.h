@@ -144,6 +144,8 @@ class PointsToSet {
         });
   }
 
+  std::string ToString() const;
+
  private:
   struct Elem {
     BufferList buffers;

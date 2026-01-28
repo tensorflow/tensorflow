@@ -25,7 +25,7 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = True,
 )

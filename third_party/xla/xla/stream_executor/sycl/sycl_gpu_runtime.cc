@@ -413,6 +413,34 @@ absl::StatusOr<std::optional<::sycl::event>> SyclGetRecentEventFromStream(
   }
 }
 
+absl::Status SyclMemcpyAsync(::sycl::queue* stream_handle, void* dst,
+                             const void* src, size_t byte_count,
+                             SyclMemcpyKind kind) {
+  if (dst == nullptr || src == nullptr) {
+    return absl::InvalidArgumentError(
+        "SyclMemcpyAsync: Null pointer provided for destination or source.");
+  }
+  if (byte_count == 0) {
+    LOG(WARNING) << "SyclMemcpyAsync: Attempting to copy zero bytes, "
+                    "skipping operation.";
+    return absl::OkStatus();
+  }
+  switch (kind) {
+    case SyclMemcpyKind::kSyclMemcpyDeviceToHost:
+      return MemcpyDeviceToHost(stream_handle, dst, src, byte_count,
+                                /*async=*/true);
+    case SyclMemcpyKind::kSyclMemcpyHostToDevice:
+      return MemcpyHostToDevice(stream_handle, dst, src, byte_count,
+                                /*async=*/true);
+    case SyclMemcpyKind::kSyclMemcpyDeviceToDevice:
+      return MemcpyDeviceToDevice(stream_handle, dst, src, byte_count,
+                                  /*async=*/true);
+    default:
+      return absl::InvalidArgumentError(
+          "SyclMemcpyAsync: Invalid SyclMemcpyKind provided.");
+  }
+}
+
 absl::Status SyclMemcpyDeviceToHost(int device_ordinal, void* dst_host,
                                     const void* src_device, size_t byte_count) {
   if (dst_host == nullptr || src_device == nullptr) {

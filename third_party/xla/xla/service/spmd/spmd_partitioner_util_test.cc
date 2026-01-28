@@ -75,20 +75,20 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding2) {
   }
 }
 
-TEST(SPMDPartitionerUtilTest, GetPartitionGroupsForReplication) {
+TEST(SPMDPartitionerUtilTest, GetListOfListsPartitionGroupsForReplication) {
   HloSharding sharding = HloSharding::IotaTile({2, 2, 2});
   CollectiveDeviceList actual_partition_groups =
-      GetPartitionGroupsForReplication(sharding, {1});
+      GetListOfListsPartitionGroupsForReplication(sharding, {1});
   std::vector<std::vector<int64_t>> expected_partition_groups = {
       {0, 2}, {1, 3}, {4, 6}, {5, 7}};
   EXPECT_THAT(actual_partition_groups.flattened_replica_groups(),
               testing::ContainerEq(expected_partition_groups));
 }
 
-TEST(SPMDPartitionerUtilTest, GetPartitionGroupsForReplication2) {
+TEST(SPMDPartitionerUtilTest, GetListOfListsPartitionGroupsForReplication2) {
   HloSharding sharding = HloSharding::IotaTile({2, 2, 2}, {2, 2, 2}, {0, 2, 1});
   CollectiveDeviceList actual_partition_groups =
-      GetPartitionGroupsForReplication(sharding, {0, 2});
+      GetListOfListsPartitionGroupsForReplication(sharding, {0, 2});
   std::vector<std::vector<int64_t>> expected_partition_groups = {{0, 2, 4, 6},
                                                                  {1, 3, 5, 7}};
   EXPECT_THAT(actual_partition_groups.flattened_replica_groups(),

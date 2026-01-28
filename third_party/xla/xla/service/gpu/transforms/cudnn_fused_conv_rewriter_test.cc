@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -55,6 +57,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -172,11 +175,12 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       const std::string hlo_with_new_type =
           absl::StrReplaceAll(hlo_string, {{"TYPE", type}});
       std::string optimized_hlo_string = GetOptimizedHlo(hlo_with_new_type);
-      EXPECT_THAT(optimized_hlo_string,
-                  Not(HasSubstr(kCudnnConvForwardCallTarget)))
+      // Match instruction names to allow for autotuner reverting back
+      // some of the fusions on ROCm.
+      EXPECT_THAT(optimized_hlo_string, Not(HasSubstr("cudnn-conv.")))
           << optimized_hlo_string;
       EXPECT_THAT(optimized_hlo_string,
-                  HasSubstr(kCudnnConvBiasActivationForwardCallTarget));
+                  HasSubstr("cudnn-conv-bias-activation."));
 
       TF_ASSERT_OK_AND_ASSIGN(auto module,
                               ParseAndReturnVerifiedModule(hlo_with_new_type));
@@ -586,6 +590,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestSideInputOnly) {
+  MAYBE_SKIP_TEST("SideInput");
   // max(0, conv(x, w) + side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -624,6 +629,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseSideInputWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestBiasAndSideInput) {
+  MAYBE_SKIP_TEST("SideInput");
   // max(0, conv(x, w) + side_input + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -646,6 +652,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestBiasAndSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConv) {
+  MAYBE_SKIP_TEST("Scale");
   // max(0, 0.999994934 * conv(x, w));
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -706,6 +713,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestNoCrashOnInf) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvAndScaledSideInput) {
+  MAYBE_SKIP_TEST("SideInput");
   // max(0, conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -750,6 +758,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseDepthwiseConvWithScaledSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInput) {
+  MAYBE_SKIP_TEST("SideInput");
   // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -775,6 +784,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInput) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestScaledConvAndScaledSideInputWithBias) {
+  MAYBE_SKIP_TEST("SideInput");
   // max(0, 0.999994934 * conv(x, w) + 0.899994934 * side_input + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -3478,3 +3488,12 @@ TEST_F(CudnnFusedConvRewriterTest, TestFusedConvInt8ToInt8NoClamp) {
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char* argv[]) {
+  std::vector<tsl::Flag> flag_list;
+  xla::AppendDebugOptionsFlags(&flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  tsl::Flags::Parse(&argc, argv, flag_list);
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

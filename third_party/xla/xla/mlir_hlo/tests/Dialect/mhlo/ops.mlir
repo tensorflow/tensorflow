@@ -5812,7 +5812,7 @@ func.func @error_batch_norm_grad(%input: tensor<*xf32>, %scale: tensor<2xf32>, %
 
 // Test rng_get_and_update_state_op
 // CHECK-LABEL: xla.rng_get_and_update_state
-func.func @local_xla.rng_get_and_update_state() -> tensor<2xui64> {
+func.func @xla.rng_get_and_update_state() -> tensor<2xui64> {
   %result = mhlo.xla.rng_get_and_update_state {delta = 1 : i64}
   func.return %result : tensor<2xui64>
 }
@@ -7056,6 +7056,30 @@ func.func @composite_c4(%arg0: !mhlo.token) {
     decomposition = @foo
   } : (!mhlo.token) -> tensor<f32>
   func.return
+}
+
+// -----
+
+func.func @scan(%input: tensor<10xf32>, %init: tensor<f32>) -> tensor<10xf32> {
+  %0:2 = mhlo.scan (%input) inits (%init) dimension=0 {
+  ^bb0(%input0: tensor<f32>, %carry0: tensor<f32>):
+    %1 = mhlo.add %input0, %carry0 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @scan_no_input_but_output
+func.func @scan_no_input_but_output(%init: tensor<f32>) -> tensor<10xf32> {
+  // The inferred return type has a dynamic dimension because there is no input.
+  // Check that this is compatible with the static dimension in the result type.
+  %0:2 = mhlo.scan () inits (%init) dimension=0 {
+  ^bb0(%carry0: tensor<f32>):
+    mhlo.return %carry0, %carry0 : tensor<f32>, tensor<f32>
+  } : (tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
 }
 
 // -----

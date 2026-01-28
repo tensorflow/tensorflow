@@ -12,11 +12,10 @@ cc_library(
     name = "error_codes",
     hdrs = ["error_codes.h"],
     deps = [
-        ":debug_me_context_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ] + if_google([
         "@com_google_absl//absl/types:source_location",
     ]),
@@ -26,12 +25,10 @@ xla_cc_test(
     name = "error_codes_test",
     srcs = ["error_codes_test.cc"],
     deps = [
-        ":debug_me_context_util",
         ":error_codes",
-        "//xla/tsl/platform:debug_me_context",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -45,7 +42,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -60,7 +57,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 

@@ -96,7 +96,7 @@ GrpcClientHostBufferStore::~GrpcClientHostBufferStore() {
 
 tsl::Future<> GrpcClientHostBufferStore::StoreToDisk(uint64_t handle,
                                                      absl::string_view data) {
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
 
   XFlowHelper flow("GrpcClientHostBufferStore::StoreToDisk");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -146,7 +146,7 @@ tsl::Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
     }
   }
 
-  auto [promise, future] = tsl::Future<>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<>();
 
   XFlowHelper flow("GrpcClientHostBufferStore::StoreAsync");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -247,7 +247,7 @@ tsl::Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 }
 
 tsl::Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
-  auto [promise, future] = tsl::Future<absl::Cord>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<absl::Cord>();
 
   XFlowHelper flow("GrpcClientHostBufferStore::Lookup");
   flow.InstantActivity<XFlowHelper::kSend>();

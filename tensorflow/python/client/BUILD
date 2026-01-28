@@ -40,9 +40,9 @@ tf_python_pybind_extension(
             "//tensorflow/c/eager:headers",
             "//tensorflow/c/eager:pywrap_required_hdrs",
             "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
-            "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
-            "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
-            "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
+            "@xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+            "@xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+            "@xla//xla/tsl/python/lib/core:numpy_hdr",
             "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
             "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
             "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
@@ -77,11 +77,11 @@ tf_python_pybind_extension(
         "//third_party/py/numpy:headers",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
-        "@local_xla//third_party/python_runtime:headers",
-        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@xla//third_party/python_runtime:headers",
+        "@xla//xla/tsl/python/lib/core:numpy",
     ] + if_pywrap([
         "//tensorflow/c:safe_ptr",
         "//tensorflow/c:c_api_experimental",
@@ -94,13 +94,13 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
             "//tensorflow/core:version_lib",
-            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
+            "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -123,8 +123,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/strings",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -146,8 +146,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -213,8 +213,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -283,7 +283,7 @@ tf_cuda_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/python/lib/core:numpy",
+        "@xla//xla/tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
 )

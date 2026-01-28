@@ -1,152 +1,240 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -1065,10 +1065,6 @@
+     A->render(Args, CmdArgs);
+   }
+ 
+-  Args.addAllArgs(CmdArgs,
+-                  {options::OPT_D, options::OPT_U, options::OPT_I_Group,
+-                   options::OPT_F, options::OPT_embed_dir_EQ});
+-
+   if (C.isOffloadingHostKind(Action::OFK_Cuda) ||
+       JA.isDeviceOffloading(Action::OFK_Cuda)) {
+     // Collect all enabled NVPTX architectures.
+@@ -1091,6 +1087,10 @@
+     }
+   }
+ 
++  Args.addAllArgs(CmdArgs,
++                  {options::OPT_D, options::OPT_U, options::OPT_I_Group,
++                   options::OPT_F, options::OPT_embed_dir_EQ});
++
+   // Add -Wp, and -Xpreprocessor if using the preprocessor.
+ 
+   // FIXME: There is a very unfortunate problem here, some troubled
 diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
 --- a/clang/lib/Serialization/ASTReaderDecl.cpp
 +++ b/clang/lib/Serialization/ASTReaderDecl.cpp
-@@ -2107,8 +2107,9 @@
-     auto *Def = DD.Definition;
-     DD = std::move(MergeDD);
-     DD.Definition = Def;
--    for (auto *D : Def->redecls())
--      cast<CXXRecordDecl>(D)->DefinitionData = &DD;
-+    for (auto *R = Reader.getMostRecentExistingDecl(Def); R;
-+         R = R->getPreviousDecl())
-+      cast<CXXRecordDecl>(R)->DefinitionData = &DD;
-     return;
-   }
- 
-diff -ruN --strip-trailing-cr a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
---- a/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
-+++ b/libc/src/__support/FPUtil/x86_64/fenv_mxcsr_utils.h
-@@ -61,14 +61,14 @@
- LIBC_INLINE static void write_mxcsr(uint32_t w) { _mm_setcsr(w); }
- 
- LIBC_INLINE static void clear_except(uint16_t excepts) {
--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
-+  uint32_t mxcsr = get_mxcsr();
-   mxcsr &= ~static_cast<uint32_t>(excepts);
--  _MM_SET_EXCEPTION_STATE(mxcsr);
-+  write_mxcsr(mxcsr);
+@@ -3642,9 +3642,23 @@
+ void ASTDeclReader::attachPreviousDeclImpl(ASTReader &Reader,
+                                            Redeclarable<VarDecl> *D,
+                                            Decl *Previous, Decl *Canon) {
++  auto *VD = static_cast<VarDecl *>(D);
+   auto *PrevVD = cast<VarDecl>(Previous);
+   D->RedeclLink.setPrevious(PrevVD);
+   D->First = PrevVD->First;
++
++  // We should keep at most one definition on the chain.
++  // FIXME: Cache the definition once we've found it. Building a chain with
++  // N definitions currently takes O(N^2) time here.
++  if (VD->isThisDeclarationADefinition() == VarDecl::Definition) {
++    for (VarDecl *CurD = PrevVD; CurD; CurD = CurD->getPreviousDecl()) {
++      if (CurD->isThisDeclarationADefinition() == VarDecl::Definition) {
++        Reader.mergeDefinitionVisibility(CurD, VD);
++        VD->demoteThisDefinitionToDeclaration();
++        break;
++      }
++    }
++  }
  }
  
- LIBC_INLINE static uint16_t test_except(uint16_t excepts) {
-   uint32_t mxcsr = get_mxcsr();
--  return static_cast<uint16_t>(excepts & mxcsr);
-+  return static_cast<uint16_t>(excepts & ExceptionFlags::ALL_F & mxcsr);
- }
+ static bool isUndeducedReturnType(QualType T) {
+diff -ruN --strip-trailing-cr a/clang/test/Driver/cuda-arch-list.cu b/clang/test/Driver/cuda-arch-list.cu
+--- a/clang/test/Driver/cuda-arch-list.cu
++++ b/clang/test/Driver/cuda-arch-list.cu
+@@ -23,6 +23,11 @@
+ // RUN:   --offload-arch=sm_60 --offload-arch=sm_70 --no-offload-arch=sm_60 %s 2>&1 \
+ // RUN: | FileCheck -check-prefixes=DEVICE70-ONLY,HOST70-ONLY %s
  
- LIBC_INLINE static uint16_t get_except() {
-@@ -83,9 +83,9 @@
- }
++// Verify that user-specified -D__CUDA_ARCH_LIST__ overrides the driver-generated one
++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -nocudainc -nocudalib \
++// RUN:   --offload-arch=sm_60 -D__CUDA_ARCH_LIST__=999 %s 2>&1 \
++// RUN: | FileCheck -check-prefixes=DEVICE-OVERRIDE,HOST-OVERRIDE %s
++
+ // DEVICE60: "-cc1" "-triple" "nvptx64-nvidia-cuda"
+ // DEVICE60-SAME: "-target-cpu" "sm_60"
+ // DEVICE60-SAME: "-D__CUDA_ARCH_LIST__=600"
+@@ -54,3 +59,12 @@
  
- LIBC_INLINE static void raise_except(uint16_t excepts) {
--  uint32_t mxcsr = _MM_GET_EXCEPTION_STATE();
--  mxcsr |= excepts;
--  _MM_SET_EXCEPTION_STATE(mxcsr);
-+  uint32_t mxcsr = get_mxcsr();
-+  mxcsr |= excepts & ExceptionFlags::ALL_F;
-+  write_mxcsr(mxcsr);
- #ifdef LIBC_TRAP_ON_RAISE_FP_EXCEPT
-   // We will try to trigger the SIGFPE if floating point exceptions are not
-   // masked.  Since we already set all the floating point exception flags, we
-diff -ruN --strip-trailing-cr a/libcxx/include/__flat_map/flat_map.h b/libcxx/include/__flat_map/flat_map.h
---- a/libcxx/include/__flat_map/flat_map.h
-+++ b/libcxx/include/__flat_map/flat_map.h
-@@ -465,13 +465,13 @@
-   }
- 
-   // [flat.map.access], element access
--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](const key_type& __x)
-     requires is_constructible_v<mapped_type>
-   {
-     return try_emplace(__x).first->second;
-   }
- 
--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](key_type&& __x)
-     requires is_constructible_v<mapped_type>
-   {
-     return try_emplace(std::move(__x)).first->second;
-@@ -480,7 +480,7 @@
-   template <class _Kp>
-     requires(__is_compare_transparent && is_constructible_v<key_type, _Kp> && is_constructible_v<mapped_type> &&
-              !is_convertible_v<_Kp &&, const_iterator> && !is_convertible_v<_Kp &&, iterator>)
--  [[nodiscard]] _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 mapped_type& operator[](_Kp&& __x) {
-     return try_emplace(std::forward<_Kp>(__x)).first->second;
-   }
- 
-diff -ruN --strip-trailing-cr a/libcxx/include/map b/libcxx/include/map
---- a/libcxx/include/map
-+++ b/libcxx/include/map
-@@ -1092,9 +1092,9 @@
-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type size() const _NOEXCEPT { return __tree_.size(); }
-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI size_type max_size() const _NOEXCEPT { return __tree_.max_size(); }
- 
--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
- #  ifndef _LIBCPP_CXX03_LANG
--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
- #  endif
- 
-   template <class _Arg,
-diff -ruN --strip-trailing-cr a/libcxx/include/unordered_map b/libcxx/include/unordered_map
---- a/libcxx/include/unordered_map
-+++ b/libcxx/include/unordered_map
-@@ -1262,9 +1262,9 @@
-   }
- #  endif // _LIBCPP_STD_VER >= 20
- 
--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](const key_type& __k);
- #  ifndef _LIBCPP_CXX03_LANG
--  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
-+  _LIBCPP_HIDE_FROM_ABI mapped_type& operator[](key_type&& __k);
- #  endif
- 
-   [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI mapped_type& at(const key_type& __k);
-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
---- a/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
-+++ b/libcxx/test/libcxx/diagnostics/flat_map.nodiscard.verify.cpp
-@@ -66,9 +66,9 @@
-   TransparentKey<int> tkey;
- 
-   std::flat_map<int, int> nfm;
--  nfm[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
--  fm[std::move(key)];  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
--  fm[std::move(tkey)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-+  nfm[key];            // no-warning
-+  fm[std::move(key)];  // no-warning
-+  fm[std::move(tkey)]; // no-warning
- 
-   fm.at(key);   // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-   cfm.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
---- a/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
-+++ b/libcxx/test/libcxx/diagnostics/map.nodiscard.verify.cpp
-@@ -55,8 +55,8 @@
- 
-   int key = 0;
- 
--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-+  m[key];            // no-warning
-+  m[std::move(key)]; // no-warning
- 
- #if TEST_STD_VER >= 14
-   std::map<std::string, int, std::less<>> strMap;
-diff -ruN --strip-trailing-cr a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
---- a/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
-+++ b/libcxx/test/libcxx/diagnostics/unordered_map.nodiscard.verify.cpp
-@@ -81,8 +81,8 @@
-   ctm.equal_range(tkey); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
- #endif
- 
--  m[key];            // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
--  m[std::move(key)]; // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-+  m[key];            // no-warning
-+  m[std::move(key)]; // no-warning
- 
-   m.at(key);  // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
-   cm.at(key); // expected-warning {{ignoring return value of function declared with 'nodiscard' attribute}}
+ // HOST70-ONLY: "-cc1" "-triple" "x86_64-unknown-linux-gnu"
+ // HOST70-ONLY-SAME: "-D__CUDA_ARCH_LIST__=700"
++
++// DEVICE-OVERRIDE: "-cc1" "-triple" "nvptx64-nvidia-cuda"
++// DEVICE-OVERRIDE-SAME: "-target-cpu" "sm_60"
++// DEVICE-OVERRIDE-SAME: "-D__CUDA_ARCH_LIST__=600"
++// DEVICE-OVERRIDE-SAME: "-D" "__CUDA_ARCH_LIST__=999"
++
++// HOST-OVERRIDE: "-cc1" "-triple" "x86_64-unknown-linux-gnu"
++// HOST-OVERRIDE-SAME: "-D__CUDA_ARCH_LIST__=600"
++// HOST-OVERRIDE-SAME: "-D" "__CUDA_ARCH_LIST__=999"
+diff -ruN --strip-trailing-cr a/clang/test/Modules/pr149404-02.cppm b/clang/test/Modules/pr149404-02.cppm
+--- a/clang/test/Modules/pr149404-02.cppm
++++ b/clang/test/Modules/pr149404-02.cppm
+@@ -1,104 +0,0 @@
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t
+-// RUN: split-file %s %t
+-
+-// RUN: %clang_cc1 -std=c++20 -emit-module-interface -o %t/format.pcm %t/format.cppm
+-// RUN: %clang_cc1 -std=c++20  -emit-module-interface -o %t/includes_in_gmf.pcm %t/includes_in_gmf.cppm
+-// RUN: %clang_cc1 -std=c++20 -fprebuilt-module-path=%t %t/test.cpp -verify -fsyntax-only
+-
+-// RUN: %clang_cc1 -std=c++20 -emit-reduced-module-interface -o %t/format.pcm %t/format.cppm
+-// RUN: %clang_cc1 -std=c++20  -emit-reduced-module-interface -o %t/includes_in_gmf.pcm %t/includes_in_gmf.cppm
+-// RUN: %clang_cc1 -std=c++20 -fprebuilt-module-path=%t %t/test.cpp -verify -fsyntax-only
+-
+-//--- format.h
+-#pragma once
+-
+-namespace test {
+-
+-template <class _Tp>
+-struct type_identity {
+-    typedef _Tp type;
+-};
+-
+-template <class _Tp>
+-using type_identity_t = typename type_identity<_Tp>::type;
+-
+-
+-template <class _Tp, class _CharT>
+-struct formatter
+-{
+-    formatter() = delete;
+-};
+-
+-template <>
+-struct formatter<char, char>
+-{};
+-
+-template <class _CharT, class... _Args>
+-struct basic_format_string {
+-    static inline const int __handles_{ [] {
+-        formatter<char, _CharT> f;
+-        (void)f;
+-        return 0;
+-        }() };
+-    
+-    consteval basic_format_string(const _CharT*) {
+-        (void)__handles_;
+-    }
+-};
+-
+-template <class... _Args>
+-using wformat_string = basic_format_string<wchar_t, type_identity_t<_Args>...>;
+-
+-template <class... _Args>
+-using format_string = basic_format_string<char, type_identity_t<_Args>...>;
+-
+-template <class... _Args>
+-void format(format_string<_Args...> __fmt, _Args&&... __args) {}
+-
+-template <class... _Args>
+-void format(wformat_string<_Args...> __fmt, _Args&&... __args) {}
+-
+-}
+-
+-//--- format.cppm
+-module;
+-#include "format.h"
+-export module format;
+-
+-export namespace test {
+-	using test::format;
+-	using test::formatter;
+-	using test::format_string;
+-}
+-
+-auto something() -> void
+-{
+-	auto a = 'a';
+-	test::format("{}", a);
+-}
+-
+-//--- includes_in_gmf.cppm
+-module;
+-#include "format.h"
+-export module includes_in_gmf;
+-
+-namespace test {
+-	using test::format;
+-	using test::formatter;
+-	using test::format_string;
+-}
+-
+-//--- test.cpp
+-// expected-no-diagnostics
+-import format;
+-import includes_in_gmf;
+-
+-auto what() -> void
+-{
+-    auto a = 'a';
+-    test::format("{}", a);
+-
+-    constexpr auto fs = "{}"; // test::format_string<char>{ "{}" }; // <- same result even passing exact param type
+-    test::format(fs, 'r');
+-}
+diff -ruN --strip-trailing-cr a/clang/test/Modules/pr172241.cppm b/clang/test/Modules/pr172241.cppm
+--- a/clang/test/Modules/pr172241.cppm
++++ b/clang/test/Modules/pr172241.cppm
+@@ -1,47 +0,0 @@
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t
+-// RUN: split-file %s %t
+-//
+-// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/m.cppm -emit-module-interface -o %t/m.pcm
+-// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/use.cpp -fmodule-file=m=%t/m.pcm -emit-llvm -o - | FileCheck %t/use.cpp
+-//
+-// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/m.cppm -emit-reduced-module-interface -o %t/m.pcm
+-// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/use.cpp -fmodule-file=m=%t/m.pcm -emit-llvm -o - | FileCheck %t/use.cpp
+-
+-//--- header.h
+-#pragma once
+-
+-template <unsigned T>
+-class Templ {
+-public:
+-    void lock() { __set_locked_bit(); }
+-
+-private:
+-    static constexpr auto __set_locked_bit = [](){};
+-};
+-
+-class JT {
+-public:
+-    ~JT() {
+-        Templ<4> state;
+-        state.lock();
+-    }
+-};
+-
+-//--- m.cppm
+-module;
+-#include "header.h"
+-export module m;
+-export struct M {
+-    JT jt;
+-};
+-//--- use.cpp
+-#include "header.h"
+-import m;
+-
+-int main() {
+-    M m;
+-    return 0;
+-}
+-
+-// CHECK: @_ZN5TemplILj4EE16__set_locked_bitE = {{.*}}linkonce_odr

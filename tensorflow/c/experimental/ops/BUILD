@@ -27,7 +27,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -51,7 +51,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -74,7 +74,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -97,7 +97,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -123,7 +123,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 

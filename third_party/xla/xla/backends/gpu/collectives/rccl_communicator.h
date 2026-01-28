@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "rocm/rocm_config.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/xla_data.pb.h"
 
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
@@ -64,7 +66,7 @@ class RcclCommunicator : public GpuCommunicator {
   // synchronously on the calling thread.
   static absl::StatusOr<std::unique_ptr<RcclCommunicator>> Create(
       absl::AnyInvocable<absl::StatusOr<ncclComm_t>()> make_comm,
-      bool is_async = false, std::atomic_bool* cancel = nullptr,
+      std::shared_ptr<CancellationToken> cancel, bool is_async = false,
       tsl::Env& env = *tsl::Env::Default());
 
   ~RcclCommunicator() override;
@@ -136,10 +138,12 @@ class RcclCommunicator : public GpuCommunicator {
 
   class RcclRegisteredBufferHandle;
 
-  explicit RcclCommunicator(ncclComm_t comm,
-                            std::unique_ptr<tsl::Executor> executor)
-      : comm_(comm), executor_(std::move(executor)) {
-    VLOG(1) << "Created " << *this;
+  RcclCommunicator(ncclComm_t comm, std::unique_ptr<tsl::Executor> executor,
+                   std::shared_ptr<CancellationToken> cancel)
+      : comm_(comm),
+        executor_(std::move(executor)),
+        cancel_(std::move(cancel)) {
+    VLOG(1) << "Created RCCL communicator" << *this;
   }
 
   absl::Status GroupStart();
@@ -229,7 +233,7 @@ class RcclCommunicator : public GpuCommunicator {
   std::unique_ptr<tsl::Executor> executor_;
 
   // Should all pending collectives cancel?
-  std::atomic_bool canceling_ = false;
+  std::shared_ptr<CancellationToken> cancel_;
 
   // Has comm_ been aborted?
   bool aborted_ = false;

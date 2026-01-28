@@ -79,11 +79,11 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_xla//third_party/python_runtime:headers",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//third_party/python_runtime:headers",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -253,8 +253,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -296,7 +296,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-        "@local_xla//xla/service:hlo_proto_py",
+        "@xla//xla/service:hlo_proto_py",
     ],
 )
 

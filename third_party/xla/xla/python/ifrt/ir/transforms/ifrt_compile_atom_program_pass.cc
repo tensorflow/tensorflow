@@ -230,10 +230,11 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
 
       // Generate CallLoadedExecutableOp.
       builder.setInsertionPointAfter(call_op);
-      auto new_call = builder.create<CallLoadedExecutableOp>(
-          call_op.getLoc(), call_op.getResultTypes(), call_op.getInputs(),
-          call_op.getControlInputs(), call_op.getArgAttrsAttr(),
-          call_op.getResAttrsAttr(), loaded_exec_op_ref, call_op.getIoAliases(),
+      auto new_call = CallLoadedExecutableOp::create(
+          builder, call_op.getLoc(), call_op.getResultTypes(),
+          call_op.getInputs(), call_op.getControlInputs(),
+          call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
+          loaded_exec_op_ref, call_op.getIoAliases(),
           call_op.getDonatedInputIndices());
       new_call->setDiscardableAttrs(call_op->getDiscardableAttrDictionary());
       call_op.replaceAllUsesWith(new_call.getResults());
@@ -280,10 +281,9 @@ IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
     output_types.push_back(output.getType());
   }
   builder.setInsertionPointAfter(module_op);
-  builder.create<LoadedExecutableOp>(
-      module_op.getLoc(), symbol_name,
-      builder.getFunctionType(input_types, output_types),
-      call_op.getDevicesAttr());
+  LoadedExecutableOp::create(builder, module_op.getLoc(), symbol_name,
+                             builder.getFunctionType(input_types, output_types),
+                             call_op.getDevicesAttr());
   return mlir::SymbolRefAttr::get(&getContext(), symbol_name);
 }
 

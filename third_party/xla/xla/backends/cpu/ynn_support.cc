@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -315,9 +316,14 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
 
-  PrimitiveType lhs_dtype = conv->operand(0)->shape().element_type();
-  PrimitiveType rhs_dtype = conv->operand(1)->shape().element_type();
-  PrimitiveType out_dtype = conv->shape().element_type();
+  const Shape& lhs_shape = conv->operand(0)->shape();
+  const Shape& rhs_shape = conv->operand(1)->shape();
+  const Shape& out_shape = conv->shape();
+
+  PrimitiveType lhs_dtype = lhs_shape.element_type();
+  PrimitiveType rhs_dtype = rhs_shape.element_type();
+  PrimitiveType out_dtype = out_shape.element_type();
+
   if (!kAllowedTypes->contains({lhs_dtype, rhs_dtype, out_dtype})) {
     return false;
   }
@@ -348,9 +354,41 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
+  if (std::max({
+          lhs_shape.dimensions(conv_dimensions.input_feature_dimension()),
+          out_shape.dimensions(conv_dimensions.output_feature_dimension()),
+      }) <= 16) {
+    // If this  convolution is small, our overhead is probably too significant.
+    // TODO(b/458529782, b/473570788): This is here as a workaround for an
+    // unrelated bug.
+    return false;
+  }
+
+  // Skip if output or filter is larger than input.
+  // TODO(b/476207717): this should work fine in theory, but currently this
+  // fails at one of the shape checks fails as statically false. I think the
+  // issue is that an inferred input size is larger than what was provided.
+  for (int i = 0; i < conv_dimensions.input_spatial_dimensions_size(); ++i) {
+    if (out_shape.dimensions(conv_dimensions.output_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
+    if (rhs_shape.dimensions(conv_dimensions.kernel_spatial_dimensions(i)) >
+        lhs_shape.dimensions(conv_dimensions.input_spatial_dimensions(i))) {
+      return false;
+    }
+  }
+
   // No base dilation for now.
   if ((window.dimensions(0).base_dilation() != 1) ||
       (window.dimensions(1).base_dilation() != 1)) {
+    return false;
+  }
+
+  // TODO(b/474103597): we might be able to do this using negative strides,
+  // but this feature is rarely used and considered for deprecation.
+  if ((window.dimensions(0).window_reversal() != 0) ||
+      (window.dimensions(1).window_reversal() != 0)) {
     return false;
   }
 

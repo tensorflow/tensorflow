@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Create results directory
         run:

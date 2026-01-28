@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "input"
     description: <<END
-A complex tensor.
+A float32 or float64 tensor.
 END
   }
   in_arg {
@@ -27,6 +27,13 @@ dimensions of `input` are replaced with their real Fourier transforms.
 @compatibility(numpy)
 Equivalent to np.fft.rfftn.
 @end_compatibility
+END
+  }
+  attr {
+    name: "Tcomplex"
+    description: <<END
+Should be `tf.complex64` when the type of `input` is `float32`.
+Should be `tf.complex128` when the type of `input` is `float64`.
 END
   }
   summary: "ND fast real Fourier transform."

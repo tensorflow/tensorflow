@@ -149,7 +149,7 @@ tf_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

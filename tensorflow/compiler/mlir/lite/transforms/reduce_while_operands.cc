@@ -271,8 +271,10 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
     }
   }
 
-  auto new_while_op = OpBuilder(while_op).create<WhileOp>(
-      while_op.getLoc(), new_result_types, new_operands, while_op->getAttrs());
+  auto builder = OpBuilder(while_op);
+  auto new_while_op =
+      WhileOp::create(builder, while_op.getLoc(), new_result_types,
+                      new_operands, while_op->getAttrs());
   new_while_op.getCond().takeBody(while_op.getCond());
   new_while_op.getBody().takeBody(while_op.getBody());
 

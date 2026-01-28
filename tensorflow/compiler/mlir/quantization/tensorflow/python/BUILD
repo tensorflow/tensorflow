@@ -1,5 +1,5 @@
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -75,9 +75,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:path",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:path",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -154,10 +154,10 @@ cc_library(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
     ],
 )
 
@@ -193,9 +193,9 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

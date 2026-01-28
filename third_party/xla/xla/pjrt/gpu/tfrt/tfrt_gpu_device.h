@@ -33,16 +33,17 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/executable_run_options.h"
-#include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
+#include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
@@ -132,11 +133,20 @@ class TfrtGpuDevice final : public PjRtDevice {
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
 
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return stream_.get();
+  }
 
-  se::Stream* d2h_stream() const { return d2h_stream_.get(); }
+  se::Stream* d2h_stream() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return d2h_stream_.get();
+  }
 
-  se::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return executor_;
+  }
 
   tsl::AsyncValueRef<GpuEvent> SetLastCollectiveLaunchEvent(
       tsl::AsyncValueRef<GpuEvent> event);

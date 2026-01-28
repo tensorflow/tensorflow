@@ -24,15 +24,17 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
-#include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
+#include "mlir/Support/LLVM.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -71,16 +73,9 @@ absl::StatusOr<int32_t> AddCollectiveMetadataArguments(
 absl::StatusOr<std::vector<Shape>> GetCollectiveUnmanagedKernelArguments(
     const HloFusionInstruction* fusion);
 
-// Emits tiled XTile/Triton IR for a collective op.
-// See [EmitTiledHloInstruction] for an overview of how this fits into the
-// emitter.
-absl::StatusOr<xtile::TensorValue> EmitCollective(
-    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
-    const TiledHloInstruction& tiled_hlo_reduce,
-    const BlockLevelParameters& block_level_parameters,
-    mlir::FunctionOpInterface fn, mlir::Value pid,
-    absl::flat_hash_map<const TiledHloInstruction*, xtile::TensorValue>&
-        values);
+// Rewrites stablehlo all-reduce op to a triton implementation.
+mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
+                                     mlir::PatternRewriter& rewriter);
 
 }  // namespace xla::gpu
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COLLECTIVE_EMITTER_H_

@@ -24,7 +24,6 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
-        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",

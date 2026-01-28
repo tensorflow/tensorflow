@@ -182,13 +182,15 @@ constexpr size_t kFbAlignment = 16;
 static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
                                                   bool is_signed = true) {
   if (!is_signed) {
-    if (type.isSignlessInteger(8)) {
+    if (type.isSignlessInteger(4)) {
+      return tflite::TensorType_UINT4;
+    } else if (type.isSignlessInteger(8)) {
       return tflite::TensorType_UINT8;
     } else if (type.isSignlessInteger(16)) {
       return tflite::TensorType_UINT16;
     } else {
       return Status(absl::StatusCode::kInvalidArgument,
-                    "'isSigned' can only be set for 8/16-bits integer type");
+                    "'isSigned' can only be set for 4/8/16-bits integer type");
     }
   }
 
@@ -1087,6 +1089,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   tflite::TensorType tflite_element_type =
       GetTFLiteType(type.getElementType()).value();
   if (tflite_element_type == tflite::TensorType_INT4 ||
+      tflite_element_type == tflite::TensorType_UINT4 ||
       tflite_element_type == tflite::TensorType_INT2) {
     std::vector<uint8_t> data;
     for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
@@ -1095,7 +1098,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     auto packed_buffer =
         std::make_unique<std::vector<uint8_t>>(tflite::PackLowBitValuesDensely(
             data, /*bit_width=*/(
-                tflite_element_type == tflite::TensorType_INT4 ? 4 : 2)));
+                tflite_element_type == tflite::TensorType_INT4 ||
+                        tflite_element_type == tflite::TensorType_UINT4
+                    ? 4
+                    : 2)));
     if (use_buffer_offset_) {
       buffer_data_map_[index] =
           absl::string_view(reinterpret_cast<char*>(packed_buffer->data()),

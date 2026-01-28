@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/io/record_reader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -45,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using RuntimeIntrinsicsTest = HloTestBase;
+class RuntimeIntrinsicsTest : public HloPjRtTestBase {};
 
 using ::testing::EndsWith;
 using ::testing::HasSubstr;

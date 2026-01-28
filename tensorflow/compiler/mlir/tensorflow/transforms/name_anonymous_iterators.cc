@@ -50,8 +50,8 @@ int replace(OP op, int count) {
   OpBuilder builder(op);
   std::string name = absl::StrFormat("_iterator%d", count++);
 
-  auto new_op = builder.create<TF::IteratorOp>(
-      op->getLoc(), op->getResultTypes()[0], name, /*container=*/"",
+  auto new_op = TF::IteratorOp::create(
+      builder, op->getLoc(), op->getResultTypes()[0], name, /*container=*/"",
       op.getOutputTypes(), op.getOutputShapes());
   op->getResults()[0].replaceAllUsesWith(new_op->getResults()[0]);
   if (op->use_empty()) op->erase();

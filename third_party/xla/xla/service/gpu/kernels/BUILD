@@ -63,11 +63,11 @@ cc_library(
 tf_proto_library(
     name = "custom_kernel_proto",
     srcs = ["custom_kernel.proto"],
-    protodeps = [
+    visibility = [":friends"],
+    deps = [
         "//xla/stream_executor:kernel_spec_proto",
         "//xla/stream_executor:launch_dim_proto",
     ],
-    visibility = [":friends"],
 )
 
 cc_library(
@@ -132,6 +132,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/cuda:cudart",  # build_cleaner: keep
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -148,7 +149,11 @@ xla_test(
     name = "cutlass_gemm_fusion_test",
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
-    tags = ["cuda-only"],
+    tags = [
+        "cuda-only",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_custom_kernel",
@@ -223,7 +228,7 @@ xla_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -413,7 +418,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":custom_kernel",
-        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:kernel_spec",

@@ -95,7 +95,7 @@ CollectiveParams::CollectiveParams(
     absl::Span<se::Stream* const> async_streams, LocalDeviceId local_device_id,
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
-    const CliqueIdCallback* nccl_clique_id_callback,
+    const CliqueIdCallback* clique_id_callback,
     const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : collectives(collectives),
@@ -106,7 +106,7 @@ CollectiveParams::CollectiveParams(
       global_device_id(global_device_id),
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
-      nccl_clique_id_callback(nccl_clique_id_callback),
+      clique_id_callback(clique_id_callback),
       incarnations(incarnations),
       collective_max_nchannels(collective_max_nchannels),
       p2p_max_nchannels(p2p_max_nchannels) {}

@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace grappler {
 
 absl::Status GraphMemory::InferStatically(
-    const std::unordered_map<string, DeviceProperties>& devices) {
+    const std::unordered_map<std::string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
   TF_RETURN_IF_ERROR(cluster.Provision());
   TF_RETURN_IF_ERROR(cluster.Initialize(item_));
@@ -119,10 +119,10 @@ int64_t GraphMemory::InferMemUsageForNeighbors(
 }
 
 static GraphMemory::LiveTensor* FindOrCreateLiveTensor(
-    const string& node_name, int output_id,
-    std::unordered_map<string, GraphMemory::LiveTensor*>* live_tensors,
+    const std::string& node_name, int output_id,
+    std::unordered_map<std::string, GraphMemory::LiveTensor*>* live_tensors,
     std::deque<GraphMemory::LiveTensor>* device_tensors) {
-  string name = absl::StrCat(node_name, ":", output_id);
+  std::string name = absl::StrCat(node_name, ":", output_id);
   GraphMemory::LiveTensor* live;
   auto it = live_tensors->find(name);
   if (it == live_tensors->end()) {
@@ -157,21 +157,22 @@ struct Event {
 }  // namespace
 
 void GraphMemory::InferFromTrace(const StepStats& timeline) {
-  std::unordered_map<string, string> node_placement;
+  std::unordered_map<std::string, std::string> node_placement;
   for (const auto& dev_stats : timeline.dev_stats()) {
     for (const auto& node_stats : dev_stats.node_stats()) {
       node_placement[node_stats.node_name()] = dev_stats.device();
     }
   }
 
-  std::unordered_map<string, LiveTensor*> live_tensors;
-  std::unordered_map<string, std::deque<LiveTensor>> live_tensors_per_device;
-  std::unordered_map<string, const NodeDef*> node_map;
+  std::unordered_map<std::string, LiveTensor*> live_tensors;
+  std::unordered_map<std::string, std::deque<LiveTensor>>
+      live_tensors_per_device;
+  std::unordered_map<std::string, const NodeDef*> node_map;
   for (const NodeDef& node : item_.graph.node()) {
     node_map[node.name()] = &node;
   }
   for (const auto& dev_stats : timeline.dev_stats()) {
-    const string& device_name = dev_stats.device();
+    const std::string& device_name = dev_stats.device();
     const bool is_gpu = (device_name.find("GPU:") || device_name.find("gpu:"));
     std::deque<LiveTensor>& device_tensors =
         live_tensors_per_device[dev_stats.device()];
@@ -222,9 +223,9 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
           // of the tensor.
           continue;
         }
-        const string& input = node->input(i);
+        const std::string& input = node->input(i);
         int position;
-        string input_node = ParseNodeName(input, &position);
+        std::string input_node = ParseNodeName(input, &position);
         if (position < 0) {
           // Skip control dependencies
           continue;

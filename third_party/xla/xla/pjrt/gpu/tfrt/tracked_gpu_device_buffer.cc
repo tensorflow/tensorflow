@@ -62,7 +62,7 @@ void GpuDeviceMemory::SetUnOwned() {
 absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
     se::DeviceAddressAllocator* allocator, int device_ordinal, size_t size) {
   return Allocate(allocator, device_ordinal, size,
-                  static_cast<int>(se::MemoryType::kDevice));
+                  static_cast<int>(stream_executor::MemorySpace::kDevice));
 }
 
 absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(

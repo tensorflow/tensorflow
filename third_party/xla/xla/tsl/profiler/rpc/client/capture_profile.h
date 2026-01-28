@@ -46,6 +46,12 @@ absl::Status Monitor(const std::string& service_addr, int duration_ms,
                      int monitoring_level, bool display_timestamp,
                      std::string* result);
 
+absl::Status StartContinuousProfiling(
+    const char* service_addr,
+    const tensorflow::RemoteProfilerSessionManagerOptions& opts);
+
+absl::Status GetSnapshot(const char* service_addr, const char* logdir);
+
 // Starts tracing on a single or multiple hosts. Each host will save the result
 // in the given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts. Assumes that options have been validated.

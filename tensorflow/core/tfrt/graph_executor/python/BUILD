@@ -31,8 +31,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model",
         "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@xla//third_party/python_runtime:headers",
     ],
 )

@@ -1103,8 +1103,8 @@ def categorical_column_with_vocabulary_file(key,
   ```python
   import tensorflow as tf
   states = tf.feature_column.categorical_column_with_vocabulary_file(
-    key='states', vocabulary_file='states.txt', vocabulary_size=5,
-    num_oov_buckets=1)
+    key='states', vocabulary_file='states.txt', vocabulary_size=50,
+    num_oov_buckets=5)
   columns = [states]
   features = {'states':tf.constant([['california', 'georgia', 'michigan',
   'texas', 'new york'], ['new york', 'georgia', 'california', 'michigan',
@@ -1122,7 +1122,7 @@ def categorical_column_with_vocabulary_file(key,
   ```python
   import tensorflow as tf
   states = tf.feature_column.categorical_column_with_vocabulary_file(
-    key='states', vocabulary_file='states.txt', vocabulary_size=6,
+    key='states', vocabulary_file='states.txt', vocabulary_size=51,
     default_value=0)
   columns = [states]
   features = {'states':tf.constant([['california', 'georgia', 'michigan',

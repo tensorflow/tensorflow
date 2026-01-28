@@ -60,7 +60,7 @@ cc_library(
         "jpeg_mem.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
-        "@local_tsl//tsl/platform:jpeg_internal_hdrs",
+        "@tsl//tsl/platform:jpeg_internal_hdrs",
     ],
     copts = tf_copts(),
     linkopts = if_android(["-ldl"]),
@@ -81,10 +81,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@libjpeg_turbo//:jpeg",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:tstring",
-        "@local_tsl//tsl/platform:types",
-        "@local_xla//xla/tsl/platform:types",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:tstring",
+        "@tsl//tsl/platform:types",
+        "@xla//xla/tsl/platform:types",
     ],
 )
 

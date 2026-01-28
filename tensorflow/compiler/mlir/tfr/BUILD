@@ -225,6 +225,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -249,7 +250,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/hlo/testlib:test",
+        "@xla//xla/hlo/testlib:test",
     ],
 )
 

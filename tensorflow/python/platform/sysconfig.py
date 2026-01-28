@@ -21,6 +21,7 @@ import os.path as _os_path
 import platform as _platform
 
 from tensorflow.python.client import pywrap_tf_session
+# pylint: disable=g-importing-member
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
 from tensorflow.python.framework.versions import CXX_VERSION as _CXX_VERSION
 from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
@@ -37,12 +38,7 @@ def get_include():
   Returns:
     The directory as string.
   """
-  # Import inside the function.
-  # sysconfig is imported from the tensorflow module, so having this
-  # import at the top would cause a circular import, resulting in
-  # the tensorflow module missing symbols that come after sysconfig.
-  import tensorflow as tf
-  return _os_path.join(_os_path.dirname(tf.__file__), 'include')
+  return _os_path.join(get_lib(), 'include')
 
 
 @tf_export('sysconfig.get_lib')
@@ -52,8 +48,9 @@ def get_lib():
   Returns:
     The directory as string.
   """
-  import tensorflow as tf
-  return _os_path.join(_os_path.dirname(tf.__file__))
+  return _os_path.normpath(
+      _os_path.join(_os_path.dirname(__file__), '..', '..')
+  )
 
 
 @tf_export('sysconfig.get_compile_flags')

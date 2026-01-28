@@ -20,7 +20,9 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace stream_executor {
 
@@ -86,6 +89,14 @@ class CommandBuffer {
 
   CommandBuffer(const CommandBuffer&) = delete;
   void operator=(const CommandBuffer&) = delete;
+
+  // A base class for external resources that can be attached to a CommandBuffer
+  // instance. When a CommandBuffer instance is destroyed, all attached
+  // resources are destroyed as well.
+  class Resource {
+   public:
+    virtual ~Resource() = default;
+  };
 
   // Command buffer state:
   //
@@ -174,29 +185,34 @@ class CommandBuffer {
                             const ThreadDim& threads, const BlockDim& blocks,
                             Args... args);
 
-  // kCloned: child command is cloned into parent command.
-  // kMoved: child command is moved into parent command.
-  enum class ChildCommandType { kCloned, kMoved };
+  // Creates a child command from a pre-recorded command buffer.
   virtual absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, CommandBuffer& nested,
+      const CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) = 0;
 
-  // Updates a command that launches a nested command buffer.
-  virtual absl::Status UpdateChildCommand(ChildCommandType type,
-                                          const Command* command,
+  // Updates a child command with a new command buffer. New command buffer must
+  // be compatible with the one that was used to create command.
+  virtual absl::Status UpdateChildCommand(const Command* command,
                                           const CommandBuffer& nested) = 0;
 
+  // Creates a child command from a user-provided callback by recording commands
+  // into the child command buffer owned by this command buffer. In contrast to
+  // the child command created from pre-recorded command buffer (see API
+  // above), such child commands can be efficiently updated by updating the
+  // command buffer itself.
   virtual absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, StreamExecutor* executor,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> record_fn,
       absl::Span<const Command* const> dependencies) = 0;
 
-  // Updates a command that launches a nested command buffer.
+  // Updates a child command using a user-provided callback to record command
+  // updates into the child command buffer owned by this command buffer. In
+  // contrast to the child command update from pre-recorded command buffer (see
+  // API above) it allows fine grained command update. Updating from a
+  // pre-recorded command buffer requires swapping the whole child command
+  // buffer to a new one, which might be expensive for large command buffers.
   virtual absl::Status UpdateChildCommand(
-      ChildCommandType type, const Command* command,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn) = 0;
+      const Command* command,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> update_fn) = 0;
 
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(
@@ -314,8 +330,36 @@ class CommandBuffer {
   virtual std::string ToString() const = 0;
 
   //--------------------------------------------------------------------------//
-  // Command buffer tracing API
+  // Command buffer user-attached resources API
   //--------------------------------------------------------------------------//
+
+  // Returns a pointer to the resource of the given type, or nullptr if resource
+  // of the given type is not attached to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(
+        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource(
+      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(GetOrCreateResource(
+        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource() {
+    return GetOrCreateResource<ConcreteResource>(
+        [] { return std::make_unique<ConcreteResource>(); });
+  }
+
  private:
   friend class TraceCommandBufferFactory;
 
@@ -328,6 +372,26 @@ class CommandBuffer {
   // into the command buffer. Command buffer must be empty.
   virtual absl::Status Trace(Stream* stream,
                              absl::AnyInvocable<absl::Status()> function) = 0;
+
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  Resource* GetOrNullResource(ResourceTypeId type_id);
+  Resource* GetOrCreateResource(
+      ResourceTypeId type_id,
+      absl::FunctionRef<std::unique_ptr<Resource>()> create);
+
+  template <typename F>
+  static ResourceTypeId GetResourceTypeId() {
+    static const ResourceTypeId id = GetNextResourceTypeId();
+    return id;
+  }
+
+  static ResourceTypeId GetNextResourceTypeId();
+
+  absl::Mutex resource_mutex_;
+  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
+      ABSL_GUARDED_BY(resource_mutex_);
 };
 
 //===----------------------------------------------------------------------===//

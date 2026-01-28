@@ -52,6 +52,7 @@ limitations under the License.
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/IPO/SCCP.h"
@@ -60,7 +61,9 @@ limitations under the License.
 #include "llvm/Transforms/Scalar/DCE.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include "xla/codegen/intrinsic/cpp/cpp_gen_intrinsics.h"
 #include "xla/codegen/intrinsic/erf.h"
 #include "xla/codegen/intrinsic/exp.h"
 #include "xla/codegen/intrinsic/fptrunc.h"
@@ -72,6 +75,7 @@ limitations under the License.
 #include "xla/codegen/intrinsic/tanh.h"
 #include "xla/codegen/intrinsic/type.h"
 #include "xla/codegen/intrinsic/vec_name_mangler.h"
+#include "xla/codegen/intrinsic_function.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/xla_data.pb.h"
 
@@ -143,8 +147,16 @@ class IntrinsicAdapter : public IntrinsicFunction {
   }
 };
 
-IntrinsicFunctionLib::IntrinsicFunctionLib(IntrinsicOptions options)
+IntrinsicFunctionLib::IntrinsicFunctionLib(const IntrinsicOptions& options)
     : options_(options) {
+  if (options.device_type == intrinsics::DeviceType::kIntelCpu ||
+      options.device_type == intrinsics::DeviceType::kAmdCpu ||
+      options.device_type == intrinsics::DeviceType::kArmCpu) {
+    auto eigen_lib = std::make_unique<CppGenIntrinsicLibrary>(
+        GetCppGenIrString(options), "eigen");
+    ir_libraries_.push_back(std::move(eigen_lib));
+  }
+
   intrinsic_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   intrinsic_functions_.push_back(
@@ -217,10 +229,12 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
   for (const auto& math_func : intrinsic_functions_) {
     // For each floating point type supported, we add all vector widths to every
     // other vector width as a possible vectorization.
-    for (const auto& target_types :
-         math_func->SupportedVectorTypes(options_.features)) {
-      for (const auto& vector_types :
-           math_func->SupportedVectorTypes(options_.features)) {
+    std::vector<std::vector<Type>> supported_types =
+        math_func->SupportedVectorTypes(options_.features);
+    for (int i = 0; i < supported_types.size(); ++i) {
+      const std::vector<Type>& target_types = supported_types[i];
+      for (int j = 0; j < supported_types.size(); ++j) {
+        const std::vector<Type>& vector_types = supported_types[j];
         if (!ElementTypesMatch(target_types, vector_types) ||
             target_types.front().is_vector()) {
           continue;
@@ -229,6 +243,8 @@ std::vector<llvm::VecDesc> IntrinsicFunctionLib::Vectorizations() {
             math_func->GenerateVectorizedFunctionName(target_types));
         absl::string_view vec_name = intrinsic::StringInterner::Get().Intern(
             math_func->GenerateVectorizedFunctionName(vector_types));
+        CHECK(targets_.find(vec_name) == targets_.end())
+            << "Duplicate implementations for " << vec_name;
         targets_[vec_name] = math_func->FunctionName();
         if (target_name == vec_name) {
           continue;
@@ -275,16 +291,22 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
 
 absl::flat_hash_set<absl::string_view>
 IntrinsicFunctionLib::DefineIntrinsicFunctions(llvm::Module& module) {
+  bool ir_libraries_linked = false;
   // Find each called target function, generate the definition and insert it
   // into the module.
-  // Keep track of the function names we replaced so we can remove them from
-  // llvm.compiler.used later.
   absl::flat_hash_set<absl::string_view> replaced_functions;
   for (const auto& [function_name, signatures] :
        GetCalledApproximatableFunctions(module, targets_)) {
     for (const auto& math_func : intrinsic_functions_) {
       if (math_func->FunctionName() == function_name) {
         for (const auto& signature : signatures) {
+          if (!ir_libraries_linked) {
+            for (const auto& lib : ir_libraries_) {
+              lib->LinkIntoModule(module);
+            }
+            ir_libraries_linked = true;
+          }
+
           CreateDefinitionAndReplaceDeclaration(module, signature, options_,
                                                 *math_func);
           replaced_functions.insert(signature);
@@ -293,8 +315,9 @@ IntrinsicFunctionLib::DefineIntrinsicFunctions(llvm::Module& module) {
     }
   }
 
-  CHECK(!llvm::verifyModule(module)) << "Module is invalid after optimization\n"
-                                     << llvm_ir::DumpToString(&module);
+  CHECK(!llvm::verifyModule(module, &llvm::errs()))
+      << "Module is invalid after optimization\n"
+      << llvm_ir::DumpToString(&module);
   return replaced_functions;
 }
 

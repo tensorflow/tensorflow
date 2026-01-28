@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {

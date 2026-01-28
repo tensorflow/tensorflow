@@ -29,6 +29,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "lowering_utils",
+    srcs = ["lowering_utils.cc"],
+    hdrs = ["lowering_utils.h"],
+    deps = [
+        "//xla/tsl/platform:logging",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
 gentbl_cc_library(
     name = "lower_to_llvm_cpu_inc_gen",
     compatible_with = get_compatible_with_portable(),
@@ -103,6 +114,7 @@ cc_library(
     deps = [
         ":lower_to_llvm_common",
         ":lower_to_llvm_gpu_inc_gen",
+        ":lowering_utils",
         "//xla/codegen:device_spec",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
@@ -127,12 +139,13 @@ cc_library(
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:UBToLLVM",
         "@llvm-project//mlir:VectorToLLVM",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -154,6 +167,7 @@ cc_library(
     srcs = [
         "erase_dead_functions.cc",
         "expand_float_ops.cc",
+        "expand_integer_power.cc",
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_xla_intrinsic_lib.cc",
@@ -188,6 +202,7 @@ cc_library(
         "//xla/codegen/intrinsic:tanh",
         "//xla/codegen/intrinsic:type",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
@@ -214,6 +229,7 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathTransforms",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFDialect",
@@ -224,7 +240,7 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorTransforms",
         "@llvm-project//mlir:VectorUtils",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -239,7 +255,9 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -255,9 +273,8 @@ cc_library(
         ":passes_inc_gen",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
-        "@com_google_absl//absl/algorithm:container",
+        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineUtils",
@@ -265,7 +282,9 @@ cc_library(
         "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -287,7 +306,9 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",

@@ -3,8 +3,8 @@
 // RUN: gpu_test_correctness %s
 
 fusion {
-  %p0 = s4[24,2,24] parameter(0)
-  ROOT %t = s4[24,2,24] transpose(%p0), dimensions={2,1,0}
+  %p0 = s4[24,2,24]{2,1,0:E(4)} parameter(0)
+  ROOT %t = s4[24,2,24]{2,1,0:E(4)} transpose(%p0), dimensions={2,1,0}
 }
 // CHECK: xla.loop
 // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last

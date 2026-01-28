@@ -163,10 +163,9 @@ HloInstruction* ShuffleDataWithAllToAll(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdBuilder* b) {
   IotaReplicaGroupList groups(1, num_partitions);
-  return collective_ops_creator
-      .create_cross_partition_all_to_all_with_iota_device_list(
-          b, {hlo}, groups, (*next_channel_id)++,
-          hlo->shape().dimensions().size() - 1);
+  return collective_ops_creator.create_all_to_all(
+      b, {hlo}, groups, (*next_channel_id)++,
+      hlo->shape().dimensions().size() - 1);
 }
 
 HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
@@ -282,21 +281,18 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       dest_transform));
   // collective permute for source partition_id and source_transfrom.
   std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> indices, int64_t src_device) {
-        std::vector<int64_t> target_indices(indices.begin(), indices.end());
-        target_indices.back() = (indices.back() + 1) % num_partitions;
-        int64_t dst_device = sharding.tile_assignment()(target_indices);
-        src_dst_pairs.emplace_back(src_device, dst_device);
-      });
+  sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t src_device) {
+    std::vector<int64_t> target_indices(indices.begin(), indices.end());
+    target_indices.back() = (indices.back() + 1) % num_partitions;
+    int64_t dst_device = sharding.tile_assignment()(target_indices);
+    src_dst_pairs.emplace_back(src_device, dst_device);
+  });
 
-  source_partition_id =
-      collective_ops_creator.create_cross_partition_collective_permute(
-          &body_b, source_partition_id, src_dst_pairs, (*next_channel_id)++);
+  source_partition_id = collective_ops_creator.create_collective_permute(
+      &body_b, source_partition_id, src_dst_pairs, (*next_channel_id)++);
 
-  source_transform =
-      collective_ops_creator.create_cross_partition_collective_permute(
-          &body_b, source_transform, src_dst_pairs, (*next_channel_id)++);
+  source_transform = collective_ops_creator.create_collective_permute(
+      &body_b, source_transform, src_dst_pairs, (*next_channel_id)++);
 
   // ++i
   i = body_b.AddInstruction(HloInstruction::CreateBinary(

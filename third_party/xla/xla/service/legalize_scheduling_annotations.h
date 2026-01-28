@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 #define XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
 
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -47,6 +50,8 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool deannotate_unsupported_groups = false;
     bool check_gap_only = false;
     bool check_non_mitigatable_gap_only = false;
+    bool skip_opt_barriers = false;
+    std::string debug_str;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -64,7 +69,23 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
           annotation_to_instruction,
       bool dry_run = false);
 
+  // Checks if there are gaps between annotated instructions that are along the
+  // same path (for the same annotation ID). If a gap is found, returns an error
+  // and prints the path from the annotated source instruction to the annotated
+  // destination instruction. This function is configurable to skip over
+  // optimization barriers and simple tuples, because they sometimes introduce
+  // false positives.
+  absl::Status CheckGapBetweenAnnotatedInstructions(
+      const absl::flat_hash_map<
+          Annotation,
+          absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
+          annotation_to_instruction,
+      const absl::flat_hash_map<HloInstruction*, Annotation>&
+          instruction_to_annotation);
+
   absl::Status Verify(HloModule* module);
+
+  void LogConfig(int64_t level);
 
  protected:
   absl::StatusOr<bool> RunImpl(

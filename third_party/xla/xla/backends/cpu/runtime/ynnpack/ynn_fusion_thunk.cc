@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/ynnpack/ynn_fusion_thunk.h"
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <utility>
 #include <vector>
 
@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
@@ -46,17 +45,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
-
-absl::string_view YnnFusionThunk::YnnFusionKindToString(YnnFusionKind kind) {
-  switch (kind) {
-    case YnnFusionKind::kFusion:
-      return "ynn-fusion";
-  }
-}
-
-std::ostream& operator<<(std::ostream& os, YnnFusionThunk::YnnFusionKind kind) {
-  return os << YnnFusionThunk::YnnFusionKindToString(kind);
-}
 
 // YNNPACK executable instantiated for the fusion operation.
 struct YnnFusionThunk::YnnExecutable {
@@ -236,8 +224,8 @@ absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
     std::vector<Argument> arguments, std::vector<Result> results,
     Builder builder) {
   return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
-      std::move(arguments), std::move(results), std::move(builder)));
+      std::move(options), std::move(info), hlo, std::move(arguments),
+      std::move(results), std::move(builder)));
 }
 
 absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
@@ -245,18 +233,17 @@ absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunk::Create(
     std::vector<Argument> arguments, std::vector<Result> results,
     CapturingBuilder capturing_builder,
     absl::Span<const int64_t> captured_arguments_ids) {
-  return absl::WrapUnique(new YnnFusionThunk(
-      YnnFusionKind::kFusion, std::move(options), std::move(info), hlo,
-      std::move(arguments), std::move(results), std::move(capturing_builder),
-      captured_arguments_ids));
+  return absl::WrapUnique(
+      new YnnFusionThunk(std::move(options), std::move(info), hlo,
+                         std::move(arguments), std::move(results),
+                         std::move(capturing_builder), captured_arguments_ids));
 }
 
-YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+YnnFusionThunk::YnnFusionThunk(Options options, Info info,
                                const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results, Builder builder)
     : Thunk(Kind::kYnnFusion, std::move(info)),
-      ynn_fusion_kind_(kind),
       options_(std::move(options)),
       hlo_(hlo),
       arguments_(std::move(arguments)),
@@ -265,14 +252,13 @@ YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
       ynn_executable_pool_(
           absl::bind_front(&YnnFusionThunk::CreateYnnExecutable, this)) {}
 
-YnnFusionThunk::YnnFusionThunk(YnnFusionKind kind, Options options, Info info,
+YnnFusionThunk::YnnFusionThunk(Options options, Info info,
                                const HloInstruction* hlo,
                                std::vector<Argument> arguments,
                                std::vector<Result> results,
                                CapturingBuilder capturing_builder,
                                absl::Span<const int64_t> captured_arguments_ids)
     : Thunk(Kind::kYnnFusion, std::move(info)),
-      ynn_fusion_kind_(kind),
       options_(std::move(options)),
       hlo_(hlo),
       arguments_(std::move(arguments)),
@@ -363,6 +349,23 @@ tsl::AsyncValueRef<YnnFusionThunk::ExecuteEvent> YnnFusionThunk::Execute(
   TF_ASSIGN_OR_RETURN(auto executable,
                       ynn_executable_pool_.GetOrCreate(GetYnnThreadpool(params),
                                                        arguments_buffers));
+
+  int concurrency = concurrency_.load(std::memory_order_acquire);
+  if (concurrency == 0) {
+    // This should be done as part of initialization, but we don't have a
+    // runtime to query until after we call `Execute`. Therefore,
+    // `ExecuteMayBlock` will not return the correct value until after at least
+    // the first `Execute` call.
+    size_t concurrency_size = sizeof(concurrency);
+    YNN_RETURN_IF_ERROR(ynn_query_runtime(executable->runtime.get(),
+                                          ynn_runtime_property_concurrency,
+                                          &concurrency, &concurrency_size));
+    concurrency_.store(concurrency, std::memory_order_release);
+    VLOG(3) << absl::StreamFormat("  concurrency=%d", concurrency);
+  }
+
+  // TODO(b/476281894): If there is no concurrency, we should execute this
+  // asynchronously and return the future value immediately.
 
   // If YNN graph doesn't capture any of the arguments by value, we can execute
   // XnnExecutable immediately.
