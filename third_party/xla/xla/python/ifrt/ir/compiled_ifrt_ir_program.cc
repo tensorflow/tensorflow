@@ -194,6 +194,8 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
                              const AtomExecutableMap& atom_program_executables,
                              absl::Span<xla::ifrt::ArraySpec> in_specs,
                              absl::Span<xla::ifrt::ArraySpec> out_specs) {
+  tsl::profiler::TraceMe traceme("PopulateLayouts");
+
   auto main_func = xla::ifrt::GetMainFunction(mlir_module);
   mlir::SymbolTableCollection symbol_table;
 
@@ -327,7 +329,7 @@ CompiledIfrtIrProgram::Create(
     std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> ifrt_ir_compile_options,
     xla::ifrt::Client* client,
     std::shared_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler) {
-  TraceMe traceme([]() { return "ProgramCompiler::CompileForInterpreter"; });
+  TraceMe traceme("ProgramCompiler::CompileForInterpreter");
 
   // Sharing the compile options with the passes and when pipeline is done add
   // it to the CompiledIfrtIrProgram.
@@ -387,8 +389,7 @@ CompiledIfrtIrProgram::Create(
         std::move(bound_executable_map)));
 
     {
-      TraceMe traceme(
-          []() { return "ProgramCompiler::CompileForInterpreter::RunPasses"; });
+      TraceMe traceme("ProgramCompiler::CompileForInterpreter::RunPasses");
       StatusScopedDiagnosticHandler diag_handler(context);
       if (mlir::failed(pm.run(mlir_module))) {
         return diag_handler.ConsumeStatus();

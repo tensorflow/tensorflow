@@ -242,6 +242,8 @@ struct ProgramInterpreterState {
 
 absl::StatusOr<ProgramInterpreter::ExecuteFn>
 ProgramInterpreter::BuildExecuteFn() {
+  tsl::profiler::TraceMe traceme("ProgramInterpreter::BuildExecuteFn");
+
   ProgramInterpreterState state;
   state.client = client_;
   state.program_name = program_name_;
