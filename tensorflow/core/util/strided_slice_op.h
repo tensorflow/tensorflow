@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_STRIDED_SLICE_OP_H_
 #define TENSORFLOW_CORE_UTIL_STRIDED_SLICE_OP_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
