@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
@@ -783,12 +784,12 @@ static absl::Status ToProto(const KernelThunkBase& thunk, ThunkProto& proto) {
         *thunk.min_alignment());
   }
 
-  for (const BufferAllocation::Slice& buffer : thunk.arguments_buffers()) {
+  for (const ShapedSlice& buffer : thunk.arguments_buffers()) {
     TF_ASSIGN_OR_RETURN(*kernel_thunk_proto->add_arguments_buffers(),
                         buffer.ToProto());
   }
 
-  for (const BufferAllocation::Slice& buffer : thunk.results_buffers()) {
+  for (const ShapedSlice& buffer : thunk.results_buffers()) {
     TF_ASSIGN_OR_RETURN(*kernel_thunk_proto->add_results_buffers(),
                         buffer.ToProto());
   }
@@ -1264,20 +1265,20 @@ static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
     const std::vector<BufferAllocation>& buffer_allocations) {
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
-  std::vector<BufferAllocation::Slice> arguments_buffers;
-  std::vector<BufferAllocation::Slice> results_buffers;
+  std::vector<ShapedSlice> arguments_buffers;
+  std::vector<ShapedSlice> results_buffers;
 
-  for (const xla::buffer_assignment::BufferAllocationSliceProto& buffer_proto :
+  for (const ShapedSliceProto& buffer_proto :
        proto.kernel_thunk().arguments_buffers()) {
-    TF_ASSIGN_OR_RETURN(auto buffer, BufferAllocation::Slice::FromProto(
-                                         buffer_proto, buffer_allocations));
+    TF_ASSIGN_OR_RETURN(
+        auto buffer, ShapedSlice::FromProto(buffer_proto, buffer_allocations));
     arguments_buffers.push_back(std::move(buffer));
   }
 
-  for (const xla::buffer_assignment::BufferAllocationSliceProto& buffer_proto :
+  for (const ShapedSliceProto& buffer_proto :
        proto.kernel_thunk().results_buffers()) {
-    TF_ASSIGN_OR_RETURN(auto buffer, BufferAllocation::Slice::FromProto(
-                                         buffer_proto, buffer_allocations));
+    TF_ASSIGN_OR_RETURN(
+        auto buffer, ShapedSlice::FromProto(buffer_proto, buffer_allocations));
     results_buffers.push_back(std::move(buffer));
   }
 

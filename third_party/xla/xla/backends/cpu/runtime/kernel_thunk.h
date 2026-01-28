@@ -60,10 +60,9 @@ class KernelThunkBase : public Thunk {
   virtual const NumWorkGroups& num_workgroups() const = 0;
   virtual const std::optional<uint64_t>& min_alignment() const = 0;
 
-  virtual absl::Span<const BufferAllocation::Slice> arguments_buffers()
-      const = 0;
+  virtual absl::Span<const ShapedSlice> arguments_buffers() const = 0;
 
-  virtual absl::Span<const BufferAllocation::Slice> results_buffers() const = 0;
+  virtual absl::Span<const ShapedSlice> results_buffers() const = 0;
 
   virtual const absl::flat_hash_set<int64_t>& invariant_arguments() const = 0;
 };
@@ -90,11 +89,11 @@ class KernelThunk : public KernelThunkBase {
     return min_alignment_;
   }
 
-  absl::Span<const BufferAllocation::Slice> arguments_buffers() const final {
+  absl::Span<const ShapedSlice> arguments_buffers() const final {
     return absl::MakeSpan(arguments_buffers_);
   }
 
-  absl::Span<const BufferAllocation::Slice> results_buffers() const final {
+  absl::Span<const ShapedSlice> results_buffers() const final {
     return absl::MakeSpan(results_buffers_);
   }
 
@@ -120,22 +119,21 @@ class KernelThunk : public KernelThunkBase {
   // std::array with a fixed size, which allows compiler to automatically unroll
   // all the loops on a hot path.
 
-  using ArgumentsBuffers = std::conditional_t<
-      IsDynamic(num_arguments), std::vector<BufferAllocation::Slice>,
-      std::array<BufferAllocation::Slice, Size(num_arguments)>>;
+  using ArgumentsBuffers =
+      std::conditional_t<IsDynamic(num_arguments), std::vector<ShapedSlice>,
+                         std::array<ShapedSlice, Size(num_arguments)>>;
 
-  using ResultsBuffers = std::conditional_t<
-      IsDynamic(num_results), std::vector<BufferAllocation::Slice>,
-      std::array<BufferAllocation::Slice, Size(num_results)>>;
+  using ResultsBuffers =
+      std::conditional_t<IsDynamic(num_results), std::vector<ShapedSlice>,
+                         std::array<ShapedSlice, Size(num_results)>>;
 
   using KernelArgs = std::conditional_t<
       IsDynamic(num_arguments) || IsDynamic(num_results),
-      absl::InlinedVector<XLA_CPU_KernelArg, 8>,
+      absl::InlinedVector<XLA_CPU_KernelArg, 4>,
       std::array<XLA_CPU_KernelArg, Size(num_arguments + num_results)>>;
 
-  KernelThunk(Info info,
-              absl::Span<const BufferAllocation::Slice> arguments_buffers,
-              absl::Span<const BufferAllocation::Slice> results_buffers,
+  KernelThunk(Info info, absl::Span<const ShapedSlice> arguments_buffers,
+              absl::Span<const ShapedSlice> results_buffers,
               absl::flat_hash_set<int64_t> invariant_arguments,
               absl::string_view kernel_name, NumWorkGroups num_workgroups,
               std::optional<uint64_t> min_alignment);
@@ -193,9 +191,8 @@ class KernelThunk final : public internal::KernelThunk<> {
   using Base::Base;
 
   static absl::StatusOr<std::unique_ptr<Thunk>> Create(
-      Thunk::Info info,
-      absl::Span<const BufferAllocation::Slice> arguments_buffers,
-      absl::Span<const BufferAllocation::Slice> results_buffers,
+      Thunk::Info info, absl::Span<const ShapedSlice> arguments_buffers,
+      absl::Span<const ShapedSlice> results_buffers,
       absl::string_view kernel_name, NumWorkGroups num_workgroups,
       absl::flat_hash_set<int64_t> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);

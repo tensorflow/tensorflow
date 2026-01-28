@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 
 namespace xla {
 
@@ -39,7 +40,7 @@ namespace xla {
 // will load kernel PTX on device and instantiate a KernelThunk.
 class KernelSpec {
  public:
-  using Buffers = absl::InlinedVector<BufferAllocation::Slice, 8>;
+  using Buffers = std::vector<ShapedSlice>;
 
   KernelSpec(absl::string_view name, NumWorkGroups num_workgroups,
              Buffers argument_buffers, Buffers result_buffers,
@@ -84,12 +85,12 @@ class KernelSpec {
   std::optional<size_t> scratch_bytes() const { return scratch_bytes_; }
 
   // Argument buffers read by the kernel.
-  absl::Span<const BufferAllocation::Slice> argument_buffers() const {
+  absl::Span<const ShapedSlice> argument_buffers() const {
     return argument_buffers_;
   }
 
   // Result buffers written to by the kernel.
-  absl::Span<const BufferAllocation::Slice> result_buffers() const {
+  absl::Span<const ShapedSlice> result_buffers() const {
     return result_buffers_;
   }
 

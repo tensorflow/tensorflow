@@ -229,9 +229,16 @@ ElementalKernelEmitter::EmitKernelDefinition() {
 
   LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 
+  KernelSpec::Buffers arguments, results;
+  for (const auto& buffer : kernel_prototype.argument_buffers) {
+    arguments.push_back({buffer.slice, buffer.shape});
+  }
+  for (const auto& buffer : kernel_prototype.result_buffers) {
+    results.push_back({buffer.slice, buffer.shape});
+  }
+
   KernelSpec spec(kernel_prototype.function->getName(), num_workgroups,
-                  std::move(kernel_prototype.argument_buffers),
-                  std::move(kernel_prototype.result_buffers),
+                  std::move(arguments), std::move(results),
                   std::move(kernel_prototype.invariant_arguments));
 
   return KernelDefinition(std::move(spec), std::move(source));

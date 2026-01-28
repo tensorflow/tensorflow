@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -1404,18 +1405,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
   for (size_t i = 0; i < sort->operand_count(); ++i) {
     const Shape& shape = sort->operand(i)->shape();
 
-    BufferAllocation::Slice arg = buffers.arguments[i];
-    BufferAllocation::Slice result = buffers.results[i];
+    const ShapedSlice& arg = buffers.arguments[i];
+    const ShapedSlice& result = buffers.results[i];
 
     // Copy argument to result if they are not the same buffer.
     if (arg != result) {
-      TF_ASSIGN_OR_RETURN(
-          thunks.emplace_back(),
-          CopyThunk::Create(ThunkInfo(instruction), arg, shape, result, shape));
+      TF_ASSIGN_OR_RETURN(thunks.emplace_back(),
+                          CopyThunk::Create(ThunkInfo(instruction), arg.slice,
+                                            shape, result.slice, shape));
     }
 
     // Add sort thunk input to sort result buffer inplace.
-    inputs.push_back(SortThunk::Input{result, shape});
+    inputs.push_back(SortThunk::Input{result.slice, shape});
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1527,11 +1528,12 @@ absl::StatusOr<ThunkEmitter::HostKernelAllocationSlices>
 ThunkEmitter::GetHostKernelAllocationSlices(const HloInstruction* instruction) {
   HostKernelAllocationSlices slices;
 
-  auto add_buffers = [&](std::vector<BufferAllocation::Slice>& buffers,
+  auto add_buffers = [&](std::vector<ShapedSlice>& buffers,
                          const HloInstruction* instr) -> absl::Status {
     for (const auto& indexed : ShapeUtil::GetLeafShapes(instr->shape())) {
-      TF_ASSIGN_OR_RETURN(buffers.emplace_back(),
-                          GetAllocationSlice(instr, indexed.index));
+      TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(instr, indexed.index));
+
+      buffers.push_back({slice, indexed.shape});
     }
     return absl::OkStatus();
   };

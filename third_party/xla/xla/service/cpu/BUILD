@@ -869,6 +869,7 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
+        "//xla/service:shaped_slice",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:env",

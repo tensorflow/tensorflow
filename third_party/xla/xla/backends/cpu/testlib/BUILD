@@ -90,6 +90,7 @@ cc_library(
     srcs = ["llvm_ir_kernel_emitter.cc"],
     hdrs = ["llvm_ir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -98,6 +99,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -112,6 +114,7 @@ cc_library(
     srcs = ["mlir_kernel_emitter.cc"],
     hdrs = ["mlir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_emitter",
@@ -120,6 +123,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

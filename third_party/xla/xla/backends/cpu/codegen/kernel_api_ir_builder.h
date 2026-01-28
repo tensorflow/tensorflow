@@ -110,8 +110,8 @@ class KernelApiIrBuilder {
 
     // The set of buffers used by this kernel, can be empty if buffer assignment
     // was not provided.
-    absl::InlinedVector<BufferAllocation::Slice, 8> argument_buffers;
-    absl::InlinedVector<BufferAllocation::Slice, 8> result_buffers;
+    absl::InlinedVector<KernelParameter, 4> argument_buffers;
+    absl::InlinedVector<KernelParameter, 4> result_buffers;
   };
 
   KernelApiIrBuilder(
