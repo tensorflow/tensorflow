@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <vector>
+
 // Metadata parameter which is passed to the collective kernel.
 // The metadata allows to compute the address of a peer's buffer in the
 // collective kernel and get the current rank of a peer device.
@@ -37,6 +39,9 @@ struct CollectiveKernelMetadata {
 
   // Root pointer for multicast buffer for current device.
   void* multicast_buffer_ptr;
+
+  // param_to_peers array available on the host side.
+  std::vector<void*> param_to_peers_host;
 };
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_

@@ -79,7 +79,8 @@ CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
   return config;
 }
 
-absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
+absl::StatusOr<CollectiveKernelMetadata>
+CollectiveMetadataThunk::ConstructAndReturnCollectiveMetadata(
     const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
     std::vector<se::DeviceAddressBase> parameters,
     std::shared_ptr<CollectiveMultimem> multimem,
@@ -119,8 +120,10 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
 
   const int64_t param_to_peers_ptrs_size =
       param_to_peers_ptrs.size() * sizeof(void*);
+  const size_t metadata_on_device_size =
+      offsetof(CollectiveKernelMetadata, param_to_peers_host);
   se::DeviceAddressBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
-      sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
+      metadata_on_device_size, param_to_peers_ptrs_size);
 
   CollectiveKernelMetadata metadata;
   metadata.rank = rank.value();
@@ -129,12 +132,26 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
   metadata.param_to_peers =
       reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
 
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
-                                    sizeof(CollectiveKernelMetadata)));
+  TF_RETURN_IF_ERROR(
+      stream->Memcpy(&destination, &metadata, metadata_on_device_size));
   TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
                                     param_to_peers_ptrs.data(),
                                     param_to_peers_ptrs_size));
-  return stream->BlockHostUntilDone();
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  metadata.param_to_peers_host = std::move(param_to_peers_ptrs);
+  return metadata;
+}
+
+absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
+    const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+    std::vector<se::DeviceAddressBase> parameters,
+    std::shared_ptr<CollectiveMultimem> multimem,
+    se::DeviceAddressBase destination) {
+  TF_ASSIGN_OR_RETURN(CollectiveKernelMetadata _,
+                      ConstructAndReturnCollectiveMetadata(
+                          clique_key, rank, stream, std::move(parameters),
+                          multimem, destination));
+  return absl::OkStatus();
 }
 
 /* static */ absl::StatusOr<se::DeviceAddressBase>
