@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,8 +44,10 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -129,6 +132,8 @@ class IfrtServingExecutable {
   };
 
   struct CachedExecutableBundle {
+    std::optional<std::vector<xla::Shape>> xla_input_shapes;
+    std::optional<std::vector<xla::ifrt::LayoutRef>> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;

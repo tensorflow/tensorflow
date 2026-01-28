@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -52,7 +53,10 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/layout.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -120,12 +124,49 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   return fingerprint;
 }
 
-Tf2HLOResultProto Tf2HloResult::ToProto() const {
+absl::StatusOr<Tf2HLOResultProto> Tf2HloResult::ToProto() const {
   Tf2HLOResultProto proto;
   *proto.mutable_hlo_module_proto() = hlo_module_proto;
   *proto.mutable_compile_metadata() = compile_metadata;
   *proto.mutable_host_compute_metadata() = host_compute_metadata;
+  for (const auto& shape : xla_input_shapes) {
+    *proto.add_xla_input_shapes() = shape.ToProto();
+  }
+  for (const auto& layout : xla_input_layouts) {
+    LayoutProto layout_proto;
+    if (layout != nullptr) {
+      TF_ASSIGN_OR_RETURN(auto layout_proto, layout->ToProto());
+      *proto.add_xla_input_layouts()->mutable_layout() =
+          std::move(layout_proto);
+    } else {
+      // Use an empty layout proto to indicate no layout.
+      proto.add_xla_input_layouts();
+    }
+  }
   return proto;
+}
+
+/*static*/ absl::StatusOr<Tf2HloResult> Tf2HloResult::FromProto(
+    const Tf2HLOResultProto& proto) {
+  Tf2HloResult result;
+  result.hlo_module_proto = proto.hlo_module_proto();
+  result.compile_metadata = proto.compile_metadata();
+  result.host_compute_metadata = proto.host_compute_metadata();
+  for (const auto& shape : proto.xla_input_shapes()) {
+    TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, xla::Shape::FromProto(shape));
+    result.xla_input_shapes.push_back(std::move(xla_shape));
+  }
+  // Reconstruct the layout from the shape because layout is not serialized.
+  for (const auto& layout : proto.xla_input_layouts()) {
+    if (!layout.has_layout()) {
+      result.xla_input_layouts.push_back(nullptr);
+    } else {
+      TF_ASSIGN_OR_RETURN(auto layout,
+                          xla::ifrt::Layout::FromProto(layout.layout()));
+      result.xla_input_layouts.push_back(std::move(layout));
+    }
+  }
+  return result;
 }
 
 absl::Status UpdateCompileMetadata(
@@ -266,9 +307,22 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
 
   Tf2HloResult result;
-  result.hlo_module_proto = compilation_result.computation->proto();
+  result.xla_input_shapes = std::move(compilation_result.xla_input_shapes);
+  std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
+  xla_input_layouts.reserve(compilation_result.xla_input_shapes.size());
+  for (const auto& shape : result.xla_input_shapes) {
+    if (!shape.has_layout()) {
+      xla_input_layouts.push_back(nullptr);
+    } else {
+      xla_input_layouts.push_back(xla::ifrt::PjRtLayout::Create(
+          std::make_shared<xla::PjRtLayout>(shape.layout())));
+    }
+  }
+  result.xla_input_layouts = std::move(xla_input_layouts);
+  result.hlo_module_proto = std::move(compilation_result.computation->proto());
   result.compile_metadata = arg.compile_metadata;
-  result.host_compute_metadata = compilation_result.host_compute_metadata;
+  result.host_compute_metadata =
+      std::move(compilation_result.host_compute_metadata);
 
   return result;
 }
