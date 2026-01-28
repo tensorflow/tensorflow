@@ -32,9 +32,13 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -42,7 +46,22 @@ limitations under the License.
 
 namespace xla::gpu {
 
-class DynamicSliceFusionRewriterTest : public HloHardwareIndependentTestBase {};
+class DynamicSliceFusionRewriterTest : public HloHardwareIndependentTestBase {
+  void SetUp() override {
+    auto maybe_name = PlatformUtil::CanonicalPlatformName("gpu");
+    CHECK_OK(maybe_name);
+    auto maybe_platform_id =
+        PlatformUtil::GetPlatformIdFromCanonicalName(maybe_name.value());
+    CHECK_OK(maybe_platform_id);
+    platform_id_ = maybe_platform_id.value();
+  }
+
+ protected:
+  stream_executor::Platform::Id platform_id() const { return platform_id_; }
+
+ private:
+  stream_executor::Platform::Id platform_id_;
+};
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
@@ -101,7 +120,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
@@ -165,7 +185,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
@@ -231,7 +252,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
@@ -293,7 +315,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
@@ -359,7 +382,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
@@ -440,7 +464,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
@@ -506,7 +531,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotContiguousSlice) {
@@ -544,7 +570,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotContiguousSlice) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
                             std::nullopt);
 }
 
@@ -587,7 +613,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNonNoOpInSliceChain) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
                             std::nullopt);
 }
 
@@ -666,7 +692,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmDuplicateOperand) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
@@ -728,7 +755,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
@@ -790,7 +818,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
@@ -853,7 +882,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandAliasingOutput) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
@@ -910,7 +940,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsFromSameSlice) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
@@ -926,7 +957,11 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Arg<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy",
+                         stream_executor::cuda::kCudaPlatformId->ToName(),
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy",
+                         stream_executor::rocm::kROCmPlatformId->ToName(),
                          kMemcpy);
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
@@ -974,14 +1009,19 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
-                            expected);
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), DynamicSliceFusionRewriter(platform_id()), expected);
 }
 
 void Callback_Void(void* stream, void** buffers, const char* /*opaque*/,
                    size_t /*opaque_len*/) {}
 
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Void, "gpu");
+XLA_REGISTER_CUSTOM_CALL_TARGET(
+    Callback_Void,
+    std::string(stream_executor::cuda::kCudaPlatformId->ToName()));
+XLA_REGISTER_CUSTOM_CALL_TARGET(
+    Callback_Void,
+    std::string(stream_executor::rocm::kROCmPlatformId->ToName()));
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   XlaBuilder b(TestName());
@@ -1029,8 +1069,8 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
-                            expected);
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), DynamicSliceFusionRewriter(platform_id()), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
@@ -1092,8 +1132,8 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
-                            expected);
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), DynamicSliceFusionRewriter(platform_id()), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
@@ -1178,8 +1218,8 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
-                            expected);
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), DynamicSliceFusionRewriter(platform_id()), expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
@@ -1208,8 +1248,8 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
   // CHECK_OK(hlo->set_schedule(std::move(schedule)));
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo->ToString(), DynamicSliceFusionRewriter("gpu"),
-                            std::nullopt);
+  RunAndFilecheckHloRewrite(
+      hlo->ToString(), DynamicSliceFusionRewriter(platform_id()), std::nullopt);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
@@ -1273,7 +1313,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
@@ -1342,7 +1383,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
@@ -1412,7 +1454,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
@@ -1478,7 +1521,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
@@ -1541,7 +1585,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
@@ -1613,7 +1658,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
@@ -1695,7 +1741,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
@@ -1762,7 +1809,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
@@ -1795,7 +1843,8 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSConstantOffset) {
   // CHECK:   ROOT %{{.+}} = {{.+}} fusion(%{{.+}}, %{{.+}}, %{{.+}}, %{{.+}}), kind=kCustom, calls=%dynamic-slice-fusion, {{.+}}"name":"dynamic_address_computation"
   // CHECK: }
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
@@ -1816,7 +1865,7 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSParameterOffset) {
     reduce-scatter = f16[64,128]{1,0} reduce-scatter(param_0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
     ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, param_2, constant_0)
   })";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
                             std::nullopt);
 }
 
@@ -1878,7 +1927,8 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDUSLoopIterationOffset) {
   // CHECK:   {{.+}} = {{.+}}fusion({{.+}}), kind=kCustom, calls=%dynamic-slice-fusion{{.*}}"name":"dynamic_address_computation"
   // CHECK: }
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
@@ -1953,7 +2003,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
   )";
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmParameterOffset) {
@@ -1993,7 +2044,7 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmParameterOffset) {
       ROOT dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, p3, c0_s32, c0_s32)
     })";
 
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
                             std::nullopt);
 }
 
@@ -2071,7 +2122,8 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
   // CHECK:   %{{.+}} = {{.+}} while(%{{.+}}), condition=%{{.+}}, body=%Body{{.*}}, backend_config={"known_trip_count":{"n":"128"}}
   // CHECK: }
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterSlice) {
@@ -2098,7 +2150,8 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterSlice) {
   // CHECK:   ROOT {{.+}} = {{.+}} reduce-scatter(%[[bc]])
   // CHECK: }
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDynamicSlice) {
@@ -2129,7 +2182,8 @@ TEST_F(DynamicSliceFusionRewriterTest, ReduceScatterDynamicSlice) {
   // CHECK: }
   // CHECK: ENTRY
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()),
+                            expected);
 }
 
 TEST_F(DynamicSliceFusionRewriterTest,
@@ -2175,7 +2229,7 @@ TEST_F(DynamicSliceFusionRewriterTest,
       ROOT while = (s32[], s32[32,64], s32[32,64]) while(tuple), body=body, condition=condition
     }
   )";
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), R"(
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()), R"(
     // CHECK: dynamic-slice-fusion
     // CHECK:    %[[rs:.+]] = {{.+}} reduce-scatter({{.+}})
     // CHECK:    ROOT %[[dus:.+]] = {{.+}} dynamic-update-slice({{.+}})
@@ -2234,7 +2288,7 @@ TEST_F(DynamicSliceFusionRewriterTest,
   )";
   // Checking for 2 dynamic-slices, their uses in reduce-scatter and their
   // update via dus inside the fusion.
-  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), R"(
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter(platform_id()), R"(
     // CHECK: dynamic-slice-fusion
     // CHECK-DAG:   %[[ds1:.+]] = {{.+}} dynamic-slice({{.+}})
     // CHECK-DAG:   %[[ds2:.+]] = {{.+}} dynamic-slice({{.+}})

@@ -1411,14 +1411,12 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   const DebugOptions& opts = hlo_module->config().debug_options();
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
     HloPassPipeline pipeline("dynamic-slice");
-    ASSIGN_OR_RETURN(se::Platform * platform,
-                     se::PlatformManager::PlatformWithId(platform_id));
     pipeline.AddPass<GpuReduceScatterCombiner>(
         kDefaultReduceScatterCombineThreshold,
         opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
         kCombineThresholdCount,
         opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
-    pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
+    pipeline.AddPass<DynamicSliceFusionRewriter>(platform_id);
     pipeline.AddPass<AsyncWrapper>([](const HloInstruction* instr) {
       if (!IsDynamicSliceFusion(instr)) {
         return false;
@@ -3190,9 +3188,7 @@ GpuCompiler::LoadExecutableFromAotResult(
   std::vector<uint8_t> binary(proto.binary().begin(), proto.binary().end());
 
   // Build the executable, which should be a thunk sequence.
-  ASSIGN_OR_RETURN(se::Platform * platform,
-                   se::PlatformManager::PlatformWithId(PlatformId()));
-  std::string platform_name = platform->Name();
+  absl::string_view platform_name = PlatformId()->ToName();
 
   const se::DeviceDescription& gpu_device_info =
       stream_exec.GetDeviceDescription();

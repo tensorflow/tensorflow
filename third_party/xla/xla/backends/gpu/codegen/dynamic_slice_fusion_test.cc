@@ -68,6 +68,13 @@ std::string GetPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
+stream_executor::Platform::Id GetPlatformId() {
+  auto platform_id =
+      PlatformUtil::GetPlatformIdFromCanonicalName(GetPlatformName());
+  CHECK_OK(platform_id);
+  return platform_id.value();
+}
+
 using ::testing::ElementsAre;
 using ::testing::Optional;
 using ::testing::VariantWith;
@@ -1064,7 +1071,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1214,7 +1221,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1267,7 +1274,7 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2584,7 +2591,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
                                             computation.proto(), hlo_config));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2657,7 +2664,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
@@ -2834,7 +2841,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
