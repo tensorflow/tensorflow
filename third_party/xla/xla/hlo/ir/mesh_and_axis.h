@@ -102,13 +102,17 @@ class Mesh {
   static Mesh FromProto(const MeshProto& proto);
 
   const TileAssignment& device_assignment() const { return device_assignment_; }
-  std::vector<std::string> axis_names() const { return axes_names_; }
+  absl::Span<const std::string> axis_names() const { return axes_names_; }
+  int64_t num_axes() const { return axes_names_.size(); }
   absl::Span<const int64_t> axis_sizes() const {
     return device_assignment_.dimensions();
   }
   int64_t axis_size(int64_t axis_index) const {
     return device_assignment_.dim(axis_index);
   }
+
+  // Returns true if the given axes span contains all mesh axes in order.
+  bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:
   absl::Status ValidateMesh();

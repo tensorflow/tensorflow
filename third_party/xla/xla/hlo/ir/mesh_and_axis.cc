@@ -46,11 +46,11 @@ namespace xla {
 absl::Status Mesh::ValidateMesh() {
   // TODO(varcho): An empty mesh is valid in Shardy. If support for such meshes
   // is required, update this validation.
-  if (device_assignment_.dimensions().empty() || axes_names_.empty()) {
+  if (device_assignment_.num_dimensions() == 0 || axes_names_.empty()) {
     return absl::InvalidArgumentError("Mesh must have at least one axis.");
   }
 
-  if (device_assignment_.dimensions().size() != axes_names_.size()) {
+  if (device_assignment_.num_dimensions() != axes_names_.size()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Number of axes names must match number of dimensions in the device "
         "assignment. Number of axes names: ",
@@ -131,9 +131,8 @@ std::string Mesh::ToString() const {
 
 MeshProto Mesh::ToProto() const {
   MeshProto proto;
-  int64_t num_axes = axes_names_.size();
 
-  if (num_axes == 0) {
+  if (num_axes() == 0) {
     if (device_assignment_.num_elements() == 0) {
       return MeshProto();
     }
@@ -144,7 +143,7 @@ MeshProto Mesh::ToProto() const {
   }
 
   std::vector<MeshProto::MeshAxis> axes;
-  axes.reserve(num_axes);
+  axes.reserve(num_axes());
 
   for (auto [name, size] :
        llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
@@ -206,11 +205,23 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 
+bool Mesh::ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const {
+  if (num_axes() != axes.size()) {
+    return false;
+  }
+  for (int i = 0; i < axes.size(); ++i) {
+    if (axes[i].sub_axis_info().has_value() || axes[i].mesh_axis_index() != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string AxisRef::ToString(const Mesh* mesh) const {
   // TODO(b/474013054): Remove these checks if they have significant overhead.
   CHECK_GE(mesh_axis_index_, 0);
   if (mesh) {
-    CHECK_LT(mesh_axis_index_, mesh->axis_names().size());
+    CHECK_LT(mesh_axis_index_, mesh->num_axes());
   }
   std::string axis_str = mesh ? mesh->axis_names()[mesh_axis_index_]
                               : std::to_string(mesh_axis_index_);
@@ -309,7 +320,7 @@ bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
 }
 
 absl::Status AxisRef::Validate(const Mesh& mesh) const {
-  if (mesh_axis_index_ >= mesh.axis_names().size()) {
+  if (mesh_axis_index_ >= mesh.num_axes()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Axis index must be less than number of axes. Axis index: ",
         mesh_axis_index_, ", Number of axes: ", mesh.axis_names().size()));

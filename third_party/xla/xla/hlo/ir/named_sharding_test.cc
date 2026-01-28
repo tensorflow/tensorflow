@@ -558,6 +558,59 @@ TEST(NamedShardingTest, InvalidSubAxisDivisibility) {
                "Next pre-size: 8, Axis size: 12");
 }
 
+TEST(NamedShardingPredicatesTest, IsReplicated) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding sharding(mesh);
+  EXPECT_TRUE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnreduced());
+}
+
+TEST(NamedShardingPredicatesTest, IsMaximal) {
+  Mesh mesh(1);
+  NamedSharding sharding(mesh);
+  EXPECT_TRUE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnreduced());
+}
+
+TEST(NamedShardingPredicatesTest, IsUnreduced) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a", "b"});
+  EXPECT_TRUE(sharding1.IsUnreduced());
+  EXPECT_FALSE(sharding1.IsReplicated());
+  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsManual());
+}
+TEST(NamedShardingPredicatesTest, IsUnreducedDoesntContainAllAxes) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a"});
+  EXPECT_FALSE(sharding1.IsUnreduced());
+  EXPECT_FALSE(sharding1.IsReplicated());
+  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsManual());
+}
+
+TEST(NamedShardingPredicatesTest, IsManual) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding sharding =
+      test_utils::FromAxisNames(mesh, {}, {}, {}, {"a", "b"});
+  EXPECT_TRUE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsUnreduced());
+}
+TEST(NamedShardingPredicatesTest, IsManualDoesntContainAllAxes) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  NamedSharding sharding = test_utils::FromAxisNames(mesh, {}, {}, {}, {"a"});
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsUnreduced());
+}
+
 TEST(NamedShardingTest, NamedShardingProtoConversion) {
   Mesh mesh({4, 4, 3, 5}, {"a", "b", "c", "d"});
   AxisRef axis_a_1(0, {1, 2});

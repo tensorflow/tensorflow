@@ -243,9 +243,7 @@ class HloSharding {
   bool IsManualLeaf() const {
     DCHECK(!IsTuple());
     if (UseNamedShardingLeaf()) {
-      // ManualSharding is represented by separate ManualComputationOp in named
-      // sharding format.
-      return false;
+      return named_sharding_->IsManual();
     }
     return manual_;
   }
@@ -269,13 +267,16 @@ class HloSharding {
 
   bool IsUnreduced() const {
     if (!IsTuple()) {
-      return unreduced_;
+      return IsUnreducedLeaf();
     }
     return absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsUnreduced(); });
   }
   bool IsUnreducedLeaf() const {
     DCHECK(!IsTuple());
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->IsUnreduced();
+    }
     return unreduced_;
   }
 
