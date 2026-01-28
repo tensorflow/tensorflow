@@ -122,6 +122,22 @@ absl::Status CanonicalizeTileStrides(SmallVector<int64_t>& tile_strides,
   return absl::OkStatus();
 }
 
+// Returns true if 'value' is guaranteed to be divisible by 'divisor'.
+// This assumes that 'value' is a constant or an apply indexing op.
+bool IsGuaranteedDivisible(Value value, int64_t divisor) {
+  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
+    return const_op.value() % divisor == 0;
+  }
+  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
+    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
+    if (affine_map.getNumResults() != 1) {
+      return false;
+    }
+    return affine_map.getResult(0).isMultipleOf(divisor);
+  }
+  return false;
+}
+
 // Check if the offset is divisible by 16 bytes:
 //  - If the offset is a constant, we can check this directly.
 //  - If the offset is the result of an apply indexing op, we can check if the
@@ -134,23 +150,7 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
   const int64_t kByteDivisibilityFactor = 16;
   int64_t divisor = kByteDivisibilityFactor /
                     std::gcd(kByteDivisibilityFactor, element_byte_size);
-  if (auto const_op = offset_val.getDefiningOp<arith::ConstantIndexOp>()) {
-    return const_op.value() % divisor == 0;
-  }
-
-  if (auto apply_indexing =
-          offset_val.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
-
-    // We expect a single result.
-    if (affine_map.getNumResults() != 1) {
-      return false;
-    }
-    return affine_map.getResult(0).isMultipleOf(divisor);
-  }
-
-  // Cannot guarantee divisibility. Assume not.
-  return false;
+  return IsGuaranteedDivisible(offset_val, divisor);
 }
 
 // Limitations of TMA are documented in IsTmaCompatible
@@ -467,16 +467,19 @@ static std::pair<Value, Value> CreateTensorOfPointersAndMask(
     // Expand and broadcast range to tile shape.
     range = ExpandAndBroadcastValue(builder, range, i, i64_tile_type);
 
-    Value mask;
-    if (original_shape[dim] % sizes[dim] != 0) {
-      // Imperfect tiling, create a mask for values that are inside bounds.
+    // Create a mask for values that are inside bounds.
+    // We need to check the offset alignment with the tile size as well,
+    // otherwise we might load/store outside the valid range of the tile, even
+    // if the original shape is divisible by the tile size.
+    if (original_shape[dim] % sizes[dim] != 0 ||
+        !IsGuaranteedDivisible(offsets[dim], sizes[dim])) {
       Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       upper_bound =
           arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
       upper_bound = SplatOp::create(builder, i64_tile_type, upper_bound);
-      mask = arith::CmpIOp::create(builder, arith::CmpIPredicate::slt, range,
-                                   upper_bound);
+      Value mask = arith::CmpIOp::create(builder, arith::CmpIPredicate::slt,
+                                         range, upper_bound);
 
       // Combine mask with previous iteration.
       mask_tile = add_if(arith::AndIOp(), mask, mask_tile);
