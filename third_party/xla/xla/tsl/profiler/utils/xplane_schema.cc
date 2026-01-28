@@ -477,6 +477,7 @@ const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
   static auto* const task_env_stat_type_map = new TaskEnvStatTypeMap({
       {"profile_start_time", kEnvProfileStartTime},
       {"profile_stop_time", kEnvProfileStopTime},
+      {"profile_options", kEnvProfileOptions},
   });
   DCHECK_EQ(task_env_stat_type_map->size(), kNumTaskEnvStatTypes);
   return *task_env_stat_type_map;

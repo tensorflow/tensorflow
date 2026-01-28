@@ -422,7 +422,8 @@ enum TaskEnvStatType {
   kFirstTaskEnvStatType = 1,
   kEnvProfileStartTime = kFirstTaskEnvStatType,
   kEnvProfileStopTime,
-  kLastTaskEnvStatType = kEnvProfileStopTime,
+  kEnvProfileOptions,
+  kLastTaskEnvStatType = kEnvProfileOptions,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
