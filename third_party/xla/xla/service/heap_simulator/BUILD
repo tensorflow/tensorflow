@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["heap_simulator.h"],
     deps = [
         ":allocation_block",
+        ":free_chunks_manager",
         "//xla:comparison_util",
         "//xla:util",
         "//xla/hlo/analysis:alias_info",
