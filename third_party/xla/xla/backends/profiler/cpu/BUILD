@@ -74,6 +74,7 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
@@ -93,6 +94,7 @@ cc_library(
     ]),
     deps = [
         ":metadata_utils",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_debug_info_manager",
         "//xla/tsl/profiler/utils:xplane_builder",

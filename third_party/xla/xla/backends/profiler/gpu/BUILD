@@ -886,12 +886,10 @@ cc_library(
         "gpu",
     ],
     deps = [
-        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/tsl/profiler/utils:xplane_schema",
-        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

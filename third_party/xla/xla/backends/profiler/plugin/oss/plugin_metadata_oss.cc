@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/backends/profiler/plugin/plugin_metadata.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
 
-void AddPluginMetadata(tensorflow::profiler::XSpace* space) {
+void AddPluginMetadata() {
   // This is a no-op in the OSS build.
 }
 
