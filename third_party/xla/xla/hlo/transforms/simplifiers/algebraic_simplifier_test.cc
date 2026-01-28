@@ -13293,5 +13293,141 @@ TEST_F(AlgebraicSimplifierTest, ImagWithDynamicNonComplexInput) {
   EXPECT_EQ(root->shape().dimensions(0), 8);
 }
 
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshape) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[10, 20, 1200] parameter(0)
+      r1 = f32[10, 20, 30, 40] reshape(p)
+      t1 = f32[10, 30, 40, 20] transpose(r1), dimensions={0, 2, 3, 1}
+      ROOT r2 = f32[10, 1200, 20] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Transpose(m::Reshape(m::Parameter(0)))));
+  const HloInstruction* transpose = m->entry_computation()->root_instruction();
+  const HloInstruction* reshape = transpose->operand(0);
+  EXPECT_THAT(reshape->shape().dimensions(), ElementsAre(10, 20, 1200));
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeNonContiguous) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[10, 20, 1200] parameter(0)
+      r1 = f32[10, 20, 30, 40] reshape(p)
+      t1 = f32[10, 30, 20, 40] transpose(r1), dimensions={0, 2, 1, 3}
+      ROOT r2 = f32[300, 20, 40] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeSplitDimension) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[200] parameter(0)
+      r1 = f32[10, 20] reshape(p)
+      t1 = f32[20, 10] transpose(r1), dimensions={1, 0}
+      ROOT r2 = f32[5, 4, 10] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeInsertOne) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[200] parameter(0)
+      r1 = f32[10, 20] reshape(p)
+      t1 = f32[20, 10] transpose(r1), dimensions={1, 0}
+      ROOT r2 = f32[20, 1, 10] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeLeftoverDims) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[200] parameter(0)
+      r1 = f32[20, 10, 1] reshape(p)
+      t1 = f32[20, 10, 1] transpose(r1), dimensions={0, 1, 2}
+      ROOT r2 = f32[200] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       HoistTransposeOfReshapeLeftoverDimsNonIdentity) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[200] parameter(0)
+      r1 = f32[20, 10, 1] reshape(p)
+      t1 = f32[10, 20, 1] transpose(r1), dimensions={1, 0, 2}
+      ROOT r2 = f32[200] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeReorderChunks) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[240000] parameter(0)
+      r1 = f32[10, 20, 30, 40] reshape(p)
+      t1 = f32[30, 40, 10, 20] transpose(r1), dimensions={2, 3, 0, 1}
+      ROOT r2 = f32[1200, 200] reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Transpose(m::Reshape(m::Parameter(0)))));
+  const HloInstruction* transpose = m->entry_computation()->root_instruction();
+  const HloInstruction* reshape = transpose->operand(0);
+  // Reshape should produce [200, 1200]
+  EXPECT_THAT(reshape->shape().dimensions(), ElementsAre(200, 1200));
+  // Transpose should flip them to [1200, 200]
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(1, 0));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistTransposeOfReshapeLayoutSensitive) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule m
+    ENTRY test {
+      p = f32[10, 20, 1200] parameter(0)
+      r1 = f32[10, 20, 30, 40]{0,1,2,3} reshape(p)
+      t1 = f32[10, 30, 40, 20] transpose(r1), dimensions={0, 2, 3, 1}
+      ROOT r2 = f32[10, 1200, 20]{0,1,2} reshape(t1)
+    }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
 }  // namespace
 }  // namespace xla
