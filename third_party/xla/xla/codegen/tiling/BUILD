@@ -94,6 +94,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tiled_hlo_region_instruction",
+    srcs = ["tiled_hlo_region_instruction.cc"],
+    hdrs = ["tiled_hlo_region_instruction.h"],
+    deps = [
+        ":tiled_hlo_computation",
+        ":tiled_hlo_instruction",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "tiled_hlo_fusion_instruction_test",
     srcs = ["tiled_hlo_fusion_instruction_test.cc"],
@@ -284,6 +300,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "symbolic_tiled_region",
+    srcs = ["symbolic_tiled_region.cc"],
+    hdrs = ["symbolic_tiled_region.h"],
+    deps = [
+        ":symbolic_tiled_hlo_instruction",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "symbolic_tiled_hlo_instruction_test",
     srcs = ["symbolic_tiled_hlo_instruction_test.cc"],
@@ -345,9 +373,11 @@ cc_library(
         ":constraint_expression",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
+        ":symbolic_tiled_region",
         ":tiled_hlo_computation",
         ":tiled_hlo_fusion_instruction",
         ":tiled_hlo_instruction",
+        ":tiled_hlo_region_instruction",
         ":tiled_hlo_schedule",
         ":tiling_specification",
         "//xla:shape_util",
