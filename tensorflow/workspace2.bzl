@@ -48,18 +48,22 @@ load("@xla//tools/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bz
 load("@xla//tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("@xla//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
+load("//third_party/com_google_highway:workspace.bzl", com_google_highway = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/jpegxl:workspace.bzl", jpegxl = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/libwebp:workspace.bzl", libwebp = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
+load("//third_party/org_brotli:workspace.bzl", org_brotli = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
+load("//third_party/skcms:workspace.bzl", skcms = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
@@ -70,6 +74,7 @@ def _initialize_third_party():
     absl()
     bazel_features_deps()
     benchmark()
+    com_google_highway()
     ducc()
     dlpack()
     eigen3()
@@ -83,6 +88,7 @@ def _initialize_third_party():
     icu()
     implib_so()
     jpeg()
+    jpegxl()
     kissfft()
     libprotobuf_mutator()
     libwebp()
@@ -90,6 +96,7 @@ def _initialize_third_party():
     nanobind()
     nasm()
     opencl_headers()
+    org_brotli()
     pasta()
     pybind11_abseil()
     pybind11_bazel()
@@ -100,6 +107,7 @@ def _initialize_third_party():
     rocm_device_libs()
     ruy()
     shardy()
+    skcms()
     slinky()
     spdlog()
     sobol_data()
@@ -892,26 +900,11 @@ def _tf_repositories():
 
     # Required by riegeli.
     tf_http_archive(
-        name = "org_brotli",
-        sha256 = "84a9a68ada813a59db94d83ea10c54155f1d34399baf377842ff3ab9b3b3256e",
-        strip_prefix = "brotli-3914999fcc1fda92e750ef9190aa6db9bf7bdb07",
-        urls = tf_mirror_urls("https://github.com/google/brotli/archive/3914999fcc1fda92e750ef9190aa6db9bf7bdb07.zip"),  # 2022-11-17
-    )
-
-    # Required by riegeli.
-    tf_http_archive(
         name = "net_zstd",
         build_file = "@xla//third_party:net_zstd.BUILD",
         sha256 = "7897bc5d620580d9b7cd3539c44b59d78f3657d33663fe97a145e07b4ebd69a4",
         strip_prefix = "zstd-1.5.7/lib",
         urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.5.7.zip"),  # 2025-05-20
-    )
-
-    tf_http_archive(
-        name = "com_google_highway",
-        sha256 = "2eb48f87c099a95123dc13a9f243bd3b74d67fe1d887942903d09a211593da97",
-        strip_prefix = "highway-1.0.7",
-        urls = tf_mirror_urls("https://github.com/google/highway/archive/refs/tags/1.0.7.zip"),
     )
 
     tf_http_archive(
