@@ -35,7 +35,7 @@ class ShapeOptimizer : public GraphOptimizer {
 
   ~ShapeOptimizer() override {}
 
-  string name() const override { return "shape_optimizer"; };
+  std::string name() const override { return "shape_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
