@@ -2064,6 +2064,24 @@ ENTRY main {
 }
 
 TEST_F(SymbolicTileAnalysisTest,
+       PadOutsideOfNestedGemmFusionsAllowSymbolicTileDerivation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+pad {
+  p0 = bf16[63] parameter(0)
+  c0 = bf16[] constant(0.0)
+  ROOT pad = bf16[64] pad(p0, c0), padding=0_1
+}
+
+ENTRY main {
+  p0 = bf16[63] parameter(0)
+  ROOT fusion = bf16[64] fusion(p0), kind=kCustom, calls=pad
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  EXPECT_TRUE(analysis.has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest,
        ConcatenatesOutsideOfNestedGemmFusionsForbidSymbolicTileDerivation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

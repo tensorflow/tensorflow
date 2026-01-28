@@ -435,7 +435,8 @@ bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
   auto fusion = Cast<const HloFusionInstruction>(&instruction);
   return absl::c_any_of(
       fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+      HloPredicateIsOp<HloOpcode::kPad, HloOpcode::kReduce,
+                       HloOpcode::kTranspose>);
 }
 
 }  // namespace
