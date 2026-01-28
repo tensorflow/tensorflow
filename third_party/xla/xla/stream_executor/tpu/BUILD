@@ -90,6 +90,7 @@ xla_cc_test(
     deps = [
         ":c_api_conversions",
         ":c_api_decl",
+        "//third_party/protobuf/util:differencer",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
