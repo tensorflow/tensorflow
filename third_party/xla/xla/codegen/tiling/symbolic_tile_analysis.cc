@@ -431,7 +431,8 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // Relaxing this restriction will require making sure that the cost model
   // works well with concatenates, and that we always construct nested fusions
   // for concatenates.
-  if (hlo->opcode() == HloOpcode::kConcatenate &&
+  if ((hlo->opcode() == HloOpcode::kConcatenate ||
+       hlo->opcode() == HloOpcode::kPad) &&
       !IsWithinNestedGemmFusion(hlo)) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
