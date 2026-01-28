@@ -127,7 +127,7 @@ FindAndWrapOffloadedComputations(
           call_instr->UniquifyName(computation.parent());
           call_instr->set_frontend_attributes(instr->frontend_attributes());
         }
-        offloaded_call_instr = tsl::down_cast<HloCallInstruction*>(call_instr);
+        offloaded_call_instr = absl::down_cast<HloCallInstruction*>(call_instr);
         CHECK_NE(offloaded_call_instr, nullptr);
         TF_RETURN_IF_ERROR(
             clear_backend_config_device_type(offloaded_call_instr));
