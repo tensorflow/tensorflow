@@ -179,8 +179,22 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root=0; "
+            "devices=2:[0,1]; is_p2p=false; groups=[[0,1],[2,3]]; root=0; "
             "local_participants=2; incarnations=[]");
+}
+
+TEST(GpuCliqueKeyGetterTest, ToStringManyDevices) {
+  std::vector<GlobalDeviceId> devices;
+  devices.reserve(100);
+  for (size_t i = 0; i < 100; ++i) {
+    devices.push_back(GlobalDeviceId(i));
+  }
+
+  GpuCliqueKey key(devices, 100, /*is_p2p=*/false);
+
+  EXPECT_EQ(key.ToString(),
+            "devices=100:[0,1,2,3,4,5,6,7,8,9...96,97,98,99]; is_p2p=false; "
+            "root=-1; local_participants=100; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {

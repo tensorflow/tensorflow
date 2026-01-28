@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/runtime/device_id.h"
@@ -123,20 +125,31 @@ std::vector<GpuCliqueKey> GpuCliqueKey::GetSubKeys(int64_t nroots) const {
   return subkeys;
 }
 
+// StrJoin for devices that shortens long list of devices for readbility.
+static std::string StrJoinDevices(absl::Span<const GlobalDeviceId> devices,
+                                  absl::string_view separator = ",",
+                                  size_t first = 10, size_t last = 4) {
+  if (devices.size() > first + last) {
+    return absl::StrCat(absl::StrJoin(devices.first(first), separator), "...",
+                        absl::StrJoin(devices.last(last), separator));
+  }
+  return absl::StrJoin(devices, separator);
+}
+
 std::string GpuCliqueKey::ToString() const {
   std::string group_string = "";
   if (!participant_groups_.empty()) {
     std::vector<std::string> values;
     values.reserve(participant_groups_.size());
     for (const auto& group : participant_groups_) {
-      values.push_back(absl::StrFormat("[%s]", absl::StrJoin(group, ",")));
+      values.push_back(absl::StrFormat("[%s]", StrJoinDevices(group)));
     }
     group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
   }
   return absl::StrFormat(
-      "devices=[%s]; is_p2p=%d%s; root=%lld; local_participants=%lld; "
+      "devices=%d:[%s]; is_p2p=%v%s; root=%lld; local_participants=%lld; "
       "incarnations=[%s]",
-      absl::StrJoin(devices(), ","), is_p2p_, group_string,
+      devices().size(), StrJoinDevices(devices()), is_p2p_, group_string,
       root_device_.value(), num_local_participants_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {

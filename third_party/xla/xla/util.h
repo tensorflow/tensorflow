@@ -130,7 +130,7 @@ struct TimerStats {
 };
 
 inline std::string XlaFormatDevice(int device_ordinal) {
-  return absl::StrFormat("device=[%d] ", device_ordinal);
+  return absl::StrFormat("[%d] ", device_ordinal);
 }
 
 #define XLA_VLOG_DEVICE(level, device_ordinal) \
