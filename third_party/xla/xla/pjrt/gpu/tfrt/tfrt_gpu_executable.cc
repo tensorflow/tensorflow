@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "riegeli/bytes/string_writer.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/executable_build_options.h"
@@ -88,12 +89,14 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -221,7 +224,11 @@ absl::StatusOr<std::string> TfrtGpuExecutable::SerializeExecutable() const {
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   *proto.mutable_pjrt_client_name() = kPjRtClientName;
-  return proto.SerializeAsString();
+
+  std::string result;
+  RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+      proto, std::make_unique<riegeli::StringWriter<>>(&result)));
+  return result;
 }
 
 PjRtClient* TfrtGpuExecutable::client() const { return (PjRtClient*)client_; }

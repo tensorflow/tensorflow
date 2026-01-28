@@ -28,6 +28,7 @@ cc_library(
     name = "split_proto_reader",
     srcs = ["split_proto_reader.cc"],
     hdrs = ["split_proto_reader.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         "//xla/service/gpu:gpu_executable_proto_cc",
@@ -68,6 +69,7 @@ cc_library(
     name = "split_executable_and_options_writer",
     srcs = ["split_executable_and_options_writer.cc"],
     hdrs = ["split_executable_and_options_writer.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
         "//xla/pjrt/proto:compile_options_proto_cc",

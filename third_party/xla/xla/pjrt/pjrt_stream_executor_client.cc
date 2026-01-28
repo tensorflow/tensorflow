@@ -97,6 +97,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "riegeli/bytes/string_reader.h"
+#include "riegeli/bytes/string_writer.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -161,6 +163,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
@@ -168,6 +172,7 @@ limitations under the License.
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -2647,7 +2652,11 @@ absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       se_executable->compile_options_.ToProto());
   *proto.mutable_pjrt_client_name() = kPjRtClientName;
-  return proto.SerializeAsString();
+
+  std::string result;
+  RETURN_IF_ERROR(WriteSplitExecutableAndOptions(
+      proto, std::make_unique<riegeli::StringWriter<>>(&result)));
+  return result;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -2687,16 +2696,36 @@ PjRtStreamExecutorClient::DeserializeExecutable(
                              local_executables_and_options.second);
 }
 
-absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
-PjRtStreamExecutorClient::DeserializeToLocalExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+namespace {
+absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
+    absl::string_view serialized) {
   ExecutableAndOptionsProto proto;
+  auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
+  // The serialized string may be of the new SplitProto format (which allows
+  // executables larger than 2GB) or the legacy format which is just a regular
+  // proto.
+  ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
+  if (is_split_proto) {
+    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), proto));
+    return proto;
+  }
+
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal("Proto is too large (>2GB)");
   }
   if (!proto.ParseFromString(serialized)) {
     return Internal("Proto deserialization failed");
   }
+
+  return proto;
+}
+}  // namespace
+
+absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
+PjRtStreamExecutorClient::DeserializeToLocalExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
+                   DeserializeExecutableAndOptionsProto(serialized));
   if (!proto.pjrt_client_name().empty() &&
       proto.pjrt_client_name() != kPjRtClientName) {
     return Internal(
