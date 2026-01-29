@@ -421,10 +421,146 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst) {
                                    /*minimum_tiles=*/dst->NumTiles() + 1, dst);
 }
 
+bool MergeNamedShardingIfCompatible(const HloSharding& to_merge,
+                                    HloSharding* dst) {
+  if (!to_merge.UseNamedShardingLeaf() || !dst->UseNamedShardingLeaf()) {
+    return false;
+  }
+  const NamedSharding& src_named = to_merge.named_sharding();
+  const NamedSharding& dst_named = dst->named_sharding();
+
+  if (src_named.mesh() != dst_named.mesh()) {
+    return false;
+  }
+  if (src_named.dim_shardings().size() != dst_named.dim_shardings().size()) {
+    return false;
+  }
+
+  auto axis_ref_less = [](const AxisRef& a, const AxisRef& b) {
+    if (a.mesh_axis_index() != b.mesh_axis_index()) {
+      return a.mesh_axis_index() < b.mesh_axis_index();
+    }
+    if (a.sub_axis_info().has_value() != b.sub_axis_info().has_value()) {
+      return b.sub_axis_info().has_value();
+    }
+    if (a.sub_axis_info().has_value()) {
+      if (a.sub_axis_info()->pre_size != b.sub_axis_info()->pre_size) {
+        return a.sub_axis_info()->pre_size < b.sub_axis_info()->pre_size;
+      }
+      return a.sub_axis_info()->size < b.sub_axis_info()->size;
+    }
+    return false;
+  };
+
+  auto get_sorted_axes = [&](absl::Span<const AxisRef> axes) {
+    std::vector<AxisRef> sorted(axes.begin(), axes.end());
+    std::sort(sorted.begin(), sorted.end(), axis_ref_less);
+    return sorted;
+  };
+
+  if (get_sorted_axes(src_named.manual_axes()) !=
+      get_sorted_axes(dst_named.manual_axes())) {
+    return false;
+  }
+  if (get_sorted_axes(src_named.unreduced_axes()) !=
+      get_sorted_axes(dst_named.unreduced_axes())) {
+    return false;
+  }
+
+  int64_t rank = src_named.dim_shardings().size();
+  std::vector<NamedSharding::DimensionSharding> merged_dim_shardings;
+  merged_dim_shardings.reserve(rank);
+  absl::flat_hash_set<AxisRef> used_axes;
+
+  for (const auto& axis : src_named.manual_axes()) {
+    used_axes.insert(axis);
+  }
+  for (const auto& axis : src_named.unreduced_axes()) {
+    used_axes.insert(axis);
+  }
+
+  for (int64_t i = 0; i < rank; ++i) {
+    absl::Span<const AxisRef> axes1 = src_named.dim_shardings()[i].axes();
+    absl::Span<const AxisRef> axes2 = dst_named.dim_shardings()[i].axes();
+
+    std::vector<AxisRef> merged_axes_vec;
+    if (axes1.size() <= axes2.size()) {
+      if (!std::equal(axes1.begin(), axes1.end(), axes2.begin())) {
+        return false;
+      }
+      merged_axes_vec.assign(axes2.begin(), axes2.end());
+    } else {
+      if (!std::equal(axes2.begin(), axes2.end(), axes1.begin())) {
+        return false;
+      }
+      merged_axes_vec.assign(axes1.begin(), axes1.end());
+    }
+
+    for (const auto& axis : merged_axes_vec) {
+      if (used_axes.contains(axis)) {
+        return false;
+      }
+    }
+    bool is_closed = src_named.dim_shardings()[i].is_closed() &&
+                     dst_named.dim_shardings()[i].is_closed();
+    merged_dim_shardings.emplace_back(merged_axes_vec, is_closed);
+    for (const auto& axis : merged_axes_vec) {
+      used_axes.insert(axis);
+    }
+  }
+
+  std::vector<AxisRef> merged_replicated_axes;
+  std::vector<AxisRef> candidates;
+  candidates.reserve(src_named.replicated_axes().size() +
+                     dst_named.replicated_axes().size());
+  for (const auto& axis : src_named.replicated_axes()) {
+    candidates.push_back(axis);
+  }
+  for (const auto& axis : dst_named.replicated_axes()) {
+    candidates.push_back(axis);
+  }
+  std::sort(candidates.begin(), candidates.end(), axis_ref_less);
+  candidates.erase(std::unique(candidates.begin(), candidates.end()),
+                   candidates.end());
+
+  for (const auto& cand : candidates) {
+    bool overlaps = false;
+    for (const auto& used : used_axes) {
+      if (!cand.CanCoexistWithoutOverlap(used)) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) {
+      merged_replicated_axes.push_back(cand);
+    }
+  }
+
+  std::vector<OpMetadata> merged_metadata(dst->metadata().begin(),
+                                          dst->metadata().end());
+  merged_metadata.reserve(merged_metadata.size() + to_merge.metadata().size());
+  const absl::flat_hash_set<OpMetadata,
+                            protobuf_util::ProtobufHashBySerializationFunctor,
+                            protobuf_util::HaveSameSerializationFunctor>
+      metadata_set(merged_metadata.begin(), merged_metadata.end());
+  absl::c_copy_if(to_merge.metadata(), std::back_inserter(merged_metadata),
+                  [&metadata_set](const OpMetadata& data) {
+                    return !metadata_set.contains(data);
+                  });
+
+  *dst = HloSharding(NamedSharding(
+      src_named.mesh(), merged_dim_shardings, merged_replicated_axes,
+      src_named.unreduced_axes(), src_named.manual_axes(), merged_metadata));
+  return true;
+}
+
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst) {
   CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
         !dst->IsManual());
+  if (MergeNamedShardingIfCompatible(to_merge, dst)) {
+    return true;
+  }
   if (to_merge.IsTileMaximal()) {
     return false;
   }

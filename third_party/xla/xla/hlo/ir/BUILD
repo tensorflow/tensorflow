@@ -208,6 +208,7 @@ cc_library(
         ":hlo_op_metadata",
         ":mesh_and_axis",
         ":tile_assignment",
+        "//xla:protobuf_util",
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
