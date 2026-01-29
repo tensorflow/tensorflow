@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-TensorResponse::Source::~Source() {}
+TensorResponse::Source::~Source() = default;
 
 void TensorResponse::Clear() {
   on_host_ = false;

@@ -33,7 +33,7 @@ class StepStats;
 
 class WorkerCacheInterface {
  public:
-  virtual ~WorkerCacheInterface() {}
+  virtual ~WorkerCacheInterface() = default;
 
   // Updates *workers with strings naming the remote worker tasks to
   // which open channels have been established.
