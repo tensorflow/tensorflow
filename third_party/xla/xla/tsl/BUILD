@@ -601,8 +601,8 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
+        ":transitive_dependencies_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
-        "@rules_cc//cc/common",
         "@rules_python//python:py_library_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
@@ -612,6 +612,16 @@ bzl_library(
         "@xla//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
+    ],
+)
+
+bzl_library(
+    name = "transitive_dependencies_bzl",
+    srcs = ["transitive_dependencies.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        "@rules_cc//cc/common",
     ],
 )
 
