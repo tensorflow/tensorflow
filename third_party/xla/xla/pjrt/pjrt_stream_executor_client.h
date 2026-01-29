@@ -548,7 +548,7 @@ class PjRtStreamExecutorRawLoadedExecutable {
         parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
         on_device_executable_parameter_shapes_(
             std::move(on_device_executable_parameter_shapes)) {}
-  absl::StatusOr<PjRtRawLoadedExecutable::RawExecuteResult> Execute(
+  PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> inputs,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
