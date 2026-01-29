@@ -203,7 +203,7 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
-  if (dot_canonical_dims.m == 1 && dot_canonical_dims.n == 1 &&
+  if ((dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) &&
       dot_shape.batch_size > 1) {
     // TODO(b/430079105): YNNPACK does not handle batch dimensions that are not
     // matrix dimensions. We could handle this case by fully implementing dot

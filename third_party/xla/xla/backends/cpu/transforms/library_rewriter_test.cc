@@ -259,9 +259,6 @@ TEST_P(CpuLibraryFullParamTest, MatMulDimSizeUnqual) {
 
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
-  if (spec.lib == "ynn" && IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
-  }
   RunTest(hlo_template, expected);
 }
 
