@@ -277,13 +277,13 @@ CreateIrEmitterForConstantEmissionTests(HloModule& module,
     return CpuExecutable::ShapeSizeBytes(buffer.shape());
   };
   AliasInfo alias_info;
-  auto scheduler = debug_options.xla_cpu_scheduler_type() ==
-                           DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED
-                       ? std::make_unique<DFSMemoryScheduler>(
-                             &alias_info, buffer_size_bytes_function)
-                       : std::unique_ptr<ModuleSchedulerAlgorithm>(
-                             std::make_unique<BFScheduler>(
-                                 &alias_info, buffer_size_bytes_function));
+  auto scheduler =
+      debug_options.xla_cpu_enable_concurrency_optimized_scheduler()
+          ? std::unique_ptr<ModuleSchedulerAlgorithm>(
+                std::make_unique<BFScheduler>(&alias_info,
+                                              buffer_size_bytes_function))
+          : std::make_unique<DFSMemoryScheduler>(&alias_info,
+                                                 buffer_size_bytes_function);
 
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(&module, *scheduler));
