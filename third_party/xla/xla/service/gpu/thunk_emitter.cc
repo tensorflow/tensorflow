@@ -1848,6 +1848,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveThunk(
         thunk_info, inst, /*buffers=*/std::move(buffers),
         ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
   }
+  if (ir_emitter_context_->debug_options()
+          .xla_gpu_experimental_enable_collective_multi_streaming()) {
+    const ExecutionStreamAssignment& stream_assignment =
+        ir_emitter_context_->execution_stream_assignment();
+    auto stream_ids_or =
+        stream_assignment.GetAsyncExecutionStreamIds(async_start);
+    if (stream_ids_or.ok()) {
+      thunk->set_execution_stream_id(stream_ids_or->destination_stream_id);
+    }
+  }
   GetCollectivesAsyncEvents().insert({async_start, thunk->async_events()});
   return GetThunkSequence(std::move(thunk));
 }
@@ -2284,6 +2294,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
               instr, ir_emitter_context_->GetNextThunkId()),
           instr, replica_count, partition_count, buffer);
     }
+    if (ir_emitter_context_->debug_options()
+            .xla_gpu_experimental_enable_collective_multi_streaming()) {
+      const ExecutionStreamAssignment& stream_assignment =
+          ir_emitter_context_->execution_stream_assignment();
+      auto stream_ids_or = stream_assignment.GetAsyncExecutionStreamIds(instr);
+      if (stream_ids_or.ok()) {
+        thunk->set_execution_stream_id(stream_ids_or->destination_stream_id);
+      }
+    }
+
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
 
@@ -2384,6 +2404,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
               instr, ir_emitter_context_->GetNextThunkId()),
           instr, replica_count, partition_count, buffer);
     }
+    if (ir_emitter_context_->debug_options()
+            .xla_gpu_experimental_enable_collective_multi_streaming()) {
+      const ExecutionStreamAssignment& stream_assignment =
+          ir_emitter_context_->execution_stream_assignment();
+      auto stream_ids_or = stream_assignment.GetAsyncExecutionStreamIds(instr);
+      if (stream_ids_or.ok()) {
+        thunk->set_execution_stream_id(stream_ids_or->destination_stream_id);
+      }
+    }
+
     CollectivesAsyncEvents& collectives_async_events =
         GetCollectivesAsyncEvents();
 

@@ -462,6 +462,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       false);
   opts.set_xla_enable_scoped_logging_timers(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
+  opts.set_xla_gpu_experimental_enable_collective_multi_streaming(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_warp_specialization(false);
   opts.set_xla_detect_unstable_reductions(DebugOptions::DETECTION_MODE_NONE);
@@ -2727,6 +2728,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_triton_warp_specialization),
       debug_options->xla_gpu_experimental_enable_triton_warp_specialization(),
       "Enable Triton's auto warp specialization feature where applicable."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_enable_collective_multi_streaming",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_collective_multi_streaming),
+      debug_options->xla_gpu_experimental_enable_collective_multi_streaming(),
+      "Enable multi-stream runtime for collectives."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_autotuner_pass",
       bool_setter_for(
