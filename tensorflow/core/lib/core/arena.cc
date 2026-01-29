@@ -107,18 +107,18 @@ void Arena::Reset() {
 //    data.
 // ----------------------------------------------------------------------
 
-void Arena::MakeNewBlock(const uint32 alignment) {
+void Arena::MakeNewBlock(const uint32_t alignment) {
   AllocatedBlock* block = AllocNewBlock(block_size_, alignment);
   freestart_ = block->mem;
   remaining_ = block->size;
   CHECK(SatisfyAlignment(alignment));
 }
 
-static uint32 LeastCommonMultiple(uint32 a, uint32 b) {
+static uint32_t LeastCommonMultiple(uint32_t a, uint32_t b) {
   if (a > b) {
-    return (a / MathUtil::GCD<uint32>(a, b)) * b;
+    return (a / MathUtil::GCD<uint32_t>(a, b)) * b;
   } else if (a < b) {
-    return (b / MathUtil::GCD<uint32>(b, a)) * a;
+    return (b / MathUtil::GCD<uint32_t>(b, a)) * a;
   } else {
     return a;
   }
@@ -133,7 +133,7 @@ static uint32 LeastCommonMultiple(uint32 a, uint32 b) {
 // -------------------------------------------------------------
 
 Arena::AllocatedBlock* Arena::AllocNewBlock(const size_t block_size,
-                                            const uint32 alignment) {
+                                            const uint32_t alignment) {
   AllocatedBlock* block;
   // Find the next block.
   if (blocks_alloced_ < TF_ARRAYSIZE(first_blocks_)) {
@@ -154,20 +154,20 @@ Arena::AllocatedBlock* Arena::AllocNewBlock(const size_t block_size,
 
   // Must be a multiple of kDefaultAlignment, unless requested
   // alignment is 1, in which case we don't care at all.
-  uint32 adjusted_alignment =
+  uint32_t adjusted_alignment =
       (alignment > 1 ? LeastCommonMultiple(alignment, kDefaultAlignment) : 1);
   // Required minimum alignment for port::AlignedMalloc().
   adjusted_alignment =
-      std::max(adjusted_alignment, static_cast<uint32>(sizeof(void*)));
+      std::max(adjusted_alignment, static_cast<uint32_t>(sizeof(void*)));
 
-  CHECK_LE(adjusted_alignment, static_cast<uint32>(1 << 20))
+  CHECK_LE(adjusted_alignment, static_cast<uint32_t>(1 << 20))
       << "Alignment on boundaries greater than 1MB not supported.";
 
   // If block_size > alignment we force block_size to be a multiple
   // of alignment; if block_size < alignment we make no adjustment.
   size_t adjusted_block_size = block_size;
   if (adjusted_block_size > adjusted_alignment) {
-    const uint32 excess = adjusted_block_size % adjusted_alignment;
+    const uint32_t excess = adjusted_block_size % adjusted_alignment;
     adjusted_block_size += (excess > 0 ? adjusted_alignment - excess : 0);
   }
   block->mem = reinterpret_cast<char*>(tsl::port::AlignedMalloc(
