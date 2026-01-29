@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_TYPE_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_TYPE_UTIL_H_
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
