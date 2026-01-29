@@ -19,7 +19,6 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
+#include "xla/util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -507,6 +507,8 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
         configs.push_back(std::move(selected_config));
         return success_result;
       }
+      VLOG(4) << "Skipping config: " << configs[i].ToString()
+              << " with status: " << executable.status();
     }
     return executables;
   }
@@ -586,7 +588,6 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
 
 absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
-
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
   for (ConfigResult& result : results) {
