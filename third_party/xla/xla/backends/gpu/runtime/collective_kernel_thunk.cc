@@ -201,7 +201,7 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
             std::move(local_buffers_handle), std::move(signal_buffers_handle),
             strategy, kLocalBufferSize, kSignalBufferSize}));
     if (is_multimem_enabled_ && strategy == AllReduceStrategy::kMultimem) {
-      params.multimem_registry->Register(
+      params.multimem_registry->Request(
           {clique_key, /*map_to=*/local_buffers_ptr});
     }
   }

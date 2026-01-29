@@ -182,7 +182,7 @@ absl::Status CollectiveMetadataThunk::Prepare(const PrepareParams& params) {
       const GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
                                 /*include_participant_groups=*/false));
-  params.multimem_registry->Register({clique_key, /*map_to=*/memory_range});
+  params.multimem_registry->Request({clique_key, /*map_to=*/memory_range});
   return absl::OkStatus();
 }
 

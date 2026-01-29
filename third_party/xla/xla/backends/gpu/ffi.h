@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
+#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
@@ -45,6 +46,10 @@ struct ScratchAllocator {};            //  `se::OwningScratchAllocator`
 struct CollectiveParams {};            //  `const xla::gpu::CollectiveParams*`
 struct CollectiveCliqueRequests {};    //  `xla::gpu::CollectiveCliqueRequests*`
 struct CollectiveMemoryRequests {};    //  `xla::gpu::CollectiveMemoryRequests*`
+struct CollectiveMultimemRequests {
+};  //  `xla::gpu::CollectiveMultimemRequest*`
+struct CollectiveMultimemProvider {
+};  //  `xla::gpu::CollectiveMultimemProvider*`
 struct CollectiveCliques {};           //  `const xla::gpu::CollectiveCliques*`
 struct TargetGpuComputeCapability {};  //  `const se::GpuComputeCapability*`
 
@@ -159,6 +164,34 @@ struct CtxDecoding<CollectiveMemoryRequests> {
         api, ctx, diagnostic,
         api->internal_api->XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
         "collective memory requests");
+  }
+};
+
+template <>
+struct CtxDecoding<CollectiveMultimemRequests> {
+  using Type = xla::gpu::CollectiveMultimemRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveMultimemRequests_Get,
+        "collective multimem requests");
+  }
+};
+
+template <>
+struct CtxDecoding<CollectiveMultimemProvider> {
+  using Type = const xla::gpu::CollectiveMultimemProvider*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveMultimemProvider_Get,
+        "collective multimem provider");
   }
 };
 
