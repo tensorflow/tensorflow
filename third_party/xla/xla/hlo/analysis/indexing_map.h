@@ -341,6 +341,20 @@ inline size_t hash_value(const IndexingMap::Variable& dim_var) {
 }
 
 // Composes affine maps, i.e. second ∘ first.
+// Eg: given two maps f and g:
+//   f(d0, d1) -> 2*d0, d1+r0
+//   g(d0, d1) -> d0+r1, d1
+//   ComposeIndexingMaps(g, f) ->
+//   f(g(d0, d1)) -> 2*(d0+r1), d1+r0
+//   ComposeIndexingMaps(f, g) ->
+//   g(f(d0, d1)) -> 2*d0+r1, d1+r0
+// Constraints are preserved. Eg:
+//   f(d0, d1) -> d0, d1+r0
+//      domain: d1-r0 in [0, 10] and r0 in [0, 5]
+//   g(d0, d1) -> d0+r1, d1
+//      domain: d0 in [0, 20], d1 in [0, 30]
+//   f(g(d0, d1)) -> d0+r1, d1+r0
+//      domain: d0 in [0, 20], d1-r0 in [0, 10], r1 in [0, 5]
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
 
