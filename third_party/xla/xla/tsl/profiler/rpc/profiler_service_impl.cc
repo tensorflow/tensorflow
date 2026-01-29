@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/synchronization/mutex.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
@@ -68,6 +69,7 @@ std::string GetHostname(const ProfileRequest& request) {
 // unconditionally.
 absl::Status CollectData(const ProfileRequest& request,
                          ProfilerSession* profiler, ProfileResponse* response) {
+  LOG(INFO) << "[SERVER] Collecting data for session: " << request.session_id();
   response->set_empty_trace(true);
   // Read the profile data into xspace.
   tensorflow::profiler::XSpace xspace;
@@ -77,6 +79,23 @@ absl::Status CollectData(const ProfileRequest& request,
   VLOG(3) << "Collected XSpace to "
           << (request.emit_xspace() ? "response" : "repository") << ".";
   response->set_empty_trace(IsEmpty(*xspace_ptr));
+  LOG(INFO) << "[SERVER] Data collection summary for session: "
+            << request.session_id()
+            << " device_tracer_level=" << request.opts().device_tracer_level()
+            << ", host_tracer_level=" << request.opts().host_tracer_level()
+            << ", python_tracer_level=" << request.opts().python_tracer_level()
+            << ", xspace_size=" << xspace_ptr->ByteSizeLong() << " bytes"
+            << ", empty_trace=" << response->empty_trace();
+
+  bool has_tpu_data = false;
+  for (const auto& plane : xspace_ptr->planes()) {
+    if (absl::StrContains(plane.name(), "TPU")) {
+      has_tpu_data = true;
+      break;
+    }
+  }
+  LOG(INFO) << "[SERVER] XSpace for session: " << request.session_id()
+            << " contains_tpu_data: " << (has_tpu_data ? "true" : "false");
 
   if (request.emit_xspace()) {
     return absl::OkStatus();
@@ -99,17 +118,26 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
+    LOG(INFO) << "[SERVER] Received profile request for session: "
+              << req->session_id() << " from host: " << req->host_name();
+    LOG(INFO) << "[SERVER] Profiling options: device_tracer_level="
+              << req->opts().device_tracer_level()
+              << ", host_tracer_level=" << req->opts().host_tracer_level()
+              << ", python_tracer_level=" << req->opts().python_tracer_level();
     VLOG(1) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler =
         ProfilerSession::Create(req->opts());
     absl::Status status = profiler->Status();
     if (!status.ok()) {
-      LOG(ERROR) << "Failed to create profiler session: " << status;
+      LOG(ERROR) << "[SERVER] Failed to create profiler session: " << status;
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             std::string(status.message()));
     }
 
     Env* env = Env::Default();
+    LOG(INFO) << "[SERVER] Starting profile sampling for "
+              << req->opts().duration_ms()
+              << "ms for session: " << req->session_id();
     int64_t start_time_ns = GetCurrentTimeNanos();
     // TODO(b/416884677): Handle server shutdown gracefully by surfacing a
     // shutdown signal here and responding with what has been profiled so far.
@@ -117,6 +145,8 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
            req->opts().duration_ms()) {
       env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
+        LOG(INFO) << "[SERVER] Profiling request cancelled for session: "
+                  << req->session_id();
         return ::grpc::Status::CANCELLED;
       }
       if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
@@ -125,6 +155,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
         break;
       }
     }
+    LOG(INFO) << "Finished profile sampling for session: " << req->session_id();
 
     status = CollectData(*req, profiler.get(), response);
     if (!status.ok()) {
@@ -133,6 +164,8 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
                             std::string(status.message()));
     }
 
+    LOG(INFO) << "[SERVER] Successfully collected data for session: "
+              << req->session_id() << ". Profiling request complete.";
     return ::grpc::Status::OK;
   }
 

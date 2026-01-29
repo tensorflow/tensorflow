@@ -117,6 +117,7 @@ TpuTracer::~TpuTracer() {
 }
 
 absl::Status TpuTracer::Start() {
+  LOG(INFO) << "[SERVER] TpuTracer::Start";
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StartFn(tpu_profiler_,
                                                              status.c_status);
@@ -124,10 +125,12 @@ absl::Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
+  LOG(INFO) << "[SERVER] TpuTracer::Start completed successfully.";
   return absl::OkStatus();
 }
 
 absl::Status TpuTracer::Stop() {
+  LOG(INFO) << "[SERVER] TpuTracer::Stop";
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StopFn(tpu_profiler_,
                                                             status.c_status);
@@ -135,10 +138,12 @@ absl::Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
+  LOG(INFO) << "[SERVER] TpuTracer::Stop completed successfully.";
   return absl::OkStatus();
 }
 
 absl::Status TpuTracer::CollectData(XSpace* space) {
+  LOG(INFO) << "[SERVER] TpuTracer::CollectData";
   ProfilerStatusHelper status;
   // Get size of buffer required for TPU driver to serialize XSpace into.
   size_t size_in_bytes;
@@ -147,6 +152,7 @@ absl::Status TpuTracer::CollectData(XSpace* space) {
       /*buffer=*/nullptr, &size_in_bytes);
   // Prepare an appropriately sized buffer.
   if (size_in_bytes > 0) {
+    LOG(INFO) << "[SERVER] TPU trace data size: " << size_in_bytes << " bytes.";
     std::vector<uint8_t> buffer(size_in_bytes);
     stream_executor::tpu::ProfilerApiFn()->TpuProfiler_CollectDataFn(
         tpu_profiler_, status.c_status, buffer.data(), &size_in_bytes);
@@ -154,14 +160,18 @@ absl::Status TpuTracer::CollectData(XSpace* space) {
     XSpace tpu_space;
     tpu_space.ParseFromArray(buffer.data(), buffer.size());
     for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+      LOG(INFO) << "[SERVER] Swapping TPU plane: " << tpu_plane.name();
       XPlane* plane = space->add_planes();
       plane->Swap(&tpu_plane);
     }
+  } else {
+    LOG(INFO) << "[SERVER] No TPU trace data collected (size_in_bytes == 0).";
   }
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
+  LOG(INFO) << "[SERVER] TpuTracer::CollectData completed successfully.";
   return absl::OkStatus();
 }
 

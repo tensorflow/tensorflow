@@ -153,8 +153,13 @@ NB_MODULE(_profiler, m) {
   m.def(
       "start_server",
       [](int port) -> std::unique_ptr<tsl::profiler::ProfilerServer> {
+        LOG(INFO) << "[SERVER] JAX profiler server requested to start on port: "
+                  << port;
         auto server = std::make_unique<tsl::profiler::ProfilerServer>();
         server->StartProfilerServer(port);
+        LOG(INFO) << "[SERVER] JAX profiler gRPC server started and listening "
+                     "on port: "
+                  << port;
         return server;
       },
       nb::arg("port"));

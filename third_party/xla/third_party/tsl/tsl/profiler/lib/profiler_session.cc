@@ -78,24 +78,36 @@ absl::Status ProfilerSession::Status() {
 absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
   absl::MutexLock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
-  LOG(INFO) << "Profiler session collecting data.";
+  LOG(INFO) << "[SERVER] ProfilerSession::CollectDataInternal started.";
   if (profilers_ != nullptr) {
+    LOG(INFO) << "[SERVER] Stopping profiler collection.";
     profilers_->Stop().IgnoreError();
     stop_time_ns_ = profiler::GetCurrentTimeNanos();
+    LOG(INFO) << "[SERVER] Collecting data from profilers.";
     profilers_->CollectData(space).IgnoreError();
     profilers_.reset();  // data has been collected.
+    LOG(INFO) << "[SERVER] Finished collecting data from profilers.";
+  } else {
+    LOG(INFO) << "[SERVER] No active profilers to collect data from.";
   }
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
+  LOG(INFO) << "[SERVER] ProfilerSession::CollectDataInternal finished.";
   return absl::OkStatus();
 }
 #endif
 
 absl::Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
-  space->add_hostnames(port::Hostname());
+  std::string hostname = port::Hostname();
+  LOG(INFO) << "[SERVER] ProfilerSession::CollectData started for host: "
+            << hostname;
+  space->add_hostnames(hostname);
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
+  LOG(INFO) << "[SERVER] Post-processing XSpace data for host: " << hostname;
   profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
+  LOG(INFO) << "[SERVER] ProfilerSession::CollectData finished for host: "
+            << hostname;
 #endif
   SetProfileOptionsIntoSpace(options_, space);
   return absl::OkStatus();

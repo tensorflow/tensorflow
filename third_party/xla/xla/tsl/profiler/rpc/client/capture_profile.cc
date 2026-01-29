@@ -306,15 +306,21 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
   std::string repository_root =
       tsl::profiler::GetTensorBoardProfilePluginDir(logdir);
   std::string host = tsl::port::Hostname();
+  LOG(INFO) << "[SERVER] ExportToTensorBoard started for run: " << run
+            << ", host: " << host << ", logdir: " << logdir;
   TF_RETURN_IF_ERROR(
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
+    LOG(INFO) << "[SERVER] Exporting trace.json.gz for run: " << run
+              << ", host: " << host;
     tsl::profiler::TraceContainer container =
         tsl::profiler::ConvertXSpaceToTraceContainer(xspace);
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
         tsl::profiler::TraceContainerToJson(container));
   }
+  LOG(INFO) << "[SERVER] ExportToTensorBoard finished for run: " << run
+            << ", host: " << host;
   return absl::OkStatus();
 }
 
