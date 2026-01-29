@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tsl/profiler/lib/profiler_factory.h"
 
-#include <functional>
+#include <memory>
 #include <utility>
 
 #include "absl/memory/memory.h"
