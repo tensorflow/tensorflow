@@ -72,7 +72,7 @@ static void ConcatHelper(::testing::benchmark::State& state,
   DataType dt = DataTypeToEnum<T>::v();
   const int kDim1 = 100;
   Tensor concat_dim(DT_INT32, TensorShape({}));
-  concat_dim.scalar<int32>()() = concat_dimension;
+  concat_dim.scalar<int32_t>()() = concat_dimension;
   Tensor in0(dt, TensorShape({kDim1, dim2}));
   Tensor in1(dt, TensorShape({kDim1, dim2}));
   int64_t in0_bytes, in1_bytes;
@@ -132,12 +132,12 @@ BENCHMARK(BM_ConcatDim0String)
 void BM_ConcatDim1uint8(::testing::benchmark::State& state) {
   const int dim2 = state.range(0);
 
-  ConcatHelper<uint8>(state, 1, dim2);
+  ConcatHelper<uint8_t>(state, 1, dim2);
 }
 void BM_ConcatDim1int16(::testing::benchmark::State& state) {
   const int dim2 = state.range(0);
 
-  ConcatHelper<int16>(state, 1, dim2);
+  ConcatHelper<int16_t>(state, 1, dim2);
 }
 void BM_ConcatDim1bfloat16(::testing::benchmark::State& state) {
   const int dim2 = state.range(0);
@@ -170,7 +170,7 @@ static void ConcatManyHelper(::testing::benchmark::State& state,
   const int kDim1 = 40000;
   const int kNumInputs = 64;
   Tensor concat_dim(DT_INT32, TensorShape({}));
-  concat_dim.scalar<int32>()() = concat_dimension;
+  concat_dim.scalar<int32_t>()() = concat_dimension;
   std::vector<NodeBuilder::NodeOut> inputs;
   inputs.reserve(kNumInputs);
   for (int i = 0; i < kNumInputs; ++i) {
