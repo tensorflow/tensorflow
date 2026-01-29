@@ -250,7 +250,7 @@ ENTRY main {
   // simplifier simplification which could turn the dot into a non-canonical dot
   // late in the pipeline, which will make it unsupported by the GemmRewriter.
   MatchOptimizedHlo(hlo_string, R"(
-  // CHECK: custom_call_target="__cublas$gemm"
+  // CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"
   )");
 }
 
@@ -1607,7 +1607,7 @@ TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
 ; CHECK-LABEL: ENTRY %DotFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
 ; CHECK:         [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
-; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas$gemm", {{.*}},"algorithm":"ALG_UNSET"
+; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas${{gemm|lt\$matmul}}", {{.*}},"algorithm":"ALG_UNSET"
 )");
 }
 
