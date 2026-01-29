@@ -133,6 +133,21 @@ class InterpreterOptions {
     return experimental_use_signature_tensor_names_;
   }
 
+  // If `true`, per-channel quantization zero-points that are all identical
+  // will be compressed into a single value to reduce memory usage.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  void SetCompressQuantizationZeroPoints(bool value) {
+    experimental_compress_quantization_zero_points_ = value;
+  }
+
+  // Returns whether quantization zero-points compression is enabled.
+  //
+  // WARNING: This is an experimental API and subject to change.
+  bool GetCompressQuantizationZeroPoints() const {
+    return experimental_compress_quantization_zero_points_;
+  }
+
  private:
   bool experimental_preserve_all_tensors_ = false;
   bool experimental_ensure_dynamic_tensors_are_released_ = false;
@@ -141,6 +156,7 @@ class InterpreterOptions {
   bool experimental_cache_constant_cast_op_ = false;
   bool experimental_shlo_composite_inlining_ = false;
   bool experimental_use_signature_tensor_names_ = false;
+  bool experimental_compress_quantization_zero_points_ = false;
 };
 
 }  // namespace tflite

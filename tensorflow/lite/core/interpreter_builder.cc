@@ -451,13 +451,19 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
 
   const size_t num_scales = src_quantization->scale()->size();
   const size_t num_zero_points = src_quantization->zero_point()->size();
-  // If all of the zero points are the same, only store one to avoid large,
-  // redundant allocations.
-  bool all_zero_points_same = true;
-  int32_t zero_point = src_quantization->zero_point()->data()[0];
-  for (int i = 1; i < num_zero_points && all_zero_points_same; ++i) {
-    all_zero_points_same &=
-        (src_quantization->zero_point()->data()[i] == zero_point);
+  // If all of the zero points are the same, we can store a single value to
+  // avoid large, redundant allocations. This is guarded by an experimental
+  // option for compatibility with external delegates that may assume
+  // per-change zero-point arrays.
+  bool all_zero_points_same = false;
+  int32_t zero_point = 0;
+  if (options_.GetCompressQuantizationZeroPoints() && num_zero_points > 0) {
+    all_zero_points_same = true;
+    zero_point = src_quantization->zero_point()->data()[0];
+    for (int i = 1; i < num_zero_points && all_zero_points_same; ++i) {
+      all_zero_points_same &=
+          (src_quantization->zero_point()->data()[i] == zero_point);
+    }
   }
 
   // Ensure that the quantization dimension is valid.
