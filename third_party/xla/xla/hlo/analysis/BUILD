@@ -608,6 +608,9 @@ cc_library(
     ],
     deps = [
         ":interval",
+        ":symbolic_expr",
+        ":symbolic_map",
+        ":symbolic_map_converter",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -642,6 +645,7 @@ xla_cc_test(
         ":indexing_test_utils",
         ":interval",
         ":symbolic_expr",
+        ":symbolic_map_converter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
