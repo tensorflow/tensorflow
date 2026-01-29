@@ -28,34 +28,35 @@ namespace {
 const char kTestData[] = "tensorflow/core/lib/gif/testdata/";
 
 struct DecodeGifTestCase {
-  const string filepath;
+  const std::string filepath;
   const int num_frames;
   const int width;
   const int height;
   const int channels;
 };
 
-void ReadFileToStringOrDie(Env* env, const string& filename, string* output) {
+void ReadFileToStringOrDie(Env* env, const std::string& filename,
+                           std::string* output) {
   TF_CHECK_OK(ReadFileToString(env, filename, output));
 }
 
 void TestDecodeGif(Env* env, DecodeGifTestCase testcase) {
-  string gif;
+  std::string gif;
   ReadFileToStringOrDie(env, testcase.filepath, &gif);
 
   // Decode gif image data.
-  std::unique_ptr<uint8[]> imgdata;
+  std::unique_ptr<uint8_t[]> imgdata;
   int nframes, w, h, c;
-  string error_string;
+  std::string error_string;
   imgdata.reset(gif::Decode(
       gif.data(), gif.size(),
-      [&](int frame_cnt, int width, int height, int channels) -> uint8* {
+      [&](int frame_cnt, int width, int height, int channels) -> uint8_t* {
         nframes = frame_cnt;
         w = width;
         h = height;
         c = channels;
-        return new uint8[static_cast<int64_t>(frame_cnt) * height * width *
-                         channels];
+        return new uint8_t[static_cast<int64_t>(frame_cnt) * height * width *
+                           channels];
       },
       &error_string));
   ASSERT_NE(imgdata, nullptr);
@@ -68,7 +69,7 @@ void TestDecodeGif(Env* env, DecodeGifTestCase testcase) {
 
 TEST(GifTest, Gif) {
   Env* env = Env::Default();
-  const string testdata_path = kTestData;
+  const std::string testdata_path = kTestData;
   std::vector<DecodeGifTestCase> testcases(
       {// file_path, num_of_channels, width, height, channels
        {testdata_path + "lena.gif", 1, 51, 26, 3},
@@ -83,9 +84,9 @@ TEST(GifTest, Gif) {
   }
 }
 
-void TestDecodeAnimatedGif(Env* env, const uint8* gif_data,
-                           const string& png_filepath, int frame_idx) {
-  string png;  // ground-truth
+void TestDecodeAnimatedGif(Env* env, const uint8_t* gif_data,
+                           const std::string& png_filepath, int frame_idx) {
+  std::string png;  // ground-truth
   ReadFileToStringOrDie(env, png_filepath, &png);
 
   // Compare decoded gif to ground-truth image frames in png format.
@@ -93,10 +94,10 @@ void TestDecodeAnimatedGif(Env* env, const uint8* gif_data,
   png::CommonInitDecode(png, 3, 8, &decode);
   const int width = static_cast<int>(decode.width);
   const int height = static_cast<int>(decode.height);
-  std::unique_ptr<uint8[]> png_imgdata(
-      new uint8[height * width * decode.channels]);
+  std::unique_ptr<uint8_t[]> png_imgdata(
+      new uint8_t[height * width * decode.channels]);
   png::CommonFinishDecode(reinterpret_cast<png_bytep>(png_imgdata.get()),
-                          decode.channels * width * sizeof(uint8), &decode);
+                          decode.channels * width * sizeof(uint8_t), &decode);
 
   int frame_len = width * height * decode.channels;
   int gif_idx = frame_len * frame_idx;
@@ -107,23 +108,23 @@ void TestDecodeAnimatedGif(Env* env, const uint8* gif_data,
 
 TEST(GifTest, AnimatedGif) {
   Env* env = Env::Default();
-  const string testdata_path = kTestData;
+  const std::string testdata_path = kTestData;
 
   // Read animated gif file once.
-  string gif;
+  std::string gif;
   ReadFileToStringOrDie(env, testdata_path + "pendulum_sm.gif", &gif);
 
-  std::unique_ptr<uint8[]> gif_imgdata;
+  std::unique_ptr<uint8_t[]> gif_imgdata;
   int nframes, w, h, c;
-  string error_string;
+  std::string error_string;
   gif_imgdata.reset(gif::Decode(
       gif.data(), gif.size(),
-      [&](int num_frames, int width, int height, int channels) -> uint8* {
+      [&](int num_frames, int width, int height, int channels) -> uint8_t* {
         nframes = num_frames;
         w = width;
         h = height;
         c = channels;
-        return new uint8[num_frames * height * width * channels];
+        return new uint8_t[num_frames * height * width * channels];
       },
       &error_string));
 
@@ -135,20 +136,20 @@ TEST(GifTest, AnimatedGif) {
                         testdata_path + "pendulum_sm_frame2.png", 2);
 }
 
-void TestExpandAnimations(Env* env, const string& filepath) {
-  string gif;
+void TestExpandAnimations(Env* env, const std::string& filepath) {
+  std::string gif;
   ReadFileToStringOrDie(env, filepath, &gif);
 
-  std::unique_ptr<uint8[]> imgdata;
-  string error_string;
+  std::unique_ptr<uint8_t[]> imgdata;
+  std::string error_string;
   int nframes;
   // `expand_animations` is set to true by default. Set to false.
   bool expand_animations = false;
   imgdata.reset(gif::Decode(
       gif.data(), gif.size(),
-      [&](int frame_cnt, int width, int height, int channels) -> uint8* {
+      [&](int frame_cnt, int width, int height, int channels) -> uint8_t* {
         nframes = frame_cnt;
-        return new uint8[frame_cnt * height * width * channels];
+        return new uint8_t[frame_cnt * height * width * channels];
       },
       &error_string, expand_animations));
 
@@ -158,7 +159,7 @@ void TestExpandAnimations(Env* env, const string& filepath) {
 
 TEST(GifTest, ExpandAnimations) {
   Env* env = Env::Default();
-  const string testdata_path = kTestData;
+  const std::string testdata_path = kTestData;
 
   // Test all animated gif test images.
   TestExpandAnimations(env, testdata_path + "scan.gif");
@@ -166,20 +167,20 @@ TEST(GifTest, ExpandAnimations) {
   TestExpandAnimations(env, testdata_path + "squares.gif");
 }
 
-void TestInvalidGifFormat(const string& header_bytes) {
-  std::unique_ptr<uint8[]> imgdata;
-  string error_string;
+void TestInvalidGifFormat(const std::string& header_bytes) {
+  std::unique_ptr<uint8_t[]> imgdata;
+  std::string error_string;
   int nframes;
   imgdata.reset(gif::Decode(
       header_bytes.data(), header_bytes.size(),
-      [&](int frame_cnt, int width, int height, int channels) -> uint8* {
+      [&](int frame_cnt, int width, int height, int channels) -> uint8_t* {
         nframes = frame_cnt;
-        return new uint8[frame_cnt * height * width * channels];
+        return new uint8_t[frame_cnt * height * width * channels];
       },
       &error_string));
 
   // Check that decoding image formats other than gif throws an error.
-  string err_msg = "failed to open gif file";
+  std::string err_msg = "failed to open gif file";
   ASSERT_EQ(error_string.substr(0, 23), err_msg);
 }
 
@@ -218,15 +219,16 @@ TEST(GifTest, TransparentIndexOutsideColorTable) {
   };
 
   // ...decoding that image...
-  std::unique_ptr<uint8[]> imgdata;
-  string error_string;
+  std::unique_ptr<uint8_t[]> imgdata;
+  std::string error_string;
   int nframes;
   auto allocate_image_data = [&](int frame_cnt, int width, int height,
-                                 int channels) -> uint8* {
+                                 int channels) -> uint8_t* {
     nframes = frame_cnt;
     // Create the unique_ptr here, as gif::Decode does not return a pointer to
     // the allocated array in the case of an error.
-    imgdata = std::make_unique<uint8[]>(frame_cnt * height * width * channels);
+    imgdata =
+        std::make_unique<uint8_t[]>(frame_cnt * height * width * channels);
     return imgdata.get();
   };
   gif::Decode(encoded, sizeof(encoded), allocate_image_data, &error_string);
@@ -235,7 +237,7 @@ TEST(GifTest, TransparentIndexOutsideColorTable) {
   // transparent.
   ASSERT_EQ(nframes, 1);
   ASSERT_EQ(error_string, "");
-  uint8 expected[9] = {
+  uint8_t expected[9] = {
       0x80, 0x00, 0x00,  // Red (palette entry 0).
       0xFF, 0xFF, 0xFF,  // White (palette entry 1).
       0x00, 0x00, 0x00,  // Transparent (not in palette, specified by Graphic
