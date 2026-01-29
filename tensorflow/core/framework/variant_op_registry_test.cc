@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <functional>
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #define EIGEN_USE_THREADS
