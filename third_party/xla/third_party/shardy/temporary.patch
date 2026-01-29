@@ -1,82 +1,1192 @@
+diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+index c4f947a..eb45aef 100644
+--- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
++++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
+@@ -468,6 +468,9 @@ FactorAxesCandidateBag findFactorAxesCandidates(
+                                         shardingProjection.getResults()))) {
+     for (const auto& [factorIndex, factorSharding] :
+          tensorFactorSharding.factorIndexToSharding) {
++      if (shardingRule.isNeedReplicationFactor(factorIndex)) {
++        continue;
++      }
+       ArrayRef<AxisRefAttr> axisRefs = factorSharding.axisRefs;
+       while (!axisRefs.empty()) {
+         factorAxesPairs.insert(FactorAxesPair(factorIndex, axisRefs));
+@@ -711,14 +714,19 @@ void distributeAxisRefsToBatchingFactors(
+ // Distribute the greatest common prefix of shardings of factors that need
+ // replication to batching factors.
+ void distributeAxisRefsToBatchingFactors(
++    const ShardingProjection& shardingProjection,
+     OpShardingRuleAttr shardingRule, const Mesh& mesh,
+     AxesPerFactor& factorCommonAxes) {
++  AxesPerFactor greatestCommonPrefixShardings =
++      shardingProjection.getGreatestCommonPrefixAxes(
++          shardingRule.getNumFactors());
+   for (const int64_t factorIndex : shardingRule.getNeedReplicationFactors()) {
+     SmallVector<AxisRefAttr> axisRefsToDistribute =
+-        factorCommonAxes[factorIndex];
+-    factorCommonAxes[factorIndex].clear();
++        greatestCommonPrefixShardings[factorIndex];
+     if (shardingRule.isFactorInAllNonScalarTensors(factorIndex) &&
+         !axisRefsToDistribute.empty()) {
++      // TODO(enver): Instead of the greatest common prefix, explore options
++      // to distribute more.
+       distributeAxisRefsToBatchingFactors(axisRefsToDistribute, shardingRule,
+                                           mesh, factorCommonAxes);
+     }
+@@ -748,7 +756,8 @@ AxesPerFactor findCommonAxes(const ShardingProjection& shardingProjection,
+       shardingProjection, shardingRule, tensorSizes, mesh);
+ 
+   if (!shardingRule.getNeedReplicationFactors().empty()) {
+-    distributeAxisRefsToBatchingFactors(shardingRule, mesh, factorCommonAxes);
++    distributeAxisRefsToBatchingFactors(shardingProjection, shardingRule, mesh,
++                                        factorCommonAxes);
+   }
+ 
+   return factorCommonAxes;
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
+index 2b6cbe2..75d7304 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/cholesky_triangular_solve.mlir
+@@ -32,28 +32,26 @@ func.func @cholesky_sharded_batch_dim_only_different(%arg0: tensor<8x4x8x8xf32>
+ 
+ // CHECK-LABEL: func @cholesky_sharded_input_cholesky_dim_only
+ func.func @cholesky_sharded_input_cholesky_dim_only(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {"x"}]>}) -> tensor<8x4x8x8xf32> {
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
++  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: return %[[CHOLESKY]] :  tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+   return %0 :  tensor<8x4x8x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @cholesky_sharded_output_cholesky_dim_only
+ func.func @cholesky_sharded_output_cholesky_dim_only(%arg0: tensor<8x4x8x8xf32>) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {"x"}]>}){
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {"x"}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD2]] :  tensor<8x4x8x8xf32>
++  // CHECK: %[[CHOLESKY:.*]] = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {"x"}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: return %[[RESHARD]] :  tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {"x"}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+   return %0 :  tensor<8x4x8x8xf32>
+ }
+ 
+ // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_only_different
+ func.func @cholesky_sharded_cholesky_dim_only_different(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {"x"}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {"y"}]>}){
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {"y"}]> : tensor<8x4x8x8xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {"y"}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+@@ -62,10 +60,9 @@ func.func @cholesky_sharded_cholesky_dim_only_different(%arg0: tensor<8x4x8x8xf3
+ 
+ // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_only_same
+ func.func @cholesky_sharded_cholesky_dim_only_same(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {}, {"x"}]>}){
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {"x"}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD2]] :  tensor<8x4x8x8xf32>
++  // CHECK: %[[CHOLESKY:.*]] = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh, [{}, {}, {}, {"x"}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: return %[[RESHARD]] :  tensor<8x4x8x8xf32>
+   // TODO(enver): Instead reshard to [{"x"}, {}, {}, {}] and perform the operation on this smaller tensor.
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {}, {"x"}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+   return %0 :  tensor<8x4x8x8xf32>
+@@ -152,8 +149,8 @@ func.func @cholesky_cholesky_dims_shardings_can_merge(%arg0: tensor<16x8x8x8xf32
+ 
+ // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger
+ func.func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sharding_larger(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}, {}, {"z"}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {}, {}]>}){
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {"z"}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {"z"}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD1]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh_xyz, [{"y"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"y"}, {}, {}, {}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+@@ -162,10 +159,9 @@ func.func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_input_sha
+ 
+ // CHECK-LABEL: func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_output_sharding_larger
+ func.func @cholesky_sharded_cholesky_dim_input_only_batch_dim_both_but_output_sharding_larger(%arg0: tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {}, {}, {"z"}]>}) -> (tensor<8x4x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {}, {}, {}]>}){
+-  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {"z"}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {"z"}, {}, {}]>]>} : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CHOLESKY]] <@mesh_xyz, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
+-  // CHECK-NEXT: return %[[RESHARD2]] : tensor<8x4x8x8xf32>
++  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{"x"}, {}, {}, {}]> : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: %[[CHOLESKY:.*]] = stablehlo.cholesky %[[RESHARD]], lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {}, {}, {}]>]>} : tensor<8x4x8x8xf32>
++  // CHECK-NEXT: return %[[CHOLESKY:.*]] : tensor<8x4x8x8xf32>
+   %0 = stablehlo.cholesky %arg0, lower = true {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{"x"}, {}, {}, {}]>]>} : (tensor<8x4x8x8xf32>) -> tensor<8x4x8x8xf32>
+   return %0 :  tensor<8x4x8x8xf32>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
+index 9a55df9..224e7dc 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/concatenate.mlir
+@@ -96,14 +96,12 @@ func.func @concatenate_operands_are_results_of_slices_conflicting_shardings(%arg
+   return %2 : tensor<4x80x256xf32>
+ }
+ 
++// TODO(b/473911650): A better solution is to reshard the operands to [{}, {"x"}].
+ // CHECK-LABEL: func @concatenate_with_operands_replicated
+ func.func @concatenate_with_operands_replicated(%arg0: tensor<4x64xbf16>) -> (tensor<12x64xbf16> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}]>
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}]>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}]>
+-  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %[[RESHARD0]], %[[RESHARD1]], %[[RESHARD2]], dim = 0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}]>]>}
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CONCATENATE]] <@mesh, [{"x"}, {}]>
+-  // CHECK-NEXT: return %[[RESHARD3]]
++  // CHECK-NEXT: %[[CONCATENATE:.*]] = stablehlo.concatenate %arg0, %arg0, %arg0, dim = 0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>}
++  // CHECK-NEXT: %[[RESHARD:.*]] = sdy.reshard %[[CONCATENATE]] <@mesh, [{"x"}, {}]>
++  // CHECK-NEXT: return %[[RESHARD]]
+   %0 = stablehlo.concatenate %arg0, %arg0, %arg0, dim = 0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<4x64xbf16>, tensor<4x64xbf16>, tensor<4x64xbf16>) -> tensor<12x64xbf16>
+   return %0 : tensor<12x64xbf16>
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/custom_call.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/custom_call.mlir
+index 7298738..eff3703 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/custom_call.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/custom_call.mlir
+@@ -130,15 +130,11 @@ func.func @custom_call_qr_decomposition_block(%arg0: tensor<8x5x3xf32> {sdy.shar
+ }
+ 
+ // CHECK-LABEL: func @custom_call_householder_product
+-// TODO(enver): Could it instead be better to reshard:
+-//   sdy.reshard %arg0 <@mesh_xpq, [{"x"}, {}, {}]>
+-//   sdy.reshard %arg1 <@mesh_xpq, [{"x"}, {}]>
+ func.func @custom_call_householder_product(%arg0: tensor<8x12x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xpq, [{"x":(1)2}, {"p"}, {"x":(2)2}]>}, %arg1: tensor<8x5xf32> {sdy.sharding = #sdy.sharding<@mesh_xpq, [{"x"}, {"q"}]>}) -> (tensor<8x12x16xf32> {sdy.sharding = #sdy.sharding<@mesh_xpq, [{"x":(1)2}, {"p"}, {"x":(2)2}]>}) {
+   // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j, k], [i, l])->([i, j, k]) {i=8, j=12, k=16, l=5} need_replication={j, k, l}>
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xpq, [{"x":(1)2}, {}, {}]> : tensor<8x12x16xf32>
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xpq, [{"x":(1)2}, {}]> : tensor<8x5xf32>
+-  // CHECK-NEXT: %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @ProductOfElementaryHouseholderReflectors(%[[RESHARD1]], %[[RESHARD2]])
+-  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xpq, [{"x":(1)2}, {}, {}]>]>} : (tensor<8x12x16xf32>, tensor<8x5xf32>) -> tensor<8x12x16xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xpq, [{"x"}, {}, {}]> : tensor<8x12x16xf32>
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %arg1 <@mesh_xpq, [{"x"}, {}]> : tensor<8x5xf32>
++  // CHECK-NEXT: %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @ProductOfElementaryHouseholderReflectors(%[[RESHARD1]], %[[RESHARD2]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xpq, [{"x"}, {}, {}]>]>} : (tensor<8x12x16xf32>, tensor<8x5xf32>) -> tensor<8x12x16xf32>
+   // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CUSTOM_CALL]] <@mesh_xpq, [{"x":(1)2}, {"p"}, {"x":(2)2}]> : tensor<8x12x16xf32>
+   // CHECK-NEXT: return %[[RESHARD3]] : tensor<8x12x16xf32>
+   %0 = stablehlo.custom_call @ProductOfElementaryHouseholderReflectors(%arg0, %arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xpq, [{"x":(1)2}, {"p"}, {"x":(2)2}]>]>} : (tensor<8x12x16xf32>, tensor<8x5xf32>) -> tensor<8x12x16xf32>
+@@ -174,12 +170,11 @@ func.func @custom_call_topk_of_1d(%arg0: tensor<16xf32> {sdy.sharding = #sdy.sha
+ // CHECK-LABEL: func @custom_call_topk_of_2d
+ func.func @custom_call_topk_of_2d(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<16x1xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}, tensor<16x1xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+   // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=8} need_replication={j} blocked_propagation={j}>
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x", "y"}, {}]> : tensor<16x8xf32>
+-  // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @mhlo.topk(%[[RESHARD1]])
+-  // CHECK-SAME: sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}]>, <@mesh, [{"x", "y"}, {}]>]>}
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CUSTOM_CALL]]#0 <@mesh, [{"x"}, {}]>
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CUSTOM_CALL]]#1 <@mesh, [{"y"}, {}]>
+-  // CHECK-NEXT: return %[[RESHARD2]], %[[RESHARD3]] : tensor<16x1xf32>, tensor<16x1xi32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<16x8xf32>
++  // CHECK: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @mhlo.topk(%[[RESHARD1]])
++  // CHECK-SAME: sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>, <@mesh, [{"x"}, {}]>]>}
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CUSTOM_CALL]]#1 <@mesh, [{"y"}, {}]> : tensor<16x1xi32>
++  // CHECK-NEXT: return %[[CUSTOM_CALL]]#0, %[[RESHARD2]] : tensor<16x1xf32>, tensor<16x1xi32>
+   %0:2 = stablehlo.custom_call @mhlo.topk(%arg0) {
+     mhlo.attributes = {
+         k = 1 : i64,
+@@ -192,9 +187,9 @@ func.func @custom_call_topk_of_2d(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.s
+ // CHECK-LABEL: func @custom_call_top2_of_2d
+ func.func @custom_call_top2_of_2d(%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, tensor<16x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x":(1)2}]>}) {
+   // NOTE: sdy.sharding_rule = #sdy.op_sharding_rule<([i, j])->([i, j], [i, j]) {i=16, j=8} need_replication={j} blocked_propagation={j}>
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x", "y"}, {}]> : tensor<16x8xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x"}, {}]> : tensor<16x8xf32>
+   // CHECK-NEXT: %[[CUSTOM_CALL:.*]]:2 = stablehlo.custom_call @mhlo.topk(%[[RESHARD1]])
+-  // CHECK-SAME: sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}]>, <@mesh, [{"x", "y"}, {}]>]>}
++  // CHECK-SAME: sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>, <@mesh, [{"x"}, {}]>]>}
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[CUSTOM_CALL]]#0 <@mesh, [{"x"}, {"y"}]> : tensor<16x2xf32>
+   // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %[[CUSTOM_CALL]]#1 <@mesh, [{"y"}, {"x":(1)2}]> : tensor<16x2xi32>
+   // CHECK-NEXT: return %[[RESHARD2]], %[[RESHARD3]] : tensor<16x2xf32>, tensor<16x2xi32>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
+index 1c66075..3c5e4c7 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/dynamic_slice_dynamic_update_slice.mlir
+@@ -4,8 +4,8 @@ sdy.mesh @mesh = <["x"=4, "y"=2]>
+ 
+ // CHECK-LABEL: func @dynamic_slice
+ func.func @dynamic_slice(%arg0: tensor<32x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"x"}, {"y"}]>}, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<32x1x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {"y"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"x", "y"}, {}, {}]> : tensor<32x4x8xf32>
+-  // CHECK-NEXT: %[[DYNAMIC_SLICE:.*]] = stablehlo.dynamic_slice %[[RESHARD1]], %arg1, %arg2, %arg3, sizes = [32, 1, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}, {}]>]>}
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{"y"}, {}, {}]> : tensor<32x4x8xf32>
++  // CHECK-NEXT: %[[DYNAMIC_SLICE:.*]] = stablehlo.dynamic_slice %[[RESHARD1]], %arg1, %arg2, %arg3, sizes = [32, 1, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {}, {}]>]>}
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[DYNAMIC_SLICE]] <@mesh, [{}, {}, {"y"}]>
+   // CHECK-NEXT: return %[[RESHARD2]]
+   %0 = stablehlo.dynamic_slice %arg0, %arg1, %arg2, %arg3, sizes = [32, 1, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}, {"y"}]>]>}: (tensor<32x4x8xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<32x1x2xf32>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/fft.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/fft.mlir
+index 668bdf1..ca1ae27 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/fft.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/fft.mlir
+@@ -24,8 +24,8 @@ func.func @fft_inverse(%arg0: tensor<128x32x64xcomplex<f32>> {sdy.sharding = #sd
+ 
+ // CHECK-LABEL: func @fft_real_truncated_result
+ func.func @fft_real_truncated_result(%arg0: tensor<128x32x64xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"z"}]>}) -> (tensor<128x32x33xcomplex<f32>> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"p"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x", "y", "z"}, {}, {}]> : tensor<128x32x64xf32>
+-  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  RFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x", "y", "z"}, {}, {}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x", "y"}, {}, {}]> : tensor<128x32x64xf32>
++  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  RFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x", "y"}, {}, {}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[FFT]] <@mesh_xyzp, [{"x"}, {"y"}, {"p"}]> : tensor<128x32x33xcomplex<f32>>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<128x32x33xcomplex<f32>>
+   %0  = stablehlo.fft %arg0, type = RFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x"}, {"y"}, {"p"}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
+@@ -34,8 +34,8 @@ func.func @fft_real_truncated_result(%arg0: tensor<128x32x64xf32> {sdy.sharding
+ 
+ // CHECK-LABEL: func @fft_inverse_real_expanded_result
+ func.func @fft_inverse_real_expanded_result(%arg0: tensor<128x32x33xcomplex<f32>> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"p"}]>}) -> (tensor<128x32x64xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"z"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x", "y", "z"}, {}, {}]> : tensor<128x32x33xcomplex<f32>>
+-  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  IRFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x", "y", "z"}, {}, {}]>]>} : (tensor<128x32x33xcomplex<f32>>) -> tensor<128x32x64xf32>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x", "y"}, {}, {}]> : tensor<128x32x33xcomplex<f32>>
++  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  IRFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x", "y"}, {}, {}]>]>} : (tensor<128x32x33xcomplex<f32>>) -> tensor<128x32x64xf32>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[FFT]] <@mesh_xyzp, [{"x"}, {"y"}, {"z"}]> : tensor<128x32x64xf32>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<128x32x64xf32>
+   %0  = stablehlo.fft %arg0, type = IRFFT, length = [32, 64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x"}, {"y"}, {"z"}]>]>} : (tensor<128x32x33xcomplex<f32>>) -> tensor<128x32x64xf32>
+@@ -65,8 +65,8 @@ func.func @fft_single_fft_dimension(%arg0: tensor<128x32x64xcomplex<f32>> {sdy.s
+ 
+ // CHECK-LABEL: func @fft_single_fft_dimension_real_truncated_result
+ func.func @fft_single_fft_dimension_real_truncated_result(%arg0: tensor<128x32x64xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"z"}]>}) -> (tensor<128x32x33xcomplex<f32>> {sdy.sharding = #sdy.sharding<@mesh_xyzp, [{"x"}, {"y"}, {"p"}]>}) {
+-  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x", "z"}, {"y"}, {}]> : tensor<128x32x64xf32>
+-  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  RFFT, length = [64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x", "z"}, {"y"}, {}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzp, [{"x"}, {"y"}, {}]> : tensor<128x32x64xf32>
++  // CHECK-NEXT: %[[FFT:.*]] = stablehlo.fft %[[RESHARD1]], type =  RFFT, length = [64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x"}, {"y"}, {}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
+   // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[FFT]] <@mesh_xyzp, [{"x"}, {"y"}, {"p"}]> : tensor<128x32x33xcomplex<f32>>
+   // CHECK-NEXT: return %[[RESHARD2]] : tensor<128x32x33xcomplex<f32>>
+   %0  = stablehlo.fft %arg0, type = RFFT, length = [64] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzp, [{"x"}, {"y"}, {"p"}]>]>} : (tensor<128x32x64xf32>) -> tensor<128x32x33xcomplex<f32>>
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
+index 1985deb..3df8060 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/gather_scatter.mlir
+@@ -11,13 +11,12 @@ func.func @gather(
+ ) -> (tensor<1x6x22x12x26x14xf32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"x":(1)2}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]>}) {
+   // COM: sharding_rule<([i, k, p, n, l], [q, l, m, n, o])->([j, k, l, m, n, o]) {i=2, j=1, k=6, l=22, m=12, n=26, o=14, p=4, q=2} reduction={i, p} need_replication={j, q}>
+ 
+-  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"x":(2)2}, {"y":(1)2}, {"y":(2)2}, {"z":(1)2}]> : tensor
+   // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh_xyzt, [{}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+-  // CHECK-NEXT: %[[GATHER:.*]] = "stablehlo.gather"(%[[RESHARD0]], %[[RESHARD1]])
+-  // CHECK-SAME: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]>]>}
+-  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"y":(1)2} %[[GATHER]] out_sharding=<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+-  // CHECK-NEXT: %[[RESHARD_RET:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyzt, [{"x":(1)2}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
+-  // CHECK-NEXT: return %[[RESHARD_RET]] : tensor
++  // CHECK-NEXT: %[[GATHER:.*]] = "stablehlo.gather"(%arg0, %[[RESHARD1]])
++  // CHECK-SAME: #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]>
++  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x":(1)2, "y":(1)2} %1 out_sharding=<@mesh_xyzt, [{}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
++  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[ALL_REDUCE]] <@mesh_xyzt, [{"x":(1)2}, {"x":(2)2}, {"z":(1)2}, {"z":(2)2}, {"y":(2)2}, {"t"}]> : tensor
++  // CHECK-NEXT: return %[[RESHARD2]] : tensor
+   %0 = "stablehlo.gather"(%arg0, %arg1) {
+     dimension_numbers = #stablehlo.gather<
+       offset_dims = [0, 1],
+diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
+index 31c59af..a69114e 100644
+--- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/sort.mlir
+@@ -5,15 +5,9 @@ sdy.mesh @mesh_xyz = <["x"=4, "y"=2, "z"=4]>
+ sdy.mesh @mesh_xyzt = <["x"=4, "y"=4, "z"=4, "t"=8]>
+ 
+ // CHECK-LABEL: func @sort
+-// TODO(b/479473118): Shardings with fully replication should not be open.
+ func.func @sort(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}, {}]>}, %arg1: tensor<4x32x8xf32>) -> (tensor<4x32x8xi32>, tensor<4x32x8xf32>) {
+-  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"x"}, {}]>
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %arg1 <@mesh, [{}, {"x"}, {}]>
+-  // CHECK-NEXT: %[[SORT:.*]]:2 = "stablehlo.sort"(%[[RESHARD0]], %[[RESHARD1]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"x"}, {}]>, <@mesh, [{}, {"x"}, {}]>]>}
+-  // CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %2#0 <@mesh, [{}, {}, {}]>
+-  // CHECK-NEXT: %[[RESHARD3:.*]] = sdy.reshard %2#1 <@mesh, [{?}, {?}, {?}]>
+-  // CHECK-NEXT: return %[[RESHARD2]], %[[RESHARD3]]
++  // CHECK: %[[RESHARD:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {}]> : tensor<4x32x8xi32>
++  // CHECK-NEXT: "stablehlo.sort"(%[[RESHARD]], %arg1)
+   %0:2 = "stablehlo.sort"(%arg0, %arg1) ({
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<f32>, %arg5: tensor<f32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+@@ -36,11 +30,9 @@ func.func @sort_all_other_dims_size_one(%arg0: tensor<1x4x1xi32> {sdy.sharding =
+ 
+ // CHECK-LABEL: func @sort_single_input_output
+ func.func @sort_single_input_output(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}, {}]>}) -> (tensor<4x32x8xi32>) {
+-  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y", "x"}, {}]>
+-  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD0]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y", "x"}, {}]>]>}
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %[[SORT]] <@mesh, [{}, {}, {}]>
+-  // CHECK=NEXT: return %[[RESHARD1]]
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh, [{}, {"y"}, {}]> : tensor<4x32x8xi32>
++  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD1]])
++  // CHECK: %[[RESHARD2:.*]] = sdy.reshard %[[SORT]] <@mesh, [{}, {}, {}]> : tensor<4x32x8xi32>
+   %0 = "stablehlo.sort"(%arg0) ({
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+@@ -75,11 +67,9 @@ func.func @sort_input_and_output_shardings_are_same_on_sorting_dimension(%arg0:
+ 
+ // CHECK-LABEL: func @sort_input_and_output_shardings_are_different_on_sorting_dimension
+ func.func @sort_input_and_output_shardings_are_different_on_sorting_dimension(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"x"}, {"z"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyz, [{"y"}, {"z"}, {}]>}) {
+-  // CHECK-NEXT: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"z", "x"}, {}]>
+-  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD0]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyz, [{}, {"z", "x"}, {}]>]>}
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %[[SORT]] <@mesh_xyz, [{"y"}, {"z"}, {}]>
+-  // CHECK-NEXT: return %[[RESHARD1]]
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyz, [{}, {"z"}, {}]> : tensor<4x32x8xi32>
++  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD1]])
++  // CHECK: %[[RESHARD2:.*]] = sdy.reshard %[[SORT]] <@mesh_xyz, [{"y"}, {"z"}, {}]> : tensor<4x32x8xi32>
+   %0 = "stablehlo.sort"(%arg0) <{dimension = 0 : i64, is_stable = true}> ({
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+@@ -90,11 +80,9 @@ func.func @sort_input_and_output_shardings_are_different_on_sorting_dimension(%a
+ 
+ // CHECK-LABEL: func @sort_sorting_dim_shardings_has_common_prefix
+ func.func @sort_sorting_dim_shardings_has_common_prefix(%arg0: tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "z"}, {"x"}, {}]>}) -> (tensor<4x32x8xi32> {sdy.sharding = #sdy.sharding<@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>}) {
+-  // CHECK: %[[RESHARD0:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"z", "y"}, {"t"}]>
+-  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD0]])
+-  // CHECK: {sdy.sharding = #sdy.sharding_per_value<[<@mesh_xyzt, [{}, {"z", "y"}, {"t"}]>]>}
+-  // CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %[[SORT]] <@mesh_xyzt, [{"y", "t"}, {"z"}, {}]>
+-  // CHECK-NEXT: return %[[RESHARD1]]
++  // CHECK: %[[RESHARD1:.*]] = sdy.reshard %arg0 <@mesh_xyzt, [{}, {"z", "y"}, {}]> : tensor<4x32x8xi32>
++  // CHECK-NEXT: %[[SORT:.*]] = "stablehlo.sort"(%[[RESHARD1]])
++  // CHECK: %[[RESHARD2:.*]] = sdy.reshard %[[SORT]] <@mesh_xyzt, [{"y", "t"}, {"z"}, {}]> : tensor<4x32x8xi32>
+   %0 = "stablehlo.sort"(%arg0) <{dimension = 0 : i64, is_stable = true}> ({
+     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+       %1 = stablehlo.compare GT, %arg2, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+diff --git a/third_party/llvm/build.patch b/third_party/llvm/build.patch
+index 7792ce3..479e08c 100644
+--- a/third_party/llvm/build.patch
++++ b/third_party/llvm/build.patch
+@@ -1,59 +1,29 @@
+ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-index e83a237a5397..462b6b60f5b2 100644
++index 7770284e5543..0b45127495dc 100644
+ --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+ +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-@@ -232,19 +232,19 @@ write_file(
+- config_setting(
+-     name = "is_windows_clang_mingw",
+-     constraint_values = ["@platforms//os:windows"],
+--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
+-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+- )
+- 
+- config_setting(
+-     name = "is_windows_clang_cl",
+-     constraint_values = ["@platforms//os:windows"],
+--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang-cl"},
+-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang-cl"},
+- )
+- 
+- config_setting(
+-     name = "is_windows_msvc",
+-     constraint_values = ["@platforms//os:windows"],
+--    flag_values = {"@rules_cc//cc/compiler:compiler": "msvc-cl"},
+-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "msvc-cl"},
+- )
+- 
+- config_setting(
+-@@ -253,7 +253,7 @@ config_setting(
+-         "@platforms//cpu:x86_64",
+-         "@platforms//os:windows",
+-     ],
+--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
+-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+- )
+- 
+- # TODO(zbarsky): Is there a better way to express this?
+-@@ -327,12 +327,14 @@ cc_library(
+-             "lib/Support/BLAKE3/blake3_neon.c",
+-         ],
+-         ":is_x86_64_windows_clang_mingw": [
+--            pattern % "windows_gnu"
+--            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
++@@ -218,13 +218,15 @@ cc_library(
++         "lib/Support/BLAKE3/llvm_blake3_prefix.h",
++     ] + select({
++         "@platforms//cpu:aarch64": [
++-            "lib/Support/BLAKE3/blake3_neon.c",
+ +            # TODO(b/234415414): temporary disabled
+-+            # pattern % "windows_gnu"
+-+            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
+++            #            "lib/Support/BLAKE3/blake3_neon.c",
+          ],
+-         ":is_x86_64_non_windows": [
+--            pattern % "unix"
+--            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
++         "@platforms//cpu:x86_64": [
++-            "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
++-            "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
++-            "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
++-            "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
+ +            # TODO(b/234415414): temporary disabled
+-+            # pattern % "unix"
+-+            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
+++            # "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
+++            # "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
+++            # "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
+++            # "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
+          ],
+          "//conditions:default": [
+          ],
+-@@ -358,14 +360,16 @@ cc_library(
++@@ -249,14 +251,16 @@ cc_library(
+      ],
+      copts = llvm_copts,
+      defines = select({
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 330ee97..509398d 100644
+index 509398d..6bb8a5d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,62 +1 @@
+@@ -1 +1,747 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libc/src/__support/wchar/character_converter.h b/libc/src/__support/wchar/character_converter.h
----- a/libc/src/__support/wchar/character_converter.h
--+++ b/libc/src/__support/wchar/character_converter.h
--@@ -77,7 +77,8 @@
-- }
-- 
-- LIBC_INLINE int CharacterConverter::push(char8_t utf8_byte) {
---  uint8_t num_ones = static_cast<uint8_t>(cpp::countl_one(utf8_byte));
--+  uint8_t num_ones =
--+      static_cast<uint8_t>(cpp::countl_one(static_cast<uint8_t>(utf8_byte)));
--   // Checking the first byte if first push
--   if (isEmpty()) {
--     // UTF-8 char has 1 byte total
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
----- a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--+++ b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--@@ -910,11 +910,8 @@
-- 
--   if (!DataAccessProf) {
--     M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 0U);
---    M.getContext().diagnose(DiagnosticInfoPGOProfile(
---        MemoryProfileFileName.data(),
---        StringRef("Data access profiles not found in memprof. Ignore "
---                  "-memprof-annotate-static-data-prefix."),
---        DS_Warning));
--+    // FIXME: Add a diagnostic message without failing the compilation when
--+    // data access profile payload is not available.
--     return false;
--   }
--   M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 1U);
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/fptoi-256.ll b/llvm/test/CodeGen/AArch64/fptoi-256.ll
----- a/llvm/test/CodeGen/AArch64/fptoi-256.ll
--+++ b/llvm/test/CodeGen/AArch64/fptoi-256.ll
--@@ -0,0 +1,11 @@
--+; RUN: llc -mtriple=aarch64 < %s
--+
--+define i256 @doubletosi256(double %a) {
--+  %conv = fptosi double %a to i256
--+  ret i256 %conv
--+}
--+
--+define double @si256todouble(i256 %a) {
--+  %conv = sitofp i256 %a to double
--+  ret double %conv
--+}
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/fptoi-256.ll b/llvm/test/CodeGen/fptoi-256.ll
----- a/llvm/test/CodeGen/fptoi-256.ll
--+++ b/llvm/test/CodeGen/fptoi-256.ll
--@@ -1,12 +0,0 @@
---; REQUIRES: aarch64-registered-target
---; RUN: llc -mtriple=aarch64 < %s
---
---define i256 @doubletosi256(double %a) {
---  %conv = fptosi double %a to i256
---  ret i256 %conv
---}
---
---define double @si256todouble(i256 %a) {
---  %conv = sitofp i256 %a to double
---  ret double %conv
---}
++diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/NVPTX.cpp b/clang/lib/Basic/Targets/NVPTX.cpp
++--- a/clang/lib/Basic/Targets/NVPTX.cpp
+++++ b/clang/lib/Basic/Targets/NVPTX.cpp
++@@ -42,9 +42,7 @@
++   assert((TargetPointerWidth == 32 || TargetPointerWidth == 64) &&
++          "NVPTX only supports 32- and 64-bit modes.");
++ 
++-  // PTXVersion is 0 by default, meaning "use the minimum for the SM target".
++-  // Only set it if the user explicitly requested a PTX version.
++-  PTXVersion = 0;
+++  PTXVersion = 32;
++   for (const StringRef Feature : Opts.FeaturesAsWritten) {
++     int PTXV;
++     if (!Feature.starts_with("+ptx") ||
++diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/NVPTX.h b/clang/lib/Basic/Targets/NVPTX.h
++--- a/clang/lib/Basic/Targets/NVPTX.h
+++++ b/clang/lib/Basic/Targets/NVPTX.h
++@@ -89,10 +89,7 @@
++                  const std::vector<std::string> &FeaturesVec) const override {
++     if (GPU != OffloadArch::UNUSED)
++       Features[OffloadArchToString(GPU)] = true;
++-    // Only add PTX feature if explicitly requested. Otherwise, let the backend
++-    // use the minimum required PTX version for the target SM.
++-    if (PTXVersion != 0)
++-      Features["ptx" + std::to_string(PTXVersion)] = true;
+++    Features["ptx" + std::to_string(PTXVersion)] = true;
++     return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
++   }
++ 
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtins-nvptx.c b/clang/test/CodeGen/builtins-nvptx.c
++--- a/clang/test/CodeGen/builtins-nvptx.c
+++++ b/clang/test/CodeGen/builtins-nvptx.c
++@@ -46,10 +46,10 @@
++ // RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_101a -target-feature +ptx86 -DPTX=86 \
++ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
++ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX86_SM101a %s
++-// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_120a -target-feature +ptx87 -DPTX=87 \
+++// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_120a -target-feature +ptx86 -DPTX=86 \
++ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
++ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX86_SM120a %s
++-// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_103a -target-feature +ptx88 -DPTX=88 \
+++// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_103a -target-feature +ptx87 -DPTX=87 \
++ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
++ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX87_SM103a %s
++ // RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_100a -target-feature +ptx87 -DPTX=87 \
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtins-nvptx-ptx60.cu b/clang/test/CodeGen/builtins-nvptx-ptx60.cu
++--- a/clang/test/CodeGen/builtins-nvptx-ptx60.cu
+++++ b/clang/test/CodeGen/builtins-nvptx-ptx60.cu
++@@ -3,7 +3,7 @@
++ // RUN:            -emit-llvm -o - -x cuda %s \
++ // RUN:   | FileCheck -check-prefix=CHECK %s
++ // RUN: %clang_cc1 -triple nvptx64-unknown-unknown -target-cpu sm_80 \
++-// RUN:            -fcuda-is-device -target-feature +ptx70 \
+++// RUN:            -fcuda-is-device -target-feature +ptx65 \
++ // RUN:            -emit-llvm -o - -x cuda %s \
++ // RUN:   | FileCheck -check-prefix=CHECK %s
++ // RUN: %clang_cc1 -triple nvptx64-unknown-unknown -target-cpu sm_80 \
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/nvptx_attributes.c b/clang/test/CodeGen/nvptx_attributes.c
++--- a/clang/test/CodeGen/nvptx_attributes.c
+++++ b/clang/test/CodeGen/nvptx_attributes.c
++@@ -16,7 +16,7 @@
++ }
++ 
++ //.
++-// CHECK: attributes #[[ATTR0]] = { convergent noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="sm_61" "target-features"="+sm_61" }
+++// CHECK: attributes #[[ATTR0]] = { convergent noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="sm_61" "target-features"="+ptx32,+sm_61" }
++ //.
++ // CHECK: [[META0:![0-9]+]] = !{i32 1, !"wchar_size", i32 4}
++ // CHECK: [[META1:![0-9]+]] = !{!"{{.*}}clang version {{.*}}"}
++diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDA/convergent.cu b/clang/test/CodeGenCUDA/convergent.cu
++--- a/clang/test/CodeGenCUDA/convergent.cu
+++++ b/clang/test/CodeGenCUDA/convergent.cu
++@@ -71,10 +71,10 @@
++ 
++ 
++ //.
++-// DEVICE: attributes #[[ATTR0]] = { convergent mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++-// DEVICE: attributes #[[ATTR1]] = { mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++-// DEVICE: attributes #[[ATTR2:[0-9]+]] = { convergent nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++-// DEVICE: attributes #[[ATTR3:[0-9]+]] = { nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+++// DEVICE: attributes #[[ATTR0]] = { convergent mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
+++// DEVICE: attributes #[[ATTR1]] = { mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
+++// DEVICE: attributes #[[ATTR2:[0-9]+]] = { convergent nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
+++// DEVICE: attributes #[[ATTR3:[0-9]+]] = { nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
++ // DEVICE: attributes #[[ATTR4]] = { convergent nounwind }
++ // DEVICE: attributes #[[ATTR5]] = { convergent nounwind memory(none) }
++ // DEVICE: attributes #[[ATTR6]] = { nounwind }
++diff -ruN --strip-trailing-cr a/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp b/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
++--- a/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
+++++ b/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
++@@ -182,7 +182,7 @@
++ // CHECK-AMDGCN: #[[AMDGCN_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++ // CHECK-AMDGCN: #[[AMDGCN_ATTR1]] = { convergent nounwind }
++ //
++-// CHECK-NVPTX: #[[NVPTX_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+++// CHECK-NVPTX: #[[NVPTX_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
++ // CHECK-NVPTX: #[[NVPTX_ATTR1]] = { convergent nounwind }
++ //
++ // CHECK-SPIR: #[[SPIR_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++diff -ruN --strip-trailing-cr a/clang/test/Headers/gpuintrin.c b/clang/test/Headers/gpuintrin.c
++--- a/clang/test/Headers/gpuintrin.c
+++++ b/clang/test/Headers/gpuintrin.c
++@@ -5,8 +5,8 @@
++ // RUN: | FileCheck %s --check-prefix=AMDGPU
++ // RUN: %clang_cc1 -internal-isystem %S/Inputs/include  \
++ // RUN:   -internal-isystem %S/../../lib/Headers/ \
++-// RUN:   -triple nvptx64-nvidia-cuda -target-feature +ptx63 \
++-// RUN:   -emit-llvm %s -o - \
+++// RUN:   -target-feature +ptx62 \
+++// RUN:   -triple nvptx64-nvidia-cuda -emit-llvm %s -o - \
++ // RUN: | FileCheck %s --check-prefix=NVPTX
++ // RUN: %clang_cc1 -internal-isystem %S/Inputs/include  \
++ // RUN:   -internal-isystem %S/../../lib/Headers/ \
++diff -ruN --strip-trailing-cr a/flang/lib/Frontend/CompilerInstance.cpp b/flang/lib/Frontend/CompilerInstance.cpp
++--- a/flang/lib/Frontend/CompilerInstance.cpp
+++++ b/flang/lib/Frontend/CompilerInstance.cpp
++@@ -288,16 +288,25 @@
++                                           const llvm::Triple triple) {
++   llvm::StringRef cpu = targetOpts.cpu;
++   llvm::StringMap<bool> implicitFeaturesMap;
+++  std::string errorMsg;
+++  bool ptxVer = false;
++ 
++   // Add target features specified by the user
++   for (auto &userFeature : targetOpts.featuresAsWritten) {
++     llvm::StringRef userKeyString(llvm::StringRef(userFeature).drop_front(1));
++     implicitFeaturesMap[userKeyString.str()] = (userFeature[0] == '+');
+++    // Check if the user provided a PTX version
+++    if (userKeyString.starts_with("ptx"))
+++      ptxVer = true;
++   }
++ 
++-  // Set the compute capability (only if one was explicitly provided).
++-  if (!cpu.empty())
++-    implicitFeaturesMap[cpu.str()] = true;
+++  // Set the default PTX version to `ptx61` if none was provided.
+++  // TODO: set the default PTX version based on the chip.
+++  if (!ptxVer)
+++    implicitFeaturesMap["ptx61"] = true;
+++
+++  // Set the compute capability.
+++  implicitFeaturesMap[cpu.str()] = true;
++ 
++   llvm::SmallVector<std::string> featuresVec;
++   for (auto &implicitFeatureItem : implicitFeaturesMap) {
++diff -ruN --strip-trailing-cr a/flang/test/Lower/OpenMP/target_cpu_features.f90 b/flang/test/Lower/OpenMP/target_cpu_features.f90
++--- a/flang/test/Lower/OpenMP/target_cpu_features.f90
+++++ b/flang/test/Lower/OpenMP/target_cpu_features.f90
++@@ -16,4 +16,4 @@
++ 
++ !NVPTX: module attributes {
++ !NVPTX-SAME: fir.target_cpu = "sm_80"
++-!NVPTX-SAME: fir.target_features = #llvm.target_features<["+sm_80"]>
+++!NVPTX-SAME: fir.target_features = #llvm.target_features<["+ptx61", "+sm_80"]>
++diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp b/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
++--- a/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
+++++ b/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
++@@ -35,87 +35,9 @@
++                                       "f32x2 instructions and registers."),
++                              cl::init(false));
++ 
++-// FullSmVersion encoding helpers: SM * 10 + suffix offset
++-// (0 = base, 2 = 'f', 3 = 'a').
++-static constexpr unsigned SM(unsigned Version) { return Version * 10; }
++-static constexpr unsigned SMF(unsigned Version) { return SM(Version) + 2; }
++-static constexpr unsigned SMA(unsigned Version) { return SM(Version) + 3; }
++-
++ // Pin the vtable to this file.
++ void NVPTXSubtarget::anchor() {}
++ 
++-// Returns the minimum PTX version required for a given SM target.
++-// This must be kept in sync with the "Supported Targets" column of the
++-// "PTX Release History" table in the PTX ISA documentation:
++-// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes-ptx-release-history
++-//
++-// Note: LLVM's minimum supported PTX version is 3.2 (see FeaturePTX in
++-// NVPTX.td), so older SMs that supported earlier PTX versions instead use 3.2
++-// as their effective minimum.
++-static unsigned getMinPTXVersionForSM(unsigned FullSmVersion) {
++-  switch (FullSmVersion) {
++-  case SM(20):
++-  case SM(21):
++-  case SM(30):
++-  case SM(35):
++-    return 32;
++-  case SM(32):
++-  case SM(50):
++-    return 40;
++-  case SM(37):
++-  case SM(52):
++-    return 41;
++-  case SM(53):
++-    return 42;
++-  case SM(60):
++-  case SM(61):
++-  case SM(62):
++-    return 50;
++-  case SM(70):
++-    return 60;
++-  case SM(72):
++-    return 61;
++-  case SM(75):
++-    return 63;
++-  case SM(80):
++-    return 70;
++-  case SM(86):
++-    return 71;
++-  case SM(87):
++-    return 74;
++-  case SM(89):
++-  case SM(90):
++-    return 78;
++-  case SMA(90):
++-    return 80;
++-  case SM(100):
++-  case SMA(100):
++-  case SM(101):
++-  case SMA(101):
++-    return 86;
++-  case SM(120):
++-  case SMA(120):
++-    return 87;
++-  case SMF(100):
++-  case SMF(101):
++-  case SM(103):
++-  case SMF(103):
++-  case SMA(103):
++-  case SMF(120):
++-  case SM(121):
++-  case SMF(121):
++-  case SMA(121):
++-    return 88;
++-  case SM(88):
++-  case SM(110):
++-  case SMF(110):
++-  case SMA(110):
++-    return 90;
++-  default:
++-    llvm_unreachable("Unknown SM version");
++-  }
++-}
++-
++ NVPTXSubtarget &NVPTXSubtarget::initializeSubtargetDependencies(StringRef CPU,
++                                                                 StringRef FS) {
++   TargetName = std::string(CPU);
++@@ -127,20 +49,9 @@
++   // sm_90a, which would *not* be a subset of sm_91.
++   SmVersion = getSmVersion();
++ 
++-  unsigned MinPTX = getMinPTXVersionForSM(FullSmVersion);
++-
+++  // Set default to PTX 6.0 (CUDA 9.0)
++   if (PTXVersion == 0) {
++-    // User didn't request a specific PTX version; use the minimum for this SM.
++-    PTXVersion = MinPTX;
++-  } else if (PTXVersion < MinPTX) {
++-    // User explicitly requested an insufficient PTX version.
++-    reportFatalUsageError(
++-        formatv("PTX version {0}.{1} does not support target '{2}'. "
++-                "Minimum required PTX version is {3}.{4}. "
++-                "Either remove the PTX version to use the default, "
++-                "or increase it to at least {3}.{4}.",
++-                PTXVersion / 10, PTXVersion % 10, getTargetName(), MinPTX / 10,
++-                MinPTX % 10));
+++    PTXVersion = 60;
++   }
++ 
++   return *this;
++diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXSubtarget.h b/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
++--- a/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
+++++ b/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
++@@ -29,10 +29,6 @@
++ 
++ namespace llvm {
++ 
++-// FullSmVersion encoding: SM * 10 + ArchSuffixOffset
++-// ArchSuffixOffset: 0 (base), 2 ('f'), 3 ('a')
++-// e.g. sm_100 -> 1000, sm_100f -> 1002, sm_100a -> 1003
++-
++ class NVPTXSubtarget : public NVPTXGenSubtargetInfo {
++   virtual void anchor();
++   std::string TargetName;
++@@ -40,9 +36,8 @@
++   // PTX version x.y is represented as 10*x+y, e.g. 3.1 == 31
++   unsigned PTXVersion;
++ 
++-  // FullSmVersion encoding: SM * 10 + ArchSuffixOffset
++-  // ArchSuffixOffset: 0 (base), 2 ('f'), 3 ('a')
++-  // e.g. sm_30 -> 300, sm_90a -> 903, sm_100f -> 1002
+++  // Full SM version x.y is represented as 100*x+10*y+feature, e.g. 3.1 == 310
+++  // sm_90a == 901
++   unsigned int FullSmVersion;
++ 
++   // SM version x.y is represented as 10*x+y, e.g. 3.1 == 31. Derived from
++diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTX.td b/llvm/lib/Target/NVPTX/NVPTX.td
++--- a/llvm/lib/Target/NVPTX/NVPTX.td
+++++ b/llvm/lib/Target/NVPTX/NVPTX.td
++@@ -68,11 +68,10 @@
++ // represents 'z'), sm_103f, and sm_103 architecture variants. The sm_103 is
++ // compatible with sm_103a and sm_103f, and sm_103f is compatible with sm_103a.
++ //
++-// Encoding := Arch * 10 + ArchSuffixOffset
+++// Encoding := Arch * 10 + 2 (for 'f') + 1 (for 'a')
++ // Arch := X * 10 + Y
++-// ArchSuffixOffset := 0 (base), 2 ('f'), or 3 ('a')
++ //
++-// For example, sm_103a is encoded as 1033 (103 * 10 + 3) and sm_103f is
+++// For example, sm_103a is encoded as 1033 (103 * 10 + 2 + 1) and sm_103f is
++ // encoded as 1032 (103 * 10 + 2).
++ //
++ // This encoding allows simple partial ordering of the architectures.
++@@ -81,27 +80,21 @@
++ //  + Compare within the family by comparing FullSMVersion, given both belongs to
++ //    the same family.
++ //  + Detect 'a' variants by checking FullSMVersion & 1.
++-class Proc<FeatureSM SM>
++- : Processor<SM.Name, NoItineraries, [SM]>;
++-
++ foreach sm = [20, 21, 30, 32, 35, 37, 50, 52, 53, 60,
++               61, 62, 70, 72, 75, 80, 86, 87, 88, 89,
++               90, 100, 101, 103, 110, 120, 121] in {
++   // Base SM version (e.g. FullSMVersion for sm_100 is 1000)
++   def SM#sm : FeatureSM<""#sm, !mul(sm, 10)>;
++-  def : Proc<!cast<FeatureSM>("SM"#sm)>;
++ 
++-  // Family-specific variants, compatible within same family (e.g. sm_100f = 1002)
++-  if !ge(sm, 100) then {
+++  // Family-specific targets which are compatible within same family
+++  // (e.g. FullSMVersion for sm_100f is 1002)
+++  if !ge(sm, 100) then
++     def SM#sm#f : FeatureSM<""#sm#"f", !add(!mul(sm, 10), 2)>;
++-    def : Proc<!cast<FeatureSM>("SM"#sm#"f")>;
++-  }
++ 
++-  // Architecture-specific variants, incompatible across architectures (e.g. sm_100a = 1003)
++-  if !ge(sm, 90) then {
+++  // Architecture-specific targets which are incompatible across architectures
+++  // (e.g. FullSMVersion for sm_100a is 1003)
+++  if !ge(sm, 90) then
++     def SM#sm#a : FeatureSM<""#sm#"a", !add(!mul(sm, 10), 3)>;
++-    def : Proc<!cast<FeatureSM>("SM"#sm#"a")>;
++-  }
++ }
++ 
++ foreach version = [32, 40, 41, 42, 43, 50, 60, 61, 62, 63, 64, 65, 70, 71, 72,
++@@ -109,6 +102,55 @@
++                    90] in
++   def PTX#version : FeaturePTX<version>;
++ 
+++//===----------------------------------------------------------------------===//
+++// NVPTX supported processors.
+++//===----------------------------------------------------------------------===//
+++
+++class Proc<string Name, list<SubtargetFeature> Features>
+++ : Processor<Name, NoItineraries, Features>;
+++
+++def : Proc<"sm_20",   [SM20, PTX32]>;
+++def : Proc<"sm_21",   [SM21, PTX32]>;
+++def : Proc<"sm_30",   [SM30]>;
+++def : Proc<"sm_32",   [SM32, PTX40]>;
+++def : Proc<"sm_35",   [SM35, PTX32]>;
+++def : Proc<"sm_37",   [SM37, PTX41]>;
+++def : Proc<"sm_50",   [SM50, PTX40]>;
+++def : Proc<"sm_52",   [SM52, PTX41]>;
+++def : Proc<"sm_53",   [SM53, PTX42]>;
+++def : Proc<"sm_60",   [SM60, PTX50]>;
+++def : Proc<"sm_61",   [SM61, PTX50]>;
+++def : Proc<"sm_62",   [SM62, PTX50]>;
+++def : Proc<"sm_70",   [SM70, PTX60]>;
+++def : Proc<"sm_72",   [SM72, PTX61]>;
+++def : Proc<"sm_75",   [SM75, PTX63]>;
+++def : Proc<"sm_80",   [SM80, PTX70]>;
+++def : Proc<"sm_86",   [SM86, PTX71]>;
+++def : Proc<"sm_87",   [SM87, PTX74]>;
+++def : Proc<"sm_88",   [SM88, PTX90]>;
+++def : Proc<"sm_89",   [SM89, PTX78]>;
+++def : Proc<"sm_90",   [SM90, PTX78]>;
+++def : Proc<"sm_90a",  [SM90a, PTX80]>;
+++def : Proc<"sm_100",  [SM100, PTX86]>;
+++def : Proc<"sm_100a", [SM100a, PTX86]>;
+++def : Proc<"sm_100f", [SM100f, PTX88]>;
+++def : Proc<"sm_101",  [SM101, PTX86]>;
+++def : Proc<"sm_101a", [SM101a, PTX86]>;
+++def : Proc<"sm_101f", [SM101f, PTX88]>;
+++def : Proc<"sm_103",  [SM103, PTX88]>;
+++def : Proc<"sm_103a", [SM103a, PTX88]>;
+++def : Proc<"sm_103f", [SM103f, PTX88]>;
+++def : Proc<"sm_110",  [SM110, PTX90]>;
+++def : Proc<"sm_110a", [SM110a, PTX90]>;
+++def : Proc<"sm_110f", [SM110f, PTX90]>;
+++def : Proc<"sm_120",  [SM120, PTX87]>;
+++def : Proc<"sm_120a", [SM120a, PTX87]>;
+++def : Proc<"sm_120f", [SM120f, PTX88]>;
+++def : Proc<"sm_121",  [SM121, PTX88]>;
+++def : Proc<"sm_121a", [SM121a, PTX88]>;
+++def : Proc<"sm_121f", [SM121f, PTX88]>;
+++
+++
++ def Is64Bit : Predicate<"Subtarget->getTargetTriple().getArch() == Triple::nvptx64">;
++ def NVPTX64 : HwMode<[Is64Bit]>;
++ 
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll b/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
++--- a/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
+++++ b/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
++@@ -19,10 +19,10 @@
++ ; RUN: %if ptxas-sm_110f && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_110f -mattr=+ptx90 | %ptxas-verify -arch=sm_110f %}
++ ; RUN: %if ptxas-sm_110f && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_110f -mattr=+ptx90 --nvptx-short-ptr | %ptxas-verify -arch=sm_110f %}
++ 
++-; RUN: llc -o - -mcpu=sm_120a -march=nvptx64 -mattr=+ptx87 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
++-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | %ptxas-verify -arch=sm_120a %}
++-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 --nvptx-short-ptr | %ptxas-verify -arch=sm_120a %}
+++; RUN: llc -o - -mcpu=sm_120a -march=nvptx64 -mattr=+ptx86 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
+++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
+++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | %ptxas-verify -arch=sm_120a %}
+++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 --nvptx-short-ptr | %ptxas-verify -arch=sm_120a %}
++ 
++ ; RUN: llc -o - -mcpu=sm_120f -march=nvptx64 -mattr=+ptx88 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120f -mattr=+ptx88 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/convert-sm100a.ll b/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
++--- a/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
+++++ b/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
++@@ -1,10 +1,10 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx86 | FileCheck %s
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_101a -mattr=+ptx86 | FileCheck %s
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | FileCheck %s
+++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | FileCheck %s
++ ; RUN: %if ptxas-sm_100a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx86 | %ptxas-verify -arch=sm_100a %}
++ ; RUN: %if ptxas-sm_101a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_101a -mattr=+ptx86 | %ptxas-verify -arch=sm_101a %}
++-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | %ptxas-verify -arch=sm_120a %}
+++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | %ptxas-verify -arch=sm_120a %}
++ 
++ define i16 @cvt_rn_sf_e2m3x2_f32(float %f1, float %f2) {
++ ; CHECK-LABEL: cvt_rn_sf_e2m3x2_f32(
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/convert-sm103a.ll b/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
++--- a/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
+++++ b/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
++@@ -1,8 +1,8 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx87 | FileCheck %s
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx88 | FileCheck %s
+++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 | FileCheck %s
++ ; RUN: %if ptxas-sm_100a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx87 | %ptxas-verify -arch=sm_100a %}
++-; RUN: %if ptxas-sm_103a && ptxas-isa-8.8 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx88 | %ptxas-verify -arch=sm_103a %}
+++; RUN: %if ptxas-sm_103a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 | %ptxas-verify -arch=sm_103a %}
++ 
++ ; F16X2 conversions
++ 
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/f32-ex2.ll b/llvm/test/CodeGen/NVPTX/f32-ex2.ll
++--- a/llvm/test/CodeGen/NVPTX/f32-ex2.ll
+++++ b/llvm/test/CodeGen/NVPTX/f32-ex2.ll
++@@ -1,6 +1,6 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++-; RUN: llc < %s -mcpu=sm_50 | FileCheck --check-prefixes=CHECK %s
++-; RUN: %if ptxas-sm_50 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_50 | %ptxas-verify -arch=sm_50 %}
+++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 | FileCheck --check-prefixes=CHECK %s
+++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_50 -mattr=+ptx32 | %ptxas-verify -arch=sm_50 %}
++ target triple = "nvptx-nvidia-cuda"
++ 
++ declare float @llvm.nvvm.ex2.approx.f32(float)
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/fexp2.ll b/llvm/test/CodeGen/NVPTX/fexp2.ll
++--- a/llvm/test/CodeGen/NVPTX/fexp2.ll
+++++ b/llvm/test/CodeGen/NVPTX/fexp2.ll
++@@ -1,8 +1,8 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++-; RUN: llc < %s -mcpu=sm_50 | FileCheck --check-prefixes=CHECK %s
+++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 | FileCheck --check-prefixes=CHECK %s
++ ; RUN: llc < %s -mcpu=sm_75 -mattr=+ptx70 | FileCheck --check-prefixes=CHECK-FP16 %s
++ ; RUN: llc < %s -mcpu=sm_90 -mattr=+ptx78 | FileCheck --check-prefixes=CHECK-BF16 %s
++-; RUN: %if ptxas-sm_50 %{ llc < %s -mcpu=sm_50 | %ptxas-verify -arch=sm_50 %}
+++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mcpu=sm_50 -mattr=+ptx32 | %ptxas-verify -arch=sm_50 %}
++ ; RUN: %if ptxas-sm_75 && ptxas-isa-7.0 %{ llc < %s -mcpu=sm_75 -mattr=+ptx70 | %ptxas-verify -arch=sm_75 %}
++ ; RUN: %if ptxas-sm_90 && ptxas-isa-7.8 %{ llc < %s -mcpu=sm_90 -mattr=+ptx78 | %ptxas-verify -arch=sm_90 %}
++ target triple = "nvptx64-nvidia-cuda"
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/flog2.ll b/llvm/test/CodeGen/NVPTX/flog2.ll
++--- a/llvm/test/CodeGen/NVPTX/flog2.ll
+++++ b/llvm/test/CodeGen/NVPTX/flog2.ll
++@@ -1,6 +1,6 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++-; RUN: llc < %s -mcpu=sm_50 -nvptx-approx-log2f32 | FileCheck --check-prefixes=CHECK %s
++-; RUN: %if ptxas-sm_50 %{ llc < %s -mcpu=sm_50 -nvptx-approx-log2f32 | %ptxas-verify -arch=sm_50 %}
+++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 -nvptx-approx-log2f32 | FileCheck --check-prefixes=CHECK %s
+++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mcpu=sm_50 -mattr=+ptx32 -nvptx-approx-log2f32 | %ptxas-verify -arch=sm_50 %}
++ target triple = "nvptx64-nvidia-cuda"
++ 
++ ; CHECK-LABEL: log2_test
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/i128.ll b/llvm/test/CodeGen/NVPTX/i128.ll
++--- a/llvm/test/CodeGen/NVPTX/i128.ll
+++++ b/llvm/test/CodeGen/NVPTX/i128.ll
++@@ -1,6 +1,6 @@
++ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
++-; RUN: llc < %s -mtriple=nvptx64-- -mcpu=sm_30 -mattr=+ptx60 2>&1 | FileCheck %s
++-; RUN: %if ptxas-sm_30 && ptxas-isa-6.0 %{ llc < %s -mtriple=nvptx64-- -mcpu=sm_30 -mattr=+ptx60 | %ptxas-verify -arch=sm_30 %}
+++; RUN: llc < %s -mtriple=nvptx64-- -mcpu=sm_30 2>&1 | FileCheck %s
+++; RUN: %if ptxas-sm_30 %{ llc < %s -mtriple=nvptx64-- -mcpu=sm_30 | %ptxas-verify -arch=sm_30 %}
++ 
++ define i128 @srem_i128(i128 %lhs, i128 %rhs) {
++ ; CHECK-LABEL: srem_i128(
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll b/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
++--- a/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
+++++ b/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
++@@ -1,6 +1,6 @@
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_52 -mattr=+ptx64 -O0 | FileCheck %s --check-prefixes=SM_52,COMMON
++ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_70 -mattr=+ptx64 -O0 | FileCheck %s --check-prefixes=SM_70,COMMON
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90 -O0 | FileCheck %s --check-prefixes=SM_90,COMMON
+++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90 -mattr=+ptx72 -O0 | FileCheck %s --check-prefixes=SM_90,COMMON
++ 
++ @.str = private unnamed_addr constant [12 x i8] c"__CUDA_ARCH\00"
++ @.str1 = constant [11 x i8] c"__CUDA_FTZ\00"
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll b/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
++--- a/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
+++++ b/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
++@@ -1,51 +0,0 @@
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx90 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A-HIGH
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A
++-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A-LOW
++-; RUN: %if ptxas-sm_103a && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx90 | %ptxas-verify -arch=sm_103a %}
++-; RUN: %if ptxas-sm_103a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a | %ptxas-verify -arch=sm_103a %}
++-
++-; Test that sm_120a defaults/requires PTX 8.7
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a 2>&1 | FileCheck %s --check-prefix=CHECK-SM120A
++-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 2>&1 | FileCheck %s --check-prefix=CHECK-SM120A-LOW
++-; RUN: %if ptxas-sm_120a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a | %ptxas-verify -arch=sm_120a %}
++-
++-; Test that sm_90a defaults/requires PTX 8.0
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90a 2>&1 | FileCheck %s --check-prefix=CHECK-SM90A
++-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_90a -mattr=+ptx78 2>&1 | FileCheck %s --check-prefix=CHECK-SM90A-LOW
++-; RUN: %if ptxas-sm_90a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_90a | %ptxas-verify -arch=sm_90a %}
++-
++-; Test older SM targets
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_80 2>&1 | FileCheck %s --check-prefix=CHECK-SM80
++-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_80 -mattr=+ptx63 2>&1 | FileCheck %s --check-prefix=CHECK-SM80-LOW
++-; RUN: %if ptxas-sm_80 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_80 | %ptxas-verify -arch=sm_80 %}
++-
++-; CHECK-SM103A-HIGH: .version 9.0
++-; CHECK-SM103A-HIGH: .target sm_103a
++-
++-; CHECK-SM103A: .version 8.8
++-; CHECK-SM103A: .target sm_103a
++-
++-; CHECK-SM103A-LOW: LLVM ERROR: PTX version 8.7 does not support target 'sm_103a'.
++-; CHECK-SM103A-LOW: Minimum required PTX version is 8.8.
++-
++-; CHECK-SM120A: .version 8.7
++-; CHECK-SM120A: .target sm_120a
++-
++-; CHECK-SM120A-LOW: LLVM ERROR: PTX version 8.6 does not support target 'sm_120a'.
++-; CHECK-SM120A-LOW: Minimum required PTX version is 8.7.
++-
++-; CHECK-SM90A: .version 8.0
++-; CHECK-SM90A: .target sm_90a
++-
++-; CHECK-SM90A-LOW: LLVM ERROR: PTX version 7.8 does not support target 'sm_90a'.
++-; CHECK-SM90A-LOW: Minimum required PTX version is 8.0.
++-
++-; CHECK-SM80: .version 7.0
++-; CHECK-SM80: .target sm_80
++-
++-; CHECK-SM80-LOW: LLVM ERROR: PTX version 6.3 does not support target 'sm_80'.
++-; CHECK-SM80-LOW: Minimum required PTX version is 7.0.
++-
++-define void @foo() {
++-  ret void
++-}
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/rsqrt.ll b/llvm/test/CodeGen/NVPTX/rsqrt.ll
++--- a/llvm/test/CodeGen/NVPTX/rsqrt.ll
+++++ b/llvm/test/CodeGen/NVPTX/rsqrt.ll
++@@ -1,5 +1,5 @@
++-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_30 -mattr=+ptx40 | FileCheck %s
++-; RUN: %if ptxas-sm_30 && ptxas-isa-4.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_30 -mattr=+ptx40 | %ptxas-verify -arch=sm_30 %}
+++; RUN: llc < %s -mtriple=nvptx64 | FileCheck %s
+++; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64 | %ptxas-verify %}
++ 
++ ; CHECK-LABEL: .func{{.*}}test1
++ define float @test1(float %in) local_unnamed_addr {
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/sm-version.ll b/llvm/test/CodeGen/NVPTX/sm-version.ll
++--- a/llvm/test/CodeGen/NVPTX/sm-version.ll
+++++ b/llvm/test/CodeGen/NVPTX/sm-version.ll
++@@ -76,7 +76,7 @@
++ 
++ ; SM20: .version 3.2
++ ; SM21: .version 3.2
++-; SM30: .version 3.2
+++; SM30: .version 6.0
++ ; SM32: .version 4.0
++ ; SM35: .version 3.2
++ ; SM37: .version 4.1
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-tex.py b/llvm/test/CodeGen/NVPTX/surf-tex.py
++--- a/llvm/test/CodeGen/NVPTX/surf-tex.py
+++++ b/llvm/test/CodeGen/NVPTX/surf-tex.py
++@@ -1,6 +1,6 @@
++ # RUN: %python %s --target=cuda --tests=suld,sust,tex,tld4 --gen-list=%t.list > %t-cuda.ll
++-# RUN: llc -mcpu=sm_60 %t-cuda.ll -verify-machineinstrs -o - | FileCheck %t-cuda.ll
++-# RUN: %if ptxas-sm_60 %{ llc -mcpu=sm_60 %t-cuda.ll -verify-machineinstrs -o - | %ptxas-verify -arch=sm_60 %}
+++# RUN: llc -mcpu=sm_60 -mattr=+ptx43 %t-cuda.ll -verify-machineinstrs -o - | FileCheck %t-cuda.ll
+++# RUN: %if ptxas-sm_60 && ptxas-isa-4.3 %{ llc -mcpu=sm_60 -mattr=+ptx43 %t-cuda.ll -verify-machineinstrs -o - | %ptxas-verify -arch=sm_60 %}
++ 
++ # We only need to run this second time for texture tests, because
++ # there is a difference between unified and non-unified intrinsics.
++diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py b/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
++--- a/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
+++++ b/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
++@@ -0,0 +1,14 @@
+++# Check all variants of instructions supported by PTX86 on SM120a
+++# RUN: %python %s --ptx=86 --gpu-arch=120a > %t-ptx86-sm_120a.ll
+++# RUN: FileCheck %t-ptx86-sm_120a.ll < %t-ptx86-sm_120a.ll \
+++# RUN:           --check-prefixes=PTX86LDMATRIX-DAG,PTX86STMATRIX-DAG
+++# RUN: llc < %t-ptx86-sm_120a.ll -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 \
+++# RUN:           | FileCheck %t-ptx86-sm_120a.ll
+++# RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{                                                  \
+++# RUN: llc < %t-ptx86-sm_120a.ll -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 \
+++# RUN:           | %ptxas-verify -arch=sm_120a                              \
+++# RUN: %}
+++
+++import wmma
+++
+++wmma.main()
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h b/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
++--- a/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
+++++ b/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
++@@ -32,7 +32,7 @@
++   PassOptions::Option<std::string> cubinFeatures{
++       *this, "cubin-features",
++       llvm::cl::desc("Features to use to serialize to cubin."),
++-      llvm::cl::init("")};
+++      llvm::cl::init("+ptx60")};
++   PassOptions::Option<std::string> cubinFormat{
++       *this, "cubin-format",
++       llvm::cl::desc("Compilation format to use to serialize to cubin."),
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td b/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
++--- a/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
+++++ b/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
++@@ -135,30 +135,36 @@
++     gpu.module @rocdl_module_1 {...}
++     ```
++   }];
++-  let options =
++-      [Option<"moduleMatcher", "module", "std::string",
++-              /*default=*/[{""}],
++-              "Regex used to identify the modules to attach the target to.">,
++-       Option<"triple", "triple", "std::string",
++-              /*default=*/"\"nvptx64-nvidia-cuda\"", "Target triple.">,
++-       Option<"chip", "chip", "std::string",
++-              /*default=*/"\"sm_50\"", "Target chip.">,
++-       Option<"features", "features", "std::string",
++-              /*default=*/"\"\"", "Target features.">,
++-       Option<"optLevel", "O", "unsigned",
++-              /*default=*/"2", "Optimization level.">,
++-       Option<"fastFlag", "fast", "bool",
++-              /*default=*/"false", "Enable fast math mode.">,
++-       Option<"ftzFlag", "ftz", "bool",
++-              /*default=*/"false", "Enable flush to zero for denormals.">,
++-       ListOption<"linkLibs", "l", "std::string",
++-                  "Extra bitcode libraries paths to link to.">,
++-       Option<"cmdOptions", "ptxas-cmd-options", "std::string",
++-              /*default=*/[{""}],
++-              "Command line options passed to downstream compiler">,
++-       Option<"verifyTarget", "verify-target-arch", "bool",
++-              /*default=*/"true",
++-              "Enable verification of the target architecture">,
+++  let options = [
+++    Option<"moduleMatcher", "module", "std::string",
+++           /*default=*/ [{""}],
+++           "Regex used to identify the modules to attach the target to.">,
+++    Option<"triple", "triple", "std::string",
+++           /*default=*/ "\"nvptx64-nvidia-cuda\"",
+++           "Target triple.">,
+++    Option<"chip", "chip", "std::string",
+++           /*default=*/"\"sm_50\"",
+++           "Target chip.">,
+++    Option<"features", "features", "std::string",
+++           /*default=*/"\"+ptx60\"",
+++           "Target features.">,
+++    Option<"optLevel", "O", "unsigned",
+++           /*default=*/"2",
+++           "Optimization level.">,
+++    Option<"fastFlag", "fast", "bool",
+++           /*default=*/"false",
+++           "Enable fast math mode.">,
+++    Option<"ftzFlag", "ftz", "bool",
+++           /*default=*/"false",
+++           "Enable flush to zero for denormals.">,
+++    ListOption<"linkLibs", "l", "std::string",
+++           "Extra bitcode libraries paths to link to.">,
+++    Option<"cmdOptions", "ptxas-cmd-options", "std::string",
+++           /*default=*/ [{""}],
+++           "Command line options passed to downstream compiler">,
+++    Option<"verifyTarget", "verify-target-arch", "bool",
+++           /*default=*/"true",
+++           "Enable verification of the target architecture">,
++   ];
++ }
++ 
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td b/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
++--- a/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
+++++ b/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
++@@ -6370,29 +6370,29 @@
++       }
++     ```
++   }];
++-  let parameters = (ins DefaultValuedParameter<
++-                        "int", "2", "Optimization level to apply.">:$O,
++-      StringRefParameter<"Target triple.", "\"nvptx64-nvidia-cuda\"">:$triple,
++-      StringRefParameter<"Target chip.", "\"sm_50\"">:$chip,
++-      StringRefParameter<"Target chip features.", "\"\"">:$features,
++-      OptionalParameter<"DictionaryAttr", "Target specific flags.">:$flags,
++-      OptionalParameter<"ArrayAttr", "Files to link to the LLVM module.">:$link,
++-      DefaultValuedParameter<"bool", "true",
++-                             "Perform SM version check on Ops.">:$verifyTarget);
+++  let parameters = (ins
+++    DefaultValuedParameter<"int", "2", "Optimization level to apply.">:$O,
+++    StringRefParameter<"Target triple.", "\"nvptx64-nvidia-cuda\"">:$triple,
+++    StringRefParameter<"Target chip.", "\"sm_50\"">:$chip,
+++    StringRefParameter<"Target chip features.", "\"+ptx60\"">:$features,
+++    OptionalParameter<"DictionaryAttr", "Target specific flags.">:$flags,
+++    OptionalParameter<"ArrayAttr", "Files to link to the LLVM module.">:$link,
+++    DefaultValuedParameter<"bool", "true", "Perform SM version check on Ops.">:$verifyTarget
+++  );
++   let assemblyFormat = [{
++     (`<` struct($O, $triple, $chip, $features, $flags, $link, $verifyTarget)^ `>`)?
++   }];
++-  let builders = [AttrBuilder<
++-      (ins CArg<"int", "2">:$optLevel,
++-          CArg<"StringRef", "\"nvptx64-nvidia-cuda\"">:$triple,
++-          CArg<"StringRef", "\"sm_50\"">:$chip,
++-          CArg<"StringRef", "\"\"">:$features,
++-          CArg<"DictionaryAttr", "nullptr">:$targetFlags,
++-          CArg<"ArrayAttr", "nullptr">:$linkFiles,
++-          CArg<"bool", "true">:$verifyTarget),
++-      [{
+++  let builders = [
+++    AttrBuilder<(ins CArg<"int", "2">:$optLevel,
+++                     CArg<"StringRef", "\"nvptx64-nvidia-cuda\"">:$triple,
+++                     CArg<"StringRef", "\"sm_50\"">:$chip,
+++                     CArg<"StringRef", "\"+ptx60\"">:$features,
+++                     CArg<"DictionaryAttr", "nullptr">:$targetFlags,
+++                     CArg<"ArrayAttr", "nullptr">:$linkFiles,
+++                     CArg<"bool", "true">:$verifyTarget), [{
++       return $_get($_ctxt, optLevel, triple, chip, features, targetFlags, linkFiles, verifyTarget);
++-    }]>];
+++    }]>
+++  ];
++   let skipDefaultBuilders = 1;
++   let genVerifyDecl = 1;
++   let extraClassDeclaration = [{
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a9af7d2..31e5be0 100644
+index 31e5be0..a0406a1 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "ec28be3ccac432ea6a45eca67249b209be216c0a"
--    LLVM_SHA256 = "f817108a98dc666bbf5590743670ee0d529ad6ddb4afd659b11540d2834ecb28"
-+    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
-+    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
+-    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
+-    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
++    LLVM_COMMIT = "0926743e2eac0854ea80e60908f914cd15882fbd"
++    LLVM_SHA256 = "cc139b4e63eb181b87d1d234b87b06c5988842014283bee320233286a4bd2703"
  
      tf_http_archive(
          name = name,

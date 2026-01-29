@@ -1,1 +1,747 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/NVPTX.cpp b/clang/lib/Basic/Targets/NVPTX.cpp
+--- a/clang/lib/Basic/Targets/NVPTX.cpp
++++ b/clang/lib/Basic/Targets/NVPTX.cpp
+@@ -42,9 +42,7 @@
+   assert((TargetPointerWidth == 32 || TargetPointerWidth == 64) &&
+          "NVPTX only supports 32- and 64-bit modes.");
+ 
+-  // PTXVersion is 0 by default, meaning "use the minimum for the SM target".
+-  // Only set it if the user explicitly requested a PTX version.
+-  PTXVersion = 0;
++  PTXVersion = 32;
+   for (const StringRef Feature : Opts.FeaturesAsWritten) {
+     int PTXV;
+     if (!Feature.starts_with("+ptx") ||
+diff -ruN --strip-trailing-cr a/clang/lib/Basic/Targets/NVPTX.h b/clang/lib/Basic/Targets/NVPTX.h
+--- a/clang/lib/Basic/Targets/NVPTX.h
++++ b/clang/lib/Basic/Targets/NVPTX.h
+@@ -89,10 +89,7 @@
+                  const std::vector<std::string> &FeaturesVec) const override {
+     if (GPU != OffloadArch::UNUSED)
+       Features[OffloadArchToString(GPU)] = true;
+-    // Only add PTX feature if explicitly requested. Otherwise, let the backend
+-    // use the minimum required PTX version for the target SM.
+-    if (PTXVersion != 0)
+-      Features["ptx" + std::to_string(PTXVersion)] = true;
++    Features["ptx" + std::to_string(PTXVersion)] = true;
+     return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
+   }
+ 
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtins-nvptx.c b/clang/test/CodeGen/builtins-nvptx.c
+--- a/clang/test/CodeGen/builtins-nvptx.c
++++ b/clang/test/CodeGen/builtins-nvptx.c
+@@ -46,10 +46,10 @@
+ // RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_101a -target-feature +ptx86 -DPTX=86 \
+ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
+ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX86_SM101a %s
+-// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_120a -target-feature +ptx87 -DPTX=87 \
++// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_120a -target-feature +ptx86 -DPTX=86 \
+ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
+ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX86_SM120a %s
+-// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_103a -target-feature +ptx88 -DPTX=88 \
++// RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_103a -target-feature +ptx87 -DPTX=87 \
+ // RUN:            -disable-llvm-optzns -fcuda-is-device -emit-llvm -o - -x cuda %s \
+ // RUN:   | FileCheck -check-prefix=CHECK -check-prefix=CHECK_PTX87_SM103a %s
+ // RUN: %clang_cc1 -ffp-contract=off -triple nvptx64-unknown-unknown -target-cpu sm_100a -target-feature +ptx87 -DPTX=87 \
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/builtins-nvptx-ptx60.cu b/clang/test/CodeGen/builtins-nvptx-ptx60.cu
+--- a/clang/test/CodeGen/builtins-nvptx-ptx60.cu
++++ b/clang/test/CodeGen/builtins-nvptx-ptx60.cu
+@@ -3,7 +3,7 @@
+ // RUN:            -emit-llvm -o - -x cuda %s \
+ // RUN:   | FileCheck -check-prefix=CHECK %s
+ // RUN: %clang_cc1 -triple nvptx64-unknown-unknown -target-cpu sm_80 \
+-// RUN:            -fcuda-is-device -target-feature +ptx70 \
++// RUN:            -fcuda-is-device -target-feature +ptx65 \
+ // RUN:            -emit-llvm -o - -x cuda %s \
+ // RUN:   | FileCheck -check-prefix=CHECK %s
+ // RUN: %clang_cc1 -triple nvptx64-unknown-unknown -target-cpu sm_80 \
+diff -ruN --strip-trailing-cr a/clang/test/CodeGen/nvptx_attributes.c b/clang/test/CodeGen/nvptx_attributes.c
+--- a/clang/test/CodeGen/nvptx_attributes.c
++++ b/clang/test/CodeGen/nvptx_attributes.c
+@@ -16,7 +16,7 @@
+ }
+ 
+ //.
+-// CHECK: attributes #[[ATTR0]] = { convergent noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="sm_61" "target-features"="+sm_61" }
++// CHECK: attributes #[[ATTR0]] = { convergent noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="sm_61" "target-features"="+ptx32,+sm_61" }
+ //.
+ // CHECK: [[META0:![0-9]+]] = !{i32 1, !"wchar_size", i32 4}
+ // CHECK: [[META1:![0-9]+]] = !{!"{{.*}}clang version {{.*}}"}
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCUDA/convergent.cu b/clang/test/CodeGenCUDA/convergent.cu
+--- a/clang/test/CodeGenCUDA/convergent.cu
++++ b/clang/test/CodeGenCUDA/convergent.cu
+@@ -71,10 +71,10 @@
+ 
+ 
+ //.
+-// DEVICE: attributes #[[ATTR0]] = { convergent mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+-// DEVICE: attributes #[[ATTR1]] = { mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+-// DEVICE: attributes #[[ATTR2:[0-9]+]] = { convergent nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+-// DEVICE: attributes #[[ATTR3:[0-9]+]] = { nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++// DEVICE: attributes #[[ATTR0]] = { convergent mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
++// DEVICE: attributes #[[ATTR1]] = { mustprogress noinline nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
++// DEVICE: attributes #[[ATTR2:[0-9]+]] = { convergent nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
++// DEVICE: attributes #[[ATTR3:[0-9]+]] = { nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
+ // DEVICE: attributes #[[ATTR4]] = { convergent nounwind }
+ // DEVICE: attributes #[[ATTR5]] = { convergent nounwind memory(none) }
+ // DEVICE: attributes #[[ATTR6]] = { nounwind }
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp b/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
+--- a/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
++++ b/clang/test/CodeGenSYCL/kernel-caller-entry-point.cpp
+@@ -182,7 +182,7 @@
+ // CHECK-AMDGCN: #[[AMDGCN_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+ // CHECK-AMDGCN: #[[AMDGCN_ATTR1]] = { convergent nounwind }
+ //
+-// CHECK-NVPTX: #[[NVPTX_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
++// CHECK-NVPTX: #[[NVPTX_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-features"="+ptx32" }
+ // CHECK-NVPTX: #[[NVPTX_ATTR1]] = { convergent nounwind }
+ //
+ // CHECK-SPIR: #[[SPIR_ATTR0]] = { convergent mustprogress noinline norecurse nounwind optnone "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+diff -ruN --strip-trailing-cr a/clang/test/Headers/gpuintrin.c b/clang/test/Headers/gpuintrin.c
+--- a/clang/test/Headers/gpuintrin.c
++++ b/clang/test/Headers/gpuintrin.c
+@@ -5,8 +5,8 @@
+ // RUN: | FileCheck %s --check-prefix=AMDGPU
+ // RUN: %clang_cc1 -internal-isystem %S/Inputs/include  \
+ // RUN:   -internal-isystem %S/../../lib/Headers/ \
+-// RUN:   -triple nvptx64-nvidia-cuda -target-feature +ptx63 \
+-// RUN:   -emit-llvm %s -o - \
++// RUN:   -target-feature +ptx62 \
++// RUN:   -triple nvptx64-nvidia-cuda -emit-llvm %s -o - \
+ // RUN: | FileCheck %s --check-prefix=NVPTX
+ // RUN: %clang_cc1 -internal-isystem %S/Inputs/include  \
+ // RUN:   -internal-isystem %S/../../lib/Headers/ \
+diff -ruN --strip-trailing-cr a/flang/lib/Frontend/CompilerInstance.cpp b/flang/lib/Frontend/CompilerInstance.cpp
+--- a/flang/lib/Frontend/CompilerInstance.cpp
++++ b/flang/lib/Frontend/CompilerInstance.cpp
+@@ -288,16 +288,25 @@
+                                           const llvm::Triple triple) {
+   llvm::StringRef cpu = targetOpts.cpu;
+   llvm::StringMap<bool> implicitFeaturesMap;
++  std::string errorMsg;
++  bool ptxVer = false;
+ 
+   // Add target features specified by the user
+   for (auto &userFeature : targetOpts.featuresAsWritten) {
+     llvm::StringRef userKeyString(llvm::StringRef(userFeature).drop_front(1));
+     implicitFeaturesMap[userKeyString.str()] = (userFeature[0] == '+');
++    // Check if the user provided a PTX version
++    if (userKeyString.starts_with("ptx"))
++      ptxVer = true;
+   }
+ 
+-  // Set the compute capability (only if one was explicitly provided).
+-  if (!cpu.empty())
+-    implicitFeaturesMap[cpu.str()] = true;
++  // Set the default PTX version to `ptx61` if none was provided.
++  // TODO: set the default PTX version based on the chip.
++  if (!ptxVer)
++    implicitFeaturesMap["ptx61"] = true;
++
++  // Set the compute capability.
++  implicitFeaturesMap[cpu.str()] = true;
+ 
+   llvm::SmallVector<std::string> featuresVec;
+   for (auto &implicitFeatureItem : implicitFeaturesMap) {
+diff -ruN --strip-trailing-cr a/flang/test/Lower/OpenMP/target_cpu_features.f90 b/flang/test/Lower/OpenMP/target_cpu_features.f90
+--- a/flang/test/Lower/OpenMP/target_cpu_features.f90
++++ b/flang/test/Lower/OpenMP/target_cpu_features.f90
+@@ -16,4 +16,4 @@
+ 
+ !NVPTX: module attributes {
+ !NVPTX-SAME: fir.target_cpu = "sm_80"
+-!NVPTX-SAME: fir.target_features = #llvm.target_features<["+sm_80"]>
++!NVPTX-SAME: fir.target_features = #llvm.target_features<["+ptx61", "+sm_80"]>
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp b/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
+--- a/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
++++ b/llvm/lib/Target/NVPTX/NVPTXSubtarget.cpp
+@@ -35,87 +35,9 @@
+                                       "f32x2 instructions and registers."),
+                              cl::init(false));
+ 
+-// FullSmVersion encoding helpers: SM * 10 + suffix offset
+-// (0 = base, 2 = 'f', 3 = 'a').
+-static constexpr unsigned SM(unsigned Version) { return Version * 10; }
+-static constexpr unsigned SMF(unsigned Version) { return SM(Version) + 2; }
+-static constexpr unsigned SMA(unsigned Version) { return SM(Version) + 3; }
+-
+ // Pin the vtable to this file.
+ void NVPTXSubtarget::anchor() {}
+ 
+-// Returns the minimum PTX version required for a given SM target.
+-// This must be kept in sync with the "Supported Targets" column of the
+-// "PTX Release History" table in the PTX ISA documentation:
+-// https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes-ptx-release-history
+-//
+-// Note: LLVM's minimum supported PTX version is 3.2 (see FeaturePTX in
+-// NVPTX.td), so older SMs that supported earlier PTX versions instead use 3.2
+-// as their effective minimum.
+-static unsigned getMinPTXVersionForSM(unsigned FullSmVersion) {
+-  switch (FullSmVersion) {
+-  case SM(20):
+-  case SM(21):
+-  case SM(30):
+-  case SM(35):
+-    return 32;
+-  case SM(32):
+-  case SM(50):
+-    return 40;
+-  case SM(37):
+-  case SM(52):
+-    return 41;
+-  case SM(53):
+-    return 42;
+-  case SM(60):
+-  case SM(61):
+-  case SM(62):
+-    return 50;
+-  case SM(70):
+-    return 60;
+-  case SM(72):
+-    return 61;
+-  case SM(75):
+-    return 63;
+-  case SM(80):
+-    return 70;
+-  case SM(86):
+-    return 71;
+-  case SM(87):
+-    return 74;
+-  case SM(89):
+-  case SM(90):
+-    return 78;
+-  case SMA(90):
+-    return 80;
+-  case SM(100):
+-  case SMA(100):
+-  case SM(101):
+-  case SMA(101):
+-    return 86;
+-  case SM(120):
+-  case SMA(120):
+-    return 87;
+-  case SMF(100):
+-  case SMF(101):
+-  case SM(103):
+-  case SMF(103):
+-  case SMA(103):
+-  case SMF(120):
+-  case SM(121):
+-  case SMF(121):
+-  case SMA(121):
+-    return 88;
+-  case SM(88):
+-  case SM(110):
+-  case SMF(110):
+-  case SMA(110):
+-    return 90;
+-  default:
+-    llvm_unreachable("Unknown SM version");
+-  }
+-}
+-
+ NVPTXSubtarget &NVPTXSubtarget::initializeSubtargetDependencies(StringRef CPU,
+                                                                 StringRef FS) {
+   TargetName = std::string(CPU);
+@@ -127,20 +49,9 @@
+   // sm_90a, which would *not* be a subset of sm_91.
+   SmVersion = getSmVersion();
+ 
+-  unsigned MinPTX = getMinPTXVersionForSM(FullSmVersion);
+-
++  // Set default to PTX 6.0 (CUDA 9.0)
+   if (PTXVersion == 0) {
+-    // User didn't request a specific PTX version; use the minimum for this SM.
+-    PTXVersion = MinPTX;
+-  } else if (PTXVersion < MinPTX) {
+-    // User explicitly requested an insufficient PTX version.
+-    reportFatalUsageError(
+-        formatv("PTX version {0}.{1} does not support target '{2}'. "
+-                "Minimum required PTX version is {3}.{4}. "
+-                "Either remove the PTX version to use the default, "
+-                "or increase it to at least {3}.{4}.",
+-                PTXVersion / 10, PTXVersion % 10, getTargetName(), MinPTX / 10,
+-                MinPTX % 10));
++    PTXVersion = 60;
+   }
+ 
+   return *this;
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXSubtarget.h b/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
+--- a/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
++++ b/llvm/lib/Target/NVPTX/NVPTXSubtarget.h
+@@ -29,10 +29,6 @@
+ 
+ namespace llvm {
+ 
+-// FullSmVersion encoding: SM * 10 + ArchSuffixOffset
+-// ArchSuffixOffset: 0 (base), 2 ('f'), 3 ('a')
+-// e.g. sm_100 -> 1000, sm_100f -> 1002, sm_100a -> 1003
+-
+ class NVPTXSubtarget : public NVPTXGenSubtargetInfo {
+   virtual void anchor();
+   std::string TargetName;
+@@ -40,9 +36,8 @@
+   // PTX version x.y is represented as 10*x+y, e.g. 3.1 == 31
+   unsigned PTXVersion;
+ 
+-  // FullSmVersion encoding: SM * 10 + ArchSuffixOffset
+-  // ArchSuffixOffset: 0 (base), 2 ('f'), 3 ('a')
+-  // e.g. sm_30 -> 300, sm_90a -> 903, sm_100f -> 1002
++  // Full SM version x.y is represented as 100*x+10*y+feature, e.g. 3.1 == 310
++  // sm_90a == 901
+   unsigned int FullSmVersion;
+ 
+   // SM version x.y is represented as 10*x+y, e.g. 3.1 == 31. Derived from
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTX.td b/llvm/lib/Target/NVPTX/NVPTX.td
+--- a/llvm/lib/Target/NVPTX/NVPTX.td
++++ b/llvm/lib/Target/NVPTX/NVPTX.td
+@@ -68,11 +68,10 @@
+ // represents 'z'), sm_103f, and sm_103 architecture variants. The sm_103 is
+ // compatible with sm_103a and sm_103f, and sm_103f is compatible with sm_103a.
+ //
+-// Encoding := Arch * 10 + ArchSuffixOffset
++// Encoding := Arch * 10 + 2 (for 'f') + 1 (for 'a')
+ // Arch := X * 10 + Y
+-// ArchSuffixOffset := 0 (base), 2 ('f'), or 3 ('a')
+ //
+-// For example, sm_103a is encoded as 1033 (103 * 10 + 3) and sm_103f is
++// For example, sm_103a is encoded as 1033 (103 * 10 + 2 + 1) and sm_103f is
+ // encoded as 1032 (103 * 10 + 2).
+ //
+ // This encoding allows simple partial ordering of the architectures.
+@@ -81,27 +80,21 @@
+ //  + Compare within the family by comparing FullSMVersion, given both belongs to
+ //    the same family.
+ //  + Detect 'a' variants by checking FullSMVersion & 1.
+-class Proc<FeatureSM SM>
+- : Processor<SM.Name, NoItineraries, [SM]>;
+-
+ foreach sm = [20, 21, 30, 32, 35, 37, 50, 52, 53, 60,
+               61, 62, 70, 72, 75, 80, 86, 87, 88, 89,
+               90, 100, 101, 103, 110, 120, 121] in {
+   // Base SM version (e.g. FullSMVersion for sm_100 is 1000)
+   def SM#sm : FeatureSM<""#sm, !mul(sm, 10)>;
+-  def : Proc<!cast<FeatureSM>("SM"#sm)>;
+ 
+-  // Family-specific variants, compatible within same family (e.g. sm_100f = 1002)
+-  if !ge(sm, 100) then {
++  // Family-specific targets which are compatible within same family
++  // (e.g. FullSMVersion for sm_100f is 1002)
++  if !ge(sm, 100) then
+     def SM#sm#f : FeatureSM<""#sm#"f", !add(!mul(sm, 10), 2)>;
+-    def : Proc<!cast<FeatureSM>("SM"#sm#"f")>;
+-  }
+ 
+-  // Architecture-specific variants, incompatible across architectures (e.g. sm_100a = 1003)
+-  if !ge(sm, 90) then {
++  // Architecture-specific targets which are incompatible across architectures
++  // (e.g. FullSMVersion for sm_100a is 1003)
++  if !ge(sm, 90) then
+     def SM#sm#a : FeatureSM<""#sm#"a", !add(!mul(sm, 10), 3)>;
+-    def : Proc<!cast<FeatureSM>("SM"#sm#"a")>;
+-  }
+ }
+ 
+ foreach version = [32, 40, 41, 42, 43, 50, 60, 61, 62, 63, 64, 65, 70, 71, 72,
+@@ -109,6 +102,55 @@
+                    90] in
+   def PTX#version : FeaturePTX<version>;
+ 
++//===----------------------------------------------------------------------===//
++// NVPTX supported processors.
++//===----------------------------------------------------------------------===//
++
++class Proc<string Name, list<SubtargetFeature> Features>
++ : Processor<Name, NoItineraries, Features>;
++
++def : Proc<"sm_20",   [SM20, PTX32]>;
++def : Proc<"sm_21",   [SM21, PTX32]>;
++def : Proc<"sm_30",   [SM30]>;
++def : Proc<"sm_32",   [SM32, PTX40]>;
++def : Proc<"sm_35",   [SM35, PTX32]>;
++def : Proc<"sm_37",   [SM37, PTX41]>;
++def : Proc<"sm_50",   [SM50, PTX40]>;
++def : Proc<"sm_52",   [SM52, PTX41]>;
++def : Proc<"sm_53",   [SM53, PTX42]>;
++def : Proc<"sm_60",   [SM60, PTX50]>;
++def : Proc<"sm_61",   [SM61, PTX50]>;
++def : Proc<"sm_62",   [SM62, PTX50]>;
++def : Proc<"sm_70",   [SM70, PTX60]>;
++def : Proc<"sm_72",   [SM72, PTX61]>;
++def : Proc<"sm_75",   [SM75, PTX63]>;
++def : Proc<"sm_80",   [SM80, PTX70]>;
++def : Proc<"sm_86",   [SM86, PTX71]>;
++def : Proc<"sm_87",   [SM87, PTX74]>;
++def : Proc<"sm_88",   [SM88, PTX90]>;
++def : Proc<"sm_89",   [SM89, PTX78]>;
++def : Proc<"sm_90",   [SM90, PTX78]>;
++def : Proc<"sm_90a",  [SM90a, PTX80]>;
++def : Proc<"sm_100",  [SM100, PTX86]>;
++def : Proc<"sm_100a", [SM100a, PTX86]>;
++def : Proc<"sm_100f", [SM100f, PTX88]>;
++def : Proc<"sm_101",  [SM101, PTX86]>;
++def : Proc<"sm_101a", [SM101a, PTX86]>;
++def : Proc<"sm_101f", [SM101f, PTX88]>;
++def : Proc<"sm_103",  [SM103, PTX88]>;
++def : Proc<"sm_103a", [SM103a, PTX88]>;
++def : Proc<"sm_103f", [SM103f, PTX88]>;
++def : Proc<"sm_110",  [SM110, PTX90]>;
++def : Proc<"sm_110a", [SM110a, PTX90]>;
++def : Proc<"sm_110f", [SM110f, PTX90]>;
++def : Proc<"sm_120",  [SM120, PTX87]>;
++def : Proc<"sm_120a", [SM120a, PTX87]>;
++def : Proc<"sm_120f", [SM120f, PTX88]>;
++def : Proc<"sm_121",  [SM121, PTX88]>;
++def : Proc<"sm_121a", [SM121a, PTX88]>;
++def : Proc<"sm_121f", [SM121f, PTX88]>;
++
++
+ def Is64Bit : Predicate<"Subtarget->getTargetTriple().getArch() == Triple::nvptx64">;
+ def NVPTX64 : HwMode<[Is64Bit]>;
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll b/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
+--- a/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
++++ b/llvm/test/CodeGen/NVPTX/clusterlaunchcontrol-multicast.ll
+@@ -19,10 +19,10 @@
+ ; RUN: %if ptxas-sm_110f && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_110f -mattr=+ptx90 | %ptxas-verify -arch=sm_110f %}
+ ; RUN: %if ptxas-sm_110f && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_110f -mattr=+ptx90 --nvptx-short-ptr | %ptxas-verify -arch=sm_110f %}
+ 
+-; RUN: llc -o - -mcpu=sm_120a -march=nvptx64 -mattr=+ptx87 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
+-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | %ptxas-verify -arch=sm_120a %}
+-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 --nvptx-short-ptr | %ptxas-verify -arch=sm_120a %}
++; RUN: llc -o - -mcpu=sm_120a -march=nvptx64 -mattr=+ptx86 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | %ptxas-verify -arch=sm_120a %}
++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 --nvptx-short-ptr | %ptxas-verify -arch=sm_120a %}
+ 
+ ; RUN: llc -o - -mcpu=sm_120f -march=nvptx64 -mattr=+ptx88 %s | FileCheck %s --check-prefixes=CHECK,CHECK-PTX-SHARED64
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120f -mattr=+ptx88 --nvptx-short-ptr | FileCheck --check-prefixes=CHECK,CHECK-PTX-SHARED32 %s
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/convert-sm100a.ll b/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
+--- a/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
++++ b/llvm/test/CodeGen/NVPTX/convert-sm100a.ll
+@@ -1,10 +1,10 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx86 | FileCheck %s
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_101a -mattr=+ptx86 | FileCheck %s
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | FileCheck %s
++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | FileCheck %s
+ ; RUN: %if ptxas-sm_100a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx86 | %ptxas-verify -arch=sm_100a %}
+ ; RUN: %if ptxas-sm_101a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_101a -mattr=+ptx86 | %ptxas-verify -arch=sm_101a %}
+-; RUN: %if ptxas-sm_120a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx87 | %ptxas-verify -arch=sm_120a %}
++; RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 | %ptxas-verify -arch=sm_120a %}
+ 
+ define i16 @cvt_rn_sf_e2m3x2_f32(float %f1, float %f2) {
+ ; CHECK-LABEL: cvt_rn_sf_e2m3x2_f32(
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/convert-sm103a.ll b/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
+--- a/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
++++ b/llvm/test/CodeGen/NVPTX/convert-sm103a.ll
+@@ -1,8 +1,8 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx87 | FileCheck %s
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx88 | FileCheck %s
++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 | FileCheck %s
+ ; RUN: %if ptxas-sm_100a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_100a -mattr=+ptx87 | %ptxas-verify -arch=sm_100a %}
+-; RUN: %if ptxas-sm_103a && ptxas-isa-8.8 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx88 | %ptxas-verify -arch=sm_103a %}
++; RUN: %if ptxas-sm_103a && ptxas-isa-8.7 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 | %ptxas-verify -arch=sm_103a %}
+ 
+ ; F16X2 conversions
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/f32-ex2.ll b/llvm/test/CodeGen/NVPTX/f32-ex2.ll
+--- a/llvm/test/CodeGen/NVPTX/f32-ex2.ll
++++ b/llvm/test/CodeGen/NVPTX/f32-ex2.ll
+@@ -1,6 +1,6 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+-; RUN: llc < %s -mcpu=sm_50 | FileCheck --check-prefixes=CHECK %s
+-; RUN: %if ptxas-sm_50 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_50 | %ptxas-verify -arch=sm_50 %}
++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 | FileCheck --check-prefixes=CHECK %s
++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_50 -mattr=+ptx32 | %ptxas-verify -arch=sm_50 %}
+ target triple = "nvptx-nvidia-cuda"
+ 
+ declare float @llvm.nvvm.ex2.approx.f32(float)
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/fexp2.ll b/llvm/test/CodeGen/NVPTX/fexp2.ll
+--- a/llvm/test/CodeGen/NVPTX/fexp2.ll
++++ b/llvm/test/CodeGen/NVPTX/fexp2.ll
+@@ -1,8 +1,8 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+-; RUN: llc < %s -mcpu=sm_50 | FileCheck --check-prefixes=CHECK %s
++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 | FileCheck --check-prefixes=CHECK %s
+ ; RUN: llc < %s -mcpu=sm_75 -mattr=+ptx70 | FileCheck --check-prefixes=CHECK-FP16 %s
+ ; RUN: llc < %s -mcpu=sm_90 -mattr=+ptx78 | FileCheck --check-prefixes=CHECK-BF16 %s
+-; RUN: %if ptxas-sm_50 %{ llc < %s -mcpu=sm_50 | %ptxas-verify -arch=sm_50 %}
++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mcpu=sm_50 -mattr=+ptx32 | %ptxas-verify -arch=sm_50 %}
+ ; RUN: %if ptxas-sm_75 && ptxas-isa-7.0 %{ llc < %s -mcpu=sm_75 -mattr=+ptx70 | %ptxas-verify -arch=sm_75 %}
+ ; RUN: %if ptxas-sm_90 && ptxas-isa-7.8 %{ llc < %s -mcpu=sm_90 -mattr=+ptx78 | %ptxas-verify -arch=sm_90 %}
+ target triple = "nvptx64-nvidia-cuda"
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/flog2.ll b/llvm/test/CodeGen/NVPTX/flog2.ll
+--- a/llvm/test/CodeGen/NVPTX/flog2.ll
++++ b/llvm/test/CodeGen/NVPTX/flog2.ll
+@@ -1,6 +1,6 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+-; RUN: llc < %s -mcpu=sm_50 -nvptx-approx-log2f32 | FileCheck --check-prefixes=CHECK %s
+-; RUN: %if ptxas-sm_50 %{ llc < %s -mcpu=sm_50 -nvptx-approx-log2f32 | %ptxas-verify -arch=sm_50 %}
++; RUN: llc < %s -mcpu=sm_50 -mattr=+ptx32 -nvptx-approx-log2f32 | FileCheck --check-prefixes=CHECK %s
++; RUN: %if ptxas-sm_50 && ptxas-isa-3.2 %{ llc < %s -mcpu=sm_50 -mattr=+ptx32 -nvptx-approx-log2f32 | %ptxas-verify -arch=sm_50 %}
+ target triple = "nvptx64-nvidia-cuda"
+ 
+ ; CHECK-LABEL: log2_test
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/i128.ll b/llvm/test/CodeGen/NVPTX/i128.ll
+--- a/llvm/test/CodeGen/NVPTX/i128.ll
++++ b/llvm/test/CodeGen/NVPTX/i128.ll
+@@ -1,6 +1,6 @@
+ ; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
+-; RUN: llc < %s -mtriple=nvptx64-- -mcpu=sm_30 -mattr=+ptx60 2>&1 | FileCheck %s
+-; RUN: %if ptxas-sm_30 && ptxas-isa-6.0 %{ llc < %s -mtriple=nvptx64-- -mcpu=sm_30 -mattr=+ptx60 | %ptxas-verify -arch=sm_30 %}
++; RUN: llc < %s -mtriple=nvptx64-- -mcpu=sm_30 2>&1 | FileCheck %s
++; RUN: %if ptxas-sm_30 %{ llc < %s -mtriple=nvptx64-- -mcpu=sm_30 | %ptxas-verify -arch=sm_30 %}
+ 
+ define i128 @srem_i128(i128 %lhs, i128 %rhs) {
+ ; CHECK-LABEL: srem_i128(
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll b/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
+--- a/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
++++ b/llvm/test/CodeGen/NVPTX/nvvm-reflect-arch-O0.ll
+@@ -1,6 +1,6 @@
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_52 -mattr=+ptx64 -O0 | FileCheck %s --check-prefixes=SM_52,COMMON
+ ; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_70 -mattr=+ptx64 -O0 | FileCheck %s --check-prefixes=SM_70,COMMON
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90 -O0 | FileCheck %s --check-prefixes=SM_90,COMMON
++; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90 -mattr=+ptx72 -O0 | FileCheck %s --check-prefixes=SM_90,COMMON
+ 
+ @.str = private unnamed_addr constant [12 x i8] c"__CUDA_ARCH\00"
+ @.str1 = constant [11 x i8] c"__CUDA_FTZ\00"
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll b/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
+--- a/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
++++ b/llvm/test/CodeGen/NVPTX/ptx-version-validation.ll
+@@ -1,51 +0,0 @@
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx90 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A-HIGH
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_103a 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A
+-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx87 2>&1 | FileCheck %s --check-prefix=CHECK-SM103A-LOW
+-; RUN: %if ptxas-sm_103a && ptxas-isa-9.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a -mattr=+ptx90 | %ptxas-verify -arch=sm_103a %}
+-; RUN: %if ptxas-sm_103a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_103a | %ptxas-verify -arch=sm_103a %}
+-
+-; Test that sm_120a defaults/requires PTX 8.7
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_120a 2>&1 | FileCheck %s --check-prefix=CHECK-SM120A
+-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 2>&1 | FileCheck %s --check-prefix=CHECK-SM120A-LOW
+-; RUN: %if ptxas-sm_120a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_120a | %ptxas-verify -arch=sm_120a %}
+-
+-; Test that sm_90a defaults/requires PTX 8.0
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_90a 2>&1 | FileCheck %s --check-prefix=CHECK-SM90A
+-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_90a -mattr=+ptx78 2>&1 | FileCheck %s --check-prefix=CHECK-SM90A-LOW
+-; RUN: %if ptxas-sm_90a %{ llc < %s -mtriple=nvptx64 -mcpu=sm_90a | %ptxas-verify -arch=sm_90a %}
+-
+-; Test older SM targets
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_80 2>&1 | FileCheck %s --check-prefix=CHECK-SM80
+-; RUN: not llc < %s -mtriple=nvptx64 -mcpu=sm_80 -mattr=+ptx63 2>&1 | FileCheck %s --check-prefix=CHECK-SM80-LOW
+-; RUN: %if ptxas-sm_80 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_80 | %ptxas-verify -arch=sm_80 %}
+-
+-; CHECK-SM103A-HIGH: .version 9.0
+-; CHECK-SM103A-HIGH: .target sm_103a
+-
+-; CHECK-SM103A: .version 8.8
+-; CHECK-SM103A: .target sm_103a
+-
+-; CHECK-SM103A-LOW: LLVM ERROR: PTX version 8.7 does not support target 'sm_103a'.
+-; CHECK-SM103A-LOW: Minimum required PTX version is 8.8.
+-
+-; CHECK-SM120A: .version 8.7
+-; CHECK-SM120A: .target sm_120a
+-
+-; CHECK-SM120A-LOW: LLVM ERROR: PTX version 8.6 does not support target 'sm_120a'.
+-; CHECK-SM120A-LOW: Minimum required PTX version is 8.7.
+-
+-; CHECK-SM90A: .version 8.0
+-; CHECK-SM90A: .target sm_90a
+-
+-; CHECK-SM90A-LOW: LLVM ERROR: PTX version 7.8 does not support target 'sm_90a'.
+-; CHECK-SM90A-LOW: Minimum required PTX version is 8.0.
+-
+-; CHECK-SM80: .version 7.0
+-; CHECK-SM80: .target sm_80
+-
+-; CHECK-SM80-LOW: LLVM ERROR: PTX version 6.3 does not support target 'sm_80'.
+-; CHECK-SM80-LOW: Minimum required PTX version is 7.0.
+-
+-define void @foo() {
+-  ret void
+-}
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/rsqrt.ll b/llvm/test/CodeGen/NVPTX/rsqrt.ll
+--- a/llvm/test/CodeGen/NVPTX/rsqrt.ll
++++ b/llvm/test/CodeGen/NVPTX/rsqrt.ll
+@@ -1,5 +1,5 @@
+-; RUN: llc < %s -mtriple=nvptx64 -mcpu=sm_30 -mattr=+ptx40 | FileCheck %s
+-; RUN: %if ptxas-sm_30 && ptxas-isa-4.0 %{ llc < %s -mtriple=nvptx64 -mcpu=sm_30 -mattr=+ptx40 | %ptxas-verify -arch=sm_30 %}
++; RUN: llc < %s -mtriple=nvptx64 | FileCheck %s
++; RUN: %if ptxas %{ llc < %s -mtriple=nvptx64 | %ptxas-verify %}
+ 
+ ; CHECK-LABEL: .func{{.*}}test1
+ define float @test1(float %in) local_unnamed_addr {
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/sm-version.ll b/llvm/test/CodeGen/NVPTX/sm-version.ll
+--- a/llvm/test/CodeGen/NVPTX/sm-version.ll
++++ b/llvm/test/CodeGen/NVPTX/sm-version.ll
+@@ -76,7 +76,7 @@
+ 
+ ; SM20: .version 3.2
+ ; SM21: .version 3.2
+-; SM30: .version 3.2
++; SM30: .version 6.0
+ ; SM32: .version 4.0
+ ; SM35: .version 3.2
+ ; SM37: .version 4.1
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/surf-tex.py b/llvm/test/CodeGen/NVPTX/surf-tex.py
+--- a/llvm/test/CodeGen/NVPTX/surf-tex.py
++++ b/llvm/test/CodeGen/NVPTX/surf-tex.py
+@@ -1,6 +1,6 @@
+ # RUN: %python %s --target=cuda --tests=suld,sust,tex,tld4 --gen-list=%t.list > %t-cuda.ll
+-# RUN: llc -mcpu=sm_60 %t-cuda.ll -verify-machineinstrs -o - | FileCheck %t-cuda.ll
+-# RUN: %if ptxas-sm_60 %{ llc -mcpu=sm_60 %t-cuda.ll -verify-machineinstrs -o - | %ptxas-verify -arch=sm_60 %}
++# RUN: llc -mcpu=sm_60 -mattr=+ptx43 %t-cuda.ll -verify-machineinstrs -o - | FileCheck %t-cuda.ll
++# RUN: %if ptxas-sm_60 && ptxas-isa-4.3 %{ llc -mcpu=sm_60 -mattr=+ptx43 %t-cuda.ll -verify-machineinstrs -o - | %ptxas-verify -arch=sm_60 %}
+ 
+ # We only need to run this second time for texture tests, because
+ # there is a difference between unified and non-unified intrinsics.
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py b/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
+--- a/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
++++ b/llvm/test/CodeGen/NVPTX/wmma-ptx86-sm120a.py
+@@ -0,0 +1,14 @@
++# Check all variants of instructions supported by PTX86 on SM120a
++# RUN: %python %s --ptx=86 --gpu-arch=120a > %t-ptx86-sm_120a.ll
++# RUN: FileCheck %t-ptx86-sm_120a.ll < %t-ptx86-sm_120a.ll \
++# RUN:           --check-prefixes=PTX86LDMATRIX-DAG,PTX86STMATRIX-DAG
++# RUN: llc < %t-ptx86-sm_120a.ll -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 \
++# RUN:           | FileCheck %t-ptx86-sm_120a.ll
++# RUN: %if ptxas-sm_120a && ptxas-isa-8.6 %{                                                  \
++# RUN: llc < %t-ptx86-sm_120a.ll -mtriple=nvptx64 -mcpu=sm_120a -mattr=+ptx86 \
++# RUN:           | %ptxas-verify -arch=sm_120a                              \
++# RUN: %}
++
++import wmma
++
++wmma.main()
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h b/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
+--- a/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
++++ b/mlir/include/mlir/Dialect/GPU/Pipelines/Passes.h
+@@ -32,7 +32,7 @@
+   PassOptions::Option<std::string> cubinFeatures{
+       *this, "cubin-features",
+       llvm::cl::desc("Features to use to serialize to cubin."),
+-      llvm::cl::init("")};
++      llvm::cl::init("+ptx60")};
+   PassOptions::Option<std::string> cubinFormat{
+       *this, "cubin-format",
+       llvm::cl::desc("Compilation format to use to serialize to cubin."),
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td b/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
+--- a/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
++++ b/mlir/include/mlir/Dialect/GPU/Transforms/Passes.td
+@@ -135,30 +135,36 @@
+     gpu.module @rocdl_module_1 {...}
+     ```
+   }];
+-  let options =
+-      [Option<"moduleMatcher", "module", "std::string",
+-              /*default=*/[{""}],
+-              "Regex used to identify the modules to attach the target to.">,
+-       Option<"triple", "triple", "std::string",
+-              /*default=*/"\"nvptx64-nvidia-cuda\"", "Target triple.">,
+-       Option<"chip", "chip", "std::string",
+-              /*default=*/"\"sm_50\"", "Target chip.">,
+-       Option<"features", "features", "std::string",
+-              /*default=*/"\"\"", "Target features.">,
+-       Option<"optLevel", "O", "unsigned",
+-              /*default=*/"2", "Optimization level.">,
+-       Option<"fastFlag", "fast", "bool",
+-              /*default=*/"false", "Enable fast math mode.">,
+-       Option<"ftzFlag", "ftz", "bool",
+-              /*default=*/"false", "Enable flush to zero for denormals.">,
+-       ListOption<"linkLibs", "l", "std::string",
+-                  "Extra bitcode libraries paths to link to.">,
+-       Option<"cmdOptions", "ptxas-cmd-options", "std::string",
+-              /*default=*/[{""}],
+-              "Command line options passed to downstream compiler">,
+-       Option<"verifyTarget", "verify-target-arch", "bool",
+-              /*default=*/"true",
+-              "Enable verification of the target architecture">,
++  let options = [
++    Option<"moduleMatcher", "module", "std::string",
++           /*default=*/ [{""}],
++           "Regex used to identify the modules to attach the target to.">,
++    Option<"triple", "triple", "std::string",
++           /*default=*/ "\"nvptx64-nvidia-cuda\"",
++           "Target triple.">,
++    Option<"chip", "chip", "std::string",
++           /*default=*/"\"sm_50\"",
++           "Target chip.">,
++    Option<"features", "features", "std::string",
++           /*default=*/"\"+ptx60\"",
++           "Target features.">,
++    Option<"optLevel", "O", "unsigned",
++           /*default=*/"2",
++           "Optimization level.">,
++    Option<"fastFlag", "fast", "bool",
++           /*default=*/"false",
++           "Enable fast math mode.">,
++    Option<"ftzFlag", "ftz", "bool",
++           /*default=*/"false",
++           "Enable flush to zero for denormals.">,
++    ListOption<"linkLibs", "l", "std::string",
++           "Extra bitcode libraries paths to link to.">,
++    Option<"cmdOptions", "ptxas-cmd-options", "std::string",
++           /*default=*/ [{""}],
++           "Command line options passed to downstream compiler">,
++    Option<"verifyTarget", "verify-target-arch", "bool",
++           /*default=*/"true",
++           "Enable verification of the target architecture">,
+   ];
+ }
+ 
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td b/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
+--- a/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
++++ b/mlir/include/mlir/Dialect/LLVMIR/NVVMOps.td
+@@ -6370,29 +6370,29 @@
+       }
+     ```
+   }];
+-  let parameters = (ins DefaultValuedParameter<
+-                        "int", "2", "Optimization level to apply.">:$O,
+-      StringRefParameter<"Target triple.", "\"nvptx64-nvidia-cuda\"">:$triple,
+-      StringRefParameter<"Target chip.", "\"sm_50\"">:$chip,
+-      StringRefParameter<"Target chip features.", "\"\"">:$features,
+-      OptionalParameter<"DictionaryAttr", "Target specific flags.">:$flags,
+-      OptionalParameter<"ArrayAttr", "Files to link to the LLVM module.">:$link,
+-      DefaultValuedParameter<"bool", "true",
+-                             "Perform SM version check on Ops.">:$verifyTarget);
++  let parameters = (ins
++    DefaultValuedParameter<"int", "2", "Optimization level to apply.">:$O,
++    StringRefParameter<"Target triple.", "\"nvptx64-nvidia-cuda\"">:$triple,
++    StringRefParameter<"Target chip.", "\"sm_50\"">:$chip,
++    StringRefParameter<"Target chip features.", "\"+ptx60\"">:$features,
++    OptionalParameter<"DictionaryAttr", "Target specific flags.">:$flags,
++    OptionalParameter<"ArrayAttr", "Files to link to the LLVM module.">:$link,
++    DefaultValuedParameter<"bool", "true", "Perform SM version check on Ops.">:$verifyTarget
++  );
+   let assemblyFormat = [{
+     (`<` struct($O, $triple, $chip, $features, $flags, $link, $verifyTarget)^ `>`)?
+   }];
+-  let builders = [AttrBuilder<
+-      (ins CArg<"int", "2">:$optLevel,
+-          CArg<"StringRef", "\"nvptx64-nvidia-cuda\"">:$triple,
+-          CArg<"StringRef", "\"sm_50\"">:$chip,
+-          CArg<"StringRef", "\"\"">:$features,
+-          CArg<"DictionaryAttr", "nullptr">:$targetFlags,
+-          CArg<"ArrayAttr", "nullptr">:$linkFiles,
+-          CArg<"bool", "true">:$verifyTarget),
+-      [{
++  let builders = [
++    AttrBuilder<(ins CArg<"int", "2">:$optLevel,
++                     CArg<"StringRef", "\"nvptx64-nvidia-cuda\"">:$triple,
++                     CArg<"StringRef", "\"sm_50\"">:$chip,
++                     CArg<"StringRef", "\"+ptx60\"">:$features,
++                     CArg<"DictionaryAttr", "nullptr">:$targetFlags,
++                     CArg<"ArrayAttr", "nullptr">:$linkFiles,
++                     CArg<"bool", "true">:$verifyTarget), [{
+       return $_get($_ctxt, optLevel, triple, chip, features, targetFlags, linkFiles, verifyTarget);
+-    }]>];
++    }]>
++  ];
+   let skipDefaultBuilders = 1;
+   let genVerifyDecl = 1;
+   let extraClassDeclaration = [{

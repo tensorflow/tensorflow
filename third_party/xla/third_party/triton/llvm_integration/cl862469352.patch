@@ -1,0 +1,42 @@
+
+--- a/test/Conversion/amd/mbarrier_ops_to_llvm_gfx1250.mlir	2026-01-21 01:19:21.000000000 -0800
++++ b/test/Conversion/amd/mbarrier_ops_to_llvm_gfx1250.mlir	2026-01-28 17:50:39.000000000 -0800
+@@ -8,7 +8,9 @@
+     // GFX1250: %[[INIT_VAL1:.+]] = llvm.mlir.constant(4294967297 : i64) : i64
+     // GFX1250: %[[ALLOC_PTR:.+]] = llvm.extractvalue %arg0[0] : !llvm.struct<(ptr<3>, i32)>
+     // GFX1250: llvm.store %[[INIT_VAL1]], %[[ALLOC_PTR]] : i64, !llvm.ptr<3>
+-    // GFX1250: rocdl.barrier
++    // GFX1250: llvm.fence
++    // GFX1250: rocdl.s.barrier
++    // GFX1250: llvm.fence
+     amdg.init_barrier %alloc, 2 : !ttg.memdesc<1xi64, #shared, #smem, mutable>
+     tt.return
+   }
+
+--- a/test/Conversion/amd/tritongpu_to_llvm.mlir	2026-01-21 01:19:21.000000000 -0800
++++ b/test/Conversion/amd/tritongpu_to_llvm.mlir	2026-01-28 17:50:39.000000000 -0800
+@@ -8,7 +8,9 @@
+     // CHECK: llvm.atomicrmw
+     // CHECK: llvm.store
+     // CHECK: llvm.br
+-    // CHECK: rocdl.barrier
++    // CHECK: llvm.fence
++    // CHECK: rocdl.s.barrier
++    // CHECK: llvm.fence
+     // CHECK: llvm.load
+     // CHECK: llvm.store
+     %0 = tt.atomic_rmw fadd, relaxed, gpu, %arg0, %arg2, %arg1 : (!tt.ptr<f32>, f32, i1) -> f32
+
+--- a/test/Proton/amd/protongpu_to_llvm.mlir	2025-12-11 07:03:23.000000000 -0800
++++ b/test/Proton/amd/protongpu_to_llvm.mlir	2026-01-28 17:50:40.000000000 -0800
+@@ -6,7 +6,9 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: no_conversion
+   llvm.func @no_conversion() {
+-    //CHECK: rocdl.barrier
++    // CHECK: llvm.fence
++    // CHECK: rocdl.s.barrier
++    // CHECK: llvm.fence
+     %0 = ttg.local_alloc : () -> !ttg.memdesc<256xi32, #shared, #smem, mutable>
+     gpu.barrier
+     llvm.return
