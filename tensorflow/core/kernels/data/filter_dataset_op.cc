@@ -257,7 +257,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           absl::StrFormat("%lld", static_cast<long long>(filtered_elements_))));
       result.push_back(std::make_pair(
           "filtered",
-          strings::Printf("%lld", static_cast<long long>(dropped_elements_))));
+          absl::StrFormat("%lld", static_cast<long long>(dropped_elements_))));
       return result;
     }
 
