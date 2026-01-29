@@ -7197,6 +7197,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7217,7 +7218,6 @@ cc_library(
         "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
-        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",

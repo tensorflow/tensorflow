@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 
-#include <string>
+#include <cstdint>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
