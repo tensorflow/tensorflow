@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/map_and_filter_fusion.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/substitute.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
