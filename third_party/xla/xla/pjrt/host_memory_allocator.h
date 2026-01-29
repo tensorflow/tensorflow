@@ -37,7 +37,7 @@ class HostMemoryAllocator {
 
     // Functions for mapping and unmapping the allocated memory.
     absl::AnyInvocable<absl::Status(void*, size_t)> map_fn;
-    absl::AnyInvocable<absl::Status(void*)> unmap_fn;
+    absl::AnyInvocable<absl::Status(void*, size_t)> unmap_fn;
   };
 
   using Factory =
