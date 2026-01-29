@@ -134,7 +134,7 @@ static void Conv2DBenchmark(benchmark::State& state,
 }
 
 static void BM_Conv2D(benchmark::State& state,
-                      const HloBenchmarkOptions& options) {
+                      const HloBenchmarkOptions& options, int type_config_idx) {
   Conv2DBenchmark(state, options, /*batch=*/state.range(0),
                   /*height=*/state.range(1), /*width=*/state.range(2),
                   /*input_channels=*/state.range(3),
@@ -143,11 +143,12 @@ static void BM_Conv2D(benchmark::State& state,
                   /*output_channels=*/state.range(7),
                   /*feature_group_count=*/1,
                   /*padding_mode=*/state.range(8),
-                  /*type_config_idx=*/state.range(9));
+                  /*type_config_idx=*/type_config_idx);
 }
 
 static void BM_GroupedConv2D(benchmark::State& state,
-                             const HloBenchmarkOptions& options) {
+                             const HloBenchmarkOptions& options,
+                             int type_config_idx) {
   Conv2DBenchmark(state, options, /*batch=*/state.range(0),
                   /*height=*/state.range(1), /*width=*/state.range(2),
                   /*input_channels=*/state.range(3),
@@ -156,7 +157,7 @@ static void BM_GroupedConv2D(benchmark::State& state,
                   /*output_channels=*/state.range(7),
                   /*feature_group_count=*/state.range(8),
                   /*padding_mode=*/kSamePadding,
-                  /*type_config_idx=*/state.range(9));
+                  /*type_config_idx=*/type_config_idx);
 }
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
@@ -440,9 +441,7 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state,
 
 void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
   auto add_args = [&](const std::vector<int64_t>& shape_args) {
-    std::vector<int64_t> args = shape_args;
-    args.push_back(type_config);
-    b->Args(args);
+    b->Args(shape_args);
   };
 
   // --------------------------------------------------------------------------
@@ -451,7 +450,7 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
   // // Shapes from XLA convolution tests
 
   // This test case hits b/473570788.
-  if (type_config != 2) {
+  if (type_config == 0) {
     add_args({8, 5, 5, 1, 1, 1, 1, 32, kSamePadding});
   }
   add_args({8, 5, 5, 4, 1, 1, 1, 32, kSamePadding});
@@ -494,12 +493,9 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
   add_args({32, 56, 56, 64, 3, 3, 2, 64, kSamePadding});
 }
 
-void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b,
-                          int type_config) {
+void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b) {
   auto add_args = [&](const std::vector<int64_t>& shape_args) {
-    std::vector<int64_t> args = shape_args;
-    args.push_back(type_config);
-    b->Args(args);
+    b->Args(shape_args);
   };
   add_args({1, 45, 45, 1024, 5, 5, 1, 1024, 1024});
 
@@ -526,11 +522,12 @@ void RegisterBenchmarks() {
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
-    auto* b =
-        benchmark::RegisterBenchmark(name.c_str(), [](benchmark::State& state) {
-          BM_Conv2D(state, HloBenchmarkOptions());
+    auto* b = benchmark::RegisterBenchmark(
+        name.c_str(), [i](benchmark::State& state) {
+          BM_Conv2D(state, HloBenchmarkOptions(), i);
         });
     b->MeasureProcessCPUTime();
+    b->ArgNames({"b", "h", "w", "i", "kh", "kw", "s", "o", "pad"});
     AddConv2DArgs(b, i);
   }
 
@@ -541,12 +538,13 @@ void RegisterBenchmarks() {
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
-    auto* b =
-        benchmark::RegisterBenchmark(name.c_str(), [](benchmark::State& state) {
-          BM_GroupedConv2D(state, HloBenchmarkOptions());
+    auto* b = benchmark::RegisterBenchmark(
+        name.c_str(), [i](benchmark::State& state) {
+          BM_GroupedConv2D(state, HloBenchmarkOptions(), i);
         });
     b->MeasureProcessCPUTime();
-    AddGroupedConv2DArgs(b, i);
+    b->ArgNames({"b", "h", "w", "i", "kh", "kw", "s", "o", "g"});
+    AddGroupedConv2DArgs(b);
   }
 }
 
