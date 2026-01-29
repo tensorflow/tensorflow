@@ -647,15 +647,9 @@ class Translator {
   // Translates the given MLIR module into TFLite FlatBuffer format and returns
   // the serialized output. Returns std::nullopt on unsupported, invalid inputs
   // or internal error.
-  static absl::Status Translate(
-      ModuleOp module, llvm::raw_pwrite_stream& export_stream,
-      tflite::ConverterFlags converter_flags,
-      const std::unordered_set<std::string>& tags,
-      OpOrArgNameMapper* op_or_arg_name_mapper,
-      const std::map<std::string, std::string>& metadata,
-      bool serialize_stablehlo_ops,
-      std::optional<size_t> custom_option_alignment,
-      bool disable_buffer_deduping = false);
+  static absl::Status Translate(ModuleOp module,
+                                const tflite::FlatbufferExportOptions& options,
+                                llvm::raw_pwrite_stream& export_stream);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
@@ -4059,16 +4053,13 @@ constexpr absl::string_view kFlatbufferSizeLimitExceededError =
     "Flatbuffer size exceeds 2gb limit.";
 
 absl::Status Translator::Translate(
-    ModuleOp module, llvm::raw_pwrite_stream& export_stream,
-    tflite::ConverterFlags converter_flags,
-    const std::unordered_set<std::string>& tags,
-    OpOrArgNameMapper* op_or_arg_name_mapper,
-    const std::map<std::string, std::string>& metadata,
-    bool serialize_stablehlo_ops, std::optional<size_t> custom_option_alignment,
-    bool disable_buffer_deduping) {
+    ModuleOp module, const tflite::FlatbufferExportOptions& options,
+    llvm::raw_pwrite_stream& export_stream) {
+  OpOrArgNameMapper* op_or_arg_name_mapper = options.op_or_arg_name_mapper;
   OpOrArgLocNameMapper default_op_or_arg_name_mapper;
-  if (!op_or_arg_name_mapper)
+  if (!op_or_arg_name_mapper) {
     op_or_arg_name_mapper = &default_op_or_arg_name_mapper;
+  }
   if (!UpdateEntryFunction(module)) {
     return absl::InvalidArgumentError("No entry function found.");
   }
@@ -4081,6 +4072,7 @@ absl::Status Translator::Translate(
   // offset and avoid a second retry)
   const int64_t enable_buffer_offset_threshold =
       flatbuffer_size_max - (512 * 1024 * 1024 /* 512MB */);
+  auto converter_flags = options.converter_flags;
   if (!converter_flags.use_buffer_offset() &&
       mlir::TFL::GetApproximateModuleSize(module) >
           enable_buffer_offset_threshold) {
@@ -4089,10 +4081,11 @@ absl::Status Translator::Translate(
   }
 
   auto translate = [&]() {
-    Translator translator(module, export_stream, converter_flags, tags,
-                          op_or_arg_name_mapper, metadata,
-                          custom_option_alignment, disable_buffer_deduping);
-    translator.convert_stablehlo_ = serialize_stablehlo_ops;
+    Translator translator(module, export_stream, converter_flags,
+                          options.saved_model_tags, op_or_arg_name_mapper,
+                          options.metadata, options.custom_option_alignment,
+                          options.disable_buffer_deduping);
+    translator.convert_stablehlo_ = options.serialize_stablehlo_ops;
     return translator.TranslateInternal();
   };
 
@@ -4599,6 +4592,14 @@ std::vector<std::pair<int, int>> Translator::ExtractControlEdges(
 
 namespace tflite {
 
+absl::Status MlirToFlatBufferTranslateFunction(
+    mlir::ModuleOp module, const FlatbufferExportOptions& options,
+    llvm::raw_pwrite_stream& export_stream) {
+  return Translator::Translate(module, options, export_stream);
+}
+
+// Legacy API that returns a boolean and populates a string with the
+// serialized flatbuffer on success.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
                                        std::string* serialized_flatbuffer,
@@ -4606,10 +4607,16 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
   llvm::SmallVector<char, 32 * 1024> buffer;
   llvm::raw_svector_ostream export_stream(buffer);
 
-  absl::Status status = Translator::Translate(
-      module, export_stream, options.converter_flags, options.saved_model_tags,
-      options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
-      options.custom_option_alignment, options.disable_buffer_deduping);
+  absl::Status status;
+  if (serialize_stablehlo_ops != options.serialize_stablehlo_ops) {
+    FlatbufferExportOptions new_options = options;
+    new_options.serialize_stablehlo_ops = serialize_stablehlo_ops;
+    status =
+        MlirToFlatBufferTranslateFunction(module, new_options, export_stream);
+  } else {
+    status = MlirToFlatBufferTranslateFunction(module, options, export_stream);
+  }
+
   if (!status.ok()) {
     return false;
   }
