@@ -48,7 +48,7 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
 //
-// When changing this structure or anything in the cache file layout,
+// When changing this structure or anything in the cache file schema layout,
 // `kVersion` should be incremented by one.
 //
 // When creating a new cache file, `version` should be set to `kVersion`.
@@ -56,7 +56,7 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 2 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 3 };
   uint64_t version;
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;

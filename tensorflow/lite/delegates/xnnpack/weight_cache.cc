@@ -81,6 +81,12 @@ bool FileExists(const char* path) {
 }
 
 bool CheckFingerprints(const cache::schema::BufferList* buffer_list) {
+  XNNPACK_RETURN_CHECK(
+      buffer_list->caching_strategy_version() == xnn_caching_strategy_version(),
+      "Caching strategy version has changed (cache version: %" PRIu64
+      ", XNNPack version: %zu)",
+      buffer_list->caching_strategy_version(), xnn_caching_strategy_version());
+
   if (buffer_list->fingerprints()) {
     for (uint64_t cache_fingerprint : *buffer_list->fingerprints()) {
       xnn_fingerprint fingerprint;
@@ -142,6 +148,7 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
                        "could not write initial cache header in %s: %s.",
                        file_path_.c_str(), strerror(errno));
 
+  schema_.caching_strategy_version = xnn_caching_strategy_version();
   schema_.base_offset = Align(sizeof(header), kMinAlignment);
 
   XNNPACK_RETURN_CHECK(StartBuildStep(), "failed to start initial write step.");
@@ -743,6 +750,7 @@ bool IsCompatibleCacheFile(FileDescriptorView fd) {
   XNNPACK_RETURN_CHECK(
       xnn_initialize(/*allocator=*/nullptr) == xnn_status_success,
       "xnn_initialize failed.");
+
   XNNPACK_RETURN_CHECK(CheckFingerprints(buffer_list));
   return true;
 }
