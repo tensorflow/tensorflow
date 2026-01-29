@@ -206,6 +206,15 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
       std::visit(
           SetAdvancedOption{options.mutable_profiler_options(), kw.first},
           kw.second);
+    } else if (key == "tpu_circular_buffer_tracing") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())
+                ["tpu_circular_buffer_tracing"]
+                    .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
