@@ -115,6 +115,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
@@ -269,6 +270,11 @@ absl::string_view StreamExecutorGpuClient::platform_version() const {
 #elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
   return "cuda " STRINGIFY(CUDART_VERSION);
 #else
+  tsl::Env* env = tsl::Env::Default();
+  if (env->FileExists("/dev/nvidia0").ok() ||
+      env->FileExists("/dev/nvidiactl").ok()) {
+    return "cuda";
+  }
   return "<unknown>";
 #endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
 }
