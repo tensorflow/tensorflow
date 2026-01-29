@@ -1231,6 +1231,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     std::string buffer = storage_it->second->GetData();
     buffer_storage_.buffers().erase(storage_it);
 
+    if (custom_option_alignment_.has_value()) {
+      builder_.ForceVectorAlignment(buffer.size(), sizeof(uint8_t),
+                                    custom_option_alignment_.value());
+    }
     auto buffer_data = builder_.CreateVector(
         reinterpret_cast<const uint8_t*>(buffer.data()), buffer.size());
     return tflite::CreateBuffer(builder_, buffer_data);
