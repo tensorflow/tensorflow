@@ -222,6 +222,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"queue_id", kQueueId},
        {"request_id", kRequestId},
        {"run_id", kRunId},
+       {"global_chip_id", kGlobalChipId},
        {"replica_id", kReplicaId},
        {"graph_type", kGraphType},
        {"step_num", kStepNum},
@@ -304,6 +305,10 @@ const StatTypeMap& GetStatTypeMap() {
        {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
        {"hbm_utilization_percent", kHbmUtilizationPercent},
+       {"performance_counter_id", kPerformanceCounterId},
+       {"counter_value", kCounterValue},
+       {"performance_counter_description", kPerformanceCounterDescription},
+       {"performance_counter_sets", kPerformanceCounterSets},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
