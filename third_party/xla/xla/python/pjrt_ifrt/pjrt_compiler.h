@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_PYTHON_PJRT_IFRT_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/compiler.h"
@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,7 +41,7 @@ class PjRtClient;
 // requirement of `PjRtClient`, which will enable ahead-of-time compilation.
 class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
  public:
-  explicit PjRtCompiler(PjRtClient* client) : client_(client) {}
+  PjRtCompiler(PjRtClient* client, int num_threads);
 
   // Compiler implementation.
 
@@ -67,6 +69,7 @@ class PjRtCompiler final : public llvm::RTTIExtends<PjRtCompiler, Compiler> {
 
  private:
   PjRtClient* client_;
+  std::optional<tsl::thread::ThreadPool> thread_pool_;
 };
 
 }  // namespace ifrt

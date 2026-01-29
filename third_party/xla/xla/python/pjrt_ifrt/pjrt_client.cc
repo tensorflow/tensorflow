@@ -922,9 +922,19 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
   return *Create(std::move(options));
 }
 
+static int NumCompilationThreads(xla::PjRtPlatformId platform_id) {
+  if (platform_id == xla::CudaId()) {
+    // Disable asynchronous compilation on GPUs since sharded autotuning may
+    // require in-order compilation.
+    return 0;
+  }
+  return 8;
+}
+
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)),
-      default_compiler_(this),
+      default_compiler_(this,
+                        NumCompilationThreads(pjrt_client_->platform_id())),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() {
