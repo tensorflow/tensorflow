@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/graph/tensor_id.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <vector>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
