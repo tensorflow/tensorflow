@@ -939,6 +939,12 @@ SymbolicExpr SymbolicExpr::Replace(
   return CreateSymbolicBinaryOp(type, new_lhs, new_rhs, GetContext());
 }
 
+bool SymbolicExpr::IsFunctionOfVariable(VariableID var_id) const {
+  llvm::DenseSet<VariableID> used_vars;
+  GetUsedVariables(used_vars);
+  return used_vars.contains(var_id);
+}
+
 void SymbolicExpr::GetUsedVariables(
     llvm::DenseSet<VariableID>& used_vars) const {
   if (!*this) {

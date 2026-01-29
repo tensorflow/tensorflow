@@ -280,6 +280,24 @@ bool SymbolicMap::IsConstant() const {
   return true;
 }
 
+bool SymbolicMap::IsFunctionOfDim(int64_t dim_id) const {
+  for (const auto& expr : exprs_) {
+    if (expr.IsFunctionOfVariable(dim_id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool SymbolicMap::IsFunctionOfSymbol(int64_t symbol_id) const {
+  for (const auto& expr : exprs_) {
+    if (expr.IsFunctionOfVariable(num_dimensions_ + symbol_id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 llvm::SmallVector<int64_t> SymbolicMap::GetConstantResults() const {
   CHECK(IsConstant()) << "Cannot get constant results from a non-constant map";
   llvm::SmallVector<int64_t> constants;

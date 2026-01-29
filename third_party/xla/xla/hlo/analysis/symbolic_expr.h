@@ -100,6 +100,9 @@ class SymbolicExpr {
 
   void GetUsedVariables(llvm::DenseSet<VariableID>& used_vars) const;
 
+  // Returns true if this expression depends on the given variable.
+  bool IsFunctionOfVariable(VariableID var_id) const;
+
   // Traverses the expression tree and calls the callback for each
   // subexpression in postorder.
   void Walk(const std::function<void(SymbolicExpr)>& callback) const;
