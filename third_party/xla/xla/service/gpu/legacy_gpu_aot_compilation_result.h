@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -63,8 +65,21 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::string> SerializeAsString() const override;
 
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
+    return absl::UnimplementedError(
+        "LoadExecutable without parameters not supported");
+  }
+
   absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
+      LoadExecutable(const se::StreamExecutor* executor) && final {
+    return absl::UnimplementedError(
+        "LoadExecutable with 1 parameter not supported");
+  }
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      se::Platform::Id platform_id,
+      const se::DeviceDescription& device_description) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::shared_ptr<HloModule> shared_optimized_module() override {
@@ -98,8 +113,21 @@ class EarlyExitCompilationResult : public CompiledModule {
 
   absl::StatusOr<std::string> SerializeAsString() const override;
 
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
+    return absl::UnimplementedError(
+        "LoadExecutable without parameters not supported");
+  }
+
   absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
+      LoadExecutable(const se::StreamExecutor* executor) && final {
+    return absl::UnimplementedError(
+        "LoadExecutable with 1 parameter not supported");
+  }
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      se::Platform::Id platform_id,
+      const se::DeviceDescription& device_description) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
   std::shared_ptr<HloModule> shared_optimized_module() override {

@@ -3167,7 +3167,8 @@ GpuCompiler::LoadAotCompilationResult(
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuCompiler::LoadExecutableFromAotResult(
-    const CompiledModule& aot_result, const se::StreamExecutor& stream_exec) {
+    const CompiledModule& aot_result,
+    const se::DeviceDescription& device_description) {
   tsl::profiler::TraceMe traceme("LoadExecutableFromAotResult");
 
   const auto* gpu_aot_result =
@@ -3190,12 +3191,10 @@ GpuCompiler::LoadExecutableFromAotResult(
   // Build the executable, which should be a thunk sequence.
   absl::string_view platform_name = PlatformId()->ToName();
 
-  const se::DeviceDescription& gpu_device_info =
-      stream_exec.GetDeviceDescription();
   llvm::LLVMContext llvm_context;
 
   // Recreate BufferAssignment from proto.
-  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
   ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssignment::FromProto(proto.buffer_assignment(), hlo_module.get(),
@@ -3203,7 +3202,7 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, mlir_context(), &llvm_context,
+      platform_name, device_description, mlir_context(), &llvm_context,
       /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout());
 
   absl::string_view cache_file_path =
@@ -3236,7 +3235,7 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
-    std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+    std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
     return GpuExecutable::Create(GpuExecutable::Params{
         /*asm_text=*/proto.asm_text(),
         /*binary=*/binary,
@@ -3252,7 +3251,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
         /*debug_options=*/std::move(debug_options),
-        /*device_description=*/gpu_device_info,
+        /*device_description=*/device_description,
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true});
   }

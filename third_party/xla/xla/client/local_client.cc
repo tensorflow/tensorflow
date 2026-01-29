@@ -501,7 +501,9 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
       backend().stream_executor(updated_options.device_ordinal()));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      std::move(*aot_result).LoadExecutable(executor));
+                      std::move(*aot_result)
+                          .LoadExecutable(executor->GetPlatform()->id(),
+                                          executor->GetDeviceDescription()));
   return std::make_unique<LocalExecutable>(std::move(executable),
                                            local_service_->mutable_backend(),
                                            updated_options);

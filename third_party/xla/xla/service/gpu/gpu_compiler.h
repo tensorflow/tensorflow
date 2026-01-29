@@ -140,7 +140,7 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromAotResult(
       const CompiledModule& aot_result,
-      const se::StreamExecutor& stream_exec) override;
+      const se::DeviceDescription& device_description) override;
 
   static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
       const stream_executor::DeviceDescription& device_description,

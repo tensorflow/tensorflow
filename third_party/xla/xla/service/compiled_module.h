@@ -23,7 +23,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+
+namespace stream_executor {
+class DeviceDescription;
+
+}  // namespace stream_executor
 
 namespace xla {
 
@@ -36,8 +42,14 @@ class CompiledModule {
 
   virtual absl::StatusOr<std::string> SerializeAsString() const = 0;
 
+  virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && = 0;
+
   virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       const stream_executor::StreamExecutor* executor) && = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      stream_executor::Platform::Id platform_id,
+      const stream_executor::DeviceDescription& device_description) && = 0;
 
   virtual absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
       const {
