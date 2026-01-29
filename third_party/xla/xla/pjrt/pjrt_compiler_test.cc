@@ -115,10 +115,12 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
       return absl::UnimplementedError("test compiler!");
     }
   };
-  std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
-  PjRtRegisterCompiler(topology.platform_name(), std::move(compiler));
-
   CompileOptions options;
+  std::unique_ptr<PjRtCompiler> compiler = std::make_unique<PjRtTestCompiler>();
+  PjRtRegisterCompiler(topology.platform_name(),
+                       options.compiler_variant.value_or(""),
+                       std::move(compiler));
+
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
@@ -177,13 +179,13 @@ class PjRtCompilerDeserializeTopologyTest : public ::testing::Test {
  protected:
   static void SetUpTestSuite() {
     auto compiler = std::make_unique<PjRtDeserializeCompiler>();
-    PjRtRegisterCompiler("deserialize_platform", std::move(compiler));
+    PjRtRegisterDefaultCompiler("deserialize_platform", std::move(compiler));
   }
 };
 
 TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeKnownTopology) {
   absl::StatusOr<PjRtCompiler*> compiler_or =
-      GetPjRtCompiler("deserialize_platform");
+      GetDefaultPjRtCompiler("deserialize_platform");
   ASSERT_TRUE(compiler_or.ok());
   PjRtCompiler* looked_up_compiler = *compiler_or;
 
@@ -196,7 +198,7 @@ TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeKnownTopology) {
 
 TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeUnknownTopology) {
   absl::StatusOr<PjRtCompiler*> compiler_or =
-      GetPjRtCompiler("deserialize_platform");
+      GetDefaultPjRtCompiler("deserialize_platform");
   ASSERT_TRUE(compiler_or.ok());
   PjRtCompiler* looked_up_compiler = *compiler_or;
 
@@ -204,6 +206,34 @@ TEST_F(PjRtCompilerDeserializeTopologyTest, DeserializeUnknownTopology) {
       looked_up_compiler->DeserializePjRtTopologyDescription(
           "unknown_topology");
   EXPECT_TRUE(absl::IsInvalidArgument(res.status()));
+}
+
+TEST(PjRtCompilerTest, VariantRegistryLookup) {
+  const std::string platform = "variant_test_platform";
+  const std::string variant = "test_variant";
+
+  // Register a compiler with a specific variant.
+  PjRtRegisterCompiler(platform, variant,
+                       std::make_unique<PjRtDeserializeCompiler>());
+
+  // Successful lookup with non-empty variant.
+  auto compiler_or = GetPjRtCompiler(platform, variant);
+  ASSERT_TRUE(compiler_or.ok());
+  EXPECT_NE(*compiler_or, nullptr);
+
+  // Platform matches but non-empty variant doesn't.
+  auto status = GetPjRtCompiler(platform, "wrong_variant");
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::IsNotFound(status.status()));
+
+  // Non-empty variant matches but platform doesn't.
+  status = GetPjRtCompiler("wrong_platform", variant);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(absl::IsNotFound(status.status()));
+
+  // Lookup using the single-parameter overload.
+  status = GetDefaultPjRtCompiler(platform);
+  EXPECT_TRUE(absl::IsNotFound(status.status()));
 }
 
 }  // namespace

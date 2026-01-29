@@ -109,5 +109,5 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_cpu_compiler, {
   std::unique_ptr<xla::PjRtCompiler> compiler =
       std::make_unique<xla::cpu::CpuPjRtCompiler>();
-  PjRtRegisterCompiler(xla::CpuName(), std::move(compiler));
+  PjRtRegisterDefaultCompiler(xla::CpuName(), std::move(compiler));
 });

@@ -37,29 +37,49 @@ limitations under the License.
 namespace xla {
 
 ABSL_CONST_INIT absl::Mutex registry_mutex(absl::kConstInit);
-absl::flat_hash_map<std::string, std::unique_ptr<PjRtCompiler>>*
+absl::flat_hash_map<std::pair<std::string, std::string>,
+                    std::unique_ptr<PjRtCompiler>>*
 CompilerRegistry() {
   static auto* compiler_registry =
-      new absl::flat_hash_map<std::string, std::unique_ptr<PjRtCompiler>>();
+      new absl::flat_hash_map<std::pair<std::string, std::string>,
+                              std::unique_ptr<PjRtCompiler>>();
   return compiler_registry;
 }
 
+void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
+                                 std::unique_ptr<PjRtCompiler> compiler) {
+  PjRtRegisterCompiler(platform_name, /*compiler_variant=*/"",
+                       std::move(compiler));
+}
+
 void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
                           std::unique_ptr<PjRtCompiler> compiler) {
   CHECK(compiler != nullptr);
   absl::MutexLock l(registry_mutex);
   auto* compiler_registry = CompilerRegistry();
-  CHECK(!compiler_registry->contains(platform_name));
-  (*compiler_registry)[platform_name] = std::move(compiler);
+  std::pair<std::string, std::string> key{std::string(platform_name),
+                                          std::string(compiler_variant)};
+  CHECK(!compiler_registry->contains(key));
+  (*compiler_registry)[key] = std::move(compiler);
 }
 
-absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(absl::string_view platform_name) {
+absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
+    absl::string_view platform_name) {
+  return GetPjRtCompiler(platform_name, /*compiler_variant=*/"");
+}
+
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    absl::string_view platform_name, absl::string_view compiler_variant) {
   absl::ReaderMutexLock l(registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
-  auto it = compiler_registry->find(platform_name);
+  std::pair<std::string, std::string> key{std::string(platform_name),
+                                          std::string(compiler_variant)};
+  auto it = compiler_registry->find(key);
   if (it == compiler_registry->end()) {
     return absl::NotFoundError(
-        absl::StrCat("No compiler registered for platform ", platform_name));
+        absl::StrCat("No compiler registered for platform ", platform_name,
+                     " and compiler variant ", compiler_variant));
   }
   return it->second.get();
 }
@@ -74,10 +94,17 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
   absl::ReaderMutexLock l(registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
-  auto it = compiler_registry->find(topology.platform_name());
+  auto platform_name = topology.platform_name();
+  auto compiler_variant = options.compiler_variant.value_or("");
+  std::pair<std::string, std::string> key{std::string(platform_name),
+                                          std::string(compiler_variant)};
+  auto it = compiler_registry->find(key);
   if (it == compiler_registry->end()) {
     return absl::NotFoundError(absl::StrCat(
-        "No compiler registered for platform ", topology.platform_name()));
+        "No compiler registered for platform: ", platform_name, " and ",
+        compiler_variant.empty()
+            ? "default variant"
+            : absl::StrCat("compiler variant: ", compiler_variant)));
   }
   return it->second->Compile(std::move(options), computation, topology, client);
 }
@@ -92,10 +119,17 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   }
   absl::ReaderMutexLock l(registry_mutex);
   const auto* compiler_registry = CompilerRegistry();
-  auto it = compiler_registry->find(topology.platform_name());
+  auto platform_name = topology.platform_name();
+  auto compiler_variant = options.compiler_variant.value_or("");
+  std::pair<std::string, std::string> key{std::string(platform_name),
+                                          std::string(compiler_variant)};
+  auto it = compiler_registry->find(key);
   if (it == compiler_registry->end()) {
     return absl::NotFoundError(absl::StrCat(
-        "No compiler registered for platform ", topology.platform_name()));
+        "No compiler registered for platform: ", platform_name, " and ",
+        compiler_variant.empty()
+            ? "default variant"
+            : absl::StrCat("compiler variant: ", compiler_variant)));
   }
   return it->second->Compile(std::move(options), module, topology, client);
 }

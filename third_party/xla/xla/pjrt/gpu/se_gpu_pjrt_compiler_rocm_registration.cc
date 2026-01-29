@@ -23,8 +23,9 @@ limitations under the License.
 namespace xla {
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
-  PjRtRegisterCompiler(RocmName(), std::make_unique<StreamExecutorGpuCompiler>(
-                                       stream_executor::rocm::kROCmPlatformId));
+  PjRtRegisterDefaultCompiler(RocmName(),
+                              std::make_unique<StreamExecutorGpuCompiler>(
+                                  stream_executor::rocm::kROCmPlatformId));
 });
 
 }  // namespace xla
