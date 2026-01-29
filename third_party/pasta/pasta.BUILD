@@ -1,6 +1,7 @@
 # Description:
 #   AST-based python refactoring.
 load("//:build_defs.bzl", "copy_srcs")
+load("@rules_python//python:py_library.bzl", "py_library")
 
 licenses(["notice"])  # Apache2
 
@@ -26,6 +27,5 @@ py_library(
         "base/test_utils.py",
         "base/token_generator.py",
     ]),
-    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )

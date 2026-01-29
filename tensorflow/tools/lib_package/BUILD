@@ -107,7 +107,7 @@ genrule(
     name = "clicenses_generate",
     srcs = [
         "//third_party/icu/data:LICENSE",
-        "@curl//:COPYING",
+        # "@curl//:COPYING",
         "@ducc//:LICENSE",
         "@gemmlowp//:LICENSE",
         "@jpegxl//:LICENSE",
@@ -117,7 +117,7 @@ genrule(
         "@local_config_tensorrt//:LICENSE",
         "@org_brotli//:LICENSE",
         "@png//:LICENSE",
-        "@snappy//:COPYING",
+        # "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
         "@tsl//:LICENSE",

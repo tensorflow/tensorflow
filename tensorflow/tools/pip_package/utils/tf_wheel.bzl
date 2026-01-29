@@ -30,9 +30,9 @@ load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load(
     "@python_version_repo//:py_version.bzl",
     "HERMETIC_PYTHON_VERSION",
-    "MACOSX_DEPLOYMENT_TARGET",
-    "WHEEL_COLLAB",
-    "WHEEL_NAME",
+    # "MACOSX_DEPLOYMENT_TARGET",
+    # "WHEEL_COLLAB",
+    # "WHEEL_NAME",
 )
 load(
     "//tensorflow:tf_version.bzl",
@@ -40,7 +40,11 @@ load(
     "TF_WHEEL_VERSION_SUFFIX",
 )
 
+WHEEL_NAME = "tensorflow"
+WHEEL_COLLAB = ""
+
 def _get_wheel_platform_name(platform_name, platform_tag):
+    MACOSX_DEPLOYMENT_TARGET = ""
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
     tag = platform_tag
     if platform_tag == "x86_64" and platform_name == "win":
@@ -154,4 +158,4 @@ tf_wheel = rule(
 )
 
 def tf_wheel_dep():
-    return ["@pypi_{}//:pkg".format(WHEEL_NAME)]
+    return ["@pypi//{}".format(WHEEL_NAME)]

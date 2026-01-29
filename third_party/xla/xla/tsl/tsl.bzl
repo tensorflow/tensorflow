@@ -36,11 +36,11 @@ load(
     "if_tensorrt",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(
-    "//xla/tsl:package_groups.bzl",
+    "@xla//xla/tsl:package_groups.bzl",
     "DEFAULT_LOAD_VISIBILITY",
     "LEGACY_TSL_TSL_USERS",
 )
@@ -75,7 +75,7 @@ def clean_dep(target):
     if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
         return Label("@tsl//" + label.package + ":" + label.name)
     else:
-        return str(label)
+        return Label(label)
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.

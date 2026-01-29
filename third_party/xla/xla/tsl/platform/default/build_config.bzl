@@ -14,13 +14,13 @@ load("@rules_python//python:py_library.bzl", "py_library")
 
 # IMPORTANT: Do not remove this load statement. We rely on that //xla/tsl doesn't exist in g3
 # to prevent g3 .bzl files from loading this file.
-load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("@xla//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load(
     "//xla/tsl:tsl.bzl",
     "clean_dep",
     "if_tsl_link_protobuf",
 )
-load("//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -556,14 +556,14 @@ def tf_windows_aware_platform_deps(name):
         ],
     })
 
-def tf_platform_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
-    return [platform_dir + "default:" + name]
+def tf_platform_deps(name, platform_dir = "//xla/tsl/platform/"):
+    return [Label(platform_dir + "default:" + name)]
 
-def tf_stream_executor_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
+def tf_stream_executor_deps(name, platform_dir = "//xla/tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
 
-def tf_platform_alias(name, platform_dir = "@xla//xla/tsl/platform/"):
-    return [platform_dir + "default:" + name]
+def tf_platform_alias(name, platform_dir = "//xla/tsl/platform/"):
+    return [Label(platform_dir + "default:" + name)]
 
 def tf_error_logging_deps():
     return [clean_dep("//xla/tsl/platform/default:error_logging")]

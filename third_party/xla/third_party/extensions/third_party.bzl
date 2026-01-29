@@ -1,5 +1,6 @@
 """Module extension for third party dependencies."""
 
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("//third_party/brotli:workspace.bzl", brotli = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -82,6 +83,14 @@ def _third_party_ext_impl(mctx):  # @unused
     triton()
     uv()
     xnnpack()
+
+    tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",
+        strip_prefix = "cutlass-3.8.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.8.0.zip"),
+    )
 
 third_party_ext = module_extension(
     implementation = _third_party_ext_impl,
