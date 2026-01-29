@@ -85,9 +85,9 @@ absl::StatusOr<xla::PjRtMemorySpace*> GetMemorySpace(
                           absl::StrAppend(out, *ms->Kind().memory_kind());
                         })));
     }
-    return tensorflow::down_cast<xla::ifrt::PjRtMemory*>(memory)->pjrt_memory();
+    return absl::down_cast<PjRtMemory*>(memory)->pjrt_memory();
   }
-  return tensorflow::down_cast<xla::ifrt::PjRtDevice*>(device)
+  return absl::down_cast<PjRtDevice*>(device)
       ->pjrt_device()
       ->default_memory_space();
 }
