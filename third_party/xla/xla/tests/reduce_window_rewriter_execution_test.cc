@@ -15,16 +15,18 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class ReduceWindowRewriterExecutionTest : public HloTestBase {};
+class ReduceWindowRewriterExecutionTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(ReduceWindowRewriterExecutionTest, RewriterTest) {
   absl::string_view hlo_string = R"(
