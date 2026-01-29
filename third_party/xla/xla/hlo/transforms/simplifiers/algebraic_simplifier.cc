@@ -5230,6 +5230,82 @@ bool OutputIsSubsetOfOperandElements(HloInstruction* instruction,
   }
 }
 
+// Returns true if the sequence of dimensions in `transpose` starting at
+// `start_transpose_dim` and of length `num_dims_to_merge` is strictly
+// increasing by 1.
+bool IsContiguousChunk(const HloInstruction* transpose,
+                       int64_t start_transpose_dim, int64_t num_dims_to_merge) {
+  for (int64_t k = 1; k < num_dims_to_merge; ++k) {
+    if (transpose->dimensions(start_transpose_dim + k) !=
+        transpose->dimensions(start_transpose_dim + k - 1) + 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Tries to find a set of contiguous chunks of the input to the transpose
+// that correspond to the output dimensions of the reshape.
+//
+// Example:
+//   Input: f32[a, b, c, d]
+//   Transpose: perm={1, 0, 2, 3} -> f32[b, a, c, d]
+//   Reshape: f32[b, a, c*d]
+//
+//   Output chunks:
+//     Chunk 0: start_dim=1 (b), size=b, result_dim_idx=0
+//     Chunk 1: start_dim=0 (a), size=a, result_dim_idx=1
+//     Chunk 2: start_dim=2 (c), size=c*d, result_dim_idx=2 (merges c and d)
+struct Chunk {
+  int64_t start_dim;
+  int64_t size;
+  int64_t result_dim_idx;  // The dimension index in the outer reshape output
+};
+std::optional<std::vector<Chunk>> FindContiguousChunks(
+    const HloInstruction* reshape, const HloInstruction* transpose) {
+  const Shape& reshape_shape = reshape->shape();
+  const Shape& transpose_shape = transpose->shape();
+
+  auto factors =
+      CommonFactors(reshape_shape.dimensions(), transpose_shape.dimensions());
+
+  if (factors.empty() ||
+      factors.back() !=
+          std::make_pair(
+              static_cast<int64_t>(reshape_shape.dimensions().size()),
+              static_cast<int64_t>(transpose_shape.dimensions().size()))) {
+    return std::nullopt;
+  }
+
+  std::vector<Chunk> chunks;
+  chunks.reserve(factors.size() - 1);
+
+  for (int i = 0; i < factors.size() - 1; ++i) {
+    auto [reshape_start, transpose_start] = factors[i];
+    auto [reshape_end, transpose_end] = factors[i + 1];
+
+    if (reshape_end - reshape_start != 1) {
+      // Only support collapsing dimensions.
+      return std::nullopt;
+    }
+
+    int64_t num_transpose_dims = transpose_end - transpose_start;
+    if (num_transpose_dims == 0) {
+      return std::nullopt;  // Insertion of 1 is not supported.
+    }
+
+    if (!IsContiguousChunk(transpose, transpose_start, num_transpose_dims)) {
+      return std::nullopt;
+    }
+
+    int64_t first_input_dim = transpose->dimensions(transpose_start);
+    int64_t reshape_dim_size = reshape_shape.dimensions(reshape_start);
+
+    chunks.push_back({first_input_dim, reshape_dim_size, reshape_start});
+  }
+  return chunks;
+}
+
 }  // namespace
 
 absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
@@ -6314,6 +6390,51 @@ AlgebraicSimplifierVisitor::TryRemovingBitcastOrReshapeTransposeChain(
   return false;
 }
 
+// Transform Reshape(Transpose(Reshape(x))) -> Transpose(Reshape(x))
+absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryHoistTransposeOfReshape(
+    HloInstruction* reshape) {
+  if (!HloPredicateIsOp<HloOpcode::kTranspose>(reshape->operand(0))) {
+    return false;
+  }
+  auto transpose = reshape->mutable_operand(0);
+  if (!HloPredicateIsOp<HloOpcode::kReshape>(transpose->operand(0))) {
+    return false;
+  }
+  auto inner_reshape = transpose->mutable_operand(0);
+
+  std::optional<std::vector<Chunk>> chunks =
+      FindContiguousChunks(reshape, transpose);
+  if (!chunks) {
+    return false;
+  }
+
+  // Sort chunks by their start dimension in the input (inner_reshape)
+  absl::c_sort(*chunks, [](const Chunk& a, const Chunk& b) {
+    return a.start_dim < b.start_dim;
+  });
+
+  std::vector<int64_t> new_reshape_dims;
+  new_reshape_dims.reserve(chunks->size());
+  std::vector<int64_t> new_transpose_dims(chunks->size());
+
+  for (int k = 0; k < chunks->size(); ++k) {
+    new_reshape_dims.push_back((*chunks)[k].size);
+    new_transpose_dims[(*chunks)[k].result_dim_idx] = k;
+  }
+
+  HloInstruction* new_inner_reshape =
+      reshape->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(reshape->shape().element_type(),
+                               new_reshape_dims),
+          inner_reshape->mutable_operand(0)));
+  simplifier_->UpdateLayout(new_inner_reshape->mutable_shape());
+
+  RETURN_IF_ERROR(ReplaceWithNewInstruction(
+      reshape, HloInstruction::CreateTranspose(
+                   reshape->shape(), new_inner_reshape, new_transpose_dims)));
+  return true;
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     HloInstruction* reshape) {
   auto operand = reshape->mutable_operand(0);
@@ -6355,6 +6476,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
                    TryRemovingBitcastOrReshapeTransposeChain(reshape));
   if (reshape_transpose_chain_removed) {
     return absl::OkStatus();
+  }
+
+  if (!options_.is_layout_sensitive()) {
+    ASSIGN_OR_RETURN(bool hoisted, TryHoistTransposeOfReshape(reshape));
+    if (hoisted) {
+      return absl::OkStatus();
+    }
   }
 
   if (options_.is_layout_sensitive()) {
