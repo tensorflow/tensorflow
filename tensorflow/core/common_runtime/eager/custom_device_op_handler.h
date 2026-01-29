@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
