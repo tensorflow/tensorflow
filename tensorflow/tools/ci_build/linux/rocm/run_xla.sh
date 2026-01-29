@@ -57,12 +57,8 @@ if [ ! -d /tf ];then
 
 # vvv TODO (rocm) weekly-sync-20251021 excluded tests
 EXCLUDED_TESTS=(
-    # @xla//xla/backends/gpu/codegen/triton:dot_algorithms_legacy_test_amdgpu_any
     # @xla//xla/backends/gpu/codegen/triton:dot_algorithms_test_amdgpu_any
     TritonAndBlasSupportForDifferentTensorSizes/TritonAndBlasSupportForDifferentTensorSizes.IsDotAlgorithmSupportedByTriton/dot_*
-
-    # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_legacy_port_test_amdgpu_any
-    CompareTest.SplitK
 
     # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
     TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
@@ -108,9 +104,6 @@ EXCLUDED_TESTS=(
     CubSortKeysTest.CompareToReferenceTotalOrderLt
     CubSort/CubSortKeysTest.*
     CubSort/CubSortPairsTest.*
-
-    # @xla//xla/backends/gpu/runtime:cub_sort_thunk_test
-    CubSortThunkTest.ProtoRoundTrip
 
     # @xla//xla/service/gpu/transforms:cublas_gemm_rewriter_test_amdgpu_any
     CublasLtGemmRewriteTest.MatrixBiasSwishActivation
@@ -167,10 +160,6 @@ EXCLUDED_TESTS=(
     KernelNameTracerTest.CaptureKernelNames
     KernelNameTracerTest.CaptureKernelNamesFromCommandBufferThunk
 
-    # @xla//xla/service/gpu/autotuning:gemm_fusion_autotuner_test
-    GemmFusionAutotunerTest.Int8FusedGemm256
-    GemmFusionAutotunerLevelSweep/GemmFusionAutotunerLevelTest.Deviceless/0
-
     # @xla//xla/service/gpu/tests:swap_conv_operands_test
     SwapConvOperandsTest.LargePadding
     SwapConvOperandsTest.SmallPadding
@@ -222,8 +211,4 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.b
     --test_filter=-$(IFS=: ; echo "${EXCLUDED_TESTS[*]}") \
     -- @xla//xla/... \
     -@xla//xla/service/gpu/tests:sorting_test_amdgpu_any \
-    -@xla//xla/service/gpu/tests:sorting.hlo.test_mi200 \
-    -@xla//xla/backends/gpu/codegen/emitters/tests:reduce_row/mof_scalar_variadic.hlo.test \
-    -@xla//xla/backends/gpu/codegen/emitters/tests:reduce_row/side_output_broadcast.hlo.test \
-    -@xla//xla/tools/hlo_opt:tests/gpu_hlo_llvm.hlo.test
     # ^^^ TODO (rocm) weekly-sync-20251021 excluded test files
