@@ -113,7 +113,7 @@ GatherCommonSPMDExpander::ComputeLayoutForward(
   }
 
   auto add_mesh_dim_if = [&](const absl::optional<Layout>& input_layout,
-                             int64 dim, bool indices = false) {
+                             int64_t dim, bool indices = false) {
     // Only add the mesh dimension to the output_layout if 1) the input layout
     // exists and 2) when the input is indices and the params dims don't
     // contain the mesh dim we are adding (to avoid two different tensor dims
