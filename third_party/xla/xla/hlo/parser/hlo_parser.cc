@@ -343,6 +343,7 @@ class HloParserImpl : public HloParser {
     kOriginalValue,
     kOriginalValueRecoveryTable,
     kMode,
+    kConvKind,
   };
 
   struct AttrConfig {
@@ -587,6 +588,7 @@ class HloParserImpl : public HloParser {
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
+  bool ParseConvKind(HloConvolutionInstruction::ConvKind* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseAlgorithm(PrecisionConfig::Algorithm* result);
@@ -2517,6 +2519,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64_t> feature_group_count;
       optional<int64_t> batch_group_count;
+      optional<HloConvolutionInstruction::ConvKind> conv_kind;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -2524,6 +2527,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                       &feature_group_count};
       attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                     &batch_group_count};
+      attrs["conv_kind"] = {/*required=*/false, AttrTy::kConvKind, &conv_kind};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -2557,6 +2561,14 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
+      auto convolution = builder->AddInstruction(HloInstruction::CreateConvolve(
+          *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
+          feature_group_count.value(), batch_group_count.value(), *window,
+          *dnums, precision_config));
+      if (conv_kind) {
+        Cast<HloConvolutionInstruction>(convolution)->set_conv_kind(*conv_kind);
+      }
+      return convolution;
       return builder->AddInstruction(HloInstruction::CreateConvolve(
           *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
           feature_group_count.value(), batch_group_count.value(), *window,
@@ -5374,6 +5386,16 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kConvKind: {
+        HloConvolutionInstruction::ConvKind result;
+        if (!ParseConvKind(&result)) {
+          return false;
+        }
+        static_cast<optional<HloConvolutionInstruction::ConvKind>*>(
+            attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kBracedInt64List: {
         std::vector<int64_t> result;
         if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
@@ -7210,6 +7232,27 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
                                 val, status_or_result.status().message()));
   }
   *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseConvKind(HloConvolutionInstruction::ConvKind* result) {
+  VLOG(kDebugLevel) << "ParseConvKind";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects convolution kind");
+  }
+  std::string val = lexer_.GetStrVal();
+  if (val == "fprop") {
+    *result = HloConvolutionInstruction::ConvKind::FPROP;
+  } else if (val == "wgrad") {
+    *result = HloConvolutionInstruction::ConvKind::WGRAD;
+  } else if (val == "dgrad") {
+    *result = HloConvolutionInstruction::ConvKind::DGRAD;
+  } else if (val == "unset") {
+    *result = HloConvolutionInstruction::ConvKind::UNSET;
+  } else {
+    return TokenError(StrFormat("expects convolution kind but sees: %s", val));
+  }
   lexer_.Lex();
   return true;
 }
