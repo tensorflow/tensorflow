@@ -72,6 +72,7 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
+        "//google/protobuf:field_mask_cc_proto",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
@@ -116,6 +117,7 @@ xla_cc_test(
     deps = [
         ":split_gpu_executable_writer",
         ":split_proto_reader",
+        "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/util/proto:parse_text_proto",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",

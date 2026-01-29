@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "google/protobuf/field_mask.pb.h"
 #include "absl/status/status.h"
 #include "google/protobuf/util/field_mask_util.h"
 #include "riegeli/bytes/writer.h"

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
 
