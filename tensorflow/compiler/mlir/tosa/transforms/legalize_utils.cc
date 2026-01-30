@@ -1518,7 +1518,6 @@ bool checkUniqueConstantScatterIndices(ShapedType indices_type,
                                        ElementsAttr const_data) {
   llvm::ArrayRef<int64_t> const indices_shape = indices_type.getShape();
   const unsigned int indices_rank = indices_shape.size();
-  const unsigned int result_rank = result_type.getRank();
   const unsigned int last_dim_size = indices_shape[indices_rank - 1];
 
   // Reconstruct each index from the unshaped constant data array and
@@ -1527,14 +1526,22 @@ bool checkUniqueConstantScatterIndices(ShapedType indices_type,
   assert((const_data_range.size() % last_dim_size == 0) &&
          "Constant data length should be a multiple of indices_shape[-1]");
 
+  // get result index type from result type by droping last dim
+  auto result_index_type = RankedTensorType::get(
+      result_type.getShape().drop_back(), result_type.getElementType());
+  auto result_index_rank = result_index_type.getRank();
+
+  assert(last_dim_size == result_index_rank &&
+         "last dimension size of indices must equal result type rank - 1");
+
   std::vector<int64_t> flattened_indices;
   flattened_indices.reserve(const_data_range.size() / last_dim_size);
   for (auto beg = const_data_range.begin(); beg < const_data_range.end();
        beg += last_dim_size) {
-    std::vector<uint64_t> current_single_index(result_rank);
+    std::vector<uint64_t> current_single_index(result_index_rank);
     std::copy(beg, beg + last_dim_size, current_single_index.begin());
-    const uint64_t f_index{
-        ElementsAttr::getFlattenedIndex(result_type, current_single_index)};
+    const uint64_t f_index{ElementsAttr::getFlattenedIndex(
+        result_index_type, current_single_index)};
     flattened_indices.push_back(f_index);
   }
 

@@ -3477,6 +3477,45 @@ func.func @test_gather_dont_fold_quantized() -> tensor<4x4x4x!quant.uniform<i8:f
 }
 
 // -----
+// CHECK-LABEL: test_scatter_nd_variable_indices
+// CHECK-DAG: %[[VAR0:.+]] = "tosa.const"() <{values = dense<0.000000e+00> : tensor<1x224x512xf32>}>
+// CHECK-DAG: %[[VAR1:.+]] = tosa.const_shape  {values = dense<[1, 3]> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK-DAG: %[[VAR2:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi8>}>
+// CHECK-DAG: %[[VAR3:.+]] = "tosa.const"() <{values = dense<{{\[\[224}}, 1]]> : tensor<1x2xi32>}> : () -> tensor<1x2xi32>
+// CHECK-DAG: %[[VAR4:.+]] = tosa.const_shape  {values = dense<[3, 2]> : tensor<2xindex>} : () -> !tosa.shape<2>
+// CHECK: %[[VAR5:.+]] = tosa.reshape %arg1, %[[VAR4]] : (tensor<1x3x2xi32>, !tosa.shape<2>) -> tensor<3x2xi32>
+// CHECK: %[[VAR6:.+]] = tosa.mul %[[VAR5]], %[[VAR3]], %[[VAR2]] : (tensor<3x2xi32>, tensor<1x2xi32>, tensor<1xi8>) -> tensor<3x2xi32>
+// CHECK: %[[VAR7:.+]] = tosa.reduce_sum %[[VAR6]] {axis = 1 : i32} : (tensor<3x2xi32>) -> tensor<3x1xi32>
+// CHECK: %[[VAR8:.+]] = tosa.reshape %[[VAR7]], %[[VAR1]] : (tensor<3x1xi32>, !tosa.shape<2>) -> tensor<1x3xi32>
+// CHECK: %[[VAR9:.+]] = tosa.scatter %[[VAR0]], %[[VAR8]], %arg0 : (tensor<1x224x512xf32>, tensor<1x3xi32>, tensor<1x3x512xf32>) -> tensor<1x224x512xf32>
+// CHECK: return %[[VAR9]] : tensor<1x224x512xf32>
+func.func @test_scatter_nd_variable_indices(%arg0: tensor<1x3x512xf32>, %arg1: tensor<1x3x2xi32>) -> tensor<1x224x512xf32> {
+  %shape = "tfl.pseudo_const"() <{value = dense<[1, 224, 512]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  %0 = "tfl.scatter_nd"(%arg1, %arg0, %shape) : (tensor<1x3x2xi32>, tensor<1x3x512xf32>, tensor<3xi32>) -> tensor<1x224x512xf32>
+  func.return %0 : tensor<1x224x512xf32>
+}
+
+// -----
+// CHECK-LABEL: test_scatter_nd_duplicates
+// CHECK: tfl.scatter_nd
+func.func @test_scatter_nd_duplicates(%arg0: tensor<1x3x512xf32>) -> tensor<2x224x512xf32> {
+  %shape = "tfl.pseudo_const"() <{value = dense<[2, 224, 512]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  %indices = "tfl.pseudo_const"() <{value = dense<[[[0, 223], [1, 223], [1, 223]]]> : tensor<1x3x2xi32>}> : () -> tensor<1x3x2xi32>
+  %0 = "tfl.scatter_nd"(%indices, %arg0, %shape) : (tensor<1x3x2xi32>, tensor<1x3x512xf32>, tensor<3xi32>) -> tensor<2x224x512xf32>
+  func.return %0 : tensor<2x224x512xf32>
+}
+
+// -----
+// CHECK-LABEL: test_scatter_nd_too_big
+// CHECK: tfl.scatter_nd
+func.func @test_scatter_nd_too_big(%arg0: tensor<42024x128xf32>) -> tensor<7074x128xf32> {
+  %shape = "tfl.pseudo_const"() <{value = dense<[7074, 128]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  %indices = "tfl.pseudo_const"() <{value = dense<0> : tensor<42024x128x2xi32>}> : () -> tensor<42024x128x2xi32>
+  %0 = "tfl.scatter_nd"(%indices, %arg0, %shape) : (tensor<42024x128x2xi32>, tensor<42024x128xf32>, tensor<2xi32>) -> tensor<7074x128xf32>
+  func.return %0 : tensor<7074x128xf32>
+}
+
+// -----
 // CHECK-LABEL: test_sparse_to_dense
 // CHECK-DAG: %[[CONST0:.*]] = tosa.const_shape {values = dense<[1, -1, 1]> : tensor<3xindex>} : () -> !tosa.shape<3>
 // CHECK-DAG: %[[CONST1:.*]] = tosa.const_shape {values = dense<[1, -1]> : tensor<2xindex>} : () -> !tosa.shape<2>
