@@ -115,6 +115,78 @@ func.func @simple_read3(%arg0: tensor<512xi8>) -> (i8) {
 
 // -----
 
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 7]">
+#map2 = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
+  "domain: d0 in [0, 64], s0 in [0, 7]">
+func.func @read_with_if_condition(%arg0: tensor<512xi8>, %arg1: tensor<520xi8>) -> (tensor<520xi8>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c65 = arith.constant 65 : index
+  %c512 = arith.constant 512 : index
+  %c0_i8 = arith.constant 0 : i8
+  %outer = scf.for %i = %c0 to %c65 step %c1 iter_args(%iter = %arg1) -> tensor<520xi8> {
+    %inner = scf.for %j = %c0 to %c8 step %c1 iter_args(%iter2 = %iter) -> tensor<520xi8> {
+      %0 = xla.apply_indexing #map2(%i)[%j]
+      %1 = arith.cmpi slt, %0, %c512 : index
+      %2 = scf.if %1 -> (i8) {
+        %3 = xla.apply_indexing #map(%i)[%j]
+        %extracted = tensor.extract %arg0[%3] : tensor<512xi8>
+        scf.yield %extracted : i8
+      } else {
+        scf.yield %c0_i8 : i8
+      }
+      %inserted = tensor.insert %2 into %iter2[%0] : tensor<520xi8>
+      scf.yield %inserted : tensor<520xi8>
+    }
+    scf.yield %inner : tensor<520xi8>
+  }
+  return %outer : tensor<520xi8>
+}
+
+// CHECK-LABEL: @read_with_if_condition
+// CHECK-NOT: vector.transfer_read
+// CHECK: vector.transfer_write
+
+// -----
+
+#map = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
+  "domain: d0 in [0, 63], s0 in [0, 7]">
+#map2 = #xla.indexing_map<"(d0)[s0] -> (d0 * 8 + s0),"
+  "domain: d0 in [0, 64], s0 in [0, 7]">
+func.func @read_with_independent_if_condition(%arg0: tensor<512xi8>, %arg1: tensor<520xi8>) -> (tensor<520xi8>) {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c64 = arith.constant 64 : index
+  %c65 = arith.constant 65 : index
+  %c0_i8 = arith.constant 0 : i8
+  %outer = scf.for %i = %c0 to %c65 step %c1 iter_args(%iter = %arg1) -> tensor<520xi8> {
+    %inner = scf.for %j = %c0 to %c8 step %c1 iter_args(%iter2 = %iter) -> tensor<520xi8> {
+      %0 = xla.apply_indexing #map2(%i)[%j]
+      %1 = arith.cmpi slt, %i, %c64 : index
+      %2 = scf.if %1 -> (i8) {
+        %3 = xla.apply_indexing #map(%i)[%j]
+        %extracted = tensor.extract %arg0[%3] : tensor<512xi8>
+        scf.yield %extracted : i8
+      } else {
+        scf.yield %c0_i8 : i8
+      }
+      %inserted = tensor.insert %2 into %iter2[%0] : tensor<520xi8>
+      scf.yield %inserted : tensor<520xi8>
+    }
+    scf.yield %inner : tensor<520xi8>
+  }
+  return %outer : tensor<520xi8>
+}
+
+// CHECK-LABEL: @read_with_independent_if_condition
+// CHECK: vector.transfer_read
+// CHECK: vector.transfer_write
+
+// -----
+
 #map = #xla.indexing_map<"(d0)[s0] -> ((((d0 * 4 + s0) floordiv 3) mod 16) * 3 + (d0 * 4 + s0) mod 3),"
   "domain: d0 in [0, 15], s0 in [0, 3]">
 func.func @read_with_non_simplified_indexing_map(%arg0: tensor<48xi8>) -> (i8) {
