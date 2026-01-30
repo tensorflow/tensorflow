@@ -89,7 +89,15 @@ cc_library(
         ":thunk",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",
+        "//xla/service:buffer_assignment",
         "//xla/stream_executor:command_buffer",
+        "//xla/stream_executor:platform",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -164,6 +172,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:reduction_kind",

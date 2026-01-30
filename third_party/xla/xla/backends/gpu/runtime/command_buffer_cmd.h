@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -172,8 +173,7 @@ class LaunchCmd : public Command {
             std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
                 std::nullopt);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -207,8 +207,7 @@ class CustomKernelLaunchCmd : public Command {
                         absl::Span<const BufferUse::MemoryAccess> args_access,
                         CustomKernel custom_kernel);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -297,8 +296,7 @@ class ChildCmd : public Command {
  public:
   explicit ChildCmd(CommandBufferCmdExecutor child_commands);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -325,8 +323,7 @@ class CaseCmd : public Command {
  public:
   CaseCmd(ShapedSlice index, std::vector<CommandBufferCmdExecutor> branches);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -358,8 +355,7 @@ class WhileCmd : public Command {
            std::optional<int64_t> trip_count = std::nullopt,
            bool enable_loop_unroll = false);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::Status Prepare(const Thunk::PrepareParams& params) override;
 
@@ -400,8 +396,7 @@ class GemmCmd : public TracedCommandBufferCmd {
           const BufferAllocation::Slice& output_buffer,
           std::optional<BufferAllocation::Slice> workspace, bool deterministic);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -430,14 +425,6 @@ class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
  public:
   explicit CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
-
-  // This is needed to avoid compile errors about "shadowed" virtual function
-  absl::Status Initialize(const InitializeParams& params) override {
-    return CublasLtMatmulThunk::Initialize(params);
-  }
-
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
@@ -457,8 +444,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
   CuDnnCmd(absl::Span<const BufferAllocation::Slice> args,
            std::shared_ptr<se::dnn::LazyDnnGraph> graph);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -814,8 +800,7 @@ class DynamicSliceFusionCmd : public Command {
           const DynamicSliceThunk::OffsetAsFunctionOfIndvarModulesMetadata*>
           offset_as_function_of_indvar_metadata = std::nullopt);
 
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state) override;
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::Status Prepare(const Thunk::PrepareParams& params) final;
 

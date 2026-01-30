@@ -94,8 +94,7 @@ class CommandExecutor {
   absl::Status Prepare(const Thunk::PrepareParams& params);
 
   // Initializes all commands added to a sequence.
-  absl::Status Initialize(const Thunk::InitializeParams& params,
-                          CommandStateManager& state);
+  absl::Status Initialize(const Thunk::InitializeParams& params);
 
   // Records commands into the command buffer.
   //
