@@ -4019,6 +4019,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return RewriteAsMultiplyDotWithZeroLhsContractingDim(dot, lhs, rhs, dnums);
   }
 
+  if (dot->user_count() == 1 &&
+      dot->users().front()->IsCustomCall("Sharding")) {
+    return absl::OkStatus();
+  }
+
   // Reorder nested dots with associativity using flops as a heuristic
   if (options_.use_associative_reordering()) {
     TF_ASSIGN_OR_RETURN(RewriteResult result,
