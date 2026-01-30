@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -1226,6 +1227,93 @@ OpSharding HloSharding::ToProto() const {
                                        .Transpose(transpose_perm)
                                        .Reshape(tile_assignment_dims);
   return HloSharding::Subgroup(tile_assignment, types, metadata);
+}
+
+/*static*/ NamedSharding HloSharding::V2ToV3Sharding(
+    const HloSharding& sharding) {
+  CHECK(!sharding.IsTuple());
+  if (sharding.UseNamedShardingLeaf()) {
+    return sharding.named_sharding();
+  }
+  if (sharding.IsReplicated()) {
+    return NamedSharding::Replicate(sharding.metadata());
+  }
+  if (sharding.IsTileMaximal()) {
+    return NamedSharding::MaximalSharding(sharding.tile_assignment().first(),
+                                          sharding.metadata());
+  }
+
+  // Tiled sharding.
+  const TileAssignment& tile_assignment = sharding.tile_assignment();
+
+  // When converting back to NamedSharding (v3), we construct a new mesh where
+  // the axis names are simply their indices ("0", "1", ...).
+  std::vector<std::string> axes_names_str;
+  axes_names_str.reserve(tile_assignment.num_dimensions());
+  for (int64_t i = 0; i < tile_assignment.num_dimensions(); ++i) {
+    axes_names_str.push_back(absl::StrCat(i));
+  }
+  // Note that we use `tile_assignment.dimensions()` which are the dimensions
+  // after any reshape/transpose operations defined in the V2 sharding.
+  // Consequently, any transpose in V2 is 'baked' into the resulting Mesh, and
+  // the dimension mappings in V3 are always identity (Tensor Dim i -> Mesh Axis
+  // i) for the tiled dimensions.
+  std::vector<absl::string_view> axes_names;
+  axes_names.reserve(axes_names_str.size());
+  for (const std::string& name : axes_names_str) {
+    axes_names.push_back(name);
+  }
+
+  bool is_iota = true;
+  if (tile_assignment.iota()) {
+    is_iota = absl::c_is_sorted(tile_assignment.iota()->transpose_perm());
+  } else {
+    int64_t expected_device = 0;
+    tile_assignment.array().Each(
+        [&](absl::Span<const int64_t>, int64_t device) {
+          if (device != expected_device) {
+            is_iota = false;
+          }
+          ++expected_device;
+        });
+  }
+
+  Mesh mesh = is_iota ? Mesh(tile_assignment.dimensions(), axes_names)
+                      : Mesh(tile_assignment, axes_names);
+
+  std::vector<NamedSharding::DimensionSharding> dim_shardings;
+  int64_t tiled_data_rank = sharding.TiledDataRank();
+  dim_shardings.reserve(tiled_data_rank);
+  for (int64_t i = 0; i < tiled_data_rank; ++i) {
+    dim_shardings.push_back(
+        NamedSharding::DimensionSharding({AxisRef(i)}, /*is_closed=*/true));
+  }
+
+  std::vector<AxisRef> replicated_axes;
+  std::vector<AxisRef> unreduced_axes;
+  std::vector<AxisRef> manual_axes;
+
+  int64_t axis_idx = tiled_data_rank;
+  for (OpSharding::Type type : sharding.subgroup_types()) {
+    AxisRef axis_ref(axis_idx++);
+    CHECK(type == OpSharding::REPLICATED || type == OpSharding::MANUAL ||
+          type == OpSharding::UNREDUCED)
+        << "Unsupported sharding type: " << OpSharding::Type_Name(type);
+    if (type == OpSharding::REPLICATED) {
+      replicated_axes.push_back(axis_ref);
+    } else if (type == OpSharding::MANUAL) {
+      manual_axes.push_back(axis_ref);
+    } else if (type == OpSharding::UNREDUCED) {
+      unreduced_axes.push_back(axis_ref);
+    }
+  }
+
+  if (sharding.ReplicateOnLastTileDim()) {
+    replicated_axes.push_back(AxisRef(axis_idx++));
+  }
+
+  return NamedSharding(mesh, dim_shardings, replicated_axes, unreduced_axes,
+                       manual_axes, sharding.metadata());
 }
 
 Shape HloSharding::TileShape(const Shape& shape) const {
