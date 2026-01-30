@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/union_find.h"
 
 namespace xla {
 
@@ -249,7 +251,9 @@ class HeapSimulator {
   absl::flat_hash_set<const HloValue*> allocated_buffers_;
   absl::flat_hash_set<const HloValue*> freed_buffers_;
 
-  absl::flat_hash_map<const HloValue*, int64_t> buffer_sizes_;
+  // Use node_hash_map to ensure that pointers to UnionFind elements are stable.
+  mutable absl::node_hash_map<const HloValue*, UnionFind<int64_t>>
+      buffer_groups_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;

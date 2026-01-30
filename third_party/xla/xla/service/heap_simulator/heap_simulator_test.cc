@@ -1373,13 +1373,13 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize1) {
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
-  EXPECT_EQ(50, result.heap_size);
+  EXPECT_EQ(60, result.heap_size);
   EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_c_).size);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_c_).size);
 
   EXPECT_EQ(0, result.chunk_map.at(buffer_a_).offset);
-  EXPECT_EQ(30, result.chunk_map.at(buffer_b_).offset);
+  EXPECT_EQ(40, result.chunk_map.at(buffer_b_).offset);
   EXPECT_EQ(0, result.chunk_map.at(buffer_c_).offset);
 }
 
@@ -1408,7 +1408,7 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
   EXPECT_EQ(70, result.heap_size);
-  EXPECT_EQ(40, result.chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(50, result.chunk_map.at(buffer_a_).size);
   EXPECT_EQ(20, result.chunk_map.at(buffer_b_).size);
   EXPECT_EQ(50, result.chunk_map.at(buffer_c_).size);
 
@@ -1656,7 +1656,7 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15)))));
     EXPECT_EQ(heap_.heap_size(), 25);
@@ -1679,7 +1679,7 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_d_, ::testing::ElementsAre(
@@ -1694,9 +1694,9 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
     auto sliced_buffer_e = SlicedBufferInterval::CreateMutableInterval(
         heap_.GetBufferInterval(buffer_e_));
     auto chunks = heap_.FindChunkCandidates(sliced_buffer_e);
-    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(20, 10)));
+    EXPECT_THAT(chunks, ::testing::ElementsAre(Chunk::FromOffsetSize(25, 10)));
     heap_.CommitChunk(sliced_buffer_e.full_buffer_interval(),
-                      Chunk::FromOffsetSize(20, 10));
+                      Chunk::FromOffsetSize(25, 10));
     EXPECT_THAT(
         heap_.committed(),
         ::testing::UnorderedElementsAre(
@@ -1704,14 +1704,14 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(
                 buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
             ::testing::Pair(buffer_e_, ::testing::ElementsAre(
-                                           Chunk::FromOffsetSize(20, 10)))));
-    EXPECT_EQ(heap_.heap_size(), 30);
+                                           Chunk::FromOffsetSize(25, 10)))));
+    EXPECT_EQ(heap_.heap_size(), 35);
   }
 
   // Place and commit F. It should fit on top of B's first slice.
@@ -1731,16 +1731,16 @@ TEST_F(FindGlobalDecreasingSizeBestFitTest, FindChunkCandidates) {
                                            Chunk::FromOffsetSize(0, 10))),
             ::testing::Pair(buffer_b_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 5),
-                                           Chunk::FromOffsetSize(10, 10))),
+                                           Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(buffer_c_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(10, 15))),
             ::testing::Pair(
                 buffer_d_, ::testing::ElementsAre(Chunk::FromOffsetSize(0, 5))),
             ::testing::Pair(buffer_e_, ::testing::ElementsAre(
-                                           Chunk::FromOffsetSize(20, 10))),
+                                           Chunk::FromOffsetSize(25, 10))),
             ::testing::Pair(buffer_f_, ::testing::ElementsAre(
                                            Chunk::FromOffsetSize(15, 10)))));
-    EXPECT_EQ(heap_.heap_size(), 30);
+    EXPECT_EQ(heap_.heap_size(), 35);
   }
 }
 
@@ -1857,7 +1857,7 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
 
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_a_));
   EXPECT_TRUE(result.heap_results[0].chunk_map.contains(buffer_c_));
-  EXPECT_EQ(30, result.heap_results[0].chunk_map.at(buffer_a_).size);
+  EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_a_).size);
   EXPECT_EQ(40, result.heap_results[0].chunk_map.at(buffer_c_).size);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_a_).offset);
   EXPECT_EQ(0, result.heap_results[0].chunk_map.at(buffer_c_).offset);
@@ -3874,6 +3874,108 @@ static void BM_GlobalDecreasingSizeBestFitHeap(
 }
 BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap)
     ->ArgsProduct({{1, 4, 16, 64}, {1, 1024}});
+
+class SizeRecordingHeapAlgorithm : public HeapAlgorithm<HloValue> {
+ public:
+  SizeRecordingHeapAlgorithm(
+      absl::flat_hash_map<const HloValue*, int64_t>* alloc_sizes,
+      absl::flat_hash_map<const HloValue*, int64_t>* share_sizes)
+      : alloc_sizes_(alloc_sizes), share_sizes_(share_sizes) {}
+
+  void Alloc(const HloValue* buffer, int64_t size) override {
+    (*alloc_sizes_)[buffer] = size;
+  }
+  void Free(const HloValue* buffer, int64_t size) override {}
+  void ShareWith(const HloValue* buffer, const HloValue* shared,
+                 int64_t size) override {
+    (*share_sizes_)[buffer] = size;
+  }
+  absl::StatusOr<Result> Finish() override { return Result(); }
+
+  absl::flat_hash_map<const HloValue*, int64_t>* alloc_sizes_;
+  absl::flat_hash_map<const HloValue*, int64_t>* share_sizes_;
+};
+
+TEST_F(HeapSimulatorTest, UnionFindSizeUpdate) {
+  // This test validates that the HeapSimulator correctly updates the size of a
+  // buffer group when merging buffers. Specifically, when a buffer B shares
+  // memory with buffer A, the combined group's size should be max(size(A),
+  // size(B)).
+  //
+  // We construct a chain of negations:
+  // p0 (size 10) -> v0 (size 10) -> v1 (size 20) -> v2 (size 30)
+  //
+  // v0 reuses p0.
+  // v1 reuses v0. Group size becomes max(10, 20) = 20.
+  // v2 reuses v1. Group size becomes max(20, 30) = 30.
+  auto hlo_string = R"(
+    HloModule test_module
+
+    ENTRY entry {
+      p0 = f32[10] parameter(0)
+      v0 = f32[10] negate(p0)
+      v1 = f32[10] negate(v0)
+      ROOT v2 = f32[10] negate(v1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* v2 = module->entry_computation()->root_instruction();
+  HloInstruction* v1 = v2->mutable_operand(0);
+  HloInstruction* v0 = v1->mutable_operand(0);
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), {p0, v0, v1, v2});
+  TF_ASSERT_OK(schedule.Verify());
+
+  // Assign increasing sizes to the instructions in the chain.
+  BufferValue::SizeFunction size_fn = [&](const BufferValue& buffer) {
+    if (buffer.instruction() == p0) {
+      return 10;
+    }
+    if (buffer.instruction() == v0) {
+      return 10;
+    }
+    if (buffer.instruction() == v1) {
+      return 20;
+    }
+    if (buffer.instruction() == v2) {
+      return 30;
+    }
+    return 0;
+  };
+
+  absl::flat_hash_map<const HloValue*, int64_t> alloc_sizes;
+  absl::flat_hash_map<const HloValue*, int64_t> share_sizes;
+  auto algorithm =
+      std::make_unique<SizeRecordingHeapAlgorithm>(&alloc_sizes, &share_sizes);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+
+  HeapSimulator::Options options;
+  TF_ASSERT_OK(HeapSimulator::Run(std::move(algorithm), *module, schedule,
+                                  *alias_analysis, &alias_info_, &size_fn,
+                                  options));
+
+  const HloValue& v1_value =
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(v1);
+  const HloValue& v2_value =
+      alias_analysis->dataflow_analysis().GetUniqueValueAt(v2);
+
+  // Check that the shared size reflects the max of the merged buffers *at the
+  // time of sharing*. The HeapSimulator processes instructions sequentially.
+  //
+  // 1. v1 (size 20) is shared with v0 (size 10). The group {p0, v0, v1}
+  //    updates its size to max(10, 20) = 20. v2 has not been seen yet.
+  EXPECT_EQ(share_sizes[&v1_value], 20);
+
+  // 2. v2 (size 30) is shared with v1 (size 20). The group {p0, v0, v1, v2}
+  //    updates its size to max(20, 30) = 30.
+  EXPECT_EQ(share_sizes[&v2_value], 30);
+}
 
 }  // namespace
 }  // namespace xla
