@@ -1,82 +1,15 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 330ee97..509398d 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1,62 +1 @@
- Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libc/src/__support/wchar/character_converter.h b/libc/src/__support/wchar/character_converter.h
----- a/libc/src/__support/wchar/character_converter.h
--+++ b/libc/src/__support/wchar/character_converter.h
--@@ -77,7 +77,8 @@
-- }
-- 
-- LIBC_INLINE int CharacterConverter::push(char8_t utf8_byte) {
---  uint8_t num_ones = static_cast<uint8_t>(cpp::countl_one(utf8_byte));
--+  uint8_t num_ones =
--+      static_cast<uint8_t>(cpp::countl_one(static_cast<uint8_t>(utf8_byte)));
--   // Checking the first byte if first push
--   if (isEmpty()) {
--     // UTF-8 char has 1 byte total
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
----- a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--+++ b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--@@ -910,11 +910,8 @@
-- 
--   if (!DataAccessProf) {
--     M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 0U);
---    M.getContext().diagnose(DiagnosticInfoPGOProfile(
---        MemoryProfileFileName.data(),
---        StringRef("Data access profiles not found in memprof. Ignore "
---                  "-memprof-annotate-static-data-prefix."),
---        DS_Warning));
--+    // FIXME: Add a diagnostic message without failing the compilation when
--+    // data access profile payload is not available.
--     return false;
--   }
--   M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 1U);
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/fptoi-256.ll b/llvm/test/CodeGen/AArch64/fptoi-256.ll
----- a/llvm/test/CodeGen/AArch64/fptoi-256.ll
--+++ b/llvm/test/CodeGen/AArch64/fptoi-256.ll
--@@ -0,0 +1,11 @@
--+; RUN: llc -mtriple=aarch64 < %s
--+
--+define i256 @doubletosi256(double %a) {
--+  %conv = fptosi double %a to i256
--+  ret i256 %conv
--+}
--+
--+define double @si256todouble(i256 %a) {
--+  %conv = sitofp i256 %a to double
--+  ret double %conv
--+}
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/fptoi-256.ll b/llvm/test/CodeGen/fptoi-256.ll
----- a/llvm/test/CodeGen/fptoi-256.ll
--+++ b/llvm/test/CodeGen/fptoi-256.ll
--@@ -1,12 +0,0 @@
---; REQUIRES: aarch64-registered-target
---; RUN: llc -mtriple=aarch64 < %s
---
---define i256 @doubletosi256(double %a) {
---  %conv = fptosi double %a to i256
---  ret i256 %conv
---}
---
---define double @si256todouble(i256 %a) {
---  %conv = sitofp i256 %a to double
---  ret double %conv
---}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a9af7d2..31e5be0 100644
+index 31e5be0..44c4075 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "ec28be3ccac432ea6a45eca67249b209be216c0a"
--    LLVM_SHA256 = "f817108a98dc666bbf5590743670ee0d529ad6ddb4afd659b11540d2834ecb28"
-+    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
-+    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
+-    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
+-    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
++    LLVM_COMMIT = "bc7315749d6d16d0f162f816b3ec0ef7169615f2"
++    LLVM_SHA256 = "5ef1737d939b938fc23c9f13e9d5fad4c20fbcc7c6ab232602c7d2ff094ba8a9"
  
      tf_http_archive(
          name = name,
