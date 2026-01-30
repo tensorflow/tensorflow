@@ -331,7 +331,7 @@ absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
 bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
     PjRtDeviceEventSet& events) {
   if (!definition_event_.IsAvailable() || definition_event_.IsError()) {
-    tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+    absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
         definition_event_.CopyRCRef());
   }
   return false;
