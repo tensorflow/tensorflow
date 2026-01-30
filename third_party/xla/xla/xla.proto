@@ -687,6 +687,9 @@ message DebugOptions {
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
 
+  // If true, use nultiple streams for asynchronous collective operations.
+  optional bool xla_gpu_experimental_enable_collective_multi_streaming = 447;
+
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
@@ -1361,7 +1364,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 447
+  // Next id: 448
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

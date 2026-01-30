@@ -3184,7 +3184,16 @@ GpuCompiler::LoadExecutableFromAotResult(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
 
-  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
+  ExecutionStreamAssignment execution_stream_assignment(
+      hlo_module.get(),
+      {
+          kNumComputeStreams,
+          hlo_module->config()
+                  .debug_options()
+                  .xla_gpu_experimental_enable_collective_multi_streaming()
+              ? kNumCollectiveStreams
+              : 1,
+      });
 
   std::vector<uint8_t> binary(proto.binary().begin(), proto.binary().end());
 
