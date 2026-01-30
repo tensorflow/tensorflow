@@ -142,7 +142,7 @@ TEST(Quantization, TestQuantizationFree) {
   t.quantization.type = kTfLiteAffineQuantization;
   t.sparsity = nullptr;
   auto* params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   params->scale = TfLiteFloatArrayCreate(3);
   params->zero_point = TfLiteIntArrayCreate(3);
   t.quantization.params = reinterpret_cast<void*>(params);
@@ -907,7 +907,7 @@ TEST(TensorCloneTest, CloneATensorAttributes) {
     auto dims_signature_data = BuildTfLiteArray<int>({11, 12, 13});
     TfLiteAffineQuantization* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
-            malloc(sizeof(TfLiteAffineQuantization)));
+            calloc(1, sizeof(TfLiteAffineQuantization)));
     affine_quantization->scale = BuildTfLiteArray<float>({7, 8, 9}).release();
     affine_quantization->zero_point = BuildTfLiteArray({4, 5, 6}).release();
     affine_quantization->quantized_dimension = 34;

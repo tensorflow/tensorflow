@@ -1168,7 +1168,7 @@ class InterpreterQuantized : public DelegatedInterpreter {
     TfLiteQuantization rw_quantization;
     rw_quantization.type = kTfLiteAffineQuantization;
     auto* rw_affine_quantization = static_cast<TfLiteAffineQuantization*>(
-        malloc(sizeof(TfLiteAffineQuantization)));
+        calloc(1, sizeof(TfLiteAffineQuantization)));
     rw_affine_quantization->scale = TfLiteFloatArrayCreate(1);
     rw_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
     rw_affine_quantization->scale->data[0] = scale;
