@@ -1322,6 +1322,9 @@ message DebugOptions {
   // TODO(b/355487968): Remove this option when validation complete.
   optional bool xla_enable_command_buffers_during_profiling = 317;
 
+  // If true, the HLO dumper will print the stack frame inline.
+  optional bool xla_hlo_print_inline_stack_frames = 254;
+
   enum AutotuneCacheMode {
     AUTOTUNE_CACHE_MODE_UNSPECIFIED = 0;
 
