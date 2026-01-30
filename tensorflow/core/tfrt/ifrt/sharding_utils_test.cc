@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -69,6 +71,7 @@ struct TensorToArrayTestParam {
   std::vector<tensorflow::Tensor> expected_out_tensors;
   std::vector<int> device_ids;
   xla::HloSharding sharding;
+  std::optional<std::vector<int>> layout_major_to_minor;
 };
 
 using ReshardToTensorTest = ::testing::TestWithParam<ReshardToTensorTestParam>;
@@ -391,11 +394,36 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
+  xla::ifrt::LayoutRef ifrt_layout;
+  if (GetParam().layout_major_to_minor.has_value()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto layout,
+        xla::ifrt::CompactLayout::Create(*GetParam().layout_major_to_minor));
+    ifrt_layout = std::move(layout);
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, thread_pool));
+                          GetParam().sharding, thread_pool,
+                          /*xla_input_layout=*/ifrt_layout));
+
+  if (ifrt_layout) {
+    TF_ASSERT_OK_AND_ASSIGN(auto pjrt_layout, assembled_array->pjrt_layout());
+    ASSERT_NE(pjrt_layout, nullptr);
+    auto minor_to_major = pjrt_layout->xla_layout().minor_to_major();
+    std::vector<int64_t> expected_minor_to_major;
+    expected_minor_to_major.reserve(GetParam().layout_major_to_minor->size());
+    for (auto it = GetParam().layout_major_to_minor->rbegin();
+         it != GetParam().layout_major_to_minor->rend(); ++it) {
+      expected_minor_to_major.push_back(*it);
+    }
+
+    std::vector<int64_t> minor_to_major_vec(minor_to_major.begin(),
+                                            minor_to_major.end());
+    EXPECT_EQ(minor_to_major_vec, expected_minor_to_major);
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto disassembled_arrays,
@@ -649,6 +677,30 @@ INSTANTIATE_TEST_SUITE_P(
                 .device_ids = {3, 2, 1, 0},
                 .sharding = PartialTile({2, 1, 2}),
             },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2, 1}),
+                .layout_major_to_minor = std::vector<int>({0, 1}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2, 1}),
+                .layout_major_to_minor = std::vector<int>({1, 0}),
+            },
         }));
 
 TEST(ShardingUtilsTest, MismatchRank) {
@@ -668,7 +720,8 @@ TEST(ShardingUtilsTest, MismatchRank) {
   xla::HloSharding sharding = Tile({2, 1});
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), thread_pool),
+                                  std::move(sharding), thread_pool,
+                                  /*xla_input_layout*/ nullptr),
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   "shape must have 2 dimensions, but has 3 dimensions: "
