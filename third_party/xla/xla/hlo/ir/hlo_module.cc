@@ -148,6 +148,104 @@ HloModule::StackFrame HloModule::get_stack_frame(int id) const {
   return stack_frame;
 }
 
+bool HloModule::IsStackFramePrefix(int prefix_id, int frame_id) const {
+  if (prefix_id == 0) {
+    return true;
+  }
+  int d1 = GetStackFrameDepth(prefix_id);
+  int d2 = GetStackFrameDepth(frame_id);
+  if (d2 < d1) {
+    return false;
+  }
+
+  for (int i = 0; i < d2 - d1; ++i) {
+    frame_id = stack_frame_index_->stack_frames(frame_id - 1).parent_frame_id();
+  }
+  return AreStackFramesEqual(prefix_id, frame_id);
+}
+
+bool HloModule::AreStackFramesEqual(int id1, int id2) const {
+  if (id1 == id2) {
+    return true;
+  }
+  if (id1 == 0 || id2 == 0) {
+    return false;
+  }
+  const auto& f1 = stack_frame_index_->stack_frames(id1 - 1);
+  const auto& f2 = stack_frame_index_->stack_frames(id2 - 1);
+  if (f1.file_location_id() != f2.file_location_id()) {
+    if (!AreFileLocationsEqual(f1.file_location_id(), f2.file_location_id())) {
+      return false;
+    }
+  }
+  return AreStackFramesEqual(f1.parent_frame_id(), f2.parent_frame_id());
+}
+
+bool HloModule::AreFileLocationsEqual(int loc_id1, int loc_id2) const {
+  if (loc_id1 == loc_id2) {
+    return true;
+  }
+  const auto& l1 = stack_frame_index_->file_locations(loc_id1 - 1);
+  const auto& l2 = stack_frame_index_->file_locations(loc_id2 - 1);
+  if (l1.line() != l2.line() || l1.column() != l2.column() ||
+      l1.end_line() != l2.end_line() || l1.end_column() != l2.end_column()) {
+    return false;
+  }
+  if (stack_frame_index_->file_names(l1.file_name_id() - 1) !=
+      stack_frame_index_->file_names(l2.file_name_id() - 1)) {
+    return false;
+  }
+  if (stack_frame_index_->function_names(l1.function_name_id() - 1) !=
+      stack_frame_index_->function_names(l2.function_name_id() - 1)) {
+    return false;
+  }
+  return true;
+}
+
+int HloModule::GetStackFrameDepth(int frame_id) const {
+  int depth = 0;
+  while (frame_id != 0) {
+    depth++;
+    frame_id = stack_frame_index_->stack_frames(frame_id - 1).parent_frame_id();
+  }
+  return depth;
+}
+
+int HloModule::MergeStackFrames(int frame_id, int parent_frame_id) {
+  if (frame_id == 0) {
+    return parent_frame_id;
+  }
+  if (parent_frame_id == 0) {
+    return frame_id;
+  }
+  if (!stack_frame_index_.has_value()) {
+    return 0;
+  }
+  if (IsStackFramePrefix(parent_frame_id, frame_id)) {
+    return frame_id;
+  }
+
+  std::vector<int> ids;
+  int curr = frame_id;
+  while (curr != 0) {
+    ids.push_back(curr);
+    curr = stack_frame_index_->stack_frames(curr - 1).parent_frame_id();
+  }
+
+  int current_parent = parent_frame_id;
+  for (auto it = ids.rbegin(); it != ids.rend(); ++it) {
+    int id = *it;
+    const auto& old_frame = stack_frame_index_->stack_frames(id - 1);
+    int new_id = stack_frame_index_->stack_frames_size() + 1;
+    auto* new_frame = stack_frame_index_->add_stack_frames();
+    new_frame->set_file_location_id(old_frame.file_location_id());
+    new_frame->set_parent_frame_id(current_parent);
+    current_parent = new_id;
+  }
+
+  return current_parent;
+}
+
 void HloModule::Finalize() {
   instruction_name_uniquer_.reset();
   computation_name_uniquer_.reset();
