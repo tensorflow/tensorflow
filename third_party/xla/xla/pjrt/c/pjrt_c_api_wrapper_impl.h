@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -148,9 +149,11 @@ struct PJRT_Executable {
   std::vector<std::string> cost_analysis_names;
   std::vector<PJRT_NamedValue> cost_analysis_properties;
 
-  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
-  std::vector<const char*> memory_kinds;
-  std::vector<size_t> memory_kind_sizes;
+  bool parameter_shardings_ran ABSL_GUARDED_BY(mutex) = false;
+  bool has_parameter_shardings = false;
+  std::vector<std::string> parameter_shardings;
+  std::vector<const char*> parameter_sharding_ptrs;
+  std::vector<size_t> parameter_sharding_sizes;
 
   bool out_type_ran ABSL_GUARDED_BY(mutex) = false;
   std::vector<PJRT_Buffer_Type> out_types;
@@ -159,9 +162,19 @@ struct PJRT_Executable {
   std::vector<int64_t> out_dimensions;
   std::vector<size_t> out_dimension_sizes;
 
+  bool output_shardings_ran ABSL_GUARDED_BY(mutex) = false;
+  bool has_output_shardings = false;
+  std::vector<std::string> output_shardings;
+  std::vector<const char*> output_sharding_ptrs;
+  std::vector<size_t> output_sharding_sizes;
+
   bool out_layouts_ran ABSL_GUARDED_BY(mutex) = false;
   std::vector<PJRT_Layouts_MemoryLayout> out_layouts;
   std::vector<PJRT_Layouts_MemoryLayout*> out_layouts_pointers;
+
+  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> memory_kinds;
+  std::vector<size_t> memory_kind_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
@@ -559,6 +572,9 @@ PJRT_Layouts_Extension CreateLayoutsExtension(
     PJRT_Extension_Base* next = nullptr);
 
 PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
+    PJRT_Extension_Base* next = nullptr);
+
+PJRT_Shardings_Extension CreateShardingsExtension(
     PJRT_Extension_Base* next = nullptr);
 
 // Creates a PJRT_Api with create_fn from the input and other functions in

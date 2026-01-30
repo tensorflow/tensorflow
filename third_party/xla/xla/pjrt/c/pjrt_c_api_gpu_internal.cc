@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
@@ -513,11 +514,14 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
       pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
 
+  static PJRT_Shardings_Extension shardings_extension =
+      pjrt::CreateShardingsExtension(&cross_host_transfers_extension.base);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &cross_host_transfers_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &shardings_extension.base,
       pjrt::gpu_plugin::PJRT_Plugin_Attributes_Gpu);
 
   return &pjrt_api;

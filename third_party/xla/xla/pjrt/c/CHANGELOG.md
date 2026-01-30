@@ -1,5 +1,15 @@
 # PJRT C API changelog
 
+## 0.91
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_Shardings`. This extension
+  defines `PJRT_Executable_ParameterShardings` and
+  `PJRT_Executable_OutputShardings`. They are currently optional API; if the
+  plugin does not support shardings, they can be `nullptr`, or set the
+  `shardings` and `sharding_sizes` fields of
+  `PJRT_Executable_ParameterShardings_Args` and
+  `PJRT_Executable_OutputShardings_Args` to `nullptr`.
+
 ## 0.90
 
 * Added `total_size_in_bytes` field to `PJRT_Executable_GetCompiledMemoryStats_Args`.
