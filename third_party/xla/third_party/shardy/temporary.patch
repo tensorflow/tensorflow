@@ -1,82 +1,67 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 330ee97..509398d 100644
+index 509398d..5106181 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,62 +1 @@
+@@ -1 +1,47 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/libc/src/__support/wchar/character_converter.h b/libc/src/__support/wchar/character_converter.h
----- a/libc/src/__support/wchar/character_converter.h
--+++ b/libc/src/__support/wchar/character_converter.h
--@@ -77,7 +77,8 @@
-- }
-- 
-- LIBC_INLINE int CharacterConverter::push(char8_t utf8_byte) {
---  uint8_t num_ones = static_cast<uint8_t>(cpp::countl_one(utf8_byte));
--+  uint8_t num_ones =
--+      static_cast<uint8_t>(cpp::countl_one(static_cast<uint8_t>(utf8_byte)));
--   // Checking the first byte if first push
--   if (isEmpty()) {
--     // UTF-8 char has 1 byte total
--diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
----- a/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--+++ b/llvm/lib/Transforms/Instrumentation/MemProfUse.cpp
--@@ -910,11 +910,8 @@
-- 
--   if (!DataAccessProf) {
--     M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 0U);
---    M.getContext().diagnose(DiagnosticInfoPGOProfile(
---        MemoryProfileFileName.data(),
---        StringRef("Data access profiles not found in memprof. Ignore "
---                  "-memprof-annotate-static-data-prefix."),
---        DS_Warning));
--+    // FIXME: Add a diagnostic message without failing the compilation when
--+    // data access profile payload is not available.
--     return false;
--   }
--   M.addModuleFlag(Module::Warning, "EnableDataAccessProf", 1U);
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AArch64/fptoi-256.ll b/llvm/test/CodeGen/AArch64/fptoi-256.ll
----- a/llvm/test/CodeGen/AArch64/fptoi-256.ll
--+++ b/llvm/test/CodeGen/AArch64/fptoi-256.ll
--@@ -0,0 +1,11 @@
--+; RUN: llc -mtriple=aarch64 < %s
--+
--+define i256 @doubletosi256(double %a) {
--+  %conv = fptosi double %a to i256
--+  ret i256 %conv
--+}
--+
--+define double @si256todouble(i256 %a) {
--+  %conv = sitofp i256 %a to double
--+  ret double %conv
--+}
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/fptoi-256.ll b/llvm/test/CodeGen/fptoi-256.ll
----- a/llvm/test/CodeGen/fptoi-256.ll
--+++ b/llvm/test/CodeGen/fptoi-256.ll
--@@ -1,12 +0,0 @@
---; REQUIRES: aarch64-registered-target
---; RUN: llc -mtriple=aarch64 < %s
---
---define i256 @doubletosi256(double %a) {
---  %conv = fptosi double %a to i256
---  ret i256 %conv
---}
---
---define double @si256todouble(i256 %a) {
---  %conv = sitofp i256 %a to double
---  ret double %conv
---}
++diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
++--- a/libcxx/include/stdatomic.h
+++++ b/libcxx/include/stdatomic.h
++@@ -231,7 +231,7 @@
++ using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
++ using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
++ 
++-#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
+++#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
++ 
++ // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
++ // the header. We do this because Clang has historically shipped a <stdatomic.h>
++diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
++--- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+++++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
++@@ -0,0 +1,30 @@
+++//===----------------------------------------------------------------------===//
+++//
+++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+++// See https://llvm.org/LICENSE.txt for license information.
+++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+++//
+++//===----------------------------------------------------------------------===//
+++
+++// We're building as C, so this test doesn't work when building with modules.
+++// UNSUPPORTED: clang-modules-build
+++
+++// GCC complains about unrecognized arguments because we're compiling the
+++// file as C, but we're passing C++ flags on the command-line.
+++// UNSUPPORTED: gcc
+++
+++// Test that stdatomic.h gets the C header with its definitions.
+++
+++// NOTE: It's not common or recommended to have libc++ in the header search
+++// path when compiling C files, but it does happen often enough.
+++
+++// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
+++
+++#include <stdatomic.h>
+++
+++int main(int argc, char** argv) {
+++  (void)argc;
+++  (void)argv;
+++  [[maybe_unused]] atomic_bool x;
+++  return 0;
+++}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index a9af7d2..31e5be0 100644
+index 31e5be0..9b5614a 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "ec28be3ccac432ea6a45eca67249b209be216c0a"
--    LLVM_SHA256 = "f817108a98dc666bbf5590743670ee0d529ad6ddb4afd659b11540d2834ecb28"
-+    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
-+    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
+-    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
+-    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
++    LLVM_COMMIT = "909041e4802c4b9a2223ca04099f35bf1dbbd460"
++    LLVM_SHA256 = "3f986184ee126677dbd77edb16d6b82c057ec869fefd7a9871979941e52e837a"
  
      tf_http_archive(
          name = name,

@@ -1,1 +1,47 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
+--- a/libcxx/include/stdatomic.h
++++ b/libcxx/include/stdatomic.h
+@@ -231,7 +231,7 @@
+ using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
+ using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
+ 
+-#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
++#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
+ 
+ // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
+ // the header. We do this because Clang has historically shipped a <stdatomic.h>
+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+--- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
++++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+@@ -0,0 +1,30 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++// We're building as C, so this test doesn't work when building with modules.
++// UNSUPPORTED: clang-modules-build
++
++// GCC complains about unrecognized arguments because we're compiling the
++// file as C, but we're passing C++ flags on the command-line.
++// UNSUPPORTED: gcc
++
++// Test that stdatomic.h gets the C header with its definitions.
++
++// NOTE: It's not common or recommended to have libc++ in the header search
++// path when compiling C files, but it does happen often enough.
++
++// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
++
++#include <stdatomic.h>
++
++int main(int argc, char** argv) {
++  (void)argc;
++  (void)argv;
++  [[maybe_unused]] atomic_bool x;
++  return 0;
++}
