@@ -294,10 +294,10 @@ absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status CommandExecutor::Initialize(const Thunk::InitializeParams& params,
-                                         CommandStateManager& state) {
+absl::Status CommandExecutor::Initialize(
+    const Thunk::InitializeParams& params) {
   for (auto& command : commands_) {
-    TF_RETURN_IF_ERROR(command->Initialize(params, state));
+    TF_RETURN_IF_ERROR(command->Initialize(params));
   }
   return absl::OkStatus();
 }
