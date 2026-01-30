@@ -5485,10 +5485,11 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["interpreter"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":pattern_matcher",
         ":topk_rewriter",
@@ -5498,7 +5499,8 @@ xla_cc_test(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",

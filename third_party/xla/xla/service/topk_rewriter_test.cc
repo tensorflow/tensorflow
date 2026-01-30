@@ -39,7 +39,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,7 +51,9 @@ namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using TopkRewriterTest = HloTestBase;
+
+class TopkRewriterTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 std::string getComparator() {
   return R"(
