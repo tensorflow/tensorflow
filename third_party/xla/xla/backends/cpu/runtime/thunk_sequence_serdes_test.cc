@@ -1218,7 +1218,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             tsl::down_cast<const RngGetAndUpdateStateThunk&>(thunk_2));
       case Thunk::Kind::kSort:
         return VerifySortThunkEquality(
-            tsl::down_cast<const SortThunk&>(thunk_1),
+            absl::down_cast<const SortThunk&>(thunk_1),
             tsl::down_cast<const SortThunk&>(thunk_2));
       case Thunk::Kind::kTopK:
         return VerifyTopKThunkEquality(
