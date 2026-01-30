@@ -218,7 +218,7 @@ absl::Status ComputeConv2DDimension(const Conv2DParameters& params,
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
+int64_t GetDnnWorkspaceLimit(const std::string& envvar_in_mb,
                              int64_t default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
