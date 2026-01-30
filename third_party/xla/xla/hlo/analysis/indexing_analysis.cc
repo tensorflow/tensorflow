@@ -281,8 +281,6 @@ HloInstructionIndexing ComputeOutputToInputBroadcastOpIndexing(
 
 HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
     const HloBroadcastInstruction* bcast, MLIRContext* mlir_context) {
-  absl::Span<const int64_t> bcast_dims = bcast->dimensions();
-
   const Shape& input_shape = bcast->operand(0)->shape();
   const Shape& output_shape = bcast->shape();
 
@@ -291,16 +289,14 @@ HloInstructionIndexing ComputeInputToOutputBroadcastOpIndexing(
   exprs.reserve(output_shape.dimensions().size());
   for (auto [output_dim_id, output_dim] :
        llvm::enumerate(output_shape.dimensions())) {
-    auto bcast_dim =
-        std::find(bcast_dims.begin(), bcast_dims.end(), output_dim_id);
-    if (bcast_dim == bcast_dims.end()) {
+    auto operand_dim = bcast->MapUnaryOutputDimToOperandDim(output_dim_id);
+    if (!operand_dim.has_value()) {
       exprs.push_back(
           getAffineSymbolExpr(added_dims_sizes.size(), mlir_context));
       added_dims_sizes.push_back(output_dim);
       continue;
     }
-    exprs.push_back(getAffineDimExpr(
-        std::distance(bcast_dims.begin(), bcast_dim), mlir_context));
+    exprs.push_back(getAffineDimExpr(*operand_dim, mlir_context));
   }
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(input_shape.dimensions().size(), added_dims_sizes.size(),
