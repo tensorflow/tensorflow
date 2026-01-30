@@ -122,13 +122,17 @@ OpResolverLazyDelegateProxy::createXNNPackDelegate(TfLiteContext* context) {
     auto xnnpack_create =
         reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
             dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+    auto xnnpack_create_threadpool =
+        reinterpret_cast<decltype(TfLiteXNNPackDelegateCreateWithThreadpool)*>(
+            dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreateWithThreadpool"));
     auto xnnpack_delete =
         reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
             dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
 
     if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
       TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
-      delegate = xnnpack_create(&options);
+      // delegate = xnnpack_create(&options);
+      delegate = xnnpack_create_threadpool(&options, context);
       delegate_deleter = xnnpack_delete;
     }
   }
