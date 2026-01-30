@@ -34,7 +34,7 @@ def IsNchwLayoutOp: Constraint<CPred<
 
 def IsNhwcLayoutOp: Constraint<Neg<IsNchwLayoutOp.predicate>>;
 
-class HasRank<int n> : Constraint<
+class HasRankN<int n> : Constraint<
     CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
           "llvm::cast<ShapedType>($0.getType()).getRank() == " # n>>;
 
@@ -162,7 +162,7 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
           (variadic $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
-        [(HasRank<1> $indices),
+        [(HasRankN<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
 
@@ -171,7 +171,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
           (variadic $_, $_, $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
-        [(HasRank<1> $indices),
+        [(HasRankN<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
 
@@ -180,7 +180,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped2 : Pat<
           (variadic $_, $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
-        [(HasRank<1> $indices),
+        [(HasRankN<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
 
@@ -189,7 +189,7 @@ def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped3 : Pat<
           (variadic $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
-        [(HasRank<1> $indices),
+        [(HasRankN<1> $indices),
         (I32ElementsVal $indices),
         (HasRankAtLeast<2> $table)]>;
 
