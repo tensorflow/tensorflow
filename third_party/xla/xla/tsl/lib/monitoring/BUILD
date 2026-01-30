@@ -14,6 +14,8 @@ package(
     default_visibility = internal_visibility([
         "//learning/brain/google/data:__subpackages__",
         "//learning/brain/google/monitoring:__subpackages__",
+        # copybara:uncomment "//third_party/neptune:__subpackages__",
+        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
         # copybara:uncomment "//learning/pathways/util/platform:__subpackages__",
         # copybara:uncomment "//third_party/pathways/util/platform:__subpackages__",
