@@ -33,6 +33,8 @@ toc:
     path: /xla/emitters
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
+  - title: HLO Passes
+    path: /xla/hlo_passes
   - title: Indexing Analysis
     path: /xla/indexing
   - title: LHS Cost Model
