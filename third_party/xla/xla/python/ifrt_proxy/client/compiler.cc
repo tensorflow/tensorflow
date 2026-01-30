@@ -232,15 +232,14 @@ Compiler::CreateExecutableFromResponse(
         client_, rpc_helper_, response->loaded_executable_handle(),
         response->name(), response->num_devices(), device_list,
         std::move(addressable_devices), std::move(mpmd_addressable_devices),
-        std::move(fingerprint), std::move(ready_future),
-        std::move(loaded_host_callbacks),
+        std::move(fingerprint), std::move(loaded_host_callbacks),
         std::move(loaded_host_callback_handles));
   }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
       response->name(), response->num_devices(), device_list,
       std::move(addressable_devices), std::move(fingerprint),
-      std::move(ready_future), std::move(loaded_host_callbacks),
+      std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 

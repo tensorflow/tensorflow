@@ -63,7 +63,6 @@ class LoadedExecutable final
                    std::optional<DeviceListRef> devices,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
-                   tsl::Future<> ready_future,
                    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
                        loaded_host_callbacks,
                    std::vector<uint64_t> loaded_host_callback_handles);
@@ -82,7 +81,6 @@ class LoadedExecutable final
   xla::ifrt::UserContextRef user_context() const override {
     return user_context_;
   }
-  tsl::Future<> GetReadyFuture() const override;
 
   int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -155,7 +153,6 @@ class LoadedExecutable final
   const std::optional<DeviceListRef> devices_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
-  const tsl::Future<> ready_future_;
   const xla::ifrt::UserContextRef user_context_;
 
   class OutputSpecCache;

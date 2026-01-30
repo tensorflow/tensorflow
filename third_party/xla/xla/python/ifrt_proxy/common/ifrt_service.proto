@@ -504,7 +504,7 @@ message CompileResponse {
     bytes fingerprint_value = 6;
     tensorflow.StatusProto fingerprint_error = 7;
   }
-  fixed64 ready_future_handle = 9;
+  optional fixed64 ready_future_handle = 9;
 
   reserved 4;
 }

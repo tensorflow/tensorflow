@@ -938,8 +938,6 @@ class NanoExecutable final
 
   ifrt::UserContextRef user_context() const override { return user_context_; }
 
-  tsl::Future<> GetReadyFuture() const override { return Ready(); }
-
   int num_devices() const override { return 1; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override { return 0; }

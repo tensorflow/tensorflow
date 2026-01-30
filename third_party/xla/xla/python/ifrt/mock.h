@@ -344,7 +344,6 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
@@ -410,7 +409,6 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),

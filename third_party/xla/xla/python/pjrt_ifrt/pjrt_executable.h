@@ -274,12 +274,6 @@ class PjRtLoadedExecutable final
 
   UserContextRef user_context() const override { return user_context_; }
 
-  tsl::Future<> GetReadyFuture() const override {
-    // PjRtCompiler blocks until compilation finishes and returns only the
-    // executables that are ready.
-    return tsl::Future<>(absl::OkStatus());
-  }
-
   std::optional<std::vector<OpSharding>> GetParameterShardings()
       const override {
     DCHECK(this);
