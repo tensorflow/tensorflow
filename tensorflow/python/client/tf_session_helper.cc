@@ -460,7 +460,8 @@ void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
   ClearDecrefCache();
 }
 
-string EqualGraphDefWrapper(const string& actual, const string& expected) {
+std::string EqualGraphDefWrapper(const std::string& actual,
+                                 const std::string& expected) {
   GraphDef actual_def;
   if (!actual_def.ParseFromString(actual)) {
     return "actual is not a valid serialized GraphDef";
@@ -469,11 +470,12 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   if (!expected_def.ParseFromString(expected)) {
     return "expected is not a valid serialized GraphDef";
   }
-  string diff;
+  std::string diff;
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
 }
 
-string EqualAttrValueWrapper(const string& actual, const string& expected) {
+std::string EqualAttrValueWrapper(const std::string& actual,
+                                  const std::string& expected) {
   AttrValue actual_attr_value;
   if (!actual_attr_value.ParseFromString(actual)) {
     return "actual is not a valid serialized AttrValue";
@@ -484,9 +486,9 @@ string EqualAttrValueWrapper(const string& actual, const string& expected) {
     return "expected is not a valid serialized AttrValue";
   }
 
-  string diff;
+  std::string diff;
   if (!AreAttrValuesEqual(actual_attr_value, expected_attr_value)) {
-    diff = strings::Printf(
+    diff = absl::StrFormat(
         "Actual AttrValue %s does not match Expected AttrValue %s.",
         SummarizeAttrValue(actual_attr_value).c_str(),
         SummarizeAttrValue(expected_attr_value).c_str());
@@ -646,7 +648,7 @@ void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
                                         types.data(), status);
 }
 
-void CreatePlaceholder(TF_Graph* graph, TF_Status* s, string&& name,
+void CreatePlaceholder(TF_Graph* graph, TF_Status* s, std::string&& name,
                        TF_DataType dtype, TF_Output* output) {
   TF_OperationDescription* desc =
       TF_NewOperation(graph, "Placeholder", name.data());
@@ -699,14 +701,15 @@ void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
   TF_GraphSetTensorShape(graph, output, dims.data(), dims.size(), status);
 }
 
-std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+std::vector<std::string>
+TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
     TF_ImportGraphDefResults* results) {
   int num_missing_unused_input_mappings;
   const char** src_names;
   int* src_indexes;
   TF_ImportGraphDefResultsMissingUnusedInputMappings(
       results, &num_missing_unused_input_mappings, &src_names, &src_indexes);
-  std::vector<string> input_strs(num_missing_unused_input_mappings);
+  std::vector<std::string> input_strs(num_missing_unused_input_mappings);
   for (int i = 0; i < num_missing_unused_input_mappings; ++i) {
     input_strs[i] = TensorId(src_names[i], src_indexes[i]).ToString();
   }
