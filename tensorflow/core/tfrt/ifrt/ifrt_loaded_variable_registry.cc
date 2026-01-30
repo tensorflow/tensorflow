@@ -33,9 +33,8 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
   absl::MutexLock lock(mutex_);
   auto& variable = loaded_variable_map_[key];
   if (variable.array.IsValid()) {
-    // Already registered. This is rare.
-    VLOG(1) << "Variable '" << key.input_name << "' already registered.";
-    return absl::OkStatus();
+    return absl::AlreadyExistsError(
+        absl::StrCat("Variable '", key.input_name, "' already registered."));
   }
   TF_ASSIGN_OR_RETURN(variable, loaded_variable_constructor());
   return absl::OkStatus();
