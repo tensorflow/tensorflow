@@ -189,7 +189,11 @@ TEST_P(CpuLibraryFullParamTest, AddMatMul) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    expected = FusionProperties{HloOpcode::kDot, 3, 6, true};
+    // {Add, Add, Dot} for XNN, {Dot} for oneDNN.
+    // TODO(Intel-tf): Update expected values when fusion is supported.
+    expected = spec.lib != "onednn"
+                   ? FusionProperties{HloOpcode::kDot, 3, 6, true}
+                   : FusionProperties{HloOpcode::kDot, 2, 3, true};
   } else if (spec.fusion_mode == "greedy") {
     expected = FusionProperties{HloOpcode::kAdd, 2, 3, true};
   }
@@ -304,10 +308,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulSameInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kMultiply, 3, 7, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kMultiply, 3, 7, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only Add, Sub, and Mul in the fusion.
     expected = {HloOpcode::kMultiply, 2, 5, true};
@@ -335,10 +336,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddSubMulDifferentInputs) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kMultiply, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Sub, Mul} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kMultiply, 5, 9, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kMultiply, 5, 9, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only Add, Sub, and Mul in the fusion.
     expected = {HloOpcode::kMultiply, 4, 7, true};
@@ -374,10 +372,7 @@ TEST_P(CpuLibraryFullParamTest, MatMulAddMinExpSort) {
   DotRewriteTestSpec spec = GetParam();
   FusionProperties expected = {HloOpcode::kExp, 0, 0, false};
   if (IsDotEnabledOnCPU()) {
-    // {Dot, Add, Min, Exp} for YNN, {Dot, Add} for oneDNN.
-    expected = spec.lib == "ynn"
-                   ? FusionProperties{HloOpcode::kExp, 4, 8, true}
-                   : FusionProperties{HloOpcode::kAdd, 3, 5, true};
+    expected = {HloOpcode::kExp, 4, 8, true};
   } else if (spec.fusion_mode == "greedy") {
     // Only {Add, Min, Exp} in the fusion.
     expected = {HloOpcode::kExp, 3, 6, true};
