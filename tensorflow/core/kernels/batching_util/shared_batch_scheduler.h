@@ -25,12 +25,14 @@ limitations under the License.
 #include <deque>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
@@ -196,6 +198,10 @@ class SharedBatchScheduler
     //
     // Must be positive, or else invalid argument error will be returned at
     // queue creation time.
+    //
+    // If `enable_priority_aware_scheduler` is true, this field is not
+    // enforced, since batches are only constructed by batch threads; queue size
+    // is controlled by `PriorityAwareSchedulerOptions` instead.
     size_t max_enqueued_batches = 10;
 
     // If true, queue implementation would split one input batch task into
@@ -236,11 +242,17 @@ class SharedBatchScheduler
     std::vector<int32_t> allowed_batch_sizes;
 
     // If true, the padding will not be appended.
+    // When `enable_priority_aware_scheduler` is true, this option is ignored
+    // by SharedBatchScheduler -- batches are formed with as many requests as
+    // possible up to `max_execution_batch_size`.
     bool disable_padding = false;
 
     // The padding policy to use.
     //
     // See the documentation for kPadUpPolicy for details.
+    // When `enable_priority_aware_scheduler` is true, `batch_padding_policy`
+    // must be kPadUpPolicy. Batches are formed with as many requests as
+    // possible up to `max_execution_batch_size`.
     std::string batch_padding_policy = std::string(kPadUpPolicy);
 
     // A pointer to a ModelBatchStats instance for this model. To be used for
@@ -277,8 +289,32 @@ class SharedBatchScheduler
 
     // A policy that determines the mixed priority batching behavior. It is
     // effective only when enable_priority_queue is true.
+    // When `enable_priority_aware_scheduler` is true, this option is ignored
+    // -- batches are formed with as many requests as possible up to
+    // `max_execution_batch_size`, with tasks of any priority, based on
+    // criticality.
     MixedPriorityBatchingPolicy mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+
+    // If true, use priority aware scheduler.
+    // This enables the scheduler to support multiple priority levels based on
+    // request criticality, with higher-criticality tasks prioritized over
+    // lower-criticality ones when forming batches. This differs from
+    // `enable_priority_queue`, which only supports two levels of priority (high
+    // and low) and defines policies for mixing tasks of different priorities in
+    // batches.
+    bool enable_priority_aware_scheduler = false;
+
+    // Options for priority aware scheduler.
+    // Used iff `enable_priority_aware_scheduler` is true.
+    // If `enable_priority_aware_scheduler` is true, this struct controls the
+    // size of the queue.
+    struct PriorityAwareSchedulerOptions {
+      std::map<tsl::criticality::Criticality, size_t>
+          per_criticality_queue_size;
+    };
+
+    PriorityAwareSchedulerOptions priority_aware_scheduler_options;
   };
   // This method is marked virtual for testing purposes only.
   virtual absl::Status AddQueue(
@@ -339,6 +375,223 @@ class SharedBatchScheduler
 // Implementation details follow. API users need not read.
 
 namespace internal {
+template <typename TaskType>
+class PriorityTaskQueue {
+ public:
+  explicit PriorityTaskQueue(
+      std::map<tsl::criticality::Criticality, size_t>
+          per_criticality_queue_size,
+      std::function<
+          absl::Status(std::unique_ptr<TaskType>* input_task,
+                       int first_output_task_size, int input_batch_size_limit,
+                       std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+          split_input_task_func,
+      bool enable_large_batch_splitting, size_t max_execution_batch_size,
+      int64_t batch_timeout_micros, Env* env)
+      : per_criticality_queue_size_(std::move(per_criticality_queue_size)),
+        split_input_task_func_(split_input_task_func),
+        enable_large_batch_splitting_(enable_large_batch_splitting),
+        max_execution_batch_size_(max_execution_batch_size),
+        batch_timeout_micros_(batch_timeout_micros),
+        env_(env) {
+    for (const auto& [criticality, _] : per_criticality_queue_size_) {
+      queues_[criticality] = std::make_unique<TaskQueue<TaskType>>();
+    }
+  }
+
+  absl::Status AddTask(std::unique_ptr<TaskType>* task,
+                       uint64_t start_time_micros) {
+    if (GetQueueSize(**task) >= GetPerCriticalityQueueSize(**task)) {
+      return absl::UnavailableError(absl::StrFormat(
+          "The priority queue to which this task was submitted is full; "
+          "current size: %d, limit: %zu",
+          GetQueueSize(**task), GetPerCriticalityQueueSize(**task)));
+    }
+    GetQueue(GetCriticality(**task))
+        .AddTask(std::move(*task), start_time_micros);
+    return absl::OkStatus();
+  }
+
+  TaskQueue<TaskType>& GetQueue(tsl::criticality::Criticality c) {
+    return *queues_.at(c);
+  }
+
+  const TaskQueue<TaskType>& GetQueue(tsl::criticality::Criticality c) const {
+    return *queues_.at(c);
+  }
+
+  // Returns tasks whose sizes sum up to `size`; highest priority tasks are
+  // considered first. Within a priority, tasks that came first are
+  // considered first.
+  std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) {
+    std::vector<std::unique_ptr<TaskType>> tasks;
+    int remaining_size = size;
+    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
+      if (remaining_size <= 0) {
+        break;
+      }
+      if (it->second && !it->second->empty()) {
+        RemoveTasksFromQueue(it->second.get(), &remaining_size, &tasks);
+        MaybeSplitAndAddTask(it->second.get(), &remaining_size, &tasks);
+      }
+    }
+    return tasks;
+  }
+
+  std::optional<uint64_t> EarliestTaskStartTime() const {
+    std::optional<uint64_t> earliest_task_start_time;
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue) {
+        auto t = queue->EarliestTaskStartTime();
+        if (t.has_value()) {
+          if (!earliest_task_start_time.has_value() ||
+              *t < *earliest_task_start_time) {
+            earliest_task_start_time = t;
+          }
+        }
+      }
+    }
+    return earliest_task_start_time;
+  }
+
+  bool empty() const {
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue && !queue->empty()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  int num_tasks() const {
+    int num_tasks = 0;
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue) {
+        num_tasks += queue->num_tasks();
+      }
+    }
+    return num_tasks;
+  }
+
+  int size() const {
+    int size = 0;
+    for (const auto& [criticality, queue] : queues_) {
+      if (queue) {
+        size += queue->size();
+      }
+    }
+    return size;
+  }
+
+  int GetQueueSize(const TaskType& task) const {
+    auto it = queues_.find(GetCriticality(task));
+    if (it != queues_.end() && it->second) {
+      return it->second->size();
+    }
+    return 0;
+  }
+
+  size_t GetPerCriticalityQueueSize(const TaskType& task) const {
+    tsl::criticality::Criticality criticality = GetCriticality(task);
+    return per_criticality_queue_size_.at(criticality);
+  }
+
+  size_t GetMaxSize() const {
+    size_t total_limit = 0;
+    for (auto const& [criticality, limit] : per_criticality_queue_size_) {
+      total_limit += limit;
+    }
+    return total_limit;
+  }
+
+  std::optional<tsl::criticality::Criticality> HighestCriticality() const {
+    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
+      if (it->second && !it->second->empty()) {
+        return it->first;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::unique_ptr<Batch<TaskType>> ScheduleBatch() {
+    if (empty()) {
+      return nullptr;
+    }
+    if (size() >= max_execution_batch_size_ ||
+        env_->NowMicros() >=
+            EarliestTaskStartTime().value() + batch_timeout_micros_) {
+      auto batch = std::make_unique<Batch<TaskType>>();
+      size_t tasks_to_schedule =
+          std::min(static_cast<size_t>(size()), max_execution_batch_size_);
+      std::vector<std::unique_ptr<TaskType>> tasks =
+          RemoveTask(tasks_to_schedule);
+      for (auto& t : tasks) {
+        batch->AddTask(std::move(t), env_->NowMicros());
+      }
+      batch->Close();
+      return batch;
+    }
+    return nullptr;
+  }
+
+ private:
+  void RemoveTasksFromQueue(TaskQueue<TaskType>* queue, int* remaining_size,
+                            std::vector<std::unique_ptr<TaskType>>* tasks) {
+    std::vector<std::unique_ptr<TaskType>> t =
+        queue->RemoveTask(*remaining_size);
+    for (const auto& task_ptr : t) {
+      *remaining_size -= task_ptr->size();
+    }
+    std::move(t.begin(), t.end(), std::back_inserter(*tasks));
+  }
+
+  void MaybeSplitAndAddTask(TaskQueue<TaskType>* queue, int* remaining_size,
+                            std::vector<std::unique_ptr<TaskType>>* tasks) {
+    if (*remaining_size <= 0 || queue->empty() ||
+        !enable_large_batch_splitting_) {
+      return;
+    }
+
+    // If we are here, it means next task in queue is larger
+    // than *remaining_size.
+    uint64_t start_time = queue->EarliestTaskStartTime().value();
+    std::unique_ptr<TaskType> task = queue->RemoveTask();
+    std::vector<std::unique_ptr<TaskType>> output_tasks;
+    absl::Status status = split_input_task_func_(
+        &task, *remaining_size, max_execution_batch_size_, &output_tasks);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to split task: " << status;
+      queue->PrependTask(std::move(task), start_time);
+      return;
+    }
+    *remaining_size -= output_tasks[0]->size();
+    tasks->push_back(std::move(output_tasks[0]));
+
+    for (size_t i = output_tasks.size() - 1; i >= 1; --i) {
+      queue->PrependTask(std::move(output_tasks[i]), start_time);
+    }
+  }
+
+  tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
+    if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+      return task.criticality();
+    }
+    return tsl::criticality::Criticality::kSheddable;
+  }
+
+  std::map<tsl::criticality::Criticality, std::unique_ptr<TaskQueue<TaskType>>>
+      queues_;
+  std::map<tsl::criticality::Criticality, size_t> per_criticality_queue_size_;
+  std::function<absl::Status(
+      std::unique_ptr<TaskType>* input_task, int first_output_task_size,
+      int input_batch_size_limit,
+      std::vector<std::unique_ptr<TaskType>>* output_tasks)>
+      split_input_task_func_;
+  bool enable_large_batch_splitting_;
+  size_t max_execution_batch_size_;
+  int64_t batch_timeout_micros_;
+  Env* env_;
+};
 
 // A task queue for SharedBatchScheduler. Accepts tasks and accumulates them
 // into batches, and dispenses those batches to be processed via a "pull"
@@ -439,6 +692,8 @@ class Queue {
   bool closed() const TF_NO_THREAD_SAFETY_ANALYSIS { return closed_.load(); }
 
  private:
+  PriorityTaskQueue<TaskType> tasks_priority_queue_ TF_GUARDED_BY(mu_);
+
   // Computes the max_execution_batch_size of the queue based on queue options.
   static size_t GetMaxExecutionBatchSize(
       const typename SharedBatchScheduler<TaskType>::QueueOptions& options) {
@@ -730,6 +985,41 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
         options.max_execution_batch_size);
   }
 
+  if (options.enable_priority_aware_scheduler) {
+    if (options.disable_padding) {
+      return absl::InvalidArgumentError(
+          "If enable_priority_aware_scheduler is true, disable_padding "
+          "must be false.");
+    }
+    if (options.batch_padding_policy != kPadUpPolicy) {
+      return absl::InvalidArgumentError(
+          "If enable_priority_aware_scheduler is true, batch_padding_policy "
+          "must be kPadUpPolicy.");
+    }
+    if (options.mixed_priority_batching_policy !=
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {
+      return absl::InvalidArgumentError(
+          "If enable_priority_aware_scheduler is true, "
+          "mixed_priority_batching_policy must be "
+          "kLowPriorityPaddingWithMaxBatchSize.");
+    }
+    if (options.priority_aware_scheduler_options.per_criticality_queue_size
+            .empty()) {
+      return absl::InvalidArgumentError(
+          "If enable_priority_aware_scheduler is true, "
+          "per_criticality_queue_size must be non-empty.");
+    }
+    for (const auto& pair :
+         options.priority_aware_scheduler_options.per_criticality_queue_size) {
+      if (pair.second < 0) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "If enable_priority_aware_scheduler is true, queue sizes must be "
+            "positive. The queue size for criticality %d is %d.",
+            pair.first, pair.second));
+      }
+    }
+  }
+
   auto schedulable_batch_callback = [this] {
     mutex_lock l(mu_);
     schedulable_batch_cv_.notify_one();
@@ -869,7 +1159,11 @@ Queue<TaskType>::Queue(
     const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
     Env* env, ProcessBatchCallback process_batch_callback,
     SchedulableBatchCallback schedulable_batch_callback)
-    : options_(options),
+    : tasks_priority_queue_(
+          options.priority_aware_scheduler_options.per_criticality_queue_size,
+          options.split_input_task_func, options.enable_large_batch_splitting,
+          GetMaxExecutionBatchSize(options), options.batch_timeout_micros, env),
+      options_(options),
       env_(env),
       max_execution_batch_size_(GetMaxExecutionBatchSize(options_)),
       process_batch_callback_(process_batch_callback),
@@ -1045,21 +1339,35 @@ absl::Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
     DCHECK(!closed_);
 
-    if (IsLowPriorityTask(task)) {
-      // Insert the task to the low priority task queue instead of the high
-      // priority batch queue below.
-      TF_RETURN_IF_ERROR(ValidateLowPriorityTaskQueueCapacity(**task));
-      low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
-    } else {
-      TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
-    }
-
-    // Check if the batch queue has a schedulable batch and mark it schedulable
-    // if it not already marked.
-    if (!schedulable_batch_) {
-      if (GetBatches().size() > 1 || IsOpenBatchSchedulable()) {
+    if (options_.enable_priority_aware_scheduler) {
+      if ((*task)->size() > options_.input_batch_size_limit) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Task size %d is larger than maximum input batch size %d",
+            (*task)->size(), options_.input_batch_size_limit));
+      }
+      TF_RETURN_IF_ERROR(
+          tasks_priority_queue_.AddTask(task, env_->NowMicros()));
+      if (!schedulable_batch_ && IsOpenBatchSchedulable()) {
         schedulable_batch_ = true;
         notify_of_schedulable_batch = true;
+      }
+    } else {
+      if (IsLowPriorityTask(task)) {
+        // Insert the task to the low priority task queue instead of the high
+        // priority batch queue below.
+        TF_RETURN_IF_ERROR(ValidateLowPriorityTaskQueueCapacity(**task));
+        low_priority_tasks_.AddTask(std::move(*task), env_->NowMicros());
+      } else {
+        TF_RETURN_IF_ERROR(ScheduleWithoutOrEagerSplitImpl(task));
+      }
+
+      // Check if the batch queue has a schedulable batch and mark it
+      // schedulable if it not already marked.
+      if (!schedulable_batch_) {
+        if (GetBatches().size() > 1 || IsOpenBatchSchedulable()) {
+          schedulable_batch_ = true;
+          notify_of_schedulable_batch = true;
+        }
       }
     }
   }
@@ -1075,6 +1383,9 @@ template <typename TaskType>
 size_t Queue<TaskType>::NumEnqueuedTasks() const {
   size_t num_enqueued_tasks = 0;
   mutex_lock l(mu_);
+  if (options_.enable_priority_aware_scheduler) {
+    return tasks_priority_queue_.num_tasks();
+  }
   for (const auto& batch : GetBatches()) {
     num_enqueued_tasks += batch->num_tasks();
   }
@@ -1089,6 +1400,12 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
+  if (options_.enable_priority_aware_scheduler) {
+    size_t total_limit = tasks_priority_queue_.GetMaxSize();
+    int size = tasks_priority_queue_.size();
+    if (size >= total_limit) return 0;
+    return total_limit - size;
+  }
   const int64_t num_new_batches_schedulable =
       static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
@@ -1188,74 +1505,77 @@ Queue<TaskType>::ScheduleBatch() {
   {
     mutex_lock l(mu_);
 
-    std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+    if (options_.enable_priority_aware_scheduler) {
+      batch_to_schedule = tasks_priority_queue_.ScheduleBatch();
+    } else {
+      std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
+      // Just in time merging of low priority tasks into the open batch.
+      PadOpenBatchWithLowPriorityTasks();
 
-    // Just in time merging of low priority tasks into the open batch.
-    PadOpenBatchWithLowPriorityTasks();
+      // Consider closing the open batch at this time, to schedule it.
+      if (batches.size() == 1 && IsOpenBatchSchedulable()) {
+        // Support BatchPaddingPolicy::kBatchDown and
+        // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
+        // starting a new batch because starting a new batch will close the old
+        // batch, making it read-only.
+        Batch<TaskType>& old_batch = *batches[0];
+        if (!old_batch.empty()) {
+          uint64_t old_batch_time = old_batch.EarliestTaskStartTime().value();
+          std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
+          MaybeBatchDown(
+              /* batch= */ old_batch,
+              /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
+              /* disable_padding= */ options_.disable_padding,
+              /* batch_padding_policy= */ options_.batch_padding_policy,
+              /* model_batch_stats= */ options_.model_batch_stats,
+              /* out_trimmed_tasks= */ trimmed_tasks);
 
-    // Consider closing the open batch at this time, to schedule it.
-    if (batches.size() == 1 && IsOpenBatchSchedulable()) {
-      // Support BatchPaddingPolicy::kBatchDown and
-      // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
-      // starting a new batch because starting a new batch will close the old
-      // batch, making it read-only.
-      Batch<TaskType>& old_batch = *batches[0];
-      if (!old_batch.empty()) {
-        uint64_t old_batch_time = old_batch.EarliestTaskStartTime().value();
-        std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
-        MaybeBatchDown(
-            /* batch= */ old_batch,
-            /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
-            /* disable_padding= */ options_.disable_padding,
-            /* batch_padding_policy= */ options_.batch_padding_policy,
-            /* model_batch_stats= */ options_.model_batch_stats,
-            /* out_trimmed_tasks= */ trimmed_tasks);
+          StartNewBatch();
 
-        StartNewBatch();
-
-        // Move the trimmed tasks, if any, into the new batch.
-        Batch<TaskType>& new_batch = *batches[1];
-        for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
-          new_batch.AddTask(std::move(task), old_batch_time);
+          // Move the trimmed tasks, if any, into the new batch.
+          Batch<TaskType>& new_batch = *batches[1];
+          for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
+            new_batch.AddTask(std::move(task), old_batch_time);
+          }
+          if (!new_batch.empty()) {
+            // TODO - b/325954758: Reconsider the starting time of a trimmed
+            // batch.
+            //
+            // Ideally, we'd set open_batch_start_time_micros_ to time we
+            // received the first task in the open batch, but we don't have this
+            // information here. For now, we're trying as alternative solution
+            // that doesn't require adding time to each task: assume that
+            // requests arrived at a steady rate and therefore use a point
+            // between the old value of open_batch_start_time_micros_ and NOW.
+            //
+            // Let's say that originally, the batch had 10 requests, and we want
+            // to schedule a batch of size 8 and leave 2 requests in the open
+            // batch (new_batch). Then, variable `position` is 0.8, which means
+            // we have to set open_batch_start_time_micros_ to be at a position
+            // of 80% between open_batch_start_time_micros_ and now.
+            double position = static_cast<double>(old_batch.size()) /
+                              (old_batch.size() + new_batch.size());
+            open_batch_start_time_micros_ +=
+                (env_->NowMicros() - open_batch_start_time_micros_) * position;
+          }
         }
-        if (!new_batch.empty()) {
-          // TODO - b/325954758: Reconsider the starting time of a trimmed
-          // batch.
-          //
-          // Ideally, we'd set open_batch_start_time_micros_ to time we received
-          // the first task in the open batch, but we don't have this
-          // information here. For now, we're trying as alternative solution
-          // that doesn't require adding time to each task: assume that requests
-          // arrived at a steady rate and therefore use a point between the old
-          // value of open_batch_start_time_micros_ and NOW.
-          //
-          // Let's say that originally, the batch had 10 requests, and we want
-          // to schedule a batch of size 8 and leave 2 requests in the open
-          // batch (new_batch). Then, variable `position` is 0.8, which means we
-          // have to set open_batch_start_time_micros_ to be at a position of
-          // 80% between open_batch_start_time_micros_ and now.
-          double position = static_cast<double>(old_batch.size()) /
-                            (old_batch.size() + new_batch.size());
-          open_batch_start_time_micros_ +=
-              (env_->NowMicros() - open_batch_start_time_micros_) * position;
-        }
+      }
+
+      if (batches.size() >= 2) {
+        // There is at least one closed batch that is ready to be scheduled.
+        batch_to_schedule = std::move(batches.front());
+        batches.pop_front();
+      }
+
+      if (batch_to_schedule == nullptr) {
+        // If there was no schedulable batch in the batch queue, try to schedule
+        // from the low priority task queue.
+        batch_to_schedule = ScheduleLowPriorityBatch();
       }
     }
 
-    if (batches.size() >= 2) {
-      // There is at least one closed batch that is ready to be scheduled.
-      batch_to_schedule = std::move(batches.front());
-      batches.pop_front();
-    }
-
     if (batch_to_schedule == nullptr) {
-      // If there was no schedulable batch in the batch queue, try to schedule
-      // from the low priority task queue.
-      batch_to_schedule = ScheduleLowPriorityBatch();
-    }
-
-    if (batch_to_schedule == nullptr) {
-      // There is neither high nor low priority batch that can be scheduled,
+      // There is no batch that can be scheduled,
       // mark the condition false and return the nullptr.
       schedulable_batch_ = false;
       return batch_to_schedule;
@@ -1361,6 +1681,9 @@ void Queue<TaskType>::CloseAndWaitUntilEmpty() {
 
 template <typename TaskType>
 bool Queue<TaskType>::IsEmptyInternal() const {
+  if (options_.enable_priority_aware_scheduler) {
+    return num_batches_being_processed_ == 0 && tasks_priority_queue_.empty();
+  }
   const std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
   return num_batches_being_processed_ == 0 && batches.size() == 1 &&
          batches.back()->empty() && low_priority_tasks_.empty();
@@ -1401,6 +1724,32 @@ Queue<TaskType>::PeekBatchPriority() const {
 template <typename TaskType>
 std::optional<typename Queue<TaskType>::BatchPriorityKey>
 Queue<TaskType>::PeekBatchPriorityImpl() const {
+  if (options_.enable_priority_aware_scheduler) {
+    if (tasks_priority_queue_.empty()) {
+      return std::nullopt;
+    }
+    bool schedulable =
+        tasks_priority_queue_.size() >= max_execution_batch_size_ ||
+        env_->NowMicros() >=
+            tasks_priority_queue_.EarliestTaskStartTime().value() +
+                options_.batch_timeout_micros;
+    if (!schedulable) {
+      return std::nullopt;
+    }
+    std::optional<tsl::criticality::Criticality> highest_criticality =
+        tasks_priority_queue_.HighestCriticality();
+    // Priority is 4 - criticality, so CRITICAL_PLUS (3) -> 1, CRITICAL (2) ->
+    // 2, etc.
+
+    const int max_priority =
+        static_cast<int>(tsl::criticality::Criticality::kCriticalPlus);
+    return std::make_pair(
+        max_priority - static_cast<int>(highest_criticality.value()),
+        tasks_priority_queue_.GetQueue(highest_criticality.value())
+            .EarliestTaskStartTime()
+            .value());
+  }
+
   const int kHighPriority = 1;
   const int kLowPriority = 2;
 
