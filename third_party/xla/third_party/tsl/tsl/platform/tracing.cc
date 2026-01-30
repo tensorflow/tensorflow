@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/hash.h"
 
 namespace tsl {
