@@ -374,11 +374,12 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
-        "//xla/service:gpu_plugin",
+        "//xla/service:gpu_plugin",  # build_cleaner: keep
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
