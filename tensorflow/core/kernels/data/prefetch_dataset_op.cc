@@ -337,7 +337,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           "buffer_limit",
           limit == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(limit))));
+              : absl::StrFormat("%lld", static_cast<long long>(limit))));
       result.push_back(std::make_pair(
           "autotune",
           dataset()->buffer_size_ == model::kAutotune ? "true" : "false"));
@@ -346,11 +346,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (dataset()->slack_period_ > 0) {
         result.push_back(std::make_pair(
             "slack",
-            strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
+            absl::StrFormat("%lld", static_cast<long long>(slack_us_.load()))));
       }
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
