@@ -200,7 +200,7 @@ EXPORTS
   ?AddMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX_NPEAUTSL_Status@@@Z
   ?AddRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
   ?AddStep@tfprof@tensorflow@@YAN_JPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@11@Z
-  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J101@Z
+  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J1011@Z
   ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?AddWhileInputHack@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@PEAUTF_Operation@@PEAUTSL_Status@@@Z
   ?AllocateDTensorDevice@dtensor@tensorflow@@YAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAUTFE_CustomDevice@@PEAPEAX_NHPEAUTSL_Status@@@Z
