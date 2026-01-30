@@ -39,6 +39,8 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"

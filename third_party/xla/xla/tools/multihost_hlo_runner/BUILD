@@ -161,6 +161,7 @@ cc_library(
     deps = [
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//third_party/protobuf/io",
         "//xla:future",
         "//xla:literal",
         "//xla:literal_util",
@@ -249,6 +250,7 @@ xla_test(
         ":functional_hlo_runner",
         ":hlo_input_output_format",
         ":profiler_interface",
+        "//third_party/protobuf/io",
         "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_layout",
