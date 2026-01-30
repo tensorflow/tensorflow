@@ -322,8 +322,8 @@ class PjRtRawLoadedExecutable {
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
   CommonPjRtLoadedExecutable(
-      CommonPjRtClient* client, std::vector<Shape> parameter_device_shapes,
-      Shape output_device_shape, std::vector<int> output_memory_space_kind_ids,
+      std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
+      std::vector<int> output_memory_space_kind_ids,
       std::vector<PjRtDevice*> addressable_devices,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids)
       : parameter_device_shapes_(std::move(parameter_device_shapes)),

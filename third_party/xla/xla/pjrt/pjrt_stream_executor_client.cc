@@ -1128,47 +1128,33 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     CompileOptions compile_options,
     std::vector<LogicalDeviceIds> addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices,
-    PjRtStreamExecutorClient* client, xla::Shape result_shape,
-    std::vector<int> output_memory_space_kind_ids)
-    : client_(client),
+    PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
+    xla::Shape result_shape, std::vector<int> output_memory_space_kind_ids)
+    : CommonPjRtLoadedExecutable(std::move(parameter_shapes),
+                                 std::move(result_shape),
+                                 std::move(output_memory_space_kind_ids),
+                                 std::move(addressable_devices),
+                                 std::move(addressable_device_logical_ids)),
+      client_(client),
+      executable_(std::move(executable)),
       device_assignment_(std::move(device_assignment)),
       compile_options_(std::move(compile_options)),
-      parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
-      result_shape_(std::move(result_shape)),
-      output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
-      addressable_device_logical_ids_(
-          std::move(addressable_device_logical_ids)),
-      addressable_devices_(std::move(addressable_devices)) {
-  TransferManager* transfer_manager =
-      client_->client()->backend().transfer_manager();
+      parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
-  {
-    ComputationLayout computation_layout =
-        executable->executable()->compute_computation_layout();
-    std::vector<Shape> parameter_shapes;
-    parameter_shapes.reserve(computation_layout.parameter_count());
-    for (int i = 0; i < computation_layout.parameter_count(); ++i) {
-      parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
-          computation_layout.parameter_shape(i)));
-    }
-    fingerprint = tsl::FingerprintCat128(
-        fingerprint,
-        tsl::Fingerprint128(executable->executable()->module().ToString(
-            HloPrintOptions::ModuleFingerprint())));
-    executable_ = std::move(executable);
-    on_device_executable_parameter_shapes_ =
-        std::make_shared<std::vector<Shape>>(std::move(parameter_shapes));
-  }
+  on_device_executable_parameter_shapes_ =
+      std::make_shared<std::vector<Shape>>(parameter_device_shapes_);
+  fingerprint = tsl::FingerprintCat128(
+      fingerprint,
+      tsl::Fingerprint128(executable_->executable()->module().ToString(
+          HloPrintOptions::ModuleFingerprint())));
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
 
   int num_partitions;
   if (device_assignment_ == nullptr) {
-    // This must go after `executable_` is initialized.
     VLOG(3) << "PjRtStreamExecutorLoadedExecutable portable single-core";
     num_partitions = 1;
     CHECK(addressable_devices_.empty());
   } else {
-    // This must go after `executable_` is initialized.
     VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
             << device_assignment_->ToString();
 
@@ -2010,7 +1996,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   TF_ASSIGN_OR_RETURN(
       auto result_buffer,
       client_->AllocateOutputBuffersWithInputReuse(
-          result_shape_, device_buffers,
+          output_device_shape_, device_buffers,
           executable_->executable()->module().input_output_alias_config(),
           device, output_memory_space_kind_ids_));
 
@@ -2033,7 +2019,7 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
   return PjRtLoadedExecutable::Result(
       {/*future=*/std::move(results.future),
        /*buffers=*/client()->CreateOutputs(
-           result_shape_, results.primary_execute_event, device,
+           output_device_shape_, results.primary_execute_event, device,
            output_memory_space_kind_ids_, std::move(result_buffer),
            /*is_predetermined_error=*/false)});
 }
@@ -2845,12 +2831,23 @@ PjRtStreamExecutorClient::LoadInternal(
       }
     }
   }
+
+  TransferManager* transfer_manager = client()->backend().transfer_manager();
+  ComputationLayout computation_layout =
+      local_executable->executable()->compute_computation_layout();
+  std::vector<Shape> parameter_shapes;
+  parameter_shapes.reserve(computation_layout.parameter_count());
+  for (int i = 0; i < computation_layout.parameter_count(); ++i) {
+    parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
+        computation_layout.parameter_shape(i)));
+  }
   auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executable),
       compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
-      this, std::move(result_shape), std::move(output_memory_space_kind_ids));
+      this, std::move(parameter_shapes), std::move(result_shape),
+      std::move(output_memory_space_kind_ids));
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));

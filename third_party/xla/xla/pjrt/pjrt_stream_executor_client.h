@@ -530,7 +530,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 absl::StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices);
 
-class PjRtStreamExecutorRawLoadedExecutable {
+class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
  public:
   PjRtStreamExecutorRawLoadedExecutable(
       int replica, int partition, RunId run_id, PjRtDevice* device,
@@ -548,12 +548,21 @@ class PjRtStreamExecutorRawLoadedExecutable {
         parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
         on_device_executable_parameter_shapes_(
             std::move(on_device_executable_parameter_shapes)) {}
+
+  absl::Status Load(const ExecuteOptions& options,
+                    size_t host_callback_idx) override {
+    return absl::OkStatus();
+  }
+
+  PjRtDevice* device() override { return device_; }
+
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
       const ExecuteOptions& options,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> inputs,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
       PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
-      bool is_predetermined_error, bool fill_future) &&;
+      bool is_predetermined_error, bool fill_future) &&
+      override;
 
  private:
   int replica_;
@@ -569,7 +578,7 @@ class PjRtStreamExecutorRawLoadedExecutable {
 
 // Wraps one or more XLA LocalExecutables (one per partition, as specified by
 // the build options).
-class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
+class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
       std::unique_ptr<LocalExecutable> executables,
@@ -578,8 +587,8 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
       CompileOptions compile_options,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::vector<PjRtDevice*> addressable_devices,
-      PjRtStreamExecutorClient* client, xla::Shape result_shape,
-      std::vector<int> output_memory_space_kind_ids);
+      PjRtStreamExecutorClient* client, std::vector<Shape> parameter_shapes,
+      xla::Shape result_shape, std::vector<int> output_memory_space_kind_ids);
 
   ~PjRtStreamExecutorLoadedExecutable() override = default;
 
@@ -612,6 +621,24 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     memory_stats.PopulateBufferStatsFromAllocations(
         executable_->executable()->GetAllocations());
     return memory_stats;
+  }
+
+  const HloInputOutputAliasConfig& input_output_alias_config() const override {
+    return executable_->executable()->module().input_output_alias_config();
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> StartRawExecutable(
+      const ExecuteOptions& options, int replica, int partition,
+      PjRtDevice* device) const override {
+    return std::unique_ptr<PjRtRawLoadedExecutable>();
+  }
+
+  void LaunchOnDevice(PjRtDevice* device,
+                      absl::AnyInvocable<void()> execute_fn) const override {
+    const LocalDeviceState& device_state =
+        *tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+             ->local_device_state();
+    device_state.execute_thread()->Schedule(std::move(execute_fn));
   }
 
   const DeviceAssignment& device_assignment() const override {
@@ -717,20 +744,6 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   // True if the executables were compiled expecting arguments in a single
   // tuple.
   const bool parameter_is_tupled_arguments_;
-  xla::Shape result_shape_;
-  std::vector<int> output_memory_space_kind_ids_;
-
-  // The replica and partition indices of device_assignment_ to be run by this
-  // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
-  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
-  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
-  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
-
-  // addressable_devices_[i] is the Device to which
-  // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
-  // unique_ptrs to play well with the Python bindings (see xla.cc).
-  std::vector<PjRtDevice*> addressable_devices_;
   std::string fingerprint_;
 
   struct InputHloSnapshotBits {
