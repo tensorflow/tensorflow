@@ -168,6 +168,9 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
 
+  std::vector<tsl::RCReference<tsl::AsyncValue>>
+  GetAsyncValueDefinitionAndUsageEvents() override;
+
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) override;
 

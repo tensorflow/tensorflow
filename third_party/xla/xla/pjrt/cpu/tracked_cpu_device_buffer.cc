@@ -250,6 +250,16 @@ TrackedCpuDeviceBuffer::GetAsyncValueDefinitionEvents() {
   return result;
 }
 
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> result;
+  result.push_back(definition_event_.CopyRCRef());
+  for (auto& event : usage_events_) {
+    result.push_back(event.CopyRCRef());
+  }
+  return result;
+}
+
 void TrackedCpuDeviceBuffer::AddUsageEvent(
     tsl::RCReference<PjRtDeviceEvent> event) {
   if (event) {

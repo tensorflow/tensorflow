@@ -49,6 +49,11 @@ class AbstractTrackedDeviceBuffer {
   virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
   GetAsyncValueDefinitionEvents() = 0;
 
+  // Construct (or return) a vector of tsl::AsyncValue events which
+  // will become ready when this buffer is ok to mutate.
+  virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
+  GetAsyncValueDefinitionAndUsageEvents() = 0;
+
   // Returns a raw buffer which aliases the same
   // underlying memory as this AbstractTrackedDeviceBuffer.
   const tsl::RCReference<CommonPjRtRawBuffer>& raw_buffer() const {

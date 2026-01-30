@@ -420,6 +420,42 @@ TEST(PjRtClientTest, CopyToDevice) {
                                      *literal));
 }
 
+TEST(PjRtClientTest, CopyToDeviceWithDest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  std::vector<int32_t> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scratchpad0,
+      client->CreateUninitializedBuffer(shape, client->memory_spaces()[0]));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          scratchpad0.get(), /*device_layout=*/nullptr));
+
+  auto* device_1 = client->addressable_devices()[1];
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto scratchpad1,
+      client->CreateUninitializedBuffer(buffer->on_device_shape(),
+                                        *device_1->default_memory_space()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          buffer->CopyToMemorySpace(scratchpad1.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteral().Await());
+
+  std::vector<int32_t> expected(4, 0);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
+}
+
 TEST(PjRtClientTest, CopyToDeviceAsync) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
   ASSERT_GT(client->addressable_devices().size(), 1);

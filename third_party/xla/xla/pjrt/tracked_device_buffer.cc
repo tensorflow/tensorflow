@@ -285,6 +285,19 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
   return avs;
 }
 
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
+  avs.reserve(definition_events_.size());
+  for (const auto& ev : definition_events_) {
+    avs.push_back(ev.CopyRCRef());
+  }
+  for (const auto& ev : usage_events_) {
+    avs.push_back(ev.event.CopyRCRef());
+  }
+  return avs;
+}
+
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 TrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
   if (definition_events_.size() != 1) {
