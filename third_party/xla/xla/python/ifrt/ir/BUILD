@@ -577,6 +577,12 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "program_memory_trace_proto",
+    srcs = ["program_memory_trace.proto"],
+    visibility = ["//xla/python/ifrt:users"],
+)
+
 cc_library(
     name = "utils",
     srcs = ["utils.cc"],
