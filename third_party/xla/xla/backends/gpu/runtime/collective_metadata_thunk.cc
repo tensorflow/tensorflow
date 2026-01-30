@@ -79,26 +79,24 @@ CollectiveConfig CollectiveMetadataThunk::GetCollectiveConfig(
   return config;
 }
 
-absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
+absl::StatusOr<std::vector<void*>> CollectiveMetadataThunk::CollectParamToPeers(
     const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
-    std::vector<se::DeviceAddressBase> parameters,
-    std::shared_ptr<CollectiveMultimem> multimem,
-    se::DeviceAddressBase destination) {
+    const std::vector<se::DeviceAddressBase>& parameters) {
+  std::vector<void*> param_to_peers_ptrs;
+
   size_t num_parameters = parameters.size();
-
-  using DeviceParameters = std::vector<se::DeviceAddressBase>;
-
   // Exchange device parameters with all ranks in the clique.
   TF_ASSIGN_OR_RETURN(
       auto device_parameters,
       GpuCliqueRendezvous::Join(clique_key, rank, std::move(parameters)));
 
   // Collect pointers to device buffers from all participating ranks.
-  std::vector<void*> param_to_peers_ptrs;
   param_to_peers_ptrs.reserve(num_parameters * clique_key.num_devices());
 
   absl::flat_hash_map<int, std::vector<se::DeviceAddressBase>>
       peer_to_parameters(clique_key.num_devices());
+
+  using DeviceParameters = std::vector<se::DeviceAddressBase>;
 
   for (auto peer = RankId(0); peer < RankId(clique_key.num_devices()); ++peer) {
     TF_ASSIGN_OR_RETURN(const DeviceParameters& peer_parameters,
@@ -113,28 +111,54 @@ absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
     }
   }
 
-  // Check that all participants have the same number of parameters.
-  TF_RET_CHECK(param_to_peers_ptrs.size() ==
-               num_parameters * clique_key.num_local_participants());
+  return param_to_peers_ptrs;
+}
 
+absl::StatusOr<CollectiveKernelMetadata>
+CollectiveMetadataThunk::CreateCollectiveMetadata(
+    const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+    std::shared_ptr<CollectiveMultimem> multimem) {
+  CollectiveKernelMetadata metadata;
+  metadata.rank = rank.value();
+  metadata.multicast_buffer_ptr =
+      multimem ? multimem->mapped_ptr(rank) : nullptr;
+  return metadata;
+}
+
+absl::Status CollectiveMetadataThunk::CopyCollectiveMetadataToDevice(
+    se::Stream* stream, CollectiveKernelMetadata metadata,
+    const std::vector<void*>& param_to_peers_ptrs,
+    se::DeviceAddressBase destination) {
   const int64_t param_to_peers_ptrs_size =
       param_to_peers_ptrs.size() * sizeof(void*);
   se::DeviceAddressBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
       sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
 
-  CollectiveKernelMetadata metadata;
-  metadata.rank = rank.value();
-  metadata.multicast_buffer_ptr =
-      multimem ? multimem->mapped_ptr(rank) : nullptr;
   metadata.param_to_peers =
       reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
-
   TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
                                     sizeof(CollectiveKernelMetadata)));
   TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
                                     param_to_peers_ptrs.data(),
                                     param_to_peers_ptrs_size));
-  return stream->BlockHostUntilDone();
+  return absl::OkStatus();
+}
+
+absl::Status CollectiveMetadataThunk::ConstructCollectiveMetadata(
+    const GpuCliqueKey& clique_key, RankId rank, se::Stream* stream,
+    const std::vector<se::DeviceAddressBase>& parameters,
+    std::shared_ptr<CollectiveMultimem> multimem,
+    se::DeviceAddressBase destination) {
+  std::vector<void*> param_to_peers_ptrs;
+  TF_ASSIGN_OR_RETURN(
+      param_to_peers_ptrs,
+      CollectParamToPeers(clique_key, rank, stream, parameters));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveKernelMetadata metadata,
+      CreateCollectiveMetadata(clique_key, rank, stream, multimem));
+  TF_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+      stream, metadata, param_to_peers_ptrs, destination));
+  return absl::OkStatus();
 }
 
 /* static */ absl::StatusOr<se::DeviceAddressBase>
@@ -212,9 +236,17 @@ absl::Status CollectiveMetadataThunk::Initialize(
 
   std::optional<RankId> rank = clique_key.rank(global_device_id);
   TF_RET_CHECK(rank.has_value());
-  return ConstructCollectiveMetadata(clique_key, *rank, params.stream,
-                                     std::move(parameters), std::move(multimem),
-                                     result_ptr);
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<void*> param_to_peers_ptrs,
+      CollectParamToPeers(clique_key, *rank, params.stream, parameters));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveKernelMetadata metadata,
+      CreateCollectiveMetadata(clique_key, *rank, params.stream, multimem));
+  TF_RETURN_IF_ERROR(CopyCollectiveMetadataToDevice(
+      params.stream, metadata, param_to_peers_ptrs, result_ptr));
+  TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+  return absl::OkStatus();
 }
 
 absl::Status CollectiveMetadataThunk::ExecuteOnStream(
