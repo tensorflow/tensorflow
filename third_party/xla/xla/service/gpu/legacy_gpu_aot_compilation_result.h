@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -68,12 +67,6 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
     return absl::UnimplementedError(
         "LoadExecutable without parameters not supported");
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* executor) && final {
-    return absl::UnimplementedError(
-        "LoadExecutable with 1 parameter not supported");
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
@@ -116,12 +109,6 @@ class EarlyExitCompilationResult : public CompiledModule {
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
     return absl::UnimplementedError(
         "LoadExecutable without parameters not supported");
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* executor) && final {
-    return absl::UnimplementedError(
-        "LoadExecutable with 1 parameter not supported");
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(

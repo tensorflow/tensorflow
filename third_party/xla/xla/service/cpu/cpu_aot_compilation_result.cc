@@ -205,11 +205,6 @@ CpuAotCompilationResult::LoadExecutable() && {
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
-CpuAotCompilationResult::LoadExecutable(const se::StreamExecutor* executor) && {
-  return std::move((*this)).LoadExecutable();
-}
-
-absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable(
     se::Platform::Id platform_id,
     const se::DeviceDescription& device_description) && {

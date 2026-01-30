@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
@@ -69,12 +68,6 @@ class GpuAotCompilationResult : public CompiledModule {
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
     return absl::UnimplementedError(
         "LoadExecutable without parameters not supported");
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* executor) && final {
-    return absl::UnimplementedError(
-        "LoadExecutable with 1 parameter not supported");
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(

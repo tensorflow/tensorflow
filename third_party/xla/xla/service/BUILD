@@ -1675,7 +1675,6 @@ cc_library(
         ":buffer_assignment",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],

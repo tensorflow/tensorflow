@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -122,9 +121,6 @@ class CpuAotCompilationResult : public CompiledModule {
   }
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && override;
-
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* executor) && override;
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       se::Platform::Id platform_id,
