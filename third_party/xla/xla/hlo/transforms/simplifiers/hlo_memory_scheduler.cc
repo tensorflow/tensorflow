@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -330,7 +331,12 @@ class ListScheduler {
       };
       // TODO(b/34466113): Replace this and above with successors() or
       // predecessors() when these methods are added to HloInstruction.
-      for (HloInstruction* user : best->users()) {
+      auto users = best->users();
+      // Sort by instruction's ID to ensure determinism.
+      absl::c_sort(users, [](const HloInstruction* a, const HloInstruction* b) {
+        return a->unique_id() > b->unique_id();
+      });
+      for (HloInstruction* user : users) {
         update_pred_count(user);
       }
       for (HloInstruction* succ : best->control_successors()) {
