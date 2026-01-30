@@ -18,6 +18,7 @@
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_COMPILER_H_
 
 #include <memory>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,9 +28,13 @@
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,6 +68,12 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
   static char ID;  // NOLINT
 
  private:
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> CreateExecutableFromResponse(
+      std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
+          loaded_host_callbacks,
+      xla::ifrt::UserContextRef user_context,
+      std::shared_ptr<CompileResponse> response);
+
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
 };
