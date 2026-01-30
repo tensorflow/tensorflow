@@ -903,7 +903,10 @@ cc_library(
 xla_test(
     name = "fission_backend_test",
     srcs = ["fission_backend_test.cc"],
-    backends = ["h100"],
+    backends = [
+        "a100",
+        "h100",
+    ],
     tags = ["cuda-only"],
     use_legacy_runtime = True,
     deps = [
