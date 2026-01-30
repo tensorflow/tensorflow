@@ -816,7 +816,8 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     return false;
   }
   return ReplaceInstruction(old_instruction, new_instruction,
-                            /*preserve_sharding=*/true)
+                            /*preserve_sharding=*/true,
+                            /*preserve_frontend_attributes=*/true)
       .value();
 }
 
@@ -849,7 +850,8 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     }
   }
   return ReplaceInstruction(old_instruction, MaybeMakeTuple(new_instructions),
-                            /*preserve_sharding=*/true)
+                            /*preserve_sharding=*/true,
+                            /*preserve_frontend_attributes=*/true)
       .value();
 }
 
@@ -2721,15 +2723,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::MoveDotParamToRhs(
   }
   TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
                       MakeTransposeHlo(new_dot, permutation));
-  dot->SetupDerivedInstruction(new_dot);
-  dot->SetupDerivedInstruction(new_transpose);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_transpose));
-  // Don't propagate the user-guided fusion attribute to the new auto-generated
-  // transpose if it is not an intervening instruction before another must-fuse
-  // instruction.
-  // Note: This is used for backend-specific optimization. In the future, we
-  // should find a better way that does not expose it to the third-party.
-  AmendUserGuidedFusionAttr(new_transpose);
+  SetupDerivedInstruction(dot, new_dot, /*preserve_user_fusion_attr=*/true);
+  SetupDerivedInstruction(dot, new_transpose,
+                          /*preserve_user_fusion_attr=*/false);
+  TF_RETURN_IF_ERROR(ReplaceInstruction(
+      dot, new_transpose, /*preserve_frontend_attributes=*/false));
   return true;
 }
 
@@ -6457,7 +6455,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {
     VLOG(3) << "deleting no-op reshape";
-    return ReplaceInstruction(reshape, operand);
+    return ReplaceInstruction(reshape, operand,
+                              /*preserve_frontend_attributes=*/false);
   }
 
   // Merge reshapes.
