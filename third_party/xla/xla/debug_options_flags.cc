@@ -216,7 +216,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_cpu_parallel_codegen_split_count(32);
   opts.set_xla_cpu_copy_insertion_use_region_analysis(false);
-  opts.set_xla_cpu_enable_concurrency_optimized_scheduler(true);
+  opts.set_xla_cpu_scheduler_type(DebugOptions::CPU_SCHEDULER_TYPE_DEFAULT);
   opts.set_xla_cpu_prefer_vector_width(256);
   opts.set_xla_cpu_max_isa(DefaultMaxIsa());
   opts.set_xla_cpu_generate_unique_c_style_kernel_entry_points(false);
@@ -803,6 +803,28 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  auto setter_for_xla_cpu_enable_concurrency_optimized_scheduler =
+      [debug_options](bool value) {
+        if (value) {
+          debug_options->set_xla_cpu_scheduler_type(
+              DebugOptions::CPU_SCHEDULER_TYPE_CONCURRENCY_OPTIMIZED);
+        } else {
+          debug_options->set_xla_cpu_scheduler_type(
+              DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED);
+        }
+        return true;
+      };
+
+  auto setter_for_xla_cpu_scheduler_type =
+      [debug_options](const std::string& value) {
+        DebugOptions::CpuSchedulerType scheduler_type;
+        if (!DebugOptions::CpuSchedulerType_Parse(value, &scheduler_type)) {
+          return false;
+        }
+        debug_options->set_xla_cpu_scheduler_type(scheduler_type);
+        return true;
+      };
+
   // Custom parser for `xla_gpu_enable_while_loop_unrolling` flag.
   auto setter_for_xla_gpu_enable_while_loop_unrolling =
       [&debug_options](absl::string_view input) {
@@ -1235,13 +1257,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_cpu_copy_insertion_use_region_analysis),
       debug_options->xla_cpu_copy_insertion_use_region_analysis(),
       "Use region based analysis in copy insertion pass."));
-  flag_list->push_back(tsl::Flag(
-      "xla_cpu_enable_concurrency_optimized_scheduler",
-      bool_setter_for(
-          &DebugOptions::set_xla_cpu_enable_concurrency_optimized_scheduler),
-      debug_options->xla_cpu_enable_concurrency_optimized_scheduler(),
-      "Use HLO module scheduler that is optimized for extracting concurrency "
-      "from an HLO module by trading off extra memory pressure."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_enable_concurrency_optimized_scheduler",
+                setter_for_xla_cpu_enable_concurrency_optimized_scheduler,
+                debug_options->xla_cpu_enable_concurrency_optimized_scheduler(),
+                "[Deprecated, do not use]."));
+  flag_list->push_back(tsl::Flag("xla_cpu_scheduler_type",
+                                 setter_for_xla_cpu_scheduler_type,
+                                 DebugOptions::CpuSchedulerType_Name(
+                                     debug_options->xla_cpu_scheduler_type()),
+                                 "XLA:CPU's scheduler type."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_prefer_vector_width",
       int32_setter_for(&DebugOptions::set_xla_cpu_prefer_vector_width),
