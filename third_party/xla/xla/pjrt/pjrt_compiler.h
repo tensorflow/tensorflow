@@ -56,9 +56,9 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
-inline const char* SyclName() {
-  static constexpr char kSyclName[] = "sycl";
-  return kSyclName;
+inline const char* OneapiName() {
+  static constexpr char kOneapiName[] = "oneapi";
+  return kOneapiName;
 }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
@@ -76,10 +76,13 @@ inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
 }
-inline PjRtPlatformId SyclId() {
-  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
-  return kSyclId;
+inline PjRtPlatformId OneapiId() {
+  static const PjRtPlatformId kOneapiId = tsl::Fingerprint64(OneapiName());
+  return kOneapiId;
 }
+// TODO(penporn): We need to keep SyclId() so JAX CI passes. Remove it once
+// jaxlib's py_client.cc is updated to use OneapiId().
+inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;

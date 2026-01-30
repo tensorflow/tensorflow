@@ -910,7 +910,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   auto callbacks = std::make_unique<std::vector<void*>>();
   // Forward callbacks via FFI's ExecutionContext for CPU/GPU platforms only.
   if (platform_id == CpuId() || platform_id == CudaId() ||
-      platform_id == RocmId() || platform_id == SyclId()) {
+      platform_id == RocmId() || platform_id == OneapiId()) {
     for (const auto& loaded_host_callback : *all_loaded_host_callbacks_) {
       auto* ffi_loaded_host_callback =
           llvm::dyn_cast<PjRtFfiLoadedHostCallback>(loaded_host_callback.get());

@@ -62,7 +62,7 @@ namespace {
 
 bool IsGpuClient(const PjRtClient& client) {
   return client.platform_id() == CudaId() || client.platform_id() == RocmId() ||
-         client.platform_id() == SyclId();
+         client.platform_id() == OneapiId();
 }
 
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
