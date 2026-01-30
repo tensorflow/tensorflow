@@ -15,11 +15,6 @@ limitations under the License.
 
 #include "xla/python/compile_only_ifrt/client.h"
 
-#include <memory>
-#include <utility>
-
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/executable.h"
