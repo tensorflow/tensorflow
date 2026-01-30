@@ -408,10 +408,12 @@ absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
 
 absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
+    absl::Span<const tensorflow::Tensor> inputs,
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    absl::Span<const int> variable_arg_indices) {
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list) {
   TF_ASSIGN_OR_RETURN(auto host_callback_modules,
                       GetHostCallbackModulesAndRemoveHostFuncs(*module_copy));
   if (VLOG_IS_ON(1)) {
@@ -572,10 +574,53 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   return executable_bundle;
 }
 
-absl::StatusOr<tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
+absl::Status IfrtServingExecutable::LoadAndResgiterVariableOnExecutable(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list,
+    IfrtServingExecutable::CachedExecutableBundle* executable_bundle) {
+  TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
+                                        *executable_bundle, device_list));
+
+  std::vector<int> device_ids;
+  device_ids.reserve(device_list->size());
+  for (xla::ifrt::Device* device : device_list->devices()) {
+    device_ids.push_back(device->Id().value());
+  }
+
+  for (const int i : variable_arg_indices) {
+    if (inputs[i].dtype() != tensorflow::DT_STRING ||
+        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
+                       "but got type ",
+                       inputs[i].dtype(), " and shape ",
+                       inputs[i].shape().DebugString(), " at index ", i));
+    }
+    std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
+    TF_ASSIGN_OR_RETURN(
+        xla::HloSharding hlo_sharding,
+        xla::HloSharding::FromProto(
+            executable_bundle->compile_metadata.args()[i].sharding()));
+
+    IfrtLoadedVariableRegistry::Key key{
+        .device_ids = device_ids,
+        .input_name = tensor_name,
+        .hlo_sharding = std::move(hlo_sharding),
+    };
+    TF_ASSIGN_OR_RETURN(auto loaded_variable,
+                        ifrt_loaded_variable_registry_.GetLoadedVariable(key));
+    executable_bundle->variable_arrays.emplace(key, std::move(loaded_variable));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
+    absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    absl::Span<const int> variable_arg_indices) {
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list) {
   std::vector<tensorflow::TensorShape> input_shapes;
   for (const auto& dtype_and_shape : dtypes_and_shapes) {
     input_shapes.push_back(dtype_and_shape.shape);
@@ -585,34 +630,39 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
   tsl::Promise<SharedCachedExecutableBundle> promise;
   tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
+  tsl::Future<SharedCachedExecutableBundle> existing_bundle_future;
   {
     absl::MutexLock lock(mutex_);
 
     const auto it = executable_bundles_.find(key);
     if (it != executable_bundles_.end()) {
-      return it->second;
+      existing_bundle_future = it->second;
+    } else {
+      if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Cannot compile for new input shapes. Either the executable is "
+            "already frozen: ",
+            is_frozen_,
+            " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
+            tf_to_hlo_compiler_->IsXlaCompilationDisabled()));
+      }
+      // Only create promise and future when cache missed.
+      std::tie(promise, future) =
+          tsl::MakePromise<SharedCachedExecutableBundle>();
+
+      executable_bundles_.emplace(key, future);
+      // Clone the module to avoid race condition between Freeze() and
+      // compilation.
+      module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
     }
-
-    if (is_frozen_ || tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
-      tsl::Future<SharedCachedExecutableBundle> frozen_future(
-          absl::FailedPreconditionError(absl::StrCat(
-              "Cannot compile for new input shapes. Either the executable is "
-              "already frozen: ",
-              is_frozen_,
-              " or XLA compilation disabled by ScopedTpuCompileDisabler: ",
-              tf_to_hlo_compiler_->IsXlaCompilationDisabled())));
-      return frozen_future;
-    }
-
-    // Only create promise and future when cache missed.
-    std::tie(promise, future) =
-        tsl::MakePromise<SharedCachedExecutableBundle>();
-
-    executable_bundles_.emplace(key, future);
-    // Clone the module to avoid race condition between Freeze() and
-    // compilation.
-    module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
   }
+
+  if (existing_bundle_future.IsValid()) {
+    return existing_bundle_future.Await();
+  }
+
+  LOG(INFO) << "Cache missed. Building executable";
+
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
       original_compile_metadata_;
 
@@ -625,12 +675,36 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   TF_RETURN_IF_ERROR(
       UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
-  LOG(INFO) << "Cache missed. Building executable";
-  absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
-      CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
-                                    dtypes_and_shapes, variable_arg_indices);
+
+  TF_ASSIGN_OR_RETURN(
+      SharedCachedExecutableBundle executable_bundle,
+      CreateExecutableSynchronously(inputs, std::move(module_copy),
+                                    compile_metadata, dtypes_and_shapes,
+                                    variable_arg_indices, device_list));
+
+  // Checkpoint loading must be guarded by the mutex to avoid loading same
+  // variables multiple times during parallel warmup.
+  {
+    absl::MutexLock lock(mutex_);
+    if (UsePortableExecution()) {
+      // If core selector is enabled, we load variables on all cores.
+      for (const auto& device : ifrt_client_->addressable_devices()) {
+        TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef selected_device_list,
+                            ifrt_client_->MakeDeviceList({device}));
+        TF_RETURN_IF_ERROR(LoadAndResgiterVariableOnExecutable(
+            inputs, variable_arg_indices, selected_device_list,
+            executable_bundle.get()));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(LoadAndResgiterVariableOnExecutable(
+          inputs, variable_arg_indices, device_list, executable_bundle.get()));
+    }
+  }
+
   promise.Set(std::move(executable_bundle));
-  return future;
+
+  // Here is a immediate return as promise is already set.
+  return future.Await();
 }
 
 void IfrtServingExecutable::Freeze() {
@@ -698,10 +772,9 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     device_list = assigned_device_list_;
   }
   TF_ASSIGN_OR_RETURN(
-      tsl::Future<SharedCachedExecutableBundle> executable_bundle_future,
-      LookUpOrCreateExecutable(dtypes_and_shapes, variable_arg_indices));
-  TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
-                      executable_bundle_future.Await());
+      SharedCachedExecutableBundle executable_bundle,
+      LookUpOrCreateExecutable(inputs, dtypes_and_shapes, variable_arg_indices,
+                               device_list));
 
   if (executable_bundle->compile_metadata.args().size() !=
       dtypes_and_shapes.size()) {
@@ -709,18 +782,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         "Expected ", executable_bundle->compile_metadata.args().size(),
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
-
-  {
-    tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
-    absl::ReaderMutexLock lock(mutex_);
-    if (!is_frozen_ && !tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
-      // Asynchronously load the restored variable tensors to Ifrt array.
-      TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
-                                            *executable_bundle, device_list));
-    }
-  }
-
-  VLOG(2) << "Completed AsyncLoadIfrtArray";
 
   std::vector<int> device_ids;
   device_ids.reserve(device_list->size());
@@ -743,6 +804,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
+      // TODO(b/445201291): Cache the `hlo_sharding` in `executable_bundle`.
       TF_ASSIGN_OR_RETURN(
           xla::HloSharding hlo_sharding,
           xla::HloSharding::FromProto(
@@ -752,10 +814,12 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           .input_name = inputs[i].scalar<tsl::tstring>()(),
           .hlo_sharding = std::move(hlo_sharding),
       };
-      TF_ASSIGN_OR_RETURN(
-          auto loaded_variable,
-          ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      args.push_back(std::move(loaded_variable.array));
+      auto it = executable_bundle->variable_arrays.find(key);
+      if (it == executable_bundle->variable_arrays.end()) {
+        return absl::InternalError(
+            absl::StrCat("Variable array not found for key: ", key.input_name));
+      }
+      args.push_back((*it).second.array);
       variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
