@@ -2221,7 +2221,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
         /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
-        /*copy_start_instr=*/copy_start_instr);
+        /*copy_start_instr=*/copy_start_instr->unique_id());
     thunk->set_execution_stream_id(streams.destination_stream_id);
     thunks.push_back(std::move(thunk));
   } else {
@@ -2232,7 +2232,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
         /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
-        /*copy_start_instr=*/copy_start_instr);
+        /*copy_start_instr=*/copy_start_instr->unique_id());
     thunk->set_execution_stream_id(streams.destination_stream_id);
     thunks.push_back(std::move(thunk));
   }
@@ -2249,7 +2249,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyDoneThunk(
       Thunk::ThunkInfo::WithProfileAnnotation(
           copy_start_instr, ir_emitter_context_->GetNextThunkId()),
       /*copy_events=*/copy_events_,
-      /*copy_start_instr=*/copy_start_instr));
+      /*copy_start_instr_id=*/copy_start_instr->unique_id()));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(

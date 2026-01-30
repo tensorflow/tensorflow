@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/copy_done_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -36,17 +37,17 @@ namespace gpu {
 CopyDoneThunk::CopyDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CopyThunk::AsyncEvents> async_events,
-    const HloInstruction* copy_start_instr)
+    int64_t copy_start_instr_id)
     : Thunk(kind, std::move(thunk_info)),
       async_events_(std::move(async_events)),
-      copy_start_instr_(copy_start_instr) {}
+      copy_start_instr_id_(copy_start_instr_id) {}
 
 absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  VLOG(3) << "CopyDone thunk between a host and a device for: "
-          << copy_start_instr_->ToString();
+  VLOG(3) << "CopyDone thunk between a host and a device for instruction id: "
+          << copy_start_instr_id_;
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
-                      async_events_->Extract(executor, copy_start_instr_));
+                      async_events_->Extract(executor, copy_start_instr_id_));
   return params.stream->WaitFor(event.get());
 }
 

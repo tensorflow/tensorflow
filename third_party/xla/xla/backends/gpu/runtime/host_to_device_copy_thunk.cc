@@ -44,12 +44,11 @@ namespace gpu {
 HostToDeviceCopyThunk::HostToDeviceCopyThunk(
     ThunkInfo thunk_info, const ShapedSlice& source_buffer,
     const ShapedSlice& destination_buffer, int64_t mem_size,
-    std::shared_ptr<CopyThunk::AsyncEvents> async_events,
-    const HloInstruction* instr)
+    std::shared_ptr<CopyThunk::AsyncEvents> async_events, int64_t instr_id)
     : CopyThunk(std::move(thunk_info), source_buffer, destination_buffer,
                 mem_size),
       async_events_(std::move(async_events)),
-      instr_(instr) {}
+      instr_id_(instr_id) {}
 
 absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -72,8 +71,8 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
   // Record memcpy operation completion.
   TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
   VLOG(3) << "Emplace events: " << event.get()
-          << " for instr: " << instr_->ToString();
-  return async_events_->Emplace(executor, instr_, std::move(event));
+          << " for instr id: " << instr_id_;
+  return async_events_->Emplace(executor, instr_id_, std::move(event));
 }
 
 absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
@@ -107,7 +106,7 @@ HostToDeviceCopyThunk::FromProto(
       std::move(thunk_info), src_slice, dst_slice,
       thunk_proto.copy_thunk().mem_size(),
       /*events=*/nullptr,
-      /*instr=*/nullptr);
+      /*instr_id=*/-1);
 }
 
 std::optional<AsyncEventsUniqueId>
