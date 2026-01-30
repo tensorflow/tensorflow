@@ -31,7 +31,7 @@ class FunctionOptimizer : public GraphOptimizer {
       : opt_level_(opt_level), lower_control_flow_(lower_control_flow) {}
   ~FunctionOptimizer() override = default;
 
-  string name() const override { return "function_optimizer"; };
+  std::string name() const override { return "function_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return true; }
 

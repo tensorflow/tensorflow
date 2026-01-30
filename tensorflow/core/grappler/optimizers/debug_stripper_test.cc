@@ -64,7 +64,7 @@ TEST_F(DebugStripperTest, StripAssertOnTwoOutputs) {
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
 
   for (const NodeDef& node : output.node()) {
-    for (const string& input : node.input()) {
+    for (const std::string& input : node.input()) {
       if (IsControlInput(input)) {
         EXPECT_EQ(input.find(':'), -1);
       }
@@ -231,7 +231,7 @@ TEST_F(DebugStripperTest, StripPrintFromGraph) {
 
 TEST_F(DebugStripperTest, StripPrintV2FromGraph) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output x = ops::Const(s.WithOpName("x"), string("Hello"), {});
+  Output x = ops::Const(s.WithOpName("x"), std::string("Hello"), {});
   Operation print = ops::PrintV2(s.WithOpName("PrintV2"), x);
   Output y =
       ops::Identity(s.WithOpName("y").WithControlDependencies({print}), x);
