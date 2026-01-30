@@ -112,7 +112,7 @@ Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
     return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
   }
   if (events.size() == 1) {
-    return tsl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
+    return absl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
   }
 
   tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
