@@ -15,11 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
-#include "tensorflow/core/kernels/stack.h"
-
 #include <limits.h>
-#include <atomic>
-#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -29,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/stack.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
