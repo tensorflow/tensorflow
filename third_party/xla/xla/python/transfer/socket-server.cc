@@ -19,6 +19,7 @@ limitations under the License.
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
