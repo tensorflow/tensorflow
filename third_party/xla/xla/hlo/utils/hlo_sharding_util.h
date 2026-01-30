@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -88,6 +89,26 @@ HloInstruction* ReverseFormatShape(
 bool IsSubTilingOrEqualSharding(const Shape& shape,
                                 const HloSharding& potential_subsharding,
                                 const HloSharding& sharding);
+
+// Determines if `potential_subsharding` is a valid sub-tiling of `sharding`.
+// A sub-tiling ensures that each tile in `potential_subsharding` is a subset of
+// a tile in `sharding`.
+//
+// This implies two conditions:
+// 1. Axis Alignment: For every tensor dimension, the sequence of axes in
+//    `sharding` must be a prefix of the sequence of axes in
+//    `potential_subsharding`.
+//    - Sub-axes are handled by checking if the `potential_subsharding` axis can
+//      be sliced to match the `sharding` axis.
+//    - Example: `sharding` on `["x":(1)2]` is a valid prefix for
+//      `potential_subsharding` on `["x"]` (full axis), as the full axis implies
+//      the sub-axis.
+// 2. Data Containment: The data partitions defined by `potential_subsharding`
+//    must align with `sharding` such that no sub-tile crosses the boundary of a
+//    parent tile.
+bool IsSubTilingOrEqualNamedSharding(const Shape& potential_sharded_shape,
+                                     const NamedSharding& potential_subsharding,
+                                     const NamedSharding& sharding);
 
 // Returns true if the lhs sharding is preferable over the rhs sharding.
 // The most specific sharding is tile maximal followed by single device tile
