@@ -272,7 +272,7 @@ absl::Status ResolveDeviceAssignment(
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
   gpu_options.set_clique_id_callback([=](const xla::CliqueKey& key) {
-    return xla::CliqueId(communicator_key);
+    return xla::CliqueIds(xla::CliqueId(communicator_key));
   });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
