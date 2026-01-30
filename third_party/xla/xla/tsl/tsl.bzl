@@ -71,14 +71,7 @@ def clean_dep(target):
 
     # A repo-relative label is resolved relative to the file in which the
     # Label() call appears, e.g. @tsl or tsl.
-    # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
-    label = Label(target)
-    not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
-
-    if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
-        return Label("@tsl//" + label.package + ":" + label.name)
-    else:
-        return str(label)
+    return str(Label(target))
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
