@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -93,6 +94,24 @@ FileFormat ClassifyFileFormat(absl::string_view data) {
   };
 
   return kUnknownFormat;
+}
+
+// Given a FileFormat, return the corresponding image format name.
+absl::string_view GetImageFormatName(FileFormat format) {
+  switch (format) {
+    case kJpgFormat:
+      return "JPEG";
+    case kPngFormat:
+      return "PNG";
+    case kGifFormat:
+      return "GIF";
+    case kBmpFormat:
+      return "BMP";
+    case kWebpFormat:
+      return "WebP";
+    default:
+      return "UNKNOWN";
+  }
 }
 
 // Decode an image. Supported image formats are JPEG, JPEG XL, PNG, GIF, BMP,
@@ -228,8 +247,15 @@ class DecodeImageV2Op : public OpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "Input contents are too large for int: ", input.size())));
 
+    const FileFormat format = ClassifyFileFormat(input);
+
+    // Leave a trace of the op_type_, so we see the image format in profiles.
+    tsl::profiler::TraceMe trace_me([&]() {
+      return absl::StrCat("DecodeImageV2Op::", GetImageFormatName(format));
+    });
+
     // Parse magic bytes to determine file format.
-    switch (ClassifyFileFormat(input)) {
+    switch (format) {
       case kJpgFormat:
         DecodeJpegV2(context, input);
         break;
@@ -729,6 +755,13 @@ class DecodeImageV2Op : public OpKernel {
     OP_REQUIRES(context, channels_ == 0 || channels_ == channels,
                 absl::InvalidArgumentError(
                     "Number of channels requested does not match input"));
+
+    // Indicate in traces what the input image dimensions are.
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "DecodeWebP",
+          {{"width", width}, {"height", height}, {"channels", channels}});
+    });
 
     if (!has_animation) {
       Tensor* output = nullptr;
