@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/fused_eigen_output_kernels.h"
 
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
