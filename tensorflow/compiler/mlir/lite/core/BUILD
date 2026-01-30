@@ -1,4 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts_warnings")
 
@@ -51,5 +52,16 @@ cc_library(
         ":model_builder_base",
         "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "@com_google_absl//absl/log",
+    ],
+)
+
+tf_cc_test(
+    name = "absl_error_model_builder_test",
+    size = "small",
+    srcs = ["absl_error_model_builder_test.cc"],
+    deps = [
+        ":absl_error_model_builder",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
+        "//tensorflow/core:test",
     ],
 )
