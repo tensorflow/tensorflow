@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 
+#include <cstdint>
+
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -73,7 +76,7 @@ bool HasCollectiveMemoryInstruction(const HloValue* input_alias,
                                     bool require_nvshmem = false) {
   // If any use is a collective instruction, we must color the value to use
   // collective memory space.
-  for (auto& use : input_alias->GetUses()) {
+  for (const HloUse& use : input_alias->GetUses()) {
     if (IsCollectiveMemoryInstruction(use.instruction) &&
         (!require_nvshmem || IsNvshmemInstruction(use.instruction))) {
       return true;
@@ -83,13 +86,22 @@ bool HasCollectiveMemoryInstruction(const HloValue* input_alias,
          (!require_nvshmem || IsNvshmemInstruction(input_alias->instruction()));
 }
 
-bool HasCollectiveMosaicInstruction(const HloValue* input_alias) {
-  for (auto& use : input_alias->GetUses()) {
-    if (IsCollectiveMosaicGpuInstruction(*use.instruction)) {
+bool HasMosaicInstruction(const HloValue* input_alias,
+                          absl::AnyInvocable<bool(HloInstruction&)> predicate) {
+  for (const HloUse& use : input_alias->GetUses()) {
+    if (predicate(*use.instruction)) {
       return true;
     }
   }
-  return IsCollectiveMosaicGpuInstruction(*input_alias->instruction());
+  return predicate(*input_alias->instruction());
+}
+
+bool HasMosaicWithNvshmemInstruction(const HloValue* input_alias) {
+  return HasMosaicInstruction(input_alias, IsMosaicWithNvshmem);
+}
+
+bool HasMosaicWithMultimemInstruction(const HloValue* input_alias) {
+  return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
 }
 
 // Set memory space to MemorySpaceColor::kCollective for all allocations used by
@@ -102,7 +114,7 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
     // space from the layout.
     const HloPosition& defining_position = value->defining_position();
     if (defining_position.shape().has_layout()) {
-      auto memory_space = defining_position.shape().layout().memory_space();
+      int64_t memory_space = defining_position.shape().layout().memory_space();
       if (memory_space != 0) {
         value->set_color(BufferValue::Color(memory_space));
         continue;
@@ -113,9 +125,12 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
       continue;
     }
 
-    for (const auto& alias :
+    for (const xla::HloValue* alias :
          alias_analysis->GetBufferContainingValue(*value).values()) {
-      if (HasCollectiveMosaicInstruction(alias) && use_nvshmem) {
+      // TODO(479768130): Mark only buffers used with multimem instructions
+      // instead of marking all buffers.
+      if ((HasMosaicWithNvshmemInstruction(alias) && use_nvshmem) ||
+          HasMosaicWithMultimemInstruction(alias)) {
         // This is a temporary solution until a separate BFC allocator will be
         // added for the symmetric memory space.
         value->set_color((int)MemorySpaceColor::kCollective);
