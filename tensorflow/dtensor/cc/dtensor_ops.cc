@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
