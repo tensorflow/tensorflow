@@ -20,6 +20,7 @@ package(
 tf_proto_library(
     name = "bfc_memory_map_proto",
     srcs = ["bfc_memory_map.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -27,6 +28,7 @@ tf_proto_library(
 tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = [
@@ -46,6 +48,7 @@ tf_proto_library(
 tf_proto_library(
     name = "status_proto",
     srcs = ["status.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = ["//xla/tsl/protobuf:error_codes_proto_impl"],
@@ -54,6 +57,7 @@ tf_proto_library(
 tf_proto_library(
     name = "histogram_proto",
     srcs = ["histogram.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -61,6 +65,7 @@ tf_proto_library(
 tf_proto_library(
     name = "coordination_config_proto",
     srcs = ["coordination_config.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -88,6 +93,7 @@ tf_proto_library(
 tf_proto_library(
     name = "distributed_runtime_payloads_proto",
     srcs = ["distributed_runtime_payloads.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -95,6 +101,7 @@ tf_proto_library(
 tf_proto_library(
     name = "rpc_options_proto",
     srcs = ["rpc_options.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -102,6 +109,7 @@ tf_proto_library(
 tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
     deps = ["@com_google_protobuf//:any_proto"],
