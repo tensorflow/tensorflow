@@ -1297,11 +1297,20 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     const TfLiteFullyConnectedParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
-    if (reader->GetNumberOfRuntimeInputs() == 2) {
+    if (!IsConstantTensor(reader->GetInputTensor(1))) {
       // Create Convolution2D, so as it supports runtime weights.
       Node* node = graph->NewNode();
       node->operation.type = ToString(OperationType::CONVOLUTION_2D);
-      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      const TfLiteTensor* input_tensor_check = reader->GetInputTensor(0);
+      if (IsConstantTensor(input_tensor_check)) {
+        TensorFloat32 t;
+        RETURN_IF_ERROR(reader->ReadTensor(0, &t));
+        Value* val;
+        RETURN_IF_ERROR(NewConstNode(std::move(t), graph, &val));
+        RETURN_IF_ERROR(graph->AddConsumer(node->id, val->id));
+      } else {
+        RETURN_IF_ERROR(reader->AddInput(node, 0));
+      }
       RETURN_IF_ERROR(reader->AddInput(node, 1));
 
       const TfLiteTensor* input_tensor = reader->GetInputTensor(0);
@@ -1344,7 +1353,16 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       return absl::OkStatus();
     }
     Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    const TfLiteTensor* input_tensor_check = reader->GetInputTensor(0);
+    if (IsConstantTensor(input_tensor_check)) {
+      TensorFloat32 t;
+      RETURN_IF_ERROR(reader->ReadTensor(0, &t));
+      Value* val;
+      RETURN_IF_ERROR(NewConstNode(std::move(t), graph, &val));
+      RETURN_IF_ERROR(graph->AddConsumer(node->id, val->id));
+    } else {
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+    }
 
     if (tf_options->weights_format !=
         kTfLiteFullyConnectedWeightsFormatDefault) {

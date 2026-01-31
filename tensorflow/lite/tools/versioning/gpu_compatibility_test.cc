@@ -89,8 +89,7 @@ TEST(CheckGpuDelegateCompatibility, FCConstInput) {
   op_sig.inputs = std::vector<OpSignatureTensorSpec>(1);
   op_sig.inputs[0] = OpSignatureTensorSpec();
   op_sig.inputs[0].is_const = true;
-  EXPECT_EQ(CheckGpuDelegateCompatibility(op_sig).message(),
-            "FullyConnected doesn't support constant input.");
+  EXPECT_TRUE(CheckGpuDelegateCompatibility(op_sig).ok());
 }
 
 TEST(CheckGpuDelegateCompatibility, Add1Dto3DBroadcastSuccess) {
