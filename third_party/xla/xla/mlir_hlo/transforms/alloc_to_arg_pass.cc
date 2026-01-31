@@ -15,7 +15,6 @@ limitations under the License.
 
 // This files implements a pass that partially bufferized IR.
 
-#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>
