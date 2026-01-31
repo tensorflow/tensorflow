@@ -100,9 +100,10 @@ template <typename T>
 struct LaunchConv3DOp<CPUDevice, T> {
   static void launch(OpKernelContext* context, bool cudnn_use_autotune,
                      const Tensor& input, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
+                     const std::array<int64_t, 3>& dilations,
+                     const std::array<int64_t, 3>& strides,
+                     const Padding padding, TensorFormat data_format,
+                     Tensor* output) {
     OP_REQUIRES(context, data_format == FORMAT_NHWC,
                 absl::InvalidArgumentError("CPU implementation of Conv3D "
                                            "currently only supports the NHWC "
