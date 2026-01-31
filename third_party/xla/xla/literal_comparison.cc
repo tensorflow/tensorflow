@@ -959,6 +959,10 @@ absl::Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
     LOG(INFO) << "Actual literal:";
     XLA_LOG_LINES(INFO, actual.ToString());
   }
+  if (expected.IsAll(0) && actual.IsAll(0)) {
+    return absl::FailedPreconditionError("Both literals are all zeros.");
+  }
+
   absl::Status result = NearHelper(expected, actual, /*shape_index=*/{}, error,
                                    detailed_message, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);
