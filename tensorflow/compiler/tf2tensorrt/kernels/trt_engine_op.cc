@@ -98,8 +98,8 @@ class ContextDeviceMemory {
       }
     }
     {
-      tensorflow::profiler::TraceMe activity(
-          "setDeviceMemory", tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMe activity("setDeviceMemory",
+                                      tsl::profiler::TraceMeLevel::kInfo);
       execution_context_->setDeviceMemory(device_memory_);
     }
     return OkStatus();
@@ -350,9 +350,8 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
 StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
     FunctionLibraryRuntime* lib, const string& device_name,
     bool allow_soft_placement, size_t num_inputs, size_t num_outputs) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ConstructFunctionHandle",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ConstructFunctionHandle",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Constructing function handle";
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
@@ -397,9 +396,8 @@ StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
 
 Status TRTEngineOp::ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
                                           const string& device_name) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ImportSegmentGraphDef",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ImportSegmentGraphDef",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   TF_ASSIGN_OR_RETURN(FunctionLibraryRuntime::Handle func_handle,
                       ConstructFunctionHandle(lib, device_name));
   return FunctionDefToGraphDef(func_handle, lib, &segment_graph_def_);
@@ -407,8 +405,8 @@ Status TRTEngineOp::ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     : AsyncOpKernel(context) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::TRTEngineOp", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::TRTEngineOp",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   // read serialized_engine
   OP_REQUIRES_OK(context,
                  context->GetAttr("serialized_segment", &serialized_segment_));
@@ -595,9 +593,8 @@ Status CopyToDeviceAsync(OpKernelContext* ctx, const Tensor& native_tensor,
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* async_helper) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ExecuteNativeSegment",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ExecuteNativeSegment",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> native_inputs;
   std::vector<Tensor>* native_outputs = new std::vector<Tensor>();
   DummyAsyncHelper dummy_async_helper;
@@ -665,9 +662,8 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      TRTEngineCacheResource* cache_res,
                                      AsyncHelper* async_helper) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ExecuteCalibration",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ExecuteCalibration",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT calibration: " << name();
   DummyAsyncHelper dummy_async_helper;
 
@@ -730,9 +726,8 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
 
 Status TRTEngineOp::VerifyInputShapes(
     const std::vector<TensorShape>& input_concrete_shapes) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::VerifyInputShapes",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::VerifyInputShapes",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   if (input_concrete_shapes.empty()) {
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
@@ -813,8 +808,8 @@ static bool AllowEngineNativeSegmentExecution() {
 
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ComputeAsync", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ComputeAsync",
+                                  tsl::profiler::TraceMeLevel::kInfo);
 
   // Invoke DoneCallback when this object is destructed, which could be after
   // this routine finishes execution, in particular, when native segment is
@@ -988,9 +983,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 Status TRTEngineOp::ExecuteTrtEngine(
     OpKernelContext* ctx, EngineContext* engine_context, int trt_context_idx,
     const TrtShapeOptimizationProfile& profiles, TRTBaseAllocator* allocator) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::ExecuteTrtEngine",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::ExecuteTrtEngine",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT engine: " << name();
   nvinfer1::ICudaEngine* cuda_engine = engine_context->GetCudaEngine();
 
@@ -1045,9 +1039,8 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
   ContextDeviceMemory context_device_memory;
   if (!has_device_memory) {
-    tensorflow::profiler::TraceMe activity(
-        "TRTEngineOp::AllocateDeviceMemory",
-        tensorflow::profiler::TraceMeLevel::kInfo);
+    tsl::profiler::TraceMe activity("TRTEngineOp::AllocateDeviceMemory",
+                                    tsl::profiler::TraceMeLevel::kInfo);
     // Allocate device memory for the TensorRT engine execution. The device
     // memory will be released when context_device_memory goes out of scope.
     TF_RETURN_IF_ERROR(context_device_memory.AllocateDeviceMemory(
@@ -1060,9 +1053,8 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
                                            TRTEngineCacheResource** cache_res) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::GetEngineCachResource",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::GetEngineCachResource",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   // Canonicalize the op name by removing the scopes if any. This is mainly
   // because in TFv2, the function graph can be instantiated in various ways and
   // it'll insert scope names to the name of the TRTEngineOps, which will result
@@ -1088,8 +1080,8 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
     TRTEngineCacheResource* cache_resource, OpKernelContext* ctx) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::BuildEngine", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::BuildEngine",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   TRT_ENSURE(cache_resource);
   TRT_ENSURE(ctx);
   // Use concrete shapes for implicit batch mode and partial shapes for
@@ -1136,8 +1128,8 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
 StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::GetEngine", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::GetEngine",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   static EngineContext empty_context;
   mutex_lock lock(engine_mutex_);
   // Using first input to get batch size is reliable - VerifyInputShapes()
@@ -1319,9 +1311,8 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 // possible.
 Status TRTEngineOp::AllocateCalibrationResources(
     OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
-  tensorflow::profiler::TraceMe activity(
-      "TRTEngineOp::AllocateCalibrationResources",
-      tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("TRTEngineOp::AllocateCalibrationResources",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   cache_res->calib_ctx_ = std::make_unique<CalibrationContext>();
   auto* cres = cache_res->calib_ctx_.get();
 
