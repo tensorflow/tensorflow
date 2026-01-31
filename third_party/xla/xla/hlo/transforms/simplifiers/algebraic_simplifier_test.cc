@@ -12942,6 +12942,29 @@ TEST_F(AlgebraicSimplifierTest, AllGatherOfBroadcast) {
               GmockMatch(m::Broadcast(m::Constant())));
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceOfAllGather) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+    reduction {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add.5678 = bf16[] add(lhs, rhs)
+    }
+    test {
+      input = bf16[1,15,15360]{2,0,1:T(2,128)(2,1)} parameter(0)
+      constant.0 = bf16[]{:T(256)} constant(0)
+      all-gather = bf16[1,3840,15360]{2,0,1:T(2,128)(2,1)} all-gather(input), channel_id=773, replica_groups=[1,256]<=[256], dimensions={1}, use_global_device_ids=true
+      ROOT reduce = bf16[3840,15360]{1,0:T(8,128)(2,1)} reduce(all-gather, constant.0), dimensions={0}, to_apply=reduction
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AllGather(m::Reduce(m::Parameter(0), m::Constant()))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TrivialMin) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m

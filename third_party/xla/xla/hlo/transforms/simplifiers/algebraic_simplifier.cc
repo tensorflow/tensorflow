@@ -8248,6 +8248,35 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                      HloInstruction::CreateTuple({new_reduce}));
   }
 
+  // Turn orthogonal all-gather->reduce into reduce->all-gather.
+  if (!multi_output_reduce && arg->opcode() == HloOpcode::kAllGather &&
+      !absl::c_linear_search(
+          reduce->dimensions(),
+          Cast<HloAllGatherInstruction>(arg)->all_gather_dimension())) {
+    auto all_gather = Cast<HloAllGatherInstruction>(arg);
+    Shape new_reduce_result_shape = ShapeUtil::DeleteDimensions(
+        reduce->dimensions(), all_gather->mutable_operand(0)->shape());
+    auto new_reduce = reduce->AddInstruction(reduce->CloneWithNewOperands(
+        new_reduce_result_shape, {all_gather->mutable_operand(0), init_value}));
+    Shape new_all_gather_result_shape =
+        ShapeUtil::DeleteDimensions(reduce->dimensions(), all_gather->shape());
+    int64_t new_all_gather_dimension = -1;
+    for (int64_t i = 0; i < new_all_gather_result_shape.dimensions().size();
+         ++i) {
+      if (new_reduce_result_shape.dimensions(i) !=
+          all_gather->shape().dimensions(i)) {
+        new_all_gather_dimension = i;
+        break;
+      }
+    }
+    return ReplaceInstruction(
+        reduce,
+        reduce->AddInstruction(HloInstruction::CreateAllGather(
+            new_all_gather_result_shape, {new_reduce}, new_all_gather_dimension,
+            all_gather->device_list(), all_gather->constrain_layout(),
+            all_gather->channel_id(), all_gather->use_global_device_ids())));
+  }
+
   // If the reduction results in the same number of elements, then the only
   // possible side effect would be a reshape. Since the init_value is an
   // identity of the reduction function, we can therefore replace the reduce
