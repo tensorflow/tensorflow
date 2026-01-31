@@ -25,12 +25,25 @@ namespace xla {
 inline constexpr absl::string_view kCompilationErrorPayload =
     "type.googleapis.com/xla.CompilationError";
 
+inline constexpr absl::string_view kUncacheableErrorPayload =
+    "type.googleapis.com/xla.UncachableCompilationError";
+
 bool HasCompilationErrorPayload(const absl::Status& status) {
   return status.GetPayload(kCompilationErrorPayload).has_value();
 }
 
 absl::Status SetCompilationErrorWithPayload(absl::Status status) {
-  status.SetPayload(kCompilationErrorPayload, absl::Cord(""));
+  if (!status.GetPayload(kUncacheableErrorPayload).has_value()) {
+    status.SetPayload(kCompilationErrorPayload, absl::Cord(""));
+  }
+
   return status;
 }
+
+absl::Status SetUncacheableCompilationErrorWithPayload(absl::Status status) {
+  status.SetPayload(kUncacheableErrorPayload, absl::Cord());
+  status.ErasePayload(kCompilationErrorPayload);
+  return status;
+}
+
 }  // namespace xla
