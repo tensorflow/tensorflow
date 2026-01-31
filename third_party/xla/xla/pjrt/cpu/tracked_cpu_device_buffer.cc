@@ -200,8 +200,7 @@ TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() = default;
 
 const tsl::AsyncValueRef<CpuDeviceMemory>& TrackedCpuDeviceBuffer::buffer() {
   if (raw_buffer()) {
-    return tensorflow::down_cast<CpuRawBuffer*>(this->raw_buffer().get())
-        ->buffer();
+    return absl::down_cast<CpuRawBuffer*>(this->raw_buffer().get())->buffer();
   }
   static absl::NoDestructor<tsl::AsyncValueRef<CpuDeviceMemory>> missing_buffer;
   return *missing_buffer;
@@ -264,7 +263,7 @@ void TrackedCpuDeviceBuffer::AddUsageEvent(
     tsl::RCReference<PjRtDeviceEvent> event) {
   if (event) {
     auto cpu_event =
-        tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
+        absl::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
     AddUsageEvents({&cpu_event, 1});
   }
 }
@@ -293,7 +292,7 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
 Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
   auto [promise, future] = MakePromise<>();
 
-  tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
+  absl::down_cast<CommonPjRtClient*>(memory_space->client())
       ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
 
   definition_event().AndThen([definition_event = definition_event().AsPtr(),
@@ -341,7 +340,7 @@ absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
 bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
     PjRtDeviceEventSet& events) {
   if (!definition_event_.IsAvailable() || definition_event_.IsError()) {
-    tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+    absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
         definition_event_.CopyRCRef());
   }
   return false;
@@ -350,7 +349,7 @@ bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
 void TrackedCpuDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
   for (const auto& ev : usage_events_) {
     if (!ev.IsAvailable()) {
-      tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+      absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
           ev.CopyRCRef());
     }
   }
