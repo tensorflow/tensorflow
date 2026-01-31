@@ -36,13 +36,13 @@ const TfLiteStableDelegate* StableDelegateRegistry::RetrieveStableDelegate(
 
 void StableDelegateRegistry::RegisterStableDelegateImpl(
     const TfLiteStableDelegate* delegate) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   registry_[delegate->delegate_name] = delegate;
 }
 
 const TfLiteStableDelegate* StableDelegateRegistry::RetrieveStableDelegateImpl(
     const std::string& name) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (registry_.find(name) == registry_.end()) {
     return nullptr;
   } else {
