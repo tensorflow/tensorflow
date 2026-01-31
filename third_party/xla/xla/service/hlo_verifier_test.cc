@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -4541,6 +4542,75 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
           HasSubstr(
               "Expected send and recv instructions to have the same "
               "source-target pairs, but could not match some instructions.")));
+}
+
+TEST_F(HloVerifierTestForCollectiveDeadlocks,
+       VerifySendRecvDeadlockOnScheduleButNotInstructionOrder) {
+  const char* const hlo = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY test_computation {
+    p0 = f32[] parameter(0)
+    after_all = token[] after-all()
+    send1 = (f32[], u32[], token[]) send(p0, after_all), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1},{1,2}}"}
+    send1_done = token[] send-done(send1), channel_id=1
+    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1},{1,2}}"}
+    recv1_done = (f32[], token[]) recv-done(recv1), channel_id=1
+    send2 = (f32[], u32[], token[]) send(p0, after_all), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1},{1,2}}"}
+    send2_done = token[] send-done(send2), channel_id=1
+    recv2 = (f32[], u32[], token[]) recv(after_all), channel_id=1,
+        frontend_attributes={_xla_send_recv_source_target_pairs="{{0,1},{1,2}}"}
+    recv2_done = (f32[], token[]) recv-done(recv2), channel_id=1
+    recv1_result = f32[] get-tuple-element(recv1_done), index=0
+    recv2_result = f32[] get-tuple-element(recv2_done), index=0
+    ROOT result = f32[] add(recv1_result, recv2_result)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+
+  // Expect no deadlock with schedule populated by parser. Here the schedule is
+  // deadlock-free: send1 -> recv1 -> send2 -> recv2.
+  ASSERT_TRUE(module->has_schedule());
+  EXPECT_OK(verifier().Run(module.get()));
+
+  // Find instructions by name.
+  HloInstruction* p0_instr = FindInstruction(module.get(), "p0");
+  HloInstruction* after_all_instr = FindInstruction(module.get(), "after_all");
+  HloInstruction* send1_instr = FindInstruction(module.get(), "send1");
+  HloInstruction* send1_done_instr =
+      FindInstruction(module.get(), "send1_done");
+  HloInstruction* recv1_instr = FindInstruction(module.get(), "recv1");
+  HloInstruction* recv1_done_instr =
+      FindInstruction(module.get(), "recv1_done");
+  HloInstruction* send2_instr = FindInstruction(module.get(), "send2");
+  HloInstruction* send2_done_instr =
+      FindInstruction(module.get(), "send2_done");
+  HloInstruction* recv2_instr = FindInstruction(module.get(), "recv2");
+  HloInstruction* recv2_done_instr =
+      FindInstruction(module.get(), "recv2_done");
+  HloInstruction* recv1_result_instr =
+      FindInstruction(module.get(), "recv1_result");
+  HloInstruction* recv2_result_instr =
+      FindInstruction(module.get(), "recv2_result");
+  HloInstruction* result_instr = FindInstruction(module.get(), "result");
+
+  // Create a schedule that causes a deadlock: send1 -> send2 -> recv1 -> recv2.
+  HloInstructionSequence sequence(
+      {p0_instr, after_all_instr, send1_instr, send1_done_instr, send2_instr,
+       send2_done_instr, recv1_instr, recv1_done_instr, recv2_instr,
+       recv2_done_instr, recv1_result_instr, recv2_result_instr, result_instr});
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(), std::move(sequence));
+  ASSERT_OK(schedule.Verify());
+  ASSERT_OK(module->set_schedule(std::move(schedule)));
+
+  EXPECT_THAT(verifier().Run(module.get()),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected recv, but found %send2")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
