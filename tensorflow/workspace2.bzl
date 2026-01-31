@@ -737,10 +737,10 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "rules_android_ndk",
-        sha256 = "0ab5ddae72dff0dfae92a31a0704d4543e818e360786e44d2093a6b8ff5e8fda",
-        strip_prefix = "rules_android_ndk-461e8c99b7f06bc86a15317505d48fc0decd7dcc",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android_ndk/archive/461e8c99b7f06bc86a15317505d48fc0decd7dcc.zip"),
+        name = "build_bazel_rules_android",
+        sha256 = "fdf5dce805c9feb434316e0fe057a9e7706bc68c0f41ac38900f329c9ac9e664",
+        strip_prefix = "rules_android-0.7.1",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.7.1.zip"),
     )
 
     # Apple and Swift rules.
