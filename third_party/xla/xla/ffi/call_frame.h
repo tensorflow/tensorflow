@@ -50,8 +50,8 @@ class CallFrameBuilder {
   CallFrameBuilder(size_t num_args, size_t num_rets);
   ~CallFrameBuilder();
 
-  CallFrameBuilder(CallFrameBuilder&&);
-  CallFrameBuilder& operator=(CallFrameBuilder&&);
+  CallFrameBuilder(CallFrameBuilder&&) noexcept;
+  CallFrameBuilder& operator=(CallFrameBuilder&&) noexcept;
 
   // A helper class to build call frame attributes.
   class AttributesBuilder {
@@ -104,8 +104,8 @@ class CallFrameBuilder {
 
 class CallFrame {
  public:
-  CallFrame(CallFrame&&);
-  CallFrame& operator=(CallFrame&&);
+  CallFrame(CallFrame&&) noexcept;
+  CallFrame& operator=(CallFrame&&) noexcept;
 
   ~CallFrame();
 
