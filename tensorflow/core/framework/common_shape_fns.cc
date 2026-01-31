@@ -93,8 +93,6 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
-      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
-                             /*evenly_divisible=*/false, output_size));
       break;
   }
   return absl::OkStatus();
