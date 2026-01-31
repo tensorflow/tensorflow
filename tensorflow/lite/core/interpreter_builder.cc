@@ -426,7 +426,7 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   quantization->type = kTfLiteNoQuantization;
   quantization->params = nullptr;
   if (!src_quantization || !src_quantization->scale() ||
-      src_quantization->scale()->size() == 0) {
+      src_quantization->scale()->empty()) {
     return kTfLiteOk;
   }
   if (!src_quantization->zero_point()) {
@@ -586,7 +586,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
     const flatbuffers::Vector<flatbuffers::Offset<SignatureDef>>*
         signature_def_list,
     Interpreter* interpreter) {
-  if (signature_def_list == nullptr || signature_def_list->size() == 0) {
+  if (signature_def_list == nullptr || signature_def_list->empty()) {
     return kTfLiteOk;
   }
   std::vector<internal::SignatureDef> signature_defs;
@@ -831,7 +831,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
 
-  if (subgraphs->size() == 0) {
+  if (subgraphs->empty()) {
     TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
     return kTfLiteError;
   }
