@@ -317,6 +317,12 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
+      // Check if there is any 0-dimension in output.
+      if (absl::c_any_of(output_dims_mkl_order,
+                         [](dnnl_dim_t dim) { return dim == 0; })) {
+        return;
+      }
+
       // get src memory::desc
       memory::desc src_md =
           orig_input_mkl_shape.IsMklTensor()
