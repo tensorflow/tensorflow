@@ -114,7 +114,7 @@ class AccumulatorNumAccumulatedOp
     Tensor* Taccumulator_size = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(0, TensorShape({}), &Taccumulator_size));
-    Taccumulator_size->flat<int32>().setConstant(
+    Taccumulator_size->flat<int32_t>().setConstant(
         accumulator->num_accumulated());
   }
 
