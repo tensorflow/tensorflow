@@ -368,7 +368,7 @@ struct NodeViewDiff {
 
   GraphViewT* graph_view;
   int node_index;
-  string name;
+  std::string name;
   bool update_name = false;
   string op;
   bool update_op = false;
