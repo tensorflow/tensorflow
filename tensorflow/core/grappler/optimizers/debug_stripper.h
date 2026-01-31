@@ -28,7 +28,7 @@ class DebugStripper : public GraphOptimizer {
   DebugStripper() {}
   ~DebugStripper() override {}
 
-  string name() const override { return "debug_stripper"; };
+  std::string name() const override { return "debug_stripper"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

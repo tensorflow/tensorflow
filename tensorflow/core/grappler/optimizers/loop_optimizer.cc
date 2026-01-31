@@ -88,8 +88,8 @@ class LoopInvariantNodeMotionOptimizer {
 absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantEnter(
     NodeDef* node, const int num_outputs) {
   auto consumers = node_map_->GetOutputs(node->name());
-  std::vector<string> enter_control_inputs;
-  string enter_input;
+  std::vector<std::string> enter_control_inputs;
+  std::string enter_input;
   for (auto& input : node->input()) {
     if (IsControlInput(input)) {
       enter_control_inputs.push_back(input);
@@ -129,7 +129,7 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
     // some successor nodes are variant
     // Have to keep the const node in the frame,
     // so create a new one outside the frame (in parent frame)
-    const string const_node_name =
+    const std::string const_node_name =
         AddPrefixToNodeName(node->name(), kLoopOptimizer);
     const_node = node_map_->GetNode(const_node_name);
     if (const_node == nullptr) {
@@ -177,8 +177,8 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleConst(
       return errors::InvalidArgument("LoopCond node of Frame ", frame_id,
                                      " doesn't connect to any Switch node");
     }
-    string switch_output = absl::StrCat(switch_node->name(), ":1");
-    const string ctrl_dep = ConstantFolding::AddControlDependency(
+    std::string switch_output = absl::StrCat(switch_node->name(), ":1");
+    const std::string ctrl_dep = ConstantFolding::AddControlDependency(
         switch_output, optimized_graph_, node_map_.get());
     const_node->add_input(ctrl_dep);
     node_map_->AddOutput(NodeName(ctrl_dep), const_node->name());
@@ -209,14 +209,15 @@ absl::Status LoopInvariantNodeMotionOptimizer::HandleInvariantNode(
                                        &output_types));
 
   auto consumers = node_map_->GetOutputs(node->name());
-  string fname = invariant_enters_[frame_id][0]->attr().at("frame_name").s();
+  std::string fname =
+      invariant_enters_[frame_id][0]->attr().at("frame_name").s();
   int piterations =
       invariant_enters_[frame_id][0]->attr().at("parallel_iterations").i();
   for (auto* consumer : consumers) {
     if (!invariant_nodes_.count(consumer)) {
       for (int i = 0; i < consumer->input_size(); ++i) {
         int port;
-        string node_name = ParseNodeName(consumer->input(i), &port);
+        std::string node_name = ParseNodeName(consumer->input(i), &port);
         if (node_name != node->name()) {
           continue;
         }
@@ -347,7 +348,7 @@ absl::Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
       bool is_invariant = true;
       for (const auto& input : consumer->input()) {
         if (!IsControlInput(input)) {
-          const string name = NodeName(input);
+          const std::string name = NodeName(input);
           auto* producer = node_map_->GetNode(name);
           if (!invariant_nodes_.count(producer)) {
             if (IsConstant(*producer)) {
@@ -455,10 +456,11 @@ absl::Status LoopInvariantNodeMotionOptimizer::Optimize() {
 
 std::vector<int> GetStackPushNodesToConvert(
     const GraphTopologyView& graph_view,
-    const std::unordered_set<string>& nodes_to_preserve, int stack_node_idx) {
+    const std::unordered_set<std::string>& nodes_to_preserve,
+    int stack_node_idx) {
   VLOG(1) << "Stack node: " << graph_view.graph()->node(stack_node_idx).name();
 
-  const std::unordered_set<string> op_types_to_traverse(
+  const std::unordered_set<std::string> op_types_to_traverse(
       {"Stack", "StackV2", "Enter", "RefEnter", "Switch", "RefSwitch",
        "_SwitchN", "Identity", "RefIdentity"});
   const auto is_op_to_traverse = [&](const NodeDef* node) -> bool {
@@ -516,8 +518,9 @@ std::vector<int> GetStackPushNodesToConvert(
   return nodes_to_convert;
 }
 
-absl::Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
-                            GraphDef* optimized_graph) {
+absl::Status RemoveStackOps(
+    const std::unordered_set<std::string>& nodes_to_preserve,
+    GraphDef* optimized_graph) {
   NodeMap node_map(optimized_graph);
   GraphTopologyView graph_view;
   TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(*optimized_graph));
@@ -537,7 +540,7 @@ absl::Status RemoveStackOps(const std::unordered_set<string>& nodes_to_preserve,
         }
         push_node->set_op("Identity");
         push_node->mutable_input()->SwapElements(0, 1);
-        const string ctrl_dep = ConstantFolding::AddControlDependency(
+        const std::string ctrl_dep = ConstantFolding::AddControlDependency(
             push_node->input(1), optimized_graph, &node_map);
         push_node->set_input(1, ctrl_dep);
         VLOG(1) << "After converting: " << push_node->DebugString();
@@ -586,7 +589,7 @@ absl::Status EvaluateBoolOpForConstantOperands(
 
 // TODO(lyandy): Consolidate with ConstantFolding implementation.
 bool IsReallyConstant(const NodeDef& node,
-                      const absl::flat_hash_set<string>& feed_nodes) {
+                      const absl::flat_hash_set<std::string>& feed_nodes) {
   if (!IsConstant(node)) {
     return false;
   }
@@ -594,13 +597,11 @@ bool IsReallyConstant(const NodeDef& node,
   return feed_nodes.find(node.name()) == feed_nodes.end();
 }
 
-absl::Status CheckForDeadFanout(const MutableGraphView& view,
-                                const NodeDef& switch_node,
-                                const NodeMap& node_map,
-                                const absl::flat_hash_set<string>& feed_nodes,
-                                DeviceBase* cpu_device,
-                                ResourceMgr* resource_mgr,
-                                bool* has_dead_fanout, int* dead_fanout) {
+absl::Status CheckForDeadFanout(
+    const MutableGraphView& view, const NodeDef& switch_node,
+    const NodeMap& node_map, const absl::flat_hash_set<std::string>& feed_nodes,
+    DeviceBase* cpu_device, ResourceMgr* resource_mgr, bool* has_dead_fanout,
+    int* dead_fanout) {
   *has_dead_fanout = false;
   GraphView::InputPort switch_loopcond_port(&switch_node, 1);
   const NodeDef* switch_predicate =
@@ -644,7 +645,7 @@ absl::Status CheckForDeadFanout(const MutableGraphView& view,
   NodeDef* constant_ctrl_input = nullptr;
   int constant_index = 0;
   for (int i = 0; i < switch_ctrl_node->input().size(); ++i) {
-    const string& input = switch_ctrl_node->input(i);
+    const std::string& input = switch_ctrl_node->input(i);
     if (IsControlInput(input)) continue;
 
     NodeDef* node = view.GetNode(switch_ctrl_node->input(i));
@@ -749,7 +750,7 @@ absl::Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   if (options_.enable_dead_branch_removal) {
     NodeMap node_map(optimized_graph);
-    absl::flat_hash_set<string> feed_nodes;
+    absl::flat_hash_set<std::string> feed_nodes;
     for (const auto& feed : item.feed) {
       feed_nodes.insert(NodeName(feed.first));
     }
@@ -786,8 +787,9 @@ static absl::Status update_identity_node_type(NodeDef* sw_node) {
 }
 
 absl::Status LoopOptimizer::RemoveDeadBranches(
-    const std::unordered_set<string>& nodes_to_preserve, NodeMap& node_map,
-    const absl::flat_hash_set<string>& feed_nodes, GraphDef* optimized_graph) {
+    const std::unordered_set<std::string>& nodes_to_preserve, NodeMap& node_map,
+    const absl::flat_hash_set<std::string>& feed_nodes,
+    GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
   absl::flat_hash_set<GraphView::OutputPort> identity_switches;
@@ -982,7 +984,7 @@ absl::Status LoopOptimizer::RemoveDeadBranches(
       // input names of consumers. When switch will be replaced with Identity,
       // it will have only 1 output versus 2 outputs of a Switch node
       int live_port_id = (dead_port_id + 1) % 2;
-      string live_output_name = sw_node->name();
+      std::string live_output_name = sw_node->name();
       if (live_port_id == 1) {
         live_output_name = absl::StrCat(sw_node->name(), ":1");
       }
@@ -1003,7 +1005,7 @@ absl::Status LoopOptimizer::RemoveDeadBranches(
 
       // Change node from Switch to Identity and add a control dependency to
       // this Identity op.
-      const string ctrl_dep = ConstantFolding::AddControlDependency(
+      const std::string ctrl_dep = ConstantFolding::AddControlDependency(
           pred->name(), optimized_graph, &node_map);
       node_map.UpdateInput(sw_node->name(), pred->name(), ctrl_dep);
       sw_node->set_input(1, ctrl_dep);
