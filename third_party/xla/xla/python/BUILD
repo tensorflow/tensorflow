@@ -114,7 +114,7 @@ cc_library(
         "types.h",
         "version.h",
     ],
-    compatible_with = [],
+    compatible_with = get_compatible_with_libtpu_portable(),
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -549,7 +549,7 @@ cc_library(
     name = "nb_numpy",
     srcs = ["nb_numpy.cc"],
     hdrs = ["nb_numpy.h"],
-    compatible_with = [],
+    compatible_with = get_compatible_with_libtpu_portable(),
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
