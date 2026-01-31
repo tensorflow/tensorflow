@@ -40,6 +40,8 @@ class TargetMachineOptions {
   TargetMachineOptions(absl::string_view triple, absl::string_view cpu,
                        absl::string_view features);
 
+  bool operator==(const TargetMachineOptions& other) const;
+
   TargetMachineOptionsProto ToProto() const;
   static absl::StatusOr<TargetMachineOptions> FromProto(
       const TargetMachineOptionsProto& proto);

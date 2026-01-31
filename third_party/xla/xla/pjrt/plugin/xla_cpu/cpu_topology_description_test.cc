@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -35,9 +36,11 @@ using ::testing::ElementsAre;
 
 TEST(CpuTopologyDescriptionTest, ToProto) {
   std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}, {0, 1}};
-  std::vector<std::string> machine_attributes = {"attr1", "attr2"};
-  CpuTopologyDescription topology(xla::CpuId(), "cpu", "1.0", cpu_devices,
-                                  machine_attributes);
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"+avx2");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
 
   TF_ASSERT_OK_AND_ASSIGN(PjRtTopologyDescriptionProto proto,
                           topology.ToProto());
@@ -57,9 +60,11 @@ TEST(CpuTopologyDescriptionTest, ToProto) {
               cpu_topology_proto.cpu_devices(i).local_hardware_id());
   }
 
-  for (int i = 0; i < machine_attributes.size(); ++i) {
-    EXPECT_EQ(machine_attributes[i], cpu_topology_proto.machine_attributes(i));
-  }
+  auto target_machine_options_proto =
+      cpu_topology_proto.target_machine_options();
+  EXPECT_EQ(target_machine_options_proto.triple(), "triple");
+  EXPECT_EQ(target_machine_options_proto.cpu(), "cpu");
+  EXPECT_EQ(target_machine_options_proto.features(), "+avx2");
 }
 
 TEST(CpuTopologyDescriptionTest, FromProto) {
@@ -75,8 +80,12 @@ TEST(CpuTopologyDescriptionTest, FromProto) {
   auto* device2 = cpu_topology_proto.add_cpu_devices();
   device2->set_process_index(1);
   device2->set_local_hardware_id(1);
-  cpu_topology_proto.add_machine_attributes("attrA");
-  cpu_topology_proto.add_machine_attributes("attrB");
+
+  auto* target_machine_options_proto =
+      cpu_topology_proto.mutable_target_machine_options();
+  target_machine_options_proto->set_triple("triple");
+  target_machine_options_proto->set_cpu("cpu");
+  target_machine_options_proto->set_features("+featureA,+featureB");
 
   proto.mutable_platform_specific_topology()->PackFrom(cpu_topology_proto);
 
@@ -99,16 +108,22 @@ TEST(CpuTopologyDescriptionTest, FromProto) {
   EXPECT_EQ(devices[1].process_id, 1);
   EXPECT_EQ(devices[1].local_device_id, 1);
 
-  EXPECT_THAT(cpu_topology->cpu_topology().machine_attributes(),
-              ElementsAre("attrA", "attrB"));
+  EXPECT_EQ(cpu_topology->cpu_topology().target_machine_options().triple(),
+            "triple");
+  EXPECT_EQ(cpu_topology->cpu_topology().target_machine_options().cpu(), "cpu");
+  EXPECT_THAT(
+      cpu_topology->cpu_topology().target_machine_options().enabled_features(),
+      ElementsAre("featureA", "featureB"));
 }
 
 TEST(CpuTopologyDescriptionTest,
      ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType) {
   std::vector<CpuTopology::CpuDevice> cpu_devices = {{0, 0}, {0, 1}};
-  std::vector<std::string> machine_attributes = {"attr1", "attr2"};
-  CpuTopologyDescription topology(xla::CpuId(), "cpu", "1.0", cpu_devices,
-                                  machine_attributes);
+  xla::cpu::TargetMachineOptions target_machine_options(
+      /*triple=*/"triple", /*cpu=*/"cpu", /*features=*/"+avx2");
+  CpuTopologyDescription topology(
+      xla::CpuId(), "cpu", "1.0",
+      CpuTopology(cpu_devices, target_machine_options));
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_core,
       topology.ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(

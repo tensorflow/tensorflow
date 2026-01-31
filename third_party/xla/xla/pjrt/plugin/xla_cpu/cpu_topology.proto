@@ -17,6 +17,8 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/service/cpu/executable.proto";
+
 // A proto used to serialize CpuTopology instances.
 message CpuTopologyProto {
   message CpuDevice {
@@ -24,5 +26,6 @@ message CpuTopologyProto {
     int32 local_hardware_id = 3;
   }
   repeated CpuDevice cpu_devices = 1;
-  repeated string machine_attributes = 4;
+  reserved 4;  // machine_attributes
+  xla.cpu.TargetMachineOptionsProto target_machine_options = 5;
 }
