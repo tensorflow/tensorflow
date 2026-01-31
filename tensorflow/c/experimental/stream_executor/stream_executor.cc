@@ -167,8 +167,8 @@ absl::Status ValidateSEPlatformRegistrationParams(
 }
 #undef TF_VALIDATE_NOT_NULL
 
-DeviceMemoryBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
-  DeviceMemoryBase base(mem.opaque, mem.size);
+DeviceAddressBase DeviceMemoryBaseFromC(const SP_DeviceMemoryBase& mem) {
+  DeviceAddressBase base(mem.opaque, mem.size);
   base.SetPayload(mem.payload);
   return base;
 }
@@ -225,7 +225,7 @@ class CStreamExecutor : public StreamExecutorCommon {
 
   absl::Status Init() override { return absl::OkStatus(); }
 
-  DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override {
+  DeviceAddressBase Allocate(uint64_t size, int64_t memory_space) override {
     SP_DeviceMemoryBase mem = {SP_DEVICE_MEMORY_BASE_STRUCT_SIZE};
     stream_executor_->allocate(&device_, size, memory_space, &mem);
     absl::Status status = ValidateSPDeviceMemoryBase(mem);
@@ -234,11 +234,11 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return DeviceMemoryBaseFromC(mem);
   }
-  DeviceMemoryBase Allocate(uint64_t size) {
+  DeviceAddressBase Allocate(uint64_t size) {
     return Allocate(size, /*memory_space=*/0);
   }
 
-  void Deallocate(DeviceMemoryBase* mem) override {
+  void Deallocate(DeviceAddressBase* mem) override {
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(mem);
     stream_executor_->deallocate(&device_, &device_memory_base);
   }
@@ -285,14 +285,14 @@ class CStreamExecutor : public StreamExecutorCommon {
     }
     return true;
   }
-  absl::Status SynchronousMemZero(DeviceMemoryBase* location,
+  absl::Status SynchronousMemZero(DeviceAddressBase* location,
                                   uint64_t size) override {
     // TODO(annarev): figure out if we should support memzero/memset
     // functionality by allocating on host and then copying to device.
     return tsl::errors::Unimplemented(
         "SynchronousMemZero is not supported by pluggable device.");
   }
-  absl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+  absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(gpu_dst);
@@ -301,7 +301,7 @@ class CStreamExecutor : public StreamExecutorCommon {
     return StatusFromTF_Status(c_status.get());
   }
   absl::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
+                                 const DeviceAddressBase& gpu_src,
                                  uint64_t size) override {
     OwnedTFStatus c_status(TF_NewStatus());
     SP_DeviceMemoryBase device_memory_base = DeviceMemoryBaseToC(&gpu_src);
