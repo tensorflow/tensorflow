@@ -5691,28 +5691,17 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
         }
       }
     } else {
-      // For the cases where we update the shape, also fix up some bad tiling in
-      // entry computation layout.
-      auto update_shape = [this](Shape* subshape,
-                                 const xla::ShapeIndex& index) {
-        if (subshape->IsArray() && subshape->has_layout()) {
-          UpdateLayout(subshape);
-        }
-      };
       // Shapes can change but the layout should still remain the same.
-      // If the shapes do not change, we shouldn't change the layout if pre-set.
+      // Not setting any tiling here if not pre-set, since if it was preset, it
+      // will be copied. If not, LayoutAssignment will properly set it.
       for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
         TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
             old_entry_layout.parameter_shape(i),
             new_program_shape.mutable_parameters(i)));
-        ShapeUtil::ForEachMutableSubshape(
-            new_program_shape.mutable_parameters(i), update_shape);
       }
 
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
-                                        update_shape);
 
       HloModuleConfig config = module->config();
       *config.mutable_entry_computation_layout() =
