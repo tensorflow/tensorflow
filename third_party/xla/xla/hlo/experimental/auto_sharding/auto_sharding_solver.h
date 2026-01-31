@@ -78,8 +78,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
 
+// The parameter `improve_by_cpsat` sets the heuristic's solution as a hint to
+// CP-SAT, and then CP-SAT follows to improve the solution further.
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const iopddl::Problem& problem, const std::string& algorithm);
+    const iopddl::Problem& problem, const std::string& algorithm,
+    AutoShardingSolverParams params, bool improve_by_cpsat = false);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
