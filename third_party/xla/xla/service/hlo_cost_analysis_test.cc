@@ -142,7 +142,7 @@ class HloCostAnalysisTest : public ::testing::Test {
   XlaComputation gt_;
 };
 
-TEST_F(HloCostAnalysisTest, MatrixMultiply) {
+TEST_F(HloCostAnalysisTest, MatrixMultiply__noop__) {
   XlaBuilder builder("matrix_multiply");
   auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
   auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
