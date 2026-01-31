@@ -209,7 +209,6 @@ enum StatType {
   kQueueId,
   kQueueAddr,
   kRequestId,
-  kGlobalChipId,
   kRunId,
   kReplicaId,
   kGraphType,
