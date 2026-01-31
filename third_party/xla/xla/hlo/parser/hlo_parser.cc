@@ -2725,29 +2725,27 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           HloInstruction::CreateMap(*shape, operands, *to_apply));
     }
     case HloOpcode::kScan: {
+      if (!preset_operands && !ParseOperands(&operands, builder)) {
+        return nullptr;
+      }
+
       optional<HloComputation*> to_apply;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       optional<std::vector<int64_t>> dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<int64_t> num_carries;
+      attrs["num_carries"] = {/*required=*/true, AttrTy::kInt64, &num_carries};
       optional<bool> is_reverse = false;
       attrs["is_reverse"] = {/*required=*/false, AttrTy::kBool, &is_reverse};
       optional<bool> is_associative = false;
       attrs["is_associative"] = {/*required=*/false, AttrTy::kBool,
                                  &is_associative};
-      if ((!preset_operands && !ParseOperands(&operands, builder)) ||
-          !ParseAttributes(attrs, allow_attributes, shape)) {
-        return nullptr;
-      }
-      if (dimensions->empty()) {
-        TokenError("expects at least 1 dimension");
+      if (!ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
       }
 
-      // Infer num_carries by matching the operands from the right to the
-      // parameters of to_apply.
-      int64_t num_carries = 0;
       HloComputation* computation = *to_apply;
       if (operands.size() != computation->num_parameters()) {
         TokenError(StrCat("expects ", operands.size(),
@@ -2756,61 +2754,51 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                           computation->num_parameters(), " parameters"));
         return nullptr;
       }
-      for (int i = operands.size() - 1; i >= 0; --i) {
-        if (ShapeUtil::Compatible(
-                operands[i]->shape(),
-                computation->parameter_instruction(i)->shape())) {
-          num_carries++;
-        } else {
-          break;
-        }
-      }
 
-      if (num_carries == 0) {
-        TokenError("expects at least one carry operand");
+      if (dimensions->size() != 1) {
+        TokenError("expects exactly one dimension");
         return nullptr;
       }
-      if (num_carries == operands.size()) {
-        TokenError("expects at least one input operand");
+      int64_t scan_dim = dimensions->at(0);
+
+      if (operands.size() < *num_carries) {
+        TokenError(StrCat("expects at least ", *num_carries,
+                          " operands to match the number of carries, but has ",
+                          operands.size(), " operands"));
         return nullptr;
       }
+      int64_t num_inputs = operands.size() - *num_carries;
 
       if (!maybe_infer_shape([&]() -> absl::StatusOr<Shape> {
-            int64_t num_inputs = operands.size() - num_carries;
-            const Shape& root_shape =
-                to_apply.value()->root_instruction()->shape();
-            if (!root_shape.IsTuple()) {
-              return InvalidArgument("Scan computation result must be a tuple");
-            }
-
-            if (root_shape.tuple_shapes().size() != operands.size()) {
+            if (num_inputs == 0) {
               return InvalidArgument(
-                  "Scan computation result must be a tuple of size %d",
-                  operands.size());
+                  "Cannot infer shape for scan with no inputs");
+            }
+            int64_t scan_dim_size = operands[0]->shape().dimensions(scan_dim);
+
+            const Shape& root_shape = computation->root_instruction()->shape();
+
+            if (!root_shape.IsTuple()) {
+              return ShapeUtil::InsertDimensionAtIndex(root_shape, scan_dim,
+                                                       scan_dim_size);
             }
 
+            int64_t num_outputs = root_shape.tuple_shapes_size() - *num_carries;
             std::vector<Shape> result_shapes;
-            result_shapes.reserve(operands.size());
-            for (int i = 0; i < num_inputs; ++i) {
-              const Shape& input_shape = operands[i]->shape();
-              Shape output_shape = input_shape;
-              output_shape.set_element_type(
-                  root_shape.tuple_shapes(i).element_type());
-              result_shapes.push_back(output_shape);
-            }
-            for (int i = num_inputs; i < operands.size(); ++i) {
-              result_shapes.push_back(root_shape.tuple_shapes(i));
+            result_shapes.reserve(num_outputs);
+            for (int i = 0; i < num_outputs; ++i) {
+              result_shapes.push_back(ShapeUtil::InsertDimensionAtIndex(
+                  root_shape.tuple_shapes(i), scan_dim, scan_dim_size));
             }
             return ShapeUtil::MakeTupleShape(result_shapes);
           })) {
         return nullptr;
       }
 
-      int64_t num_inputs = operands.size() - num_carries;
       return builder->AddInstruction(HloInstruction::CreateScan(
           *shape, absl::MakeSpan(operands).subspan(0, num_inputs),
-          absl::MakeSpan(operands).subspan(num_inputs, num_carries), *to_apply,
-          dimensions->at(0), *is_reverse,
+          absl::MakeSpan(operands).subspan(num_inputs, *num_carries),
+          computation, scan_dim, *is_reverse,
           *is_associative ? TRI_STATE_TRUE : TRI_STATE_FALSE));
     }
     case HloOpcode::kReduce: {

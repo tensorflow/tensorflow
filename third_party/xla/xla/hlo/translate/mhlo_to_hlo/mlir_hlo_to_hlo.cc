@@ -3954,8 +3954,23 @@ LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
     is_associative = op.getIsAssociative().value() ? xla::TRI_STATE_TRUE
                                                    : xla::TRI_STATE_FALSE;
   }
-  xla::XlaOp result = xla::Scan(inputs, inits, body, op.getDimension(),
-                                op.getIsReverse(), is_associative);
+
+  // Extract scan dimension size from an input or output tensor.
+  auto scan_dimension_size = [&]() -> std::optional<int64_t> {
+    if (!op.getInputs().empty()) {
+      return cast<TensorType>(op.getInputs().front().getType())
+          .getDimSize(op.getDimension());
+    }
+    if (!op.getOutputs().empty()) {
+      return cast<TensorType>(op.getOutputs().front().getType())
+          .getDimSize(op.getDimension());
+    }
+    return std::nullopt;
+  }();
+
+  xla::XlaOp result =
+      xla::Scan(inputs, inits, body, op.getDimension(), scan_dimension_size,
+                op.getIsReverse(), is_associative);
 
   for (int i = 0; i < op.getNumResults(); ++i) {
     value_map[op.getResult(i)] = xla::GetTupleElement(result, i);

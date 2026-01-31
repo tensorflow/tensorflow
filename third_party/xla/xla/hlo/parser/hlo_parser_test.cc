@@ -2710,7 +2710,7 @@ add_F32 {
 ENTRY Scan {
   input = f32[4]{0} parameter(0)
   init = f32[] constant(0)
-  ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, is_reverse=true, is_associative=true, to_apply=add_F32
+  ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, is_reverse=true, is_associative=true, to_apply=add_F32
 }
 
 )"
