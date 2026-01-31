@@ -98,6 +98,9 @@ class BufferAllocation {
   // Returns the index of this allocation.
   Index index() const { return index_; }
 
+  // Returns the base offset of the allocation in bytes.
+  int64_t offset() const { return offset_; }
+  void set_offset(int64_t offset) { offset_ = offset; }
   // Whether this allocation is used in a parallel calling context such as
   // inside of a map or reduce computation. Such allocations need to be thread
   // local.
@@ -371,6 +374,9 @@ class BufferAllocation {
   // The index of the allocation in the BufferAssignment.
   Index index_;
 
+  // Base offset of this allocation within its memory space, in bytes.
+  int64_t offset_ = 0;
+
   // Size of the allocation in bytes.
   int64_t size_;
 
@@ -539,6 +545,12 @@ class BufferAssignment {
   const HloDataflowAnalysis& dataflow_analysis() const {
     return alias_analysis_->dataflow_analysis();
   }
+
+  // Updates the base offsets of the BufferAllocations based on the provided
+  // map from BufferAllocation::Index to offset.
+  void UpdateAllocationOffsets(
+      const absl::flat_hash_map<BufferAllocation::Index, int64_t>&
+          allocation_offsets);
 
   HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
 

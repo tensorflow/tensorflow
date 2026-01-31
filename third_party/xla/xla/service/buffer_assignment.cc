@@ -369,6 +369,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
+  proto.set_offset(offset_);
   for (const auto& buffer_offset_size : assigned_buffers_) {
     BufferAllocationProto::Assigned* proto_assigned = proto.add_assigned();
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
@@ -400,6 +401,9 @@ BufferAllocation BufferAllocation::FromProto(
         proto.is_parameter_aliased_with_output());
   }
   allocation.set_maybe_live_out(proto.maybe_live_out());
+  if (proto.has_offset()) {
+    allocation.set_offset(proto.offset());
+  }
 
   return allocation;
 }
@@ -695,6 +699,17 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
          absl::c_none_of(slices_a, [&](const BufferAllocation::Slice& slice) {
            return slices_b.contains(slice);
          });
+}
+
+void BufferAssignment::UpdateAllocationOffsets(
+    const absl::flat_hash_map<BufferAllocation::Index, int64_t>&
+        allocation_offsets) {
+  for (BufferAllocation& allocation : allocations_) {
+    auto it = allocation_offsets.find(allocation.index());
+    if (it != allocation_offsets.end()) {
+      allocation.set_offset(it->second);
+    }
+  }
 }
 
 absl::StatusOr<BufferAllocation::Slice>

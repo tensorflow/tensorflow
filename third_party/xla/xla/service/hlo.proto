@@ -711,6 +711,10 @@ message BufferAllocationProto {
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
+
+  // Base offset of this allocation within its memory space, in bytes.
+  // This is the offset relative to the start of the heap (e.g., HBM stack).
+  optional int64 offset = 14;
 }
 
 // A trace of a HeapSimulator run.
