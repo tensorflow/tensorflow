@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/compile_only_service.h"
 
-#include <string>
+#include <memory>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

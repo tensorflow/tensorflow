@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 class DialectRegistry;
