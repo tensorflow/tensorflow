@@ -493,21 +493,18 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
   // between all recorded commands. This guarantees that we execute
   // all device operations in the exact same order as a thunk
   // sequence.
-  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode;
+  CommandExecutor::SynchronizationMode synchronization_mode;
   auto mode = ir_emitter_context_->debug_options()
                   .xla_gpu_command_buffer_scheduling_mode();
   switch (mode) {
     case DebugOptions::SERIALIZE:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+      synchronization_mode = CommandExecutor::SynchronizationMode::kSerialize;
       break;
     case DebugOptions::CONCURRENT:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent;
+      synchronization_mode = CommandExecutor::SynchronizationMode::kConcurrent;
       break;
     case DebugOptions::LHS:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+      synchronization_mode = CommandExecutor::SynchronizationMode::kLHS;
       break;
     default:
       return Internal("Unsupported command buffer scheduling mode: %d", mode);
@@ -516,7 +513,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
   bool enable_loop_unroll = ir_emitter_context_->debug_options()
                                 .xla_gpu_command_buffer_unroll_loops();
   TF_ASSIGN_OR_RETURN(
-      CommandBufferCmdExecutor cmd_executor,
+      CommandExecutor cmd_executor,
       ConvertToCommands(
           thunk_sequence,
           ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
