@@ -7262,6 +7262,27 @@ TEST_F(AlgebraicSimplifierTest, ReduceDotReorder) {
                         m::Reduce(m::Parameter(1), m::ConstantScalar(0)))));
 }
 
+// Test that Slice is not removed when shape is same except of dynamism, when
+// is_slice_dynamic_shape_sensitive is set to true.
+TEST_F(AlgebraicSimplifierTest, SliceDynamicToStatic) {
+  const std::string& hlo_string = R"(
+    HloModule SliceDynamicToStatic
+
+    ENTRY entry {
+      param = f32[<=128] parameter(0)
+      ROOT static_param = s32[128]
+          slice(param), slice={[0:128]}
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_slice_dynamic_shape_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, SliceDotReorder) {
   constexpr absl::string_view hlo_string = R"(
     HloModule module
