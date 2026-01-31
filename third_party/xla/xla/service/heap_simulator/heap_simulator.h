@@ -214,7 +214,15 @@ class HeapSimulator {
 
   bool IgnoreBuffer(const HloValue* buffer) const;
   void Alloc(const HloValue* buffer, const HloInstruction* instruction);
+  // Same as above, but allows for filling in the debug trace with custom
+  // function.
+  void Alloc(const HloValue* buffer, const HloInstruction* instruction,
+             absl::FunctionRef<void()> fill_debug_trace_fn);
   void Free(const HloValue* buffer, const HloInstruction* instruction);
+  // Same as above, but allows for filling in the debug trace with custom
+  // function.
+  void Free(const HloValue* buffer, const HloInstruction* instruction,
+            absl::FunctionRef<void()> fill_debug_trace_fn);
   // ShareBuffer indicates that a new buffer is defined and it has to be the
   // same address as the shared one.
   void ShareBuffer(const HloValue* buffer, const HloValue* shared,
