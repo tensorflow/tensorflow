@@ -46,6 +46,7 @@ namespace {
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInit() {
+  LOG(INFO) << "InternalInit";
   absl::Status status =
       cuda::ToStatus(cuInit(0 /* = flags */), "Failed call to cuInit");
   if (!status.ok()) {
@@ -54,21 +55,28 @@ static absl::Status InternalInit() {
     return status;
   }
 
+  LOG(INFO) << "InternalInit: cuInit done, calling nvmlInit";
   nvmlReturn_t init_result = nvmlInit();
   if (init_result != NVML_SUCCESS) {
+    LOG(ERROR) << "failed call to nvmlInit: " << init_result;
     return absl::InternalError(
         absl::StrCat("NVML init failed with ", init_result));
   }
 
+  LOG(INFO) << "InternalInit: nvmlInit done";
   return absl::OkStatus();
 }
 
 static absl::Status PlatformInitialize() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but PlatformInitialize may be called many times.
+  LOG(INFO) << "PlatformInitialize: calling InternalInit";
   static absl::Status* initialization_status = [] {
+    LOG(INFO) << "PlatformInitialize: creating initialization_status";
     return new absl::Status(InternalInit());
   }();
+  LOG(INFO) << "PlatformInitialize: initialization_status: "
+            << *initialization_status;
   return *initialization_status;
 }
 
@@ -86,20 +94,30 @@ CudaPlatform::~CudaPlatform() {
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
 int CudaPlatform::VisibleDeviceCount() const {
+  LOG(INFO) << "CudaPlatform::VisibleDeviceCount: calling PlatformInitialize";
   // Initialized in a thread-safe manner the first time this is run.
   static const int num_devices = [] {
+    LOG(INFO) << "CudaPlatform::VisibleDeviceCount: calling PlatformInitialize "
+                 "in lambda";
     if (!PlatformInitialize().ok()) {
+      LOG(INFO) << "CudaPlatform::VisibleDeviceCount: PlatformInitialize "
+                   "returned error";
       return -1;
     }
+    LOG(INFO) << "CudaPlatform::VisibleDeviceCount: PlatformInitialize "
+                 "returned ok";
     int device_count = 0;
     auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
     if (!status.ok()) {
       LOG(ERROR) << "could not retrieve CUDA device count: " << status;
       return 0;
     }
+    LOG(INFO) << "CudaPlatform::VisibleDeviceCount: device_count: "
+              << device_count;
 
     return device_count;
   }();
+  LOG(INFO) << "CudaPlatform::VisibleDeviceCount: num_devices: " << num_devices;
   return num_devices;
 }
 
@@ -107,11 +125,13 @@ const std::string& CudaPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaPlatform::DescriptionForDevice(int ordinal) const {
+  LOG(INFO) << "CudaPlatform::DescriptionForDevice: calling PlatformInitialize";
   TF_RETURN_IF_ERROR(PlatformInitialize());
   return CudaExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
+  LOG(INFO) << "CudaPlatform::ExecutorForDevice: calling PlatformInitialize";
   TF_RETURN_IF_ERROR(PlatformInitialize());
   return executor_cache_.GetOrCreate(
       ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
@@ -125,6 +145,8 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
   // TODO(b/468297040): We should not be using DebugOptions here.
   xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  LOG(INFO) << "CudaPlatform::GetUncachedExecutor: calling PlatformInitialize";
+  TF_RETURN_IF_ERROR(PlatformInitialize());
   auto executor = std::make_unique<CudaExecutor>(
       this, ordinal,
       debug_options.xla_gpu_experimental_enable_nvshmem()
@@ -137,8 +159,11 @@ CudaPlatform::GetUncachedExecutor(int ordinal) {
 }  // namespace gpu
 
 static void InitializeCudaPlatform() {
+  LOG(INFO)
+      << "InitializeCudaPlatform: calling PlatformManager::RegisterPlatform";
   CHECK_OK(
       PlatformManager::RegisterPlatform(std::make_unique<gpu::CudaPlatform>()));
+  LOG(INFO) << "InitializeCudaPlatform: PlatformManager::RegisterPlatform done";
 }
 
 }  // namespace stream_executor

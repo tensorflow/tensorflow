@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {
@@ -2718,7 +2719,7 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   for (int i = 0; i < count; ++i) {
     auto emplace_result = operand_indices.emplace(operand(i), i);
     if (!emplace_result.second) {
-      TF_RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
+      RETURN_IF_ERROR(fused_parameter(i)->ReplaceAllUsesWith(
           fused_parameter(emplace_result.first->second)));
       operands_to_remove.push_back(i);
     }
@@ -2726,8 +2727,8 @@ absl::Status HloFusionInstruction::DeduplicateFusionOperands() {
   if (operands_to_remove.empty()) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(fused_instructions_computation()
-                         ->RemoveUnusedParametersFromFusedComputation());
+  RETURN_IF_ERROR(fused_instructions_computation()
+                      ->RemoveUnusedParametersFromFusedComputation());
   RemoveOperandsAtAscendingIndices(operands_to_remove);
   return absl::OkStatus();
 }
@@ -2748,7 +2749,7 @@ absl::Status HloFusionInstruction::PermuteFusionOperands(
     seen[permutation[i]] = true;
   }
 
-  TF_RETURN_IF_ERROR(
+  RETURN_IF_ERROR(
       fused_instructions_computation()->PermuteParameters(permutation));
   InstructionVector new_operands(operand_count());
   for (int64_t i = 0; i < operand_count(); ++i) {

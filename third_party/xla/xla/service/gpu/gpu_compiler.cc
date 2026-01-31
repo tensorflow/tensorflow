@@ -639,6 +639,9 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<RaggedDotRewriter>();
   if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
     pipeline.AddPass<ScaledDotRewriter>();
+  } else {
+    LOG(INFO) << "ScaledDotRewriter disabled by "
+                 "xla_gpu_experimental_scaled_dot_with_triton";
   }
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
