@@ -27,6 +27,7 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -648,7 +649,7 @@ SmallVector<InterpreterValue> Sort(InterpreterState& state, mhlo::SortOp op,
     };
 
     if (op.getIsStable()) {
-      std::stable_sort(indices.begin(), indices.end(), comparator);
+      absl::c_stable_sort(indices, comparator);
     } else {
       std::sort(indices.begin(), indices.end(), comparator);
     }
