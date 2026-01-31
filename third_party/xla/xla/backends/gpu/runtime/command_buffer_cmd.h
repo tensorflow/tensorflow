@@ -441,7 +441,7 @@ class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
 
 class CuDnnCmd : public TracedCommandBufferCmd {
  public:
-  CuDnnCmd(absl::Span<const BufferAllocation::Slice> args,
+  CuDnnCmd(absl::Span<const ShapedSlice> args,
            std::shared_ptr<se::dnn::LazyDnnGraph> graph);
 
   absl::Status Initialize(const Thunk::InitializeParams& params) override;
@@ -456,7 +456,7 @@ class CuDnnCmd : public TracedCommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
-  std::vector<BufferAllocation::Slice> args_;
+  std::vector<ShapedSlice> args_;
   const std::shared_ptr<se::dnn::LazyDnnGraph> graph_;
 };
 

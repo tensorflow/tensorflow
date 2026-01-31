@@ -1145,7 +1145,7 @@ Command::BufferUseVector CublasLtCmd::buffers() const {
 // CuDnnCmd
 //===----------------------------------------------------------------------===//
 
-CuDnnCmd::CuDnnCmd(absl::Span<const BufferAllocation::Slice> args,
+CuDnnCmd::CuDnnCmd(absl::Span<const ShapedSlice> args,
                    const std::shared_ptr<se::dnn::LazyDnnGraph> graph)
     : TracedCommandBufferCmd(CommandType::kCuDnnCmd),
       args_(args.cbegin(), args.cend()),
@@ -1165,9 +1165,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
   CHECK(graph_ != nullptr);
   std::vector<se::DeviceAddressBase> operands;
   operands.reserve(args_.size());
-  for (const BufferAllocation::Slice& arg : args_) {
+  for (const ShapedSlice& arg : args_) {
     se::DeviceAddressBase buf =
-        execute_params.buffer_allocations->GetDeviceAddress(arg);
+        execute_params.buffer_allocations->GetDeviceAddress(arg.slice);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
     operands.push_back(buf);
   }
@@ -1201,9 +1201,10 @@ Command::BufferUseVector CuDnnCmd::buffers() const {
   Command::BufferUseVector buffer_usage;
   buffer_usage.reserve(args_.size());
   for (int i = 0; i < args_.size() - 1; ++i) {
-    buffer_usage.push_back(BufferUse::Read(args_[i]));
+    buffer_usage.push_back(BufferUse::Read(args_[i].slice, args_[i].shape));
   }
-  buffer_usage.push_back(BufferUse::Write(args_.back()));
+  buffer_usage.push_back(
+      BufferUse::Write(args_.back().slice, args_.back().shape));
   return buffer_usage;
 }
 
