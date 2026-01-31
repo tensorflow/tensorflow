@@ -3702,15 +3702,6 @@ HloDynamicSliceInstruction::HloDynamicSliceInstruction(
 
 HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* update,
-    HloInstruction* start_indices)
-    : HloDynamicIndexInstruction(HloOpcode::kDynamicUpdateSlice, shape) {
-  AppendOperand(operand);
-  AppendOperand(update);
-  AppendOperand(start_indices);
-}
-
-HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
-    const Shape& shape, HloInstruction* operand, HloInstruction* update,
     absl::Span<HloInstruction* const> start_indices)
     : HloDynamicIndexInstruction(HloOpcode::kDynamicUpdateSlice, shape) {
   AppendOperand(operand);
