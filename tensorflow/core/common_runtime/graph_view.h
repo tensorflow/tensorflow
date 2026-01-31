@@ -119,9 +119,9 @@ struct NodeItem {
     return absl::Span<const EdgeInfo>(output_edge_base(), num_output_edges);
   }
 
-  gtl::ArraySlice<ControlEdgeInfo> output_control_edges() const {
-    return gtl::ArraySlice<const ControlEdgeInfo>(output_control_edge_base(),
-                                                  num_output_control_edges);
+  absl::Span<const ControlEdgeInfo> output_control_edges() const {
+    return absl::Span<const const ControlEdgeInfo>(output_control_edge_base(),
+                                                   num_output_control_edges);
   }
 
   DataType input_type(int i) const {

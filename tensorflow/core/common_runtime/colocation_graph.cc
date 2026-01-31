@@ -64,8 +64,8 @@ const absl::string_view kColocationGroupPrefixStringPiece(
     kColocationGroupPrefix);
 
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
-std::vector<string> DevicesToString(const std::vector<Device*> devices) {
-  std::vector<string> v;
+std::vector<std::string> DevicesToString(const std::vector<Device*> devices) {
+  std::vector<std::string> v;
   v.reserve(devices.size());
   for (Device* d : devices) {
     v.push_back(d->name());
@@ -74,11 +74,11 @@ std::vector<string> DevicesToString(const std::vector<Device*> devices) {
 }
 
 // Using absl::StrJoin with lambda does not work in tf-lite builds.
-std::vector<string> DeviceTypeAndPriorityToString(
+std::vector<std::string> DeviceTypeAndPriorityToString(
     const PrioritizedDeviceTypeVector& devices) {
-  std::vector<string> v;
+  std::vector<std::string> v;
   v.reserve(devices.size());
-  for (const std::pair<DeviceType, int32>& device_and_type : devices) {
+  for (const std::pair<DeviceType, int32_t>& device_and_type : devices) {
     v.push_back(DeviceTypeString(device_and_type.first));
   }
   return v;
@@ -103,7 +103,7 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // function bodies, are exempt from this check: they forward resource and
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
-  const string& op_type = node->op_def().name();
+  const std::string& op_type = node->op_def().name();
   auto exempt_ops = InputColocationExemptionRegistry::Global()->Get();
   return exempt_ops.find(op_type) != exempt_ops.end();
 }
@@ -177,7 +177,7 @@ absl::Status Member::SetParentAndSupportedDevices(
       types, node.def(), &supported_device_types_, local_address_spec);
 }
 
-absl::Status Member::SetAssignedDeviceName(const string& device_name) {
+absl::Status Member::SetAssignedDeviceName(const std::string& device_name) {
   if (DeviceNameUtils::HasSomeDetails(requested_device_name_)) {
     return errors::Internal(
         "Setting assigned device name when there is a requested device set "
@@ -544,7 +544,7 @@ void Member::MaybeExcludeXlaDevices() {
 
   PrioritizedDeviceTypeVector non_xla_types;
   absl::c_copy_if(supported_device_types_, std::back_inserter(non_xla_types),
-                  [&](const std::pair<DeviceType, int32>& entry) {
+                  [&](const std::pair<DeviceType, int32_t>& entry) {
                     return !IsXlaDevice(entry.first.type_string());
                   });
 
@@ -567,7 +567,7 @@ absl::Status Member::LimitToPossibleDevices(const PossibleDevices& devices,
   return absl::OkStatus();
 }
 
-string Member::DebugString() const {
+std::string Member::DebugString() const {
   return absl::StrCat(
       "Member(assigned_device_name_index_=", assigned_device_name_index_,
       " requested_device_name_='",
@@ -685,7 +685,7 @@ absl::Status ColocationGraph::ColocateAllNodes() {
         node->attrs().Find(kColocationAttrNameStringPiece);
     if (attr_value != nullptr) {
       if (attr_value->has_list()) {
-        for (const string& class_spec : attr_value->list().s()) {
+        for (const std::string& class_spec : attr_value->list().s()) {
           absl::string_view spec(class_spec);
           if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
             TF_RETURN_IF_ERROR(
@@ -815,7 +815,7 @@ DataType GetElementDataType(const Node& node) {
 absl::Status ColocationGraph::AddHostOnlyDataTypesConstraints() {
   auto is_variant = [](DataType dtype) -> bool { return dtype == DT_VARIANT; };
 
-  auto is_cpu_device = [](const std::pair<DeviceType, int32>& entry) -> bool {
+  auto is_cpu_device = [](const std::pair<DeviceType, int32_t>& entry) -> bool {
     return entry.first == DEVICE_CPU;
   };
 
@@ -953,8 +953,9 @@ using NodeAndBool = std::pair<const Node*, bool>;
 namespace {
 
 // Returns a vector of node names from `nodes`.
-std::vector<string> NodeAndBoolToString(const std::vector<NodeAndBool>& nodes) {
-  std::vector<string> v;
+std::vector<std::string> NodeAndBoolToString(
+    const std::vector<NodeAndBool>& nodes) {
+  std::vector<std::string> v;
   v.reserve(nodes.size());
   for (const NodeAndBool& node_and_bool : nodes) {
     v.push_back(node_and_bool.first->name());
@@ -1275,7 +1276,7 @@ absl::Status ColocationGraph::GetDevicesForNode(
       // Return an error when a physical device that matches an explicit
       // device specification is not found. This ensures that we don't
       // assign a node to GPU when the user wanted to force it on CPU.
-      string debug_info = DebugInfo(node_root);
+      std::string debug_info = DebugInfo(node_root);
 
       DeviceNameUtils::ParsedName specified_device_name;
       if (DeviceNameUtils::ParseFullName(node->requested_device(),
@@ -1290,13 +1291,13 @@ absl::Status ColocationGraph::GetDevicesForNode(
         if (devices_matching_nodedef.empty()) {
           // Sometimes it is almost impossible to understand the problem
           // without a list of available devices.
-          std::vector<string> device_names;
+          std::vector<std::string> device_names;
           for (const Device* device : device_set_.devices()) {
             device_names.push_back(device->name());
           }
           std::sort(device_names.begin(), device_names.end());
 
-          string gpu_msg = "";
+          std::string gpu_msg = "";
           if (!IsGoogleCudaEnabled() &&
               absl::AsciiStrToLower(specified_device_name.type) == "gpu") {
             gpu_msg =
@@ -1377,9 +1378,9 @@ absl::Status ColocationGraph::InitializeMembers() {
   return absl::OkStatus();
 }
 
-string ColocationGraph::DebugString() const {
+std::string ColocationGraph::DebugString() const {
   std::unordered_set<int> roots;
-  std::vector<string> root_strings;
+  std::vector<std::string> root_strings;
   for (const Node* node : graph_.nodes()) {
     if (!node->IsOp()) {
       continue;
@@ -1394,8 +1395,8 @@ string ColocationGraph::DebugString() const {
 }
 
 // Returns debugging info for the node referred to by 'node_root'.
-string ColocationGraph::DebugInfo(const int node_root) const {
-  string text(
+std::string ColocationGraph::DebugInfo(const int node_root) const {
+  std::string text(
       "\nColocation Debug Info:\n"
       "Colocation group had the following types and supported devices: ");
 
@@ -1403,7 +1404,7 @@ string ColocationGraph::DebugInfo(const int node_root) const {
   // collect the mapping of ops to supported devices, so that
   // the user can see why an unsatisfiable placement occurred.
 
-  std::unordered_map<string, string> type_to_devices;
+  std::unordered_map<std::string, std::string> type_to_devices;
   std::vector<const Node*> colocation_nodes;
   int num_nodes_found = 0;
 
@@ -1422,13 +1423,13 @@ string ColocationGraph::DebugInfo(const int node_root) const {
     SupportedDeviceTypesForNode(device_types_, node->def(), &supported_types,
                                 &local_address_spec_)
         .IgnoreError();
-    string devices_registered;
+    std::string devices_registered;
     for (const auto& device_type : supported_types) {
       absl::StrAppend(&devices_registered, DeviceTypeString(device_type.first),
                       " ");
     }
 
-    const string& op_type = node->type_string();
+    const std::string& op_type = node->type_string();
     type_to_devices[op_type] = std::move(devices_registered);
   }
   absl::StrAppend(&text, "\nRoot ", members_[node_root].DebugString());
@@ -1456,7 +1457,7 @@ string ColocationGraph::DebugInfo(const int node_root) const {
 }
 
 absl::Status ColocationGraph::InitializeMemberWithAssignedDevice(
-    const string& assigned_device_name, const string& node_type,
+    const std::string& assigned_device_name, const std::string& node_type,
     Member* member) {
   // This node has already been assigned to a device, so we
   // respect this placement, after sanity-checking it.
@@ -1510,7 +1511,7 @@ absl::Status ColocationGraph::InitializeMember(const Node& node,
 
     // If no kernels are registered for this op type, fail with an error.
     if (member->supported_device_types().empty()) {
-      std::set<string> registered_device_types;
+      std::set<std::string> registered_device_types;
       for (Device* d : device_set_.devices()) {
         registered_device_types.insert(d->device_type());
       }
