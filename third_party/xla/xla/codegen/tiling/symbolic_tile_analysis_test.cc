@@ -2678,5 +2678,53 @@ ENTRY main {
   ASSERT_TRUE(analysis.has_value());
 }
 
+TEST_F(SymbolicTileAnalysisTest, TransposeSimplificationIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[10,20,30] parameter(0)
+  transpose = f32[20,30,10] transpose(p0), dimensions={1, 2, 0}
+  ROOT bitcast = f32[20,30,10] bitcast(transpose)
+}
+
+ENTRY main {
+  p0 = f32[10,20,30] parameter(0)
+  ROOT fusion = f32[20,30,10] fusion(p0), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  // Tiling on the output [20, 30, 10].
+  // We use {2, 30, 2} to ensure the grouped dimension (20 and 30) is tiled
+  // compatibly. 30 is fully covered, 20 is tiled by 2.
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              Tiling({{fusion_root, FlatTiling({2, 30, 2})}}),
+                              default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* root = tiled_hlo_computation.GetRoots()[0];
+  EXPECT_THAT(*root, MatchTiledHloInstruction(
+                         /*tile_sizes=*/{2, 30, 2}, /*tile_strides=*/{1, 1, 1},
+                         /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 floordiv 5) * 2, 0, (pid_0 mod 5) * 2),
+    domain:
+    pid_0 in [0, 49]
+  )"));
+
+  const TiledHloInstruction* transpose = root->operand(0);
+  EXPECT_THAT(*transpose, MatchTiledHloInstruction(
+                              /*tile_sizes=*/{60, 2}, /*tile_strides=*/{1, 1},
+                              /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 floordiv 5) * 60, (pid_0 mod 5) * 2),
+    domain:
+    pid_0 in [0, 49]
+  )"));
+}
+
 }  // namespace
 }  // namespace xla

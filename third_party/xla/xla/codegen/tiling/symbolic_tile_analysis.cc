@@ -65,16 +65,19 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -85,6 +88,60 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
+
+struct TransposeSimplification {
+  std::unique_ptr<HloInstruction> new_transpose;
+  std::unique_ptr<HloInstruction> new_bitcast;
+  std::unique_ptr<HloInstruction> dummy_param;
+  IndexingMap merge_map;
+};
+
+// Tries to simplify a Transpose instruction by grouping dimensions, similar to
+// TransposeDimensionGrouper. Returns nullopt if no simplification is possible.
+std::optional<TransposeSimplification> TrySimplifyTranspose(
+    const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
+  absl::InlinedVector<int64_t, 3> permutation;
+  auto normalized_dims = ShapeUtil::GetNormalizedLogicalTransposeShape(
+      transpose->shape(), transpose->dimensions(), permutation);
+
+  if (normalized_dims.size() == transpose->shape().dimensions().size() ||
+      normalized_dims == transpose->shape().dimensions()) {
+    return std::nullopt;
+  }
+
+  Shape new_transpose_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      transpose->shape().element_type(), normalized_dims);
+
+  auto normalized_operand_dims =
+      Permute(normalized_dims, InversePermutation(permutation));
+  Shape new_bitcast_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      transpose->shape().element_type(), normalized_operand_dims);
+
+  // We cannot use transpose->mutable_operand(0) because transpose is const.
+  // We create a dummy parameter with the same shape as the operand to use as
+  // the operand for the new bitcast. This is fine because we only use this
+  // for indexing analysis and do not actually run the instruction.
+  auto dummy_param = HloInstruction::CreateParameter(
+      0, transpose->operand(0)->shape(), "dummy_param");
+  auto new_bitcast =
+      HloInstruction::CreateBitcast(new_bitcast_shape, dummy_param.get());
+
+  auto new_transpose = HloInstruction::CreateTranspose(
+      new_transpose_shape, new_bitcast.get(), permutation);
+
+  auto reverse_bitcast =
+      HloInstruction::CreateBitcast(transpose->shape(), new_transpose.get());
+
+  IndexingMap merge_map =
+      ComputeOutputToInputIndexing(reverse_bitcast.get(), 0, mlir_context)
+          .indexing_maps[0]
+          .begin()
+          ->map();
+
+  return TransposeSimplification{std::move(new_transpose),
+                                 std::move(new_bitcast), std::move(dummy_param),
+                                 std::move(merge_map)};
+}
 
 // Tiling of the output of a fusion (computation).
 // It is a mapping from the tile multi index to the index of the output tensor
@@ -1280,6 +1337,8 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
     std::vector<SymbolicTiledHloInstruction*> root_runtime_variables) {
   UnsafeSymbolicTiledHloInstructionOrderedSet tiled_hlo_instructions_set;
 
+  std::vector<std::unique_ptr<HloInstruction>> synthetic_instructions;
+
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
   auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
@@ -1300,7 +1359,12 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
     worklist.pop_back();
     const HloInstruction* hlo = tiled_hlo_instruction->hlo();
 
-    if (!fusion.ContainsInstruction(hlo)) {
+    bool is_synthetic =
+        absl::c_any_of(synthetic_instructions,
+                       [&](const std::unique_ptr<HloInstruction>& ptr) {
+                         return ptr.get() == hlo;
+                       });
+    if (!fusion.ContainsInstruction(hlo) && !is_synthetic) {
       continue;
     }
     if (tiled_hlo_instruction->hlo()->opcode() == HloOpcode::kFusion) {
@@ -1321,6 +1385,28 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
           tiled_hlo_instruction, *operand_indexing.begin(), simplification_mode,
           tiled_hlo_instructions_set, operand, instruction_adaptor, operand_pos,
           parameter_mapping);
+
+      const HloInstruction* operand_hlo = &operand.instruction();
+      if (operand_hlo->opcode() == HloOpcode::kTranspose) {
+        auto transpose = Cast<HloTransposeInstruction>(operand_hlo);
+        auto simplification = TrySimplifyTranspose(transpose, mlir_context);
+
+        if (simplification) {
+          VLOG(3) << "Simplified transpose " << operand_hlo->name();
+          auto merged_map = ComposeIndexingMaps(composed_indexing.indexing_map,
+                                                simplification->merge_map);
+          if (!merged_map.IsUndefined()) {
+            composed_indexing.indexing_map = std::move(merged_map);
+            operand_hlo = simplification->new_transpose.get();
+            synthetic_instructions.push_back(
+                std::move(simplification->dummy_param));
+            synthetic_instructions.push_back(
+                std::move(simplification->new_bitcast));
+            synthetic_instructions.push_back(
+                std::move(simplification->new_transpose));
+          }
+        }
+      }
 
       if (composed_indexing.indexing_map.IsUndefined()) {
         return FusionDecision::Forbid(
@@ -1360,7 +1446,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
             std::move(analysis), std::move(composed_indexing.rt_operands));
       } else {
         tiled_operand = std::make_unique<SymbolicTiledHloInstruction>(
-            &operand.instruction(), std::move(composed_indexing.indexing_map),
+            operand_hlo, std::move(composed_indexing.indexing_map),
             std::move(composed_indexing.rt_operands));
       }
       // TODO(b/393299275): propagation to operands is not correct when nesting,
@@ -1411,7 +1497,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
   return SymbolicTileAnalysis(std::move(tiled_hlo_instructions), root_indexing,
                               std::move(tiling_specification),
                               std::move(emitter_specific_constraints),
-                              mlir_context);
+                              mlir_context, std::move(synthetic_instructions));
 }
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(

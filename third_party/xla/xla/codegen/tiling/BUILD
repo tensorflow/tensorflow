@@ -350,6 +350,7 @@ cc_library(
         ":tiled_hlo_instruction",
         ":tiled_hlo_schedule",
         ":tiling_specification",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
