@@ -34,8 +34,8 @@ namespace tensorflow {
 //   string input = "input string";
 //   uint64 hash_value = StrongKeyedHash(key, input);
 //
-inline uint64 StrongKeyedHash(const tensorflow::uint64 (&key)[2],
-                              const string& s) {
+inline uint64_t StrongKeyedHash(const uint64_t (&key)[2],
+                                const std::string& s) {
   return highwayhash::StringHasher<highwayhash::SipHashState>()(
       {key[0], key[1]}, s);
 }
