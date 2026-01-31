@@ -17,6 +17,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
@@ -116,6 +117,22 @@ class Conv1DTest(test.TestCase):
           cache_values[n, -1, k] = cache_values[n, -2, k]
 
     self.assertAllClose(cache_values, value)
+    
+  def testInvalidDilationValidPaddingRaises(self):
+    x = constant_op.constant(
+        0.0, shape=[2, 10, 3], dtype=dtypes.float32)
+    filters = constant_op.constant(
+        0.0, shape=[2, 3, 1], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "output size is <= 0"):
+      nn_ops.conv1d(
+          x,
+          filters,
+          stride=1,
+          padding="VALID",
+          dilations=10)
 
 
 if __name__ == "__main__":
