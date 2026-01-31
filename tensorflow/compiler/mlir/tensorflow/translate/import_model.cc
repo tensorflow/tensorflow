@@ -1275,7 +1275,7 @@ absl::Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
 
   // Copy all functions used by this signature to the final MLIR module.
   for (auto func : sub_module.getOps<mlir::func::FuncOp>()) {
-    absl::MutexLock l(&symbol_table_mu_);
+    absl::MutexLock l(symbol_table_mu_);
     // The insert here is a NO-OP if the function already exists.
     symbol_table_.insert(func.clone());
   }
@@ -1496,7 +1496,7 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
       thread_pool.Schedule([&]() {
         auto status = ConvertSignature(sig_def_key, signature_def);
         if (!status.ok()) {
-          absl::MutexLock l(&error_status_mu);
+          absl::MutexLock l(error_status_mu);
           error_status = std::move(status);
         }
       });
