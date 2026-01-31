@@ -299,7 +299,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     mutex_lock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
-    const string& mutation_warning = session->graph->sessions[session];
+    const std::string& mutation_warning = session->graph->sessions[session];
     if (!mutation_warning.empty()) {
       // TODO(b/74949947): turn this back into an error status
       LOG(WARNING) << mutation_warning;
@@ -863,7 +863,7 @@ void TF_SetAttrInt(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrIntList(TF_OperationDescription* desc, const char* attr_name,
                        const int64_t* values, int num_values) {
   desc->node_builder.Attr(
-      attr_name, ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
 }
 
@@ -875,7 +875,7 @@ void TF_SetAttrFloat(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrFloatList(TF_OperationDescription* desc, const char* attr_name,
                          const float* values, int num_values) {
   desc->node_builder.Attr(attr_name,
-                          ArraySlice<const float>(values, num_values));
+                          absl::Span<const const float>(values, num_values));
 }
 
 void TF_SetAttrBool(TF_OperationDescription* desc, const char* attr_name,
@@ -890,7 +890,7 @@ void TF_SetAttrBoolList(TF_OperationDescription* desc, const char* attr_name,
     b[i] = values[i];
   }
   desc->node_builder.Attr(attr_name,
-                          ArraySlice<const bool>(b.get(), num_values));
+                          absl::Span<const const bool>(b.get(), num_values));
 }
 
 void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
@@ -901,7 +901,7 @@ void TF_SetAttrType(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
                         const TF_DataType* values, int num_values) {
   desc->node_builder.Attr(
-      attr_name, ArraySlice<const DataType>(
+      attr_name, absl::Span<const const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
 }
 
