@@ -43,6 +43,14 @@ std::string SymbolicTiledHloInstruction::ToString(
     }
     ss << ")";
   }
+  if (!regions_.empty()) {
+    ss << field_separator;
+    ss << "regions: (" << field_separator;
+    for (int i = 0; i < regions_.size(); ++i) {
+      ss << i << " size " << regions_[i].size() << field_separator;
+    }
+    ss << ")";
+  }
   return ss.str();
 }
 

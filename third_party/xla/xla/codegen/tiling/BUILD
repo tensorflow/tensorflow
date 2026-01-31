@@ -27,6 +27,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -281,6 +282,8 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
