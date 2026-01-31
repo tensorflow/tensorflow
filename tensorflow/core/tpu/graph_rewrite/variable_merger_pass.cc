@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/variable_merger_pass.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
