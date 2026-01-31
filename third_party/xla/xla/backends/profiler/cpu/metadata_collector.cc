@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/backends/profiler/cpu/metadata_utils.h"
+#include "xla/backends/profiler/util/metadata_registry.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
@@ -57,10 +58,18 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
   }
 
   absl::Status CollectData(tsl::profiler::XSpace* space) override {
+    tsl::profiler::XPlane* plane = tsl::profiler::FindOrAddMutablePlaneWithName(
+        space, tsl::profiler::kMetadataPlaneName);
+    tsl::profiler::XPlaneBuilder xp(plane);
+
+    for (const auto& [key, value] : GetAllProfilerMetadata()) {
+      if (value.empty()) continue;
+      tsl::profiler::XStatMetadata* stat_metadata =
+          xp.GetOrCreateStatMetadata(key);
+      xp.AddStatValue(*stat_metadata, value);
+    }
+
     if (!debug_info_.empty()) {
-      tsl::profiler::XPlane* plane =
-          tsl::profiler::FindOrAddMutablePlaneWithName(
-              space, tsl::profiler::kMetadataPlaneName);
       MetadataXPlaneBuilder metadata_plane(plane);
       for (auto& hlo_proto : debug_info_) {
         metadata_plane.AddHloProto(hlo_proto->hlo_module().id(), *hlo_proto);
