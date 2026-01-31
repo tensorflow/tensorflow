@@ -81,6 +81,7 @@ cc_library(
         ":cpu_device_description",
         ":cpu_topology",
         "//xla:shape_util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
@@ -99,6 +100,7 @@ cc_library(
 tf_proto_library(
     name = "cpu_topology_proto",
     srcs = ["cpu_topology.proto"],
+    protodeps = ["//xla/service/cpu:executable_proto"],
 )
 
 cc_library(
@@ -107,7 +109,9 @@ cc_library(
     hdrs = ["cpu_topology.h"],
     deps = [
         ":cpu_topology_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_common",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -118,6 +122,7 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_description",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_dimensions",
@@ -132,6 +137,7 @@ xla_cc_test(
     deps = [
         ":cpu_topology",
         ":cpu_topology_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",

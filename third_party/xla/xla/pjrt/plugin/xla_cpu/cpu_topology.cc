@@ -17,10 +17,11 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 
 namespace xla {
@@ -36,14 +37,15 @@ std::unique_ptr<const CpuTopology> CpuTopology::FromProto(
                                 cpu_device_proto.local_hardware_id()});
   }
 
-  std::vector<std::string> machine_attributes;
-  machine_attributes.reserve(cpu_topology_proto.machine_attributes_size());
-  for (size_t i = 0; i < cpu_topology_proto.machine_attributes_size(); ++i) {
-    machine_attributes.push_back(cpu_topology_proto.machine_attributes(i));
-  }
+  auto target_machine_options_or = xla::cpu::TargetMachineOptions::FromProto(
+      cpu_topology_proto.target_machine_options());
+  CHECK_OK(target_machine_options_or)
+      << "Failed to parse target machine options from "
+         "proto: "
+      << target_machine_options_or.status().message();
 
-  return std::make_unique<CpuTopology>(std::move(devices),
-                                       std::move(machine_attributes));
+  return std::make_unique<CpuTopology>(
+      std::move(devices), std::move(target_machine_options_or.value()));
 }
 
 CpuTopologyProto CpuTopology::ToProto() const {
@@ -53,9 +55,7 @@ CpuTopologyProto CpuTopology::ToProto() const {
     cpu_device_proto->set_process_index(cpu_device.process_id);
     cpu_device_proto->set_local_hardware_id(cpu_device.local_device_id);
   }
-  for (const std::string& machine_attribute : machine_attributes_) {
-    proto.add_machine_attributes(machine_attribute);
-  }
+  *proto.mutable_target_machine_options() = target_machine_options_.ToProto();
   return proto;
 }
 
