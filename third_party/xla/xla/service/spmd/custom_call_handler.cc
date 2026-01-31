@@ -459,11 +459,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
 
   if (hlo->custom_call_target() ==
-          memory_annotations::kMoveToDeviceCustomCallTarget ||
-      hlo->custom_call_target() ==
-          memory_annotations::kPinToDeviceCustomCallTarget ||
-      hlo->custom_call_target() ==
-          memory_annotations::kPinToDeviceSramCustomCallTarget) {
+      memory_annotations::kMoveToDeviceCustomCallTarget) {
     // Use the operand's sharding to shard the move-to-device op. This avoids
     // inserting any resharding before the custom call so that the
     // host-offloader pass can pattern match the offloading sequences correctly.
