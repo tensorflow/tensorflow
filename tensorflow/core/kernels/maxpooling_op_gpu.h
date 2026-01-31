@@ -22,6 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -34,7 +35,7 @@ namespace functor {
 // argmax indices are not written.
 template <typename T>
 struct MaxPoolForwardWithOptionalArgmax {
-  bool operator()(const T* bottom_data, const int batch, const int height,
+  absl::Status operator()(const T* bottom_data, const int batch, const int height,
                   const int width, const int channels, const int pooled_height,
                   const int pooled_width, const int kernel_h,
                   const int kernel_w, const int stride_h, const int stride_w,
@@ -44,7 +45,7 @@ struct MaxPoolForwardWithOptionalArgmax {
 };
 
 struct MaxPoolForwardNoMask_NCHW_VECT_C {
-  bool operator()(const int32_t* bottom_data, const int batch, const int height,
+  absl::Status operator()(const int32_t* bottom_data, const int batch, const int height,
                   const int width, int channels, const int pooled_height,
                   const int pooled_width, const int kernel_h,
                   const int kernel_w, const int stride_h, const int stride_w,
@@ -54,7 +55,7 @@ struct MaxPoolForwardNoMask_NCHW_VECT_C {
 
 template <typename T>
 struct MaxPoolBackwardWithArgmax {
-  bool operator()(const int output_size, const int input_size,
+  absl::Status operator()(const int output_size, const int input_size,
                   const T* top_diff, const int64_t* mask, const int top_offset,
                   const int bottom_offset, T* bottom_diff,
                   const Eigen::GpuDevice& d, const bool include_batch_in_index);
@@ -62,7 +63,7 @@ struct MaxPoolBackwardWithArgmax {
 
 template <typename T>
 struct MaxPoolGradBackwardWithArgmax {
-  bool operator()(const int output_size, const int input_size,
+  absl::Status operator()(const int output_size, const int input_size,
                   const T* top_diff, const int64_t* mask, const int top_offset,
                   const int bottom_offset, T* bottom_diff,
                   const Eigen::GpuDevice& d, const bool include_batch_in_index);
@@ -70,7 +71,7 @@ struct MaxPoolGradBackwardWithArgmax {
 
 template <typename T>
 struct MaxPoolGradBackwardNoMask {
-  bool operator()(TensorFormat data_format, const T* bottom_data,
+  absl::Status operator()(TensorFormat data_format, const T* bottom_data,
                   const T* output_data, const int batch,
                   const int pooled_height, const int pooled_width,
                   const int channels, const int height, const int width,

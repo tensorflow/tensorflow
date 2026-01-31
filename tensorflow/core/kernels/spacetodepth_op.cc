@@ -135,18 +135,21 @@ class SpaceToDepthOp : public OpKernel {
         auto Toutput_v =
             outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
         functor::SpaceToDepthOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
-                Toutput_v);
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), Tinput_v, block_size_,
+                Toutput_v));
       } else if (data_format_ == FORMAT_NCHW) {
         CHECK((std::is_same<T, RT>::value));
         functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
-                block_size_, outputs_tensor->tensor<RT, 4>());
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
+                block_size_, outputs_tensor->tensor<RT, 4>()));
       } else {
         CHECK((std::is_same<T, RT>::value));
         functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NHWC> functor;
-        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
-                block_size_, outputs_tensor->tensor<RT, 4>());
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
+                block_size_, outputs_tensor->tensor<RT, 4>()));
       }
     } else {
       // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected

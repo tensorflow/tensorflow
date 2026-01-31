@@ -269,10 +269,11 @@ class BiasOp<GPUDevice, T> : public BinaryOp<T> {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, input.shape(), &output));
     if (input.NumElements() > 0) {
-      BiasGPU<T>::compute(context->template eigen_device<Device>(),
+      OP_REQUIRES_OK(context,
+          BiasGPU<T>::compute(context->template eigen_device<Device>(),
                           input.flat<T>().data(), bias.flat<T>().data(),
                           output->flat<T>().data(), batch, width, height, depth,
-                          channel, data_format_);
+                          channel, data_format_));
     }
   }
 
@@ -398,10 +399,11 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                const Tensor& output_backprop, int32_t batch,
                                int32_t width, int32_t height, int32_t depth,
                                int32_t channel, Tensor* output) {
-    BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
+    OP_REQUIRES_OK(context,
+        BiasGradGPU<T>::compute(context->template eigen_device<Device>(),
                             output_backprop.template flat<T>().data(),
                             output->flat<T>().data(), batch, width, height,
-                            depth, channel, data_format_);
+                            depth, channel, data_format_));
   }
 
   void ComputeWithReduceSum(OpKernelContext* context,
@@ -409,8 +411,17 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                             int32_t width, int32_t height, int32_t depth,
                             int32_t channel, Tensor* output) {
     if (data_format_ == FORMAT_NCHW) {
-      int32_t row_count = batch * channel;
-      int32_t col_count = height * width * depth;
+      int64_t row_count_64 = MultiplyWithoutOverflow(batch, channel);
+      OP_REQUIRES(context, row_count_64 >= 0 && row_count_64 <= INT32_MAX,
+          errors::InvalidArgument("batch * channel overflow or exceeds INT32_MAX"));
+      int64_t hw = MultiplyWithoutOverflow(height, width);
+      OP_REQUIRES(context, hw >= 0 && hw <= INT32_MAX,
+          errors::InvalidArgument("height * width overflow or exceeds INT32_MAX"));
+      int64_t col_count_64 = MultiplyWithoutOverflow(hw, depth);
+      OP_REQUIRES(context, col_count_64 >= 0 && col_count_64 <= INT32_MAX,
+          errors::InvalidArgument("height * width * depth overflow or exceeds INT32_MAX"));
+      int32_t row_count = static_cast<int32_t>(row_count_64);
+      int32_t col_count = static_cast<int32_t>(col_count_64);
       Tensor temp_grad_outputs;
       // For 'NCHW' format, we perform reduction twice: first HW, then N.
       TensorShape temp_grad_output_shape{row_count, col_count};
@@ -428,7 +439,16 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
                                      row_count, col_count);
     } else {
       // For 'NHWC', we simply apply reduction once on NHW.
-      int32_t row_count = batch * height * width * depth;
+      int64_t bh = MultiplyWithoutOverflow(batch, height);
+      OP_REQUIRES(context, bh >= 0 && bh <= INT32_MAX,
+          errors::InvalidArgument("batch * height overflow or exceeds INT32_MAX"));
+      int64_t bhw = MultiplyWithoutOverflow(bh, width);
+      OP_REQUIRES(context, bhw >= 0 && bhw <= INT32_MAX,
+          errors::InvalidArgument("batch * height * width overflow or exceeds INT32_MAX"));
+      int64_t row_count_64 = MultiplyWithoutOverflow(bhw, depth);
+      OP_REQUIRES(context, row_count_64 >= 0 && row_count_64 <= INT32_MAX,
+          errors::InvalidArgument("batch * height * width * depth overflow or exceeds INT32_MAX"));
+      int32_t row_count = static_cast<int32_t>(row_count_64);
       int32_t col_count = channel;
       BiasGradGPU<T>::DoColReduction(
           context, const_cast<T*>(output->flat<T>().data()),

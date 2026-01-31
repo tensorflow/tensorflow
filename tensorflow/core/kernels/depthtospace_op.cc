@@ -126,18 +126,25 @@ class DepthToSpaceOp : public OpKernel {
         auto Toutput_v =
             outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
         functor::DepthToSpaceOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
-                Toutput_v);
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), Tinput_v, block_size_,
+                Toutput_v));
         return;
       } else if (data_format_ == FORMAT_NCHW) {
         functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput));
+        return;
+      } else {
+        // GPU NHWC format
+        functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NHWC> functor;
+        OP_REQUIRES_OK(context,
+            functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput));
         return;
       }
     }
 
-    // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected
-    // (CPU && data_format_ != FORMAT_NHWC) in the constructor.
+    // NOTE: CPU path with data_format_ == FORMAT_NHWC
 
     if (!is_int8x4) {
       functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NHWC> functor;

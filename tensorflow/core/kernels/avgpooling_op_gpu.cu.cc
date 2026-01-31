@@ -21,10 +21,12 @@ limitations under the License.
 
 #include <iostream>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/avgpooling_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -80,7 +82,7 @@ __global__ void AvePoolBackwardNHWC(
 }
 
 template <typename T>
-bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
+absl::Status RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int height, const int width,
                             const int channels, const int pooled_height,
                             const int pooled_width, const int kernel_h,
@@ -88,7 +90,19 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
                             const int stride_w, const int pad_t,
                             const int pad_l, T* const bottom_diff,
                             const GPUDevice& d) {
-  int x_size = num * height * width * channels;
+  int64_t temp1 = MultiplyWithoutOverflow(num, height);
+  if (temp1 < 0 || temp1 > INT32_MAX) {
+    return absl::InternalError("num * height overflow in RunAvePoolBackwardNHWC");
+  }
+  int64_t temp2 = MultiplyWithoutOverflow(temp1, width);
+  if (temp2 < 0 || temp2 > INT32_MAX) {
+    return absl::InternalError("num * height * width overflow in RunAvePoolBackwardNHWC");
+  }
+  int64_t x_size_64 = MultiplyWithoutOverflow(temp2, channels);
+  if (x_size_64 < 0 || x_size_64 > INT32_MAX) {
+    return absl::InternalError("x_size overflow in RunAvePoolBackwardNHWC");
+  }
+  int x_size = static_cast<int>(x_size_64);
   GpuLaunchConfig config = GetGpuLaunchConfig(x_size, d);
   TF_CHECK_OK(GpuLaunchKernel(
       AvePoolBackwardNHWC<T>, config.block_count, config.thread_per_block, 0,
@@ -96,11 +110,14 @@ bool RunAvePoolBackwardNHWC(const T* const top_diff, const int num,
       channels, pooled_height, pooled_width, kernel_h, kernel_w, stride_h,
       stride_w, pad_t, pad_t, bottom_diff));
 
-  return d.ok();
+  if (!d.ok()) {
+    return absl::InternalError("GPU execution failed in RunAvePoolBackwardNHWC");
+  }
+  return absl::OkStatus();
 }
 
 #define DECLARE_GPU_SPEC(T)                                           \
-  template bool RunAvePoolBackwardNHWC(                               \
+  template absl::Status RunAvePoolBackwardNHWC(                       \
       const T* const top_diff, const int num, const int height,       \
       const int width, const int channels, const int pooled_height,   \
       const int pooled_width, const int kernel_h, const int kernel_w, \
