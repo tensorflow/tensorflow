@@ -136,8 +136,8 @@ class GraphOperation : public TracingOperation {
                                           g_->graph.NewName(op_name).c_str()));
     return absl::OkStatus();
   }
-  const string& Name() const override { return op_type_; }
-  const string& DeviceName() const override { return device_name_; }
+  const std::string& Name() const override { return op_type_; }
+  const std::string& DeviceName() const override { return device_name_; }
 
   absl::Status SetDeviceName(const char* name) override {
     // TODO(srbs): Implement this.
@@ -231,7 +231,7 @@ class GraphOperation : public TracingOperation {
   absl::Status SetAttrFunctionName(const char* attr_name, const char* value,
                                    size_t length) override {
     tensorflow::NameAttrList func_name;
-    func_name.set_name(string(value, value + length));
+    func_name.set_name(std::string(value, value + length));
     op_->node_builder.Attr(attr_name, func_name);
     return absl::OkStatus();
   }
@@ -263,20 +263,20 @@ class GraphOperation : public TracingOperation {
   absl::Status SetAttrFloatList(const char* attr_name, const float* values,
                                 int num_values) override {
     op_->node_builder.Attr(attr_name,
-                           ArraySlice<const float>(values, num_values));
+                           absl::Span<const const float>(values, num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrIntList(const char* attr_name, const int64_t* values,
                               int num_values) override {
     op_->node_builder.Attr(
-        attr_name, ArraySlice<const int64_t>(
+        attr_name, absl::Span<const const int64_t>(
                        reinterpret_cast<const int64_t*>(values), num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrTypeList(const char* attr_name, const DataType* values,
                                int num_values) override {
-    op_->node_builder.Attr(attr_name,
-                           ArraySlice<const DataType>(values, num_values));
+    op_->node_builder.Attr(
+        attr_name, absl::Span<const const DataType>(values, num_values));
     return absl::OkStatus();
   }
   absl::Status SetAttrBoolList(const char* attr_name,
@@ -287,7 +287,7 @@ class GraphOperation : public TracingOperation {
       b[i] = values[i];
     }
     op_->node_builder.Attr(attr_name,
-                           ArraySlice<const bool>(b.get(), num_values));
+                           absl::Span<const const bool>(b.get(), num_values));
 
     return absl::OkStatus();
   }
@@ -324,10 +324,10 @@ class GraphOperation : public TracingOperation {
   std::unique_ptr<TF_OperationDescription> op_;
   // Hold `op_type` and `op_name` till both are available since we need both
   // to build a graph operation.
-  string op_type_;
+  std::string op_type_;
   const char* op_name_ = nullptr;
   // TODO(srbs): Use this.
-  string device_name_;
+  std::string device_name_;
 };
 
 // GraphContext wraps a TF_Graph modeling a single function and manages the
@@ -405,7 +405,7 @@ class GraphContext : public TracingContext {
         "Registering graph functions has not been implemented yet.");
   }
 
-  absl::Status RemoveFunction(const string& func) override {
+  absl::Status RemoveFunction(const std::string& func) override {
     return errors::Unimplemented(
         "GraphContext::RemoveFunction has not been implemented yet.");
   }
@@ -417,7 +417,7 @@ class GraphContext : public TracingContext {
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
   std::vector<TF_Output> inputs_;
-  string name_;
+  std::string name_;
 };
 
 static TracingContext* GraphTracingFactory(const char* name, TF_Status* s) {
