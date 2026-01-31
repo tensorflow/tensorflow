@@ -95,7 +95,7 @@ TEST_P(CppGradients, TestSetAttrString) {
   }
   s = AddInput(check_numerics_op.get(), t.get(), &forward_op);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
-  string message = "This is the way!";
+  std::string message = "This is the way!";
   s = SetAttrString(check_numerics_op.get(), "message", message.data(),
                     message.length(), &forward_op);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
@@ -109,7 +109,7 @@ TEST_P(CppGradients, TestSetAttrString) {
               &num_retvals, &forward_op, tape.get(), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
 
-  string read_message;
+  std::string read_message;
   s = forward_op.attrs.Get("message", &read_message);
   ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_EQ(read_message, message);
