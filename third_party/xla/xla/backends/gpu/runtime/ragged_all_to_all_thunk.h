@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -56,8 +55,10 @@ struct RaggedAllToAllConfig {
 struct RaggedAllToAllRendezvousValue {
   RankId rank;
   se::DeviceAddressBase output_buffer;
-  se::Event* start_event = nullptr;
-  se::Event* end_event = nullptr;
+
+  // Exchange the address of the SIGNAL BUFFER array.
+  // Peers will write to their_rank's-th cell in the signals array.
+  se::DeviceAddressBase barrier_signal_buffer;
 
   bool operator<(const RaggedAllToAllRendezvousValue& other) const {
     return rank < other.rank;
@@ -75,13 +76,13 @@ struct RaggedAllToAllStreamState {
   // Device memory buffer for output offsets.
   se::DeviceAddressHandle output_offsets_device_buffer;
 
-  // Event to synchronize streams on different devices at the start of the
-  // kernel.
-  std::unique_ptr<se::Event> start_event;
+  // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
+  // Peers write specific slots in this array to signal this device.
+  se::DeviceAddressHandle barrier_signal_buffer;
 
-  // Event to synchronize streams on different devices at the end of the
-  // kernel.
-  std::unique_ptr<se::Event> end_event;
+  // MultiGpuBarrier: Device memory for the current local step counter.
+  // This value is incremented locally by the kernel after every barrier.
+  se::DeviceAddressHandle barrier_signal_value;
 
   RaggedAllToAllStreamState(int device_ordinal, RankId rank)
       : device_ordinal(device_ordinal), rank(rank) {}
@@ -191,13 +192,14 @@ absl::Status RunRaggedAllToAll(
 // custom kernel or specialized P2P sequence) to reduce host-device
 // synchronization overhead.
 //
-// It explicitly utilizes `start_event` and `end_event` to manage
-// synchronization dependencies between the compute stream and the
-// communication/copy mechanism without stalling the host.
+// It utilizes `MultiGpuBarrierKernel` to enforce device-side synchronization.
+// This ensures input/output buffers are safe to access without requiring
+// Event-based coordination, enabling compatibility with CUDA Graphs.
 absl::Status RunOneShotRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
-    int64_t num_input_rows, int64_t num_row_elements,
+    const se::DeviceAddressBase& barrier_signal_buffer,
+    const se::DeviceAddressBase& barrier_signal_value,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
     absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
