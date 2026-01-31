@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/utils.h"
+
+#include <cstdint>
+#include <initializer_list>
+#include <unordered_map>
+#include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -21,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
