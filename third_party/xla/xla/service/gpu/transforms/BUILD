@@ -1706,7 +1706,6 @@ xla_test(
 
 xla_test(
     name = "gemm_rewriter_fp8_test",
-    size = "large",
     srcs = ["gemm_rewriter_fp8_test.cc"],
     backends = ["gpu"],
     shard_count = 5,

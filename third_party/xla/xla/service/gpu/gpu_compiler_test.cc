@@ -735,7 +735,9 @@ ENTRY main {
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
   const HloInstruction* custom_op = root->operand(0)->operand(0);
-  EXPECT_TRUE(custom_op->IsCustomCall("__cublas$gemm"));
+  EXPECT_TRUE(custom_op->IsCustomCall("__cublas$gemm") ||
+              custom_op->IsCustomCall("__cublas$lt$matmul"))
+      << custom_op->ToString();
   // Make sure that the module has the same number of computations with/without
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
@@ -865,10 +867,16 @@ ENTRY main {
   const std::string cublaslt_keep_types = absl::Substitute(
       R"(CHECK: custom-call($0{{[^)]*}}, $1{{[^)]*}}){{.*}}custom_call_target="__cublas$$lt$$matmul$$f8")",
       lhs_name, rhs_name);
-  const std::string cublas_convert_to_f16 =
+  constexpr absl::string_view kCublasConvertToF16 =
       R"(CHECK: custom-call(f16{{[^)]*}}, f16{{[^)]*}}){{.*}}custom_call_target="__cublas$gemm")";
-  const std::string fallback_convert_to_f16 =
+  constexpr absl::string_view kCublasLtConvertToF16 =
+      R"(CHECK: custom-call(f16{{[^)]*}}, f16{{[^)]*}}){{.*}}custom_call_target="__cublas$lt$matmul")";
+  constexpr absl::string_view kFallbackConvertToF16 =
       R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
+  const std::string cublas_or_cublaslt_convert_to_f16 =
+      GetDebugOptionsForTest().xla_gpu_enable_cublaslt()
+          ? std::string(kCublasLtConvertToF16)
+          : std::string(kCublasConvertToF16);
 
   HloPrintOptions print_options =
       HloPrintOptions().set_print_operand_shape(true);
@@ -884,7 +892,7 @@ ENTRY main {
          (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
           rhs_type == F8E5M2))
             ? triton_keep_types
-            : cublas_convert_to_f16;
+            : cublas_or_cublaslt_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
         RunFileCheck(optimized_module_no_fallback->ToString(print_options),
@@ -904,7 +912,7 @@ ENTRY main {
         ((rocm_cc.has_ocp_fp8_support() || cuda_cc.IsAtLeastHopper()) &&
          !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
             ? cublaslt_keep_types
-            : cublas_convert_to_f16;
+            : cublas_or_cublaslt_convert_to_f16;
 
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
@@ -922,7 +930,7 @@ ENTRY main {
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matched,
         RunFileCheck(optimized_module_nothing->ToString(print_options),
-                     fallback_convert_to_f16));
+                     kFallbackConvertToF16));
     EXPECT_TRUE(filecheck_matched);
   }
 }

@@ -189,6 +189,7 @@ ENTRY e {
     debug_options_.set_xla_gpu_enable_triton_gemm(false);
   }
 
+  debug_options_.set_xla_gpu_enable_cublaslt(false);
   MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
