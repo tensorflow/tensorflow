@@ -190,13 +190,13 @@ struct InputBuffers {
 
   ~InputBuffers() = default;
 
-  xla::ShapedBuffer ToShapedBuffer(xla::Shape host_shape,
-                                   se::DeviceMemoryAllocator* allocator,
-                                   int device_ordinal) {
+  xla::ShapedBuffer ToShapedBuffer(
+      xla::Shape host_shape, stream_executor::DeviceAddressAllocator* allocator,
+      int device_ordinal) {
     CHECK_NE(allocator, nullptr);
     xla::ShapedBuffer shaped_buffer(std::move(host_shape), buffers.shape(),
                                     device_ordinal);
-    shaped_buffer.set_buffers(buffers.Map<se::DeviceMemoryBase>(
+    shaped_buffer.set_buffers(buffers.Map<stream_executor::DeviceAddressBase>(
         [](const xla::MaybeOwningDeviceAddress& buffer) {
           return buffer.AsDeviceAddress();
         }));
@@ -298,7 +298,8 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
         validate_shape(variables[i].index(), *variables[i].var()->tensor()));
   }
 
-  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  stream_executor::DeviceAddressAllocator* const allocator =
+      backend->memory_allocator();
   xla::TransferManager* const transfer_manager = backend->transfer_manager();
 
   auto input_buffers = std::make_unique<InputBuffers>(
@@ -315,20 +316,22 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
   // to the computation and overwrites the entries in 'buffers' with nulls.
   auto set_input_buffers_helper = [&](int arg_index, bool donate_buffers,
                                       xla::ShapedBuffer* buffers) {
-    buffers->buffers().ForEachMutableElement([&](const xla::ShapeIndex& index,
-                                                 se::DeviceMemoryBase* buffer) {
-      xla::ShapeIndex in_index = {arg_index};
-      for (int64_t j : index) {
-        in_index.push_back(j);
-      }
-      auto* in_buffer = input_buffers->buffers.mutable_element(in_index);
-      if (donate_buffers) {
-        *in_buffer = se::OwningDeviceMemory(*buffer, device_ordinal, allocator);
-        *buffer = se::DeviceMemoryBase();
-      } else {
-        *in_buffer = *buffer;
-      }
-    });
+    buffers->buffers().ForEachMutableElement(
+        [&](const xla::ShapeIndex& index,
+            stream_executor::DeviceAddressBase* buffer) {
+          xla::ShapeIndex in_index = {arg_index};
+          for (int64_t j : index) {
+            in_index.push_back(j);
+          }
+          auto* in_buffer = input_buffers->buffers.mutable_element(in_index);
+          if (donate_buffers) {
+            *in_buffer = stream_executor::ScopedDeviceAddress<uint8_t>(
+                *buffer, device_ordinal, allocator);
+            *buffer = stream_executor::DeviceAddressBase();
+          } else {
+            *in_buffer = *buffer;
+          }
+        });
   };
 
   // Assigns the buffers of 'tensor' as computation input 'i'. Allocates fresh
@@ -382,14 +385,16 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> BuildComputationInputs(
 }
 
 struct OutputBuffers {
-  OutputBuffers(xla::ScopedShapedBuffer b, se::DeviceMemoryAllocator* allocator)
+  OutputBuffers(xla::ScopedShapedBuffer b,
+                stream_executor::DeviceAddressAllocator* allocator)
       : owned_buffers(b.on_device_shape(), true),
         buffers(b.release()),
         memory_allocator(allocator) {}
 
   ~OutputBuffers() {
     buffers.buffers().ForEachElement(
-        [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+        [&](const xla::ShapeIndex& index,
+            const stream_executor::DeviceAddressBase& buffer) {
           if (owned_buffers.element(index) && !buffer.is_null()) {
             absl::Status status =
                 memory_allocator->Deallocate(buffers.device_ordinal(), buffer);
@@ -405,7 +410,7 @@ struct OutputBuffers {
 
   xla::ShapedBuffer buffers;
 
-  se::DeviceMemoryAllocator* const memory_allocator;
+  stream_executor::DeviceAddressAllocator* const memory_allocator;
 };
 
 // Allocates Tensors for the outputs of the computation. Ownership of most
@@ -456,7 +461,7 @@ absl::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
   TF_RET_CHECK(scoped_buffers.on_host_shape().IsTuple());
   TF_RET_CHECK(!xla::ShapeUtil::IsNestedTuple(scoped_buffers.on_host_shape()));
 
-  se::DeviceMemoryAllocator* const allocator =
+  stream_executor::DeviceAddressAllocator* const allocator =
       node_context->backend()->memory_allocator();
 
   auto output_buffers =
@@ -490,7 +495,8 @@ absl::StatusOr<std::unique_ptr<OutputBuffers>> AllocateOutputTensors(
       xla::ScopedShapedBuffer shaped_buffer(device_shape, allocator,
                                             device_ordinal);
       shaped_buffer.buffers().ForEachMutableElement(
-          [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+          [&](const xla::ShapeIndex& index,
+              stream_executor::DeviceAddressBase* buffer) {
             xla::ShapeIndex out_index = {i};
             for (int64_t j : index) {
               out_index.push_back(j);
@@ -706,7 +712,8 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
   TF_ASSIGN_OR_RETURN(auto transfer_stream_ptr,
                       backend->BorrowStream(device_ordinal));
 
-  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  stream_executor::DeviceAddressAllocator* const allocator =
+      backend->memory_allocator();
   auto shaped_buffer = input_buffers->ToShapedBuffer(std::move(host_shape),
                                                      allocator, device_ordinal);
   if (transfer_manager->CanShapedBufferBeAccessedNow(stream->parent(),
@@ -745,7 +752,7 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
 
   trace_me_init.Stop();
 
-  const uint32 rng_seed = GetXLARandomSeed();
+  const uint32_t rng_seed = GetXLARandomSeed();
 
   std::unique_ptr<xla::DeviceAssignment> device_assignment;
   if (executable.has_device_assignment()) {
