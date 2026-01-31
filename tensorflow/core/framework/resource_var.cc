@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_var.h"
 
+#include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 
