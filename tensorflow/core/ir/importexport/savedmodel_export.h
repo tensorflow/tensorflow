@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_SAVEDMODEL_EXPORT_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_SAVEDMODEL_EXPORT_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/platform/errors.h"
