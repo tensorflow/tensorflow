@@ -45,8 +45,8 @@ const char* GetEventCategoryName(EventCategory);
 class EventCollector {
  public:
   virtual ~EventCollector() {}
-  virtual void RecordEvent(uint64 arg) const = 0;
-  virtual void StartRegion(uint64 arg) const = 0;
+  virtual void RecordEvent(uint64_t arg) const = 0;
+  virtual void StartRegion(uint64_t arg) const = 0;
   virtual void StopRegion() const = 0;
 
   // Annotates the current thread with a name.
@@ -74,13 +74,13 @@ inline const EventCollector* GetEventCollector(EventCategory category) {
 }
 
 // Returns a unique id to pass to RecordEvent/ScopedRegion. Never returns zero.
-uint64 GetUniqueArg();
+uint64_t GetUniqueArg();
 
 // Returns an id for name to pass to RecordEvent/ScopedRegion.
-uint64 GetArgForName(absl::string_view name);
+uint64_t GetArgForName(absl::string_view name);
 
 // Records an atomic event through the currently registered EventCollector.
-inline void RecordEvent(EventCategory category, uint64 arg) {
+inline void RecordEvent(EventCategory category, uint64_t arg) {
   if (auto collector = GetEventCollector(category)) {
     collector->RecordEvent(arg);
   }
@@ -95,7 +95,7 @@ class ScopedRegion {
     other.collector_ = nullptr;
   }
 
-  ScopedRegion(EventCategory category, uint64 arg)
+  ScopedRegion(EventCategory category, uint64_t arg)
       : collector_(GetEventCollector(category)) {
     if (collector_) {
       collector_->StartRegion(arg);

@@ -41,7 +41,7 @@ TEST(StringPiece, Ctor) {
   }
 
   {
-    string hola = "hola";
+    std::string hola = "hola";
     absl::string_view s30(hola);
     EXPECT_TRUE(s30.data() == hola.data());
     EXPECT_EQ(4, s30.size());
@@ -57,8 +57,8 @@ TEST(StringPiece, Ctor) {
 }
 
 TEST(StringPiece, ConversionToString) {
-  EXPECT_EQ("", string(absl::string_view("")));
-  EXPECT_EQ("foo", string(absl::string_view("foo")));
+  EXPECT_EQ("", std::string(absl::string_view("")));
+  EXPECT_EQ("foo", std::string(absl::string_view("foo")));
 }
 
 }  // namespace tsl
