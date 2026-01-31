@@ -22,8 +22,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/byte_order.h"
