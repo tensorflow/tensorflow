@@ -1,8 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -42,7 +43,7 @@ py_strict_binary(
     deps = [":upgrade_schema_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "upgrade_schema_main_lib",
     srcs = [
         "upgrade_schema.py",
@@ -54,6 +55,7 @@ py_strict_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/platform:resource_loader",
