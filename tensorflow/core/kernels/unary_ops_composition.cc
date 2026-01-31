@@ -15,6 +15,16 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive

@@ -3347,13 +3347,19 @@ tf_kernel_library(
 tf_kernel_library(
     name = "text_line_reader_op",
     prefix = "text_line_reader_op",
-    deps = IO_DEPS + ["@com_google_absl//absl/status"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
     name = "tf_record_reader_op",
     prefix = "tf_record_reader_op",
-    deps = IO_DEPS + ["@com_google_absl//absl/status"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -3817,6 +3823,9 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":cwise_op",
         ":relu_op",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -7197,6 +7206,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7217,7 +7227,6 @@ cc_library(
         "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
-        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
