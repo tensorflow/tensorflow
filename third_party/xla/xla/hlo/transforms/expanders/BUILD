@@ -477,6 +477,9 @@ cc_library(
     hdrs = ["stable_sort_expander.h"],
     deps = [
         ":op_expander_pass",
+        "//xla:comparison_util",
+        "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_map",
