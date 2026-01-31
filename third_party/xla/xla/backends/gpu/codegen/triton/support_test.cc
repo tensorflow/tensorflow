@@ -1846,6 +1846,27 @@ INSTANTIATE_TEST_SUITE_P(GetDimensionSizeSuite, GetDimensionSizeTest,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+using SetDimensionSizeTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(SetDimensionSizeTest, SetDimensionSize) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  operand = $0[16, 32] parameter(0)
+  val = s32[] parameter(1)
+  ROOT set_dim_size = $0[16, 32] set-dimension-size(operand, val), dimensions={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SetDimensionSizeSuite, SetDimensionSizeTest,
+    AllTestCombinationsForOpcodes({HloOpcode::kSetDimensionSize}),
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
 using ReverseTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(ReverseTest, Reverse) {
@@ -3570,7 +3591,6 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
-    HloOpcode::kSetDimensionSize,
     // go/keep-sorted end
     // clang-format on
 };
@@ -3632,6 +3652,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
+  ret.emplace(HloOpcode::kSetDimensionSize);
   ret.emplace(HloOpcode::kSort);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);
