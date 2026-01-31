@@ -1,0 +1,69 @@
+# RUN: not tfcompile --graph=%s --config=%s.config.pbtxt --mlir_components=Bridge --debug_info=%s.debug.pbtxt 2>&1 | FileCheck %s
+# RUN: not tfcompile --graph=%s --config=%s.config.pbtxt --mlir_components=None 2>&1 | FileCheck -check-prefix=OLD %s
+
+# Checks the error message produced by tfcompile with mlir_component
+# Checks that source debug information is used in the output error message and
+# the node x_y_sum = Add
+# CHECK: INVALID ARGUMENTS: Dimensions must be equal, but are 2 and 3 for 'x_y_sum = Add[T=DT_INT32](aot_feed_0/x, aot_feed_0/y)'
+# CHECK: math_ops.add(x, y, name='x_y_sum')
+# CHECK: build_graph(out_dir)
+
+# Checks the error message produced by tfcompile without mlir_component
+# OLD: INVALID ARGUMENTS: Incompatible shapes: [2] vs. [3]
+# OLD: x_y_sum
+
+node: {
+  name: "x"
+  op: "Placeholder"
+  attr: {
+    key: "shape"
+    value: {
+      shape: {
+        dim: {
+          size: -1
+        }
+      }
+    }
+  }
+  attr: {
+    key: "dtype"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+node: {
+  name: "y"
+  op: "Placeholder"
+  attr: {
+    key: "shape"
+    value: {
+      shape: {
+        dim: {
+          size: -1
+        }
+      }
+    }
+  }
+  attr: {
+    key: "dtype"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+node: {
+  name: "x_y_sum"
+  op: "Add"
+  input: "x"
+  input: "y"
+  attr: {
+    key: "T"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+versions: {
+  producer: 321
+}

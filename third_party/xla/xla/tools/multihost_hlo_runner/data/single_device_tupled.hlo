@@ -1,8 +1,0 @@
-HloModule f
-
-ENTRY f {
-  arg_tuple = (f32[2,2]{1,0}, f32[2,2]{1,0}) parameter(0)
-  arg_0 = f32[2,2]{1,0} get-tuple-element(arg_tuple), index=0
-  arg_1 = f32[2,2]{1,0} get-tuple-element(arg_tuple), index=1
-  ROOT add_result = f32[2,2]{1,0} add(arg_0, arg_1)
-}

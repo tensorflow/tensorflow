@@ -45,6 +45,79 @@ type Session struct {
 	// - Close() can be called multiple times.
 	wg sync.WaitGroup
 	mu sync.Mutex
+	closed bool
+}
+
+// SessionPool manages a pool of reusable sessions for better performance.
+type SessionPool struct {
+	sessions chan *Session
+	graph    *Graph
+	options  *SessionOptions
+	mu       sync.Mutex
+}
+
+// NewSessionPool creates a new session pool with the specified size.
+func NewSessionPool(graph *Graph, options *SessionOptions, size int) (*SessionPool, error) {
+	if size <= 0 {
+		size = 5 // Default pool size
+	}
+	
+	pool := &SessionPool{
+		sessions: make(chan *Session, size),
+		graph:    graph,
+		options:  options,
+	}
+	
+	// Pre-populate the pool
+	for i := 0; i < size; i++ {
+		sess, err := NewSession(graph, options)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create session %d: %v", i, err)
+		}
+		pool.sessions <- sess
+	}
+	
+	return pool, nil
+}
+
+// Get returns a session from the pool.
+func (p *SessionPool) Get() (*Session, error) {
+	select {
+	case sess := <-p.sessions:
+		return sess, nil
+	default:
+		// Pool is empty, create a new session
+		return NewSession(p.graph, p.options)
+	}
+}
+
+// Put returns a session to the pool for reuse.
+func (p *SessionPool) Put(sess *Session) {
+	if sess == nil {
+		return
+	}
+	
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
+	select {
+	case p.sessions <- sess:
+		// Successfully returned to pool
+	default:
+		// Pool is full, close the session
+		sess.Close()
+	}
+}
+
+// Close closes all sessions in the pool.
+func (p *SessionPool) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	
+	close(p.sessions)
+	for sess := range p.sessions {
+		sess.Close()
+	}
 }
 
 // NewSession creates a new execution session with the associated graph.

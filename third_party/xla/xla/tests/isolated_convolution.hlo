@@ -1,8 +1,0 @@
-HloModule convolution.167:
-
-ENTRY %convolution.167 (parameter.0: f32[16,28,28,128], parameter.1: f32[3,3,128,128]) -> f32[16,28,28,128] {
-  %parameter.0 = f32[16,28,28,128]{3,0,2,1} parameter(0)
-  %parameter.1 = f32[3,3,128,128]{3,2,1,0} parameter(1)
-  ROOT %convolution.167 = f32[16,28,28,128]{3,0,2,1} convolution(f32[16,28,28,128]{3,0,2,1} %parameter.0, f32[3,3,128,128]{3,2,1,0} %parameter.1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01oi->b01f
-}
-

@@ -52,16 +52,32 @@ func (s *status) Err() error {
 	if s == nil || s.Code() == C.TF_OK {
 		return nil
 	}
-	return (*statusError)(s)
+	return (*Error)(s)
 }
 
 // statusError is distinct from status because it fulfills the error interface.
-// status itself may have a TF_OK code and is not always considered an error.
 //
 // TODO(jhseu): Make public, rename to Error, and provide a way for users to
 // check status codes.
-type statusError status
+// type statusError status
+// func (s *statusError) Error() string {
+//     return (*status)(s).String()
+// }
+// Error represents a TensorFlow error with detailed status information.
+// Error is distinct from status because it fulfills the error interface.
+// status itself may have a TF_OK code and is not always considered an error.
+type Error status
 
-func (s *statusError) Error() string {
-	return (*status)(s).String()
+// ErrorCode returns the TensorFlow error code.
+func (e *Error) ErrorCode() code {
+	return (*status)(e).Code()
+}
+
+// ErrorMessage returns the TensorFlow error message.
+func (e *Error) ErrorMessage() string {
+	return (*status)(e).String()
+}
+
+func (e *Error) Error() string {
+	return (*status)(e).String()
 }

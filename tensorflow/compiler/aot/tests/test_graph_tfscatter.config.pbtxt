@@ -1,0 +1,33 @@
+# Text form of tensorflow.tf2xla.Config proto.
+feed {
+  id { node_name: "indices_0" }
+  shape {
+    dim { size: 4 }
+    dim { size: 1 }
+  }
+}
+feed {
+  id { node_name: "updates_0" }
+  shape {
+    dim { size: 4 }
+  }
+}
+feed {
+  id { node_name: "indices_1" }
+  shape {
+    dim { size: 4 }
+    dim { size: 1 }
+  }
+}
+feed {
+  id { node_name: "updates_1" }
+  shape {
+    dim { size: 4 }
+  }
+}
+fetch {
+  id { node_name: "result_0" }
+}
+fetch {
+  id { node_name: "result_1" }
+}

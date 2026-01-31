@@ -1,0 +1,7 @@
+This folder organizes legacy toco quantize_weights and its dependencies for easy
+deletion, per go/tfl_split_quantize_weights.
+
+When the MLIR quantizer replaces the legacy TOCO quantizer entirely, this entire
+folder should be deleted. The partial copies of utils in this folder should not
+be used anywhere but to support the legacy TOCO quantizer in this folder for
+a clean and easy deletion.

@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package mlir.quant;
+
+// Represents the quantization parameters for a list of named tensors.
+message QuantizationInfo {
+  // min/max of the per axis value range. To quantize the value, the metadata
+  // of the target properties should be specified or read from the ops
+  // quantization specification.
+  message MinMax {
+    float min = 1;
+    float max = 2;
+  }
+
+  // Affine parameters to quantize the per axis value. The metadata of the
+  // target properties should be specified as well.
+  message AffineParams {
+    float scale = 1;
+    int32 zero_point = 2;
+  }
+
+  // Params to quantize the axis. Only one of the field can be used.
+  message PerAxisParams {
+    oneof params_oneof {
+      // min/max of the ranges.
+      MinMax min_max = 1;
+
+      // affine parameters to quantize the per axis value.
+      AffineParams affine_params = 2;
+    }
+  }
+
+  // The metadata defines the target properties.
+  message Metadata {
+    // Bit number of fixed-point data the target kernel supports.
+    int32 num_bits = 1;
+
+    // The quantized axis index if it is per-axis quantization.
+    int32 quantize_axis = 2;
+
+    // The minimum allowed value of the fixed-point data range.
+    // This can also be used to derive the sign of storage type.
+    int32 range_min = 3;
+
+    // The minimum allowed value of the fixed-point data range.
+    int32 range_max = 4;
+  }
+
+  // The quantization parameters for a named tensor.
+  message QuantParams {
+    // The tensor name has the following convention:
+    //     tensor_name := op_name | op_name  ’:’  port_number.
+    // If the op has only one port, op_name can be used.
+    // If the op has internal states, such as fused LSTM, the port_number should
+    // follow a predefined convention.
+    oneof name_oneof {
+      string name = 1;
+
+      // An regex can be used to match multiple tensors.
+      string name_regex = 2;
+    }
+
+    // The quantization parameters for the tensor. If it is for per-axis, the
+    // parameters should be defined for each axis, otherwise, if it is for
+    // per-tensor, this repeated field should only contain a single element.
+    repeated PerAxisParams params = 3;
+
+    // Metadata about the quantization parameters.
+    Metadata meta = 5;
+  }
+
+  // List of quantization parameters for tensors.
+  repeated QuantParams entries = 1;
+}

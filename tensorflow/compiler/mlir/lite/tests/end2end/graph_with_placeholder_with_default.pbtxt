@@ -1,0 +1,148 @@
+# RUN: tf_tfl_translate -tf-input-arrays=unranked -tf-input-shapes=1,8,8,2 -tf-input-data-types=DT_INT32 -tf-output-arrays=unranked,static,static_10 %s -o - --output-mlir | FileCheck %s
+
+node {
+  name: "tf.Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 10
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "tf.Const1"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "unranked"
+  op: "PlaceholderWithDefault"
+  input: "tf.Const1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  attr {
+    key: "type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "static"
+  op: "PlaceholderWithDefault"
+  input: "tf.Const1"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+node {
+  name: "static_10"
+  op: "PlaceholderWithDefault"
+  input: "tf.Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+  attr {
+    key: "type"
+    value {
+      type: DT_INT32
+    }
+  }
+  experimental_debug_info {
+  }
+}
+library {
+}
+versions {
+  producer: 198
+}
+
+# CHECK-LABEL: func @main
+# CHECK-SAME:  ([[VAL_0:%.*]]: tensor<1x8x8x2xi32>) -> (tensor<1x8x8x2xi32>, tensor<i32>, tensor<10xi32>)
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "unranked"
+# CHECK-SAME:  outputs = "unranked,static,static_10"
+# CHECK-DAG:         [[VAL_2:%.*]] = arith.constant dense<0> : tensor<10xi32>
+# CHECK-DAG:         [[VAL_1:%.*]] = arith.constant dense<0> : tensor<i32>
+# CHECK:         return [[VAL_0]], [[VAL_1]], [[VAL_2]] : tensor<1x8x8x2xi32>, tensor<i32>, tensor<10xi32>
+# CHECK:       }

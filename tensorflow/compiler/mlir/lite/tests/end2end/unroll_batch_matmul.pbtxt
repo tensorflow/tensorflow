@@ -1,0 +1,90 @@
+# RUN: tf_tfl_translate -tf-input-arrays=Placeholder,Placeholder_1 -tf-input-shapes=2,5,3:3,7 -tf-input-data-types=DT_FLOAT,DT_FLOAT -tf-output-arrays=MatMul -unfold_batchmatmul=true -output-mlir %s -o - 2>&1 | FileCheck %s
+
+node {
+  name: "Placeholder"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 2
+        }
+        dim {
+          size: 5
+        }
+        dim {
+          size: 3
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Placeholder_1"
+  op: "Placeholder"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 3
+        }
+        dim {
+          size: 7
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MatMul"
+  op: "BatchMatMulV2"
+  input: "Placeholder"
+  input: "Placeholder_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "adj_x"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "adj_y"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 175
+}
+
+# CHECK:       func @main(%[[VAL_0:.*]]: tensor<2x5x3xf32>, %[[VAL_1:.*]]: tensor<3x7xf32>) -> tensor<2x5x7xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "Placeholder,Placeholder_1", outputs = "MatMul"}} {
+# CHECK-DAG:       %[[VAL_2:.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+# CHECK-DAG:       %[[VAL_3:.*]] = "tfl.no_value"() <{value}> : () -> none
+# CHECK-DAG:       %[[VAL_6:.*]] = arith.constant dense<0> : tensor<i32>
+# CHECK:           %[[VAL_7:.*]]:2 = "tfl.split"(%[[VAL_6]], %[[VAL_0]]) <{num_splits = 2 : i32}> : (tensor<i32>, tensor<2x5x3xf32>) -> (tensor<1x5x3xf32>, tensor<1x5x3xf32>)
+# CHECK:           %[[VAL_9:.*]] = "tfl.transpose"(%[[VAL_1]], %[[VAL_2]]) : (tensor<3x7xf32>, tensor<2xi32>) -> tensor<7x3xf32>
+# CHECK:           %[[VAL_10:.*]] = "tfl.fully_connected"(%[[VAL_7]]#0, %[[VAL_9]], %[[VAL_3]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x5x3xf32>, tensor<7x3xf32>, none) -> tensor<5x7xf32>
+# CHECK:           %[[VAL_11:.*]] = "tfl.fully_connected"(%[[VAL_7]]#1, %[[VAL_9]], %[[VAL_3]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<1x5x3xf32>, tensor<7x3xf32>, none) -> tensor<5x7xf32>
+# CHECK:           %[[VAL_12:.*]] = "tfl.pack"(%[[VAL_10]], %[[VAL_11]]) <{axis = 0 : i32, values_count = 2 : i32}> : (tensor<5x7xf32>, tensor<5x7xf32>) -> tensor<2x5x7xf32>
+# CHECK:           return %[[VAL_12]] : tensor<2x5x7xf32>
+# CHECK:         }

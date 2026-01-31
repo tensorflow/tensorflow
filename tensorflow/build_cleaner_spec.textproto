@@ -1,0 +1,14 @@
+# proto-file: devtools/build_cleaner/proto/actions.proto
+# proto-message: ActionSpecs
+
+# Python rules should not have more than one source file.
+action_spec {
+  action: CHECK_FILE_COUNT
+  file_count_params {
+    rule_selector {
+      rule_kind_regex: "^.*py(type)?(_strict)?_(binary|library|test).*$"
+      generator_function_regex: "^(?!boq_header)$"
+    }
+    max_source_count: 1
+  }
+}
