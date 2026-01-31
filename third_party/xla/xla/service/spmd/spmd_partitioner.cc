@@ -5705,14 +5705,20 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
         TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
             old_entry_layout.parameter_shape(i),
             new_program_shape.mutable_parameters(i)));
-        ShapeUtil::ForEachMutableSubshape(
-            new_program_shape.mutable_parameters(i), update_shape);
+        if (!Shape::Equal().IgnoreLayout()(old_entry_layout.parameter_shape(i),
+                                           new_program_shape.parameters(i))) {
+          ShapeUtil::ForEachMutableSubshape(
+              new_program_shape.mutable_parameters(i), update_shape);
+        }
       }
 
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
-                                        update_shape);
+      if (!Shape::Equal().IgnoreLayout()(old_entry_layout.result_shape(),
+                                         new_program_shape.result())) {
+        ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+                                          update_shape);
+      }
 
       HloModuleConfig config = module->config();
       *config.mutable_entry_computation_layout() =
