@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "nanobind",
-        strip_prefix = "nanobind-e507b118927bc3a12446d0ca235e1baaf343932e",
-        sha256 = "95004c4cd1f3e7417b71ff25be9cfba7e8ad79e570248e377815bc980c8b3c73",
-        urls = tf_mirror_urls("https://github.com/wjakob/nanobind/archive/e507b118927bc3a12446d0ca235e1baaf343932e.tar.gz"),
+        strip_prefix = "nanobind-2.11.0",
+        sha256 = "62ba05e5f720c76c510d6ab2a77f8ccc17a76c5cea951bea47355a7dfa460449",
+        urls = tf_mirror_urls("https://github.com/wjakob/nanobind/archive/refs/tags/v2.11.0.tar.gz"),
         build_file = "//third_party/nanobind:nanobind.BUILD",
     )
