@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "TextLineReaderV2"
-  endpoint {
-    name: "io.TextLineReader"
-  }
-}

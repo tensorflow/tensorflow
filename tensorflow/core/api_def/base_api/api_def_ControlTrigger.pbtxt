@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "ControlTrigger"
-  summary: "Does nothing. Serves as a control trigger for scheduling."
-  description: <<END
-Only useful as a placeholder for control edges.
-END
-}

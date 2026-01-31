@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "Cosh"
-  endpoint {
-    name: "math.cosh"
-  }
-  endpoint {
-    name: "cosh"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MatrixDeterminant"
-  endpoint {
-    name: "linalg.Det"
-  }
-}

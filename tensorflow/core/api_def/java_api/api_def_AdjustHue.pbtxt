@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "AdjustHue"
-  endpoint {
-    name: "image.AdjustHue"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MaxPool3DGradGrad"
-  endpoint {
-    name: "nn.MaxPool3dGradGrad"
-  }
-}

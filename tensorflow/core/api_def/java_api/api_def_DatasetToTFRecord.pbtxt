@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "DatasetToTFRecord"
-  endpoint {
-    name: "data.DatasetToTfRecord"
-  }
-}

@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "SqrtGrad"
-  visibility: HIDDEN
-  summary: "Computes the gradient for the sqrt of `x` wrt its input."
-  description: <<END
-Specifically, `grad = dy * 0.5 / y`, where `y = sqrt(x)`, and `dy`
-is the corresponding input gradient.
-END
-}

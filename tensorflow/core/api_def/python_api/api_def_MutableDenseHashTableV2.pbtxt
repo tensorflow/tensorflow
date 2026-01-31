@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "MutableDenseHashTableV2"
-  visibility: HIDDEN
-}

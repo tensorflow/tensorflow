@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Xlogy"
-  summary: "Returns 0 if x == 0, and x * log(y) otherwise, elementwise."
-}

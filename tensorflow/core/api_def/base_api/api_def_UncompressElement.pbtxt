@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "UncompressElement"
-  visibility: HIDDEN
-  summary: "Uncompresses a compressed dataset element."
-}

@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "Softsign"
-  endpoint {
-    name: "nn.softsign"
-  }
-  endpoint {
-    name: "math.softsign"
-  }
-}

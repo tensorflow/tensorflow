@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "TPUCopyWithDynamicShape"
-  visibility: HIDDEN
-  summary: <<END
-Op that copies host tensor to device with dynamic shape support.
-For internal use only.
-END
-}

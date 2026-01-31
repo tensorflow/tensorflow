@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "DepthwiseConv2dNativeBackpropInput"
-  endpoint {
-    name: "nn.DepthwiseConv2dNativeBackpropInput"
-  }
-}

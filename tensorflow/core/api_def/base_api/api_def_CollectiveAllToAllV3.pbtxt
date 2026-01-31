@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "CollectiveAllToAllV3"
-  summary: "Mutually exchanges multiple tensors of identical type and shape."
-  visibility: HIDDEN
-}

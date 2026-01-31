@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BiasAddGrad"
-  endpoint {
-    name: "nn.BiasAddGrad"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ResourceApplyRMSProp"
-  endpoint {
-    name: "train.ResourceApplyRmsProp"
-  }
-}

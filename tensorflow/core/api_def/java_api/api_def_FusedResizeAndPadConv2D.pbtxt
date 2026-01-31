@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "FusedResizeAndPadConv2D"
-  endpoint {
-    name: "nn.FusedResizeAndPadConv2d"
-  }
-}

@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "GetElementAtIndex"
-  visibility: HIDDEN
-  summary: "Gets the element at the specified index in a dataset."
-}

@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "TanhGrad"
-  visibility: HIDDEN
-  summary: "Computes the gradient for the tanh of `x` wrt its input."
-  description: <<END
-Specifically, `grad = dy * (1 - y*y)`, where `y = tanh(x)`, and `dy`
-is the corresponding input gradient.
-END
-}

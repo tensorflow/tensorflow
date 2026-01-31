@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Imag"
-  endpoint {
-    name: "math.Imag"
-  }
-}

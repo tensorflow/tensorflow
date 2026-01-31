@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ResourceApplyAdaMax"
-  endpoint {
-    name: "train.ResourceApplyAdaMax"
-  }
-}

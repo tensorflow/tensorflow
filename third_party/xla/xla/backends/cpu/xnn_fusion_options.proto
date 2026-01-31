@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package xla.cpu;
-
-message XnnFusionOptions {
-  bool use_threadpool = 1;
-}

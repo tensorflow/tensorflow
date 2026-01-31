@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "TensorDataset"
-  visibility: HIDDEN
-  summary: "Creates a dataset that emits `components` as a tuple of tensors once."
-}

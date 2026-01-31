@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "WriteImageSummary"
-  endpoint {
-    name: "summary.WriteImageSummary"
-  }
-}

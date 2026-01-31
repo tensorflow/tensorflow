@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "PadV2"
-  visibility: HIDDEN
-}

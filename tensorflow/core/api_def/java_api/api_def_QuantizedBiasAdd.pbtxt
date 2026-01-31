@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "QuantizedBiasAdd"
-  endpoint {
-    name: "nn.QuantizedBiasAdd"
-  }
-}

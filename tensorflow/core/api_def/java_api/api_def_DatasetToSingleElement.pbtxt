@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "DatasetToSingleElement"
-  endpoint {
-    name: "data.DatasetToSingleElement"
-  }
-}

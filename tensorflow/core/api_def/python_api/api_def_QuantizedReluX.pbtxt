@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "QuantizedReluX"
-  endpoint {
-    name: "nn.quantized_relu_x"
-    deprecation_version: 2
-  }
-  visibility: HIDDEN
-}

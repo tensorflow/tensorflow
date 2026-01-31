@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "QuantizedMatMul"
-  endpoint {
-    name: "linalg.QuantizedMatMul"
-  }
-}

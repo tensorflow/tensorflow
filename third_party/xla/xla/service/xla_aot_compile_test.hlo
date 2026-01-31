@@ -1,7 +1,0 @@
-HloModule Module
-
-ENTRY computation {
-    p0 = f64[3] parameter(0)
-    p1 = f64[3] parameter(1)
-    ROOT out = add(p0, p1)
-}

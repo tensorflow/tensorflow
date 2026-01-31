@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "TensorArrayConcatV3"
-  visibility: HIDDEN
-}

@@ -1,6 +1,0 @@
-HloModule f, input_output_alias={{}: (0, {}, must-alias)}
-
-ENTRY f {
-  a = s32[10] parameter(0)
-  ROOT sum = s32[10] add(a, a)
-}

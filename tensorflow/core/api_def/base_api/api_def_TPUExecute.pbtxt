@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "TPUExecute"
-  summary: "Op that loads and executes a TPU program on a TPU device."
-  description: <<END
-For the internal use of the distributed TPU compiler.
-END
-}

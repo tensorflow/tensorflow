@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "MapUnstage"
-  summary: "Op removes and returns the values associated with the key"
-  description: <<END
-from the underlying container.   If the underlying container
-does not contain this key, the op will block until it does.
-END
-}

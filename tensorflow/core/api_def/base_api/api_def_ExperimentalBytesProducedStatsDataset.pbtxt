@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "ExperimentalBytesProducedStatsDataset"
-  visibility: HIDDEN
-  summary: "Records the bytes size of each element of `input_dataset` in a StatsAggregator."
-}

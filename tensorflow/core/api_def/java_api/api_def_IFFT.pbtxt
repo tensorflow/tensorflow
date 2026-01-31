@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "IFFT"
-  endpoint {
-    name: "signal.Ifft"
-  }
-}

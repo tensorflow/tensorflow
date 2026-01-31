@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Relu6"
-  summary: "Computes rectified linear 6: `min(max(features, 0), 6)`."
-}

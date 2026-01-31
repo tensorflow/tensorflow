@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "TensorSummaryV2"
-  visibility: HIDDEN
-}

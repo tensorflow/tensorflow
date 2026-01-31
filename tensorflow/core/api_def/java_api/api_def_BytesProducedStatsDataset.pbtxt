@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BytesProducedStatsDataset"
-  endpoint {
-    name: "data.BytesProducedStatsDataset"
-  }
-}

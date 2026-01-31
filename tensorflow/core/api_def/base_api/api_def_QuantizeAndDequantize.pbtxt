@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "QuantizeAndDequantize"
-  summary: "Use QuantizeAndDequantizeV2 instead."
-}

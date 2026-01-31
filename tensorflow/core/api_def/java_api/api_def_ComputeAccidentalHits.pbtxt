@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ComputeAccidentalHits"
-  endpoint {
-    name: "nn.ComputeAccidentalHits"
-  }
-}

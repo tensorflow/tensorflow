@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseMatMul"
-  endpoint {
-    name: "sparse.SparseMatMul"
-  }
-}

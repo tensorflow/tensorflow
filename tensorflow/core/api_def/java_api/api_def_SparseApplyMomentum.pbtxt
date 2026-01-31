@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseApplyMomentum"
-  endpoint {
-    name: "train.SparseApplyMomentum"
-  }
-}

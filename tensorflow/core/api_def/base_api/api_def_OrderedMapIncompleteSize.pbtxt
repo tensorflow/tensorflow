@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "OrderedMapIncompleteSize"
-  summary: "Op returns the number of incomplete elements in the underlying container."
-}

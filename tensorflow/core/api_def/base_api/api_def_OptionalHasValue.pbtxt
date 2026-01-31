@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "OptionalHasValue"
-  summary: "Returns true if and only if the given Optional variant has a value."
-}

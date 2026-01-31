@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "Sigmoid"
-  summary: "Computes sigmoid of `x` element-wise."
-  description: <<END
-Specifically, `y = 1 / (1 + exp(-x))`.
-END
-}

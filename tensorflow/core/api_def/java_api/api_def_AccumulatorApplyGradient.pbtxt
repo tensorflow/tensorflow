@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "AccumulatorApplyGradient"
-  endpoint {
-    name: "train.AccumulatorApplyGradient"
-  }
-}

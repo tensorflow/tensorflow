@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "WriteScalarSummary"
-  visibility: HIDDEN
-  summary: "Writes a scalar summary."
-  description: <<END
-Writes scalar `value` at `step` with `tag` using summary `writer`.
-END
-}

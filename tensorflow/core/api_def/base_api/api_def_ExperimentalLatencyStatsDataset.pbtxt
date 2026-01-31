@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "ExperimentalLatencyStatsDataset"
-  visibility: HIDDEN
-  summary: "Records the latency of producing `input_dataset` elements in a StatsAggregator."
-}

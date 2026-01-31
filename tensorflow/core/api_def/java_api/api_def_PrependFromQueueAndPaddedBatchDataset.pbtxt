@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "PrependFromQueueAndPaddedBatchDataset"
-  endpoint {
-    name: "data.PrependFromQueueAndPaddedBatchDataset"
-  }
-}

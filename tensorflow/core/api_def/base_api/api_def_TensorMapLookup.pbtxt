@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "TensorMapLookup"
-  summary: "Returns the value from a given key in a tensor map."
-  description: <<END
-input_handle: the input map
-key: the key to be looked up
-value: the value found from the given key
-END
-}

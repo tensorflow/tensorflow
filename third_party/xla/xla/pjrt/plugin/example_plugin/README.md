@@ -1,1 +1,0 @@
-Basics on how to write all the boilerplate code required to make a PJRT plugin.

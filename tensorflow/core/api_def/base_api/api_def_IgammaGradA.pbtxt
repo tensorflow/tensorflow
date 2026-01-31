@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "IgammaGradA"
-  visibility: HIDDEN
-  summary: "Computes the gradient of `igamma(a, x)` wrt `a`."
-}

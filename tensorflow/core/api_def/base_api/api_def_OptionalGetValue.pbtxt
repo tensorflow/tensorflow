@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "OptionalGetValue"
-  summary: "Returns the value stored in an Optional variant or raises an error if none exists."
-}

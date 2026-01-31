@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ApplyAdagradDA"
-  endpoint {
-    name: "train.ApplyAdagradDa"
-  }
-}

@@ -1,4 +1,0 @@
-build
-llvm-project
-llvm-build
-bazel-*

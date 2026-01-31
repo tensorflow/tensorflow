@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BesselI0e"
-  endpoint {
-    name: "math.BesselI0e"
-  }
-}

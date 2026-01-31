@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "CollectiveReduce"
-  endpoint {
-    name: "collective.all_reduce"
-  }
-}

@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "SparseTensorSliceDataset"
-  visibility: HIDDEN
-  summary: "Creates a dataset that splits a SparseTensor into elements row-wise."
-}

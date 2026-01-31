@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Erf"
-  summary: "Computes the [Gauss error function](https://en.wikipedia.org/wiki/Error_function) of `x` element-wise. In statistics, for non-negative values of $x$, the error function has the following interpretation: for a random variable $Y$ that is normally distributed with mean 0 and variance $1/\\sqrt{2}$, $erf(x)$ is the probability that $Y$ falls in the range $[−x, x]$."
-}

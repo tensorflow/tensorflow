@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "UnicodeScript"
-  endpoint {
-    name: "strings.unicode_script"
-  }
-}

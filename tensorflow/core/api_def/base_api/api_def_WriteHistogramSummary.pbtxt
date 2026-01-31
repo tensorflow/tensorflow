@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "WriteHistogramSummary"
-  visibility: HIDDEN
-  summary: "Writes a histogram summary."
-  description: <<END
-Writes histogram `values` at `step` with `tag` using summary `writer`.
-END
-}

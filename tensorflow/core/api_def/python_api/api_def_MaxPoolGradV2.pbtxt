@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "MaxPoolGradV2"
-  visibility: HIDDEN
-}

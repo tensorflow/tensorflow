@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SerializeManySparse"
-  endpoint {
-    name: "io.SerializeManySparse"
-  }
-}

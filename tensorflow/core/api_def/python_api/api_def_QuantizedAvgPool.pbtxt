@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "QuantizedAvgPool"
-  endpoint {
-    name: "nn.quantized_avg_pool"
-    deprecation_version: 2
-  }
-  visibility: HIDDEN
-}

@@ -21,9 +21,10 @@ sh_test(
         "//tensorflow/c:headers",  # C library header
         "//tensorflow/c/eager:headers",  # Eager C library header
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",  # Testdata for LoadSavedModel
+        "//tensorflow/core:protos_all",  # Protobuf support enabled
     ] + tf_shared_library_deps(),
     # TODO: Enable this test again once protos are supported by bazel.
-    tags = ["manual"],
+    # tags = ["manual"],
 )
 
 filegroup(

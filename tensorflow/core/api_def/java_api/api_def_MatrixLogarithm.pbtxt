@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MatrixLogarithm"
-  endpoint {
-    name: "linalg.MatrixLogarithm"
-  }
-}

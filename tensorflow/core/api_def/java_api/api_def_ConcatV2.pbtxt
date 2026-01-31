@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ConcatV2"
-  endpoint {
-    name: "Concat"
-  }
-}

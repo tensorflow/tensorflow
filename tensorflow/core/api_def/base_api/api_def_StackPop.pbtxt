@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "StackPop"
-  visibility: SKIP
-  summary: "Deprecated, use StackPopV2."
-}

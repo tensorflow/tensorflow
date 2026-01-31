@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "Round"
-  summary: "Rounds the values of a tensor to the nearest integer, element-wise."
-  description: <<END
-Rounds half to even.  Also known as bankers rounding. If you want to round
-according to the current system rounding mode use std::cint.
-END
-}

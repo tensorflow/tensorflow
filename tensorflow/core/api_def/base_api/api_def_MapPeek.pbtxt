@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "MapPeek"
-  summary: "Op peeks at the values at the specified key.  If the"
-  description: <<END
-underlying container does not contain this key
-this op will block until it does.
-END
-}

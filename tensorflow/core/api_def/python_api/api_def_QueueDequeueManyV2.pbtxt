@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "QueueDequeueManyV2"
-  visibility: HIDDEN
-}

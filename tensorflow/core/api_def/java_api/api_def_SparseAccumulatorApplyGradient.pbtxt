@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseAccumulatorApplyGradient"
-  endpoint {
-    name: "sparse.SparseAccumulatorApplyGradient"
-  }
-}

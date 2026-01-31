@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "NoOp"
-  summary: "Does nothing. Only useful as a placeholder for control edges."
-}

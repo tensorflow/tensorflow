@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "OrderedMapClear"
-  summary: "Op removes all elements in the underlying container."
-}

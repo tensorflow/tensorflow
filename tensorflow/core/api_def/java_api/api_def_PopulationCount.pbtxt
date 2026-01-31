@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "PopulationCount"
-  endpoint {
-    name: "math.PopulationCount"
-  }
-}

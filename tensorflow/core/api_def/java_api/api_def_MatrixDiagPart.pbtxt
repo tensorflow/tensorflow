@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MatrixDiagPart"
-  endpoint {
-    name: "linalg.DiagPart"
-  }
-}

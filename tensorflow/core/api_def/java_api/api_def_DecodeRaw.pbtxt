@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "DecodeRaw"
-  endpoint {
-    name: "io.DecodeRaw"
-  }
-}

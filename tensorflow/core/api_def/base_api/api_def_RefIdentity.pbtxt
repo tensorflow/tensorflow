@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "RefIdentity"
-  visibility: HIDDEN
-  summary: "Return the same ref tensor as the input ref tensor."
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BatchNormWithGlobalNormalization"
-  endpoint {
-    name: "nn.BatchNormWithGlobalNormalization"
-  }
-}

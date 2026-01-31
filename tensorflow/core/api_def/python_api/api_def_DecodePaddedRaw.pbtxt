@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "DecodePaddedRaw"
-  visibility: HIDDEN
-}
