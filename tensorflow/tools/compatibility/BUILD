@@ -19,7 +19,7 @@ py_strict_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
     deps = [
-        "@pasta",
+        "@pypi//google_pasta",
         "@six_archive//:six",  # buildcleaner: keep
     ],
 )
@@ -110,7 +110,7 @@ py_strict_library(
         ":ast_edits",
         ":module_deprecations_v2",
         ":reorders_v2",
-        "@pasta",
+        "@pypi//google_pasta",
     ],
 )
 
