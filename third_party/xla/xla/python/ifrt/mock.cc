@@ -89,7 +89,7 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
           [this]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
             return delegated_->pjrt_layout();
           });
-  ON_CALL(*this, layout).WillByDefault([this]() -> CustomLayoutRef {
+  ON_CALL(*this, layout).WillByDefault([this]() -> LayoutRef {
     return delegated_->layout();
   });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_, _))

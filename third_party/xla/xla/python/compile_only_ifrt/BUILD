@@ -28,6 +28,7 @@ cc_library(
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
         "//xla/tsl/concurrency:future",

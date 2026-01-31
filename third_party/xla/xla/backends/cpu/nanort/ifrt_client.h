@@ -201,6 +201,9 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultPjRtLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override;
+  absl::StatusOr<ifrt::CustomLayoutRef> GetDefaultLayout(
+      ifrt::DType dtype, const ifrt::Shape& shape,
+      const ifrt::ShardingRef& sharding) const override;
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
   SubscribeToAttributeChanges(

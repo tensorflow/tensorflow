@@ -168,6 +168,7 @@ cc_library(
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_module_config",
         "//xla/tsl/concurrency:async_value",

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -306,7 +309,8 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
       shape_(std::move(shape)),
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(std::move(layout)),
+      layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
+                                : nullptr),
       user_context_(UserContextScope::current()) {}
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
@@ -318,7 +322,8 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
       shape_(std::move(dynamic_shape)),
       sharding_(std::move(sharding)),
       pjrt_buffers_(std::move(pjrt_buffers)),
-      layout_(std::move(layout)),
+      layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
+                                : nullptr),
       user_context_(UserContextScope::current()) {}
 
 absl::StatusOr<std::vector<ArrayRef>>
@@ -347,10 +352,10 @@ PjRtArray::DisassembleIntoSingleDeviceArrays(
           buffers.push_back(GetPjRtBuffer(semantics, i));
           TF_ASSIGN_OR_RETURN(
               auto array,
-              PjRtArray::Create(client_, dtype_,
-                                std::move(shape_and_shardings[i].first),
-                                std::move(shape_and_shardings[i].second),
-                                std::move(buffers), layout_));
+              PjRtArray::Create(
+                  client_, dtype_, std::move(shape_and_shardings[i].first),
+                  std::move(shape_and_shardings[i].second), std::move(buffers),
+                  layout_ != nullptr ? layout_->pjrt_layout() : nullptr));
           result.push_back(std::move(array));
         }
         return absl::OkStatus();
@@ -565,7 +570,8 @@ absl::StatusOr<ArrayRef> PjRtArray::Copy(
   if (new_client == nullptr) {
     new_client = client_;
   }
-  std::shared_ptr<const xla::PjRtLayout> layout = layout_;
+  std::shared_ptr<const xla::PjRtLayout> layout =
+      layout_ != nullptr ? layout_->pjrt_layout() : nullptr;
   // If a copy has happened across clients or across different memory spaces,
   // the layout of a new buffer may be different from that of the original
   // buffer. Refreshing the custom layout using the new buffer layout makes sure
@@ -655,8 +661,13 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()
         << i << ": " << layout_i->ToString();
   }
 #endif
-  return layout_;
+  if (layout_ == nullptr) {
+    return nullptr;
+  }
+  return layout_->pjrt_layout();
 }
+
+LayoutRef PjRtArray::layout() const { return layout_; }
 
 }  // namespace ifrt
 }  // namespace xla

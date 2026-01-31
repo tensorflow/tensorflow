@@ -330,6 +330,9 @@ class PjRtClient final
   absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
       DType dtype, absl::Span<const int64_t> dims, Device* device,
       MemoryKind memory_kind) const override;
+  absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
+      DType dtype, const Shape& shape,
+      const ShardingRef& sharding) const override;
 
   absl::StatusOr<PjRtCompatibleDevice*> LookupPjRtDevice(
       xla::PjRtDevice* pjrt_device) const override;

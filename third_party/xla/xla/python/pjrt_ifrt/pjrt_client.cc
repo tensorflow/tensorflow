@@ -1785,6 +1785,17 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
   return layout;
 }
 
+absl::StatusOr<CustomLayoutRef> PjRtClient::GetDefaultLayout(
+    DType dtype, const Shape& shape, const ShardingRef& sharding) const {
+  TF_ASSIGN_OR_RETURN(const Shape shard_shape, sharding->GetShardShape(shape));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::PjRtLayout> layout,
+      GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                           sharding->devices()->devices().front(),
+                           sharding->memory_kind()));
+  return PjRtLayout::Create(std::move(layout));
+}
+
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,
                                           const LiteralSlice& literal) {
   if (!device->IsAddressable()) {

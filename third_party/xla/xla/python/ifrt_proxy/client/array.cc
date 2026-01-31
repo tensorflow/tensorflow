@@ -593,7 +593,8 @@ Array::DisassembleIntoSingleDeviceArrays(
     req->add_result_handles(h);
     result.push_back(xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
         client_, rpc_helper_, dtype_, std::move(shape_and_shardings[i].first),
-        std::move(shape_and_shardings[i].second), ArrayHandle{h}, layout_)));
+        std::move(shape_and_shardings[i].second), ArrayHandle{h},
+        layout_ == nullptr ? nullptr : layout_->pjrt_layout())));
   }
 
   rpc_helper_->DisassembleIntoSingleDeviceArrays(std::move(req));
@@ -626,7 +627,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Array::FullyReplicatedShard(
 
   return xla::ifrt::ArrayRef(tsl::MakeRef<Array>(
       client_, rpc_helper_, dtype_, shape_, std::move(single_device_sharding),
-      result_handle, layout_));
+      result_handle, layout_ == nullptr ? nullptr : layout_->pjrt_layout()));
 }
 
 tsl::Future<> Array::CopyToStringHostBuffer(
@@ -771,8 +772,13 @@ tsl::Future<> Array::CopyToHostBuffer(
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Array::pjrt_layout()
     const {
-  return layout_;
+  if (layout_ == nullptr) {
+    return nullptr;
+  }
+  return layout_->pjrt_layout();
 }
+
+LayoutRef Array::layout() const { return layout_; }
 
 xla::ifrt::Client* Array::client() const { return client_; }
 

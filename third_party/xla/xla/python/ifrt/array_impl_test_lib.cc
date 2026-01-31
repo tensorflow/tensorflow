@@ -56,6 +56,7 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Each;
@@ -111,9 +112,6 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
 }
 
 TEST(ArrayImplTest, MakeArrayFromHostBufferWithCustomLayout) {
-  GTEST_SKIP() << "Client::GetDefaultLayout() and Array::layout() are not "
-                  "available for use yet.";
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 
   DType dtype(DType::kF32);
@@ -122,7 +120,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithCustomLayout) {
   absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
-  TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout,
+  TF_ASSERT_OK_AND_ASSIGN(CustomLayoutRef layout,
                           client->GetDefaultLayout(dtype, shape, sharding));
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
 
@@ -136,7 +134,13 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithCustomLayout) {
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
-  EXPECT_EQ(array->layout().get(), layout.get());
+  // The created array currently only needs to have an equivalent layout to the
+  // requested layout.
+  // TODO(hyeontaek): Tighten this check to verify `array->layout().get() ==
+  // layout.get()` to make it consistent with array sharding handling.
+  EXPECT_THAT(EquivalentLayouts(dtype, shape, sharding, array->layout(), dtype,
+                                shape, sharding, layout),
+              IsOkAndHolds(true));
   EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 

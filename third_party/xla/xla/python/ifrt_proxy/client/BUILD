@@ -181,6 +181,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/ifrt_proxy/contrib/pathways:status_annotator_util",  # build_cleaner: keep
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
