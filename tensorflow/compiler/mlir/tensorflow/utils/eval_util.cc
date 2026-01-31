@@ -19,7 +19,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/string_view.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
