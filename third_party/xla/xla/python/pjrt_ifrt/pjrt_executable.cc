@@ -1117,11 +1117,11 @@ absl::StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint()
   return fingerprint.status();
 }
 
-absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
 PjRtLoadedExecutable::executable_version() const {
   DCHECK(this);
   // PjRt-IFRT currently does not track XLA executable versions.
-  return std::make_unique<XlaExecutableVersion>();
+  return std::make_shared<XlaExecutableVersion>();
 }
 
 absl::StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

@@ -78,7 +78,7 @@ class MpmdLoadedExecutable final
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override {
     return loaded_executable_->Fingerprint();
   }
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return loaded_executable_->executable_version();
   }

@@ -925,7 +925,7 @@ class NanoExecutable final
     return absl::UnimplementedError("Fingerprint is not implemented.");
   }
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return absl::UnimplementedError("executable_version is not implemented.");
   }

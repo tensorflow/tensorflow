@@ -299,7 +299,7 @@ class PjRtLoadedExecutable final
 
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
 
-  absl::StatusOr<std::unique_ptr<ExecutableVersion>> executable_version()
+  absl::StatusOr<std::shared_ptr<const ExecutableVersion>> executable_version()
       const override;
 
   absl::StatusOr<std::string> Serialize() const override;

@@ -182,7 +182,7 @@ class LoadedExecutable
 
   // Returns the executable version that can be used for verifying the
   // compatibility with a runtime.
-  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  virtual absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
   executable_version() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
