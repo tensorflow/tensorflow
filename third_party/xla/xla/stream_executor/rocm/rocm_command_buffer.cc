@@ -220,8 +220,8 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
     absl::Span<const GraphNodeHandle> dependencies,
     const CommandBuffer& nested) {
-  auto& child_command_buffer = tensorflow::down_cast<RocmCommandBuffer&>(
-      const_cast<CommandBuffer&>(nested));
+  auto& child_command_buffer =
+      absl::down_cast<RocmCommandBuffer&>(const_cast<CommandBuffer&>(nested));
   CHECK(child_command_buffer.parent_ == nullptr)
       << "Nested command buffer's parent is not null";
   child_command_buffer.parent_ = this;
@@ -247,7 +247,7 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMovedChildNode(
 absl::Status RocmCommandBuffer::UpdateClonedChildNode(
     GraphNodeHandle node_handle, const CommandBuffer& nested) {
   hipGraph_t child_graph =
-      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+      absl::down_cast<const RocmCommandBuffer&>(nested).graph_;
 
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << exec_ << "to params contained in " << child_graph;
