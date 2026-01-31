@@ -433,6 +433,7 @@ cc_library(
     deps = [
         ":data_type",
         ":shape",
+        "//tensorflow/lite/types:half",
     ],
 )
 
