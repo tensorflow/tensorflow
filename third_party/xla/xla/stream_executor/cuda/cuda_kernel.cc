@@ -91,7 +91,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
                                 const std::optional<ClusterDim>& cluster_dims,
                                 Stream* stream, const KernelArgs& args) {
-  TraceMe trace([] { return TraceMeEncode("CudaKernel::Launch", {}); },
+  TraceMe trace("CudaKernel::Launch",
                 /*level=*/TraceMeLevel::kVerbose);
 
   CUfunction function = gpu_function();
@@ -99,7 +99,7 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
   // Launch kernels with packed arguments.
   auto launch = [this, stream, &cluster_dims, &thread_dims, &block_dims,
                  function](const KernelArgsPackedArrayBase& packed) {
-    TraceMe trace([] { return TraceMeEncode("CudaKernel::Launch/launch", {}); },
+    TraceMe trace("CudaKernel::Launch/launch",
                   /*level=*/TraceMeLevel::kVerbose);
 
     int32_t expected_number_of_arguments =

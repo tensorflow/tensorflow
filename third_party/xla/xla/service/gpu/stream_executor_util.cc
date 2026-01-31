@@ -413,16 +413,13 @@ absl::Status ExecuteKernelOnStream(
     se::Kernel& kernel, absl::Span<const se::KernelArg> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream) {
-  TraceMe trace([] { return TraceMeEncode("ExecuteKernelOnStream", {}); },
+  TraceMe trace("ExecuteKernelOnStream",
                 /*level=*/TraceMeLevel::kVerbose);
 
   std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args;
   {
-    TraceMe trace(
-        [] {
-          return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace("ExecuteKernelOnStream/PackKernelArgs",
+                  /*level=*/TraceMeLevel::kVerbose);
     TF_ASSIGN_OR_RETURN(kernel_args,
                         se::PackKernelArgs(args, kernel.metadata()));
   }

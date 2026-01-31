@@ -49,10 +49,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/lib/traceme_encode.h"
 
 using tsl::profiler::TraceMe;
-using tsl::profiler::TraceMeEncode;
 using tsl::profiler::TraceMeLevel;
 
 namespace xla {
@@ -171,9 +169,8 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
-  TraceMe trace(
-      [] { return TraceMeEncode("KernelThunk::ExecuteOnStream", {}); },
-      /*level=*/TraceMeLevel::kVerbose);
+  TraceMe trace("KernelThunk::ExecuteOnStream",
+                /*level=*/TraceMeLevel::kVerbose);
 
   // Load the kernel.
   se::StreamExecutor* executor = params.stream->parent();
@@ -182,25 +179,19 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::Stream* stream = nullptr;
   {
     TraceMe trace(
-        [] {
-          return TraceMeEncode(
-              "KernelThunk::ExecuteOnStream/GetStreamForExecution", {});
-        },
+
+        "KernelThunk::ExecuteOnStream/GetStreamForExecution",
         /*level=*/TraceMeLevel::kVerbose);
     TF_ASSIGN_OR_RETURN(
         stream, GetStreamForExecution(Thunk::execution_stream_id(), params));
   }
 
   {
-    TraceMe trace(
-        [] { return TraceMeEncode("KernelThunk::ExecuteOnStream/mutex", {}); },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace("KernelThunk::ExecuteOnStream/mutex",
+                  /*level=*/TraceMeLevel::kVerbose);
     absl::MutexLock lock(mutex_);
-    TraceMe trace_find(
-        [] {
-          return TraceMeEncode("KernelThunk::ExecuteOnStream/mutex/find", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace_find("KernelThunk::ExecuteOnStream/mutex/find",
+                       /*level=*/TraceMeLevel::kVerbose);
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;
@@ -209,11 +200,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::InlinedVector<se::KernelArg, 4> kernel_args;
   {
-    TraceMe trace(
-        [] {
-          return TraceMeEncode("KernelThunk::ExecuteOnStream/kernel_args", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace("KernelThunk::ExecuteOnStream/kernel_args",
+                  /*level=*/TraceMeLevel::kVerbose);
     int device_ordinal = executor->device_ordinal();
     XLA_VLOG_DEVICE(3, device_ordinal) << "Launching " << kernel->name();
     for (const auto& [idx, arg] : llvm::enumerate(args_)) {
