@@ -1552,18 +1552,23 @@ message ExecutionOptions {
   // use_auto_spmd_partitioning=true.
   repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 
-  // The amount of effort to spend on optimizing for minimizing program
-  // execution time, as a value in [-1.0, +1.0]. The baseline is 0.0, which
-  // strongly prioritizes execution time at the cost of longer compile times,
-  // suitable for production workloads. A value of -0.5 would be appropriate for
-  // research use cases that prefer faster compilations to iterate more quickly.
-  // Positive values, on the other hand, might enable costly optimizations that
-  // are off by default.
-  // DEPRECATED: Use optimization_level instead.
+  // TODO(b/460116597): Delete this field when cl/821862460 is submitted -
+  // go/proto3#deleting
+  // The amount of effort to spend on optimizing for
+  // minimizing program execution time, as a value in [-1.0, +1.0]. The baseline
+  // is 0.0, which strongly prioritizes execution time at the cost of longer
+  // compile times, suitable for production workloads. A value of -0.5 would be
+  // appropriate for research use cases that prefer faster compilations to
+  // iterate more quickly. Positive values, on the other hand, might enable
+  // costly optimizations that are off by default. DEPRECATED: Use
+  // optimization_level instead.
   float exec_time_optimization_effort = 25 [deprecated = true];
 
-  // The amount of effort to spend on making the program fit in memory (where
-  // "fit in memory" here has a backend-dependent meaning), as a value in
+  // TODO(b/460116597): Delete this field when cl/821862460 is submitted -
+  // go/proto3#deleting
+  // The amount of effort to spend on making the program fit
+  // in memory (where "fit in memory" here has a backend-dependent meaning), as
+  // a value in
   // [-1.0,+1.0]. The baseline is 0.0, which expends significant effort on
   // attempting to make the program fit. A value of -1.0 would be appropriate
   // for use cases that wish to spend minimal effort here and fail as quickly as

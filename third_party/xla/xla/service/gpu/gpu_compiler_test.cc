@@ -1613,12 +1613,6 @@ class PassOrderTest : public GpuCompilerTest {
     CompileModule(config);
   }
 
-  void SetAndCompileEfficiencyEffort(float exec_effort) {
-    HloModuleConfig config = GetModuleConfigForTest();
-    config.set_exec_time_optimization_effort(exec_effort);
-    CompileModule(config);
-  }
-
   // Fails if any of the passes matching `other_pass_regex` runs before
   // the first occurrence of the pass matching `first_pass_regex`.
   void VerifyPassRunsAtLeastOnceBefore(absl::string_view first_pass_regex,
@@ -1800,7 +1794,7 @@ MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
   return Matches(IsSupersetOf(expected_pass_names))(run_pass_names);
 }
 
-TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
+TEST_F(PassOrderTest, OptimizationLevelO2RunsSpecifiedPasses) {
   HloModuleConfig config = GetModuleConfigForTest();
   CompileModule(config);
 
@@ -1815,7 +1809,7 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
 
   // Make sure only after setting the correct optimization effort they are
   // enabled.
-  config.set_exec_time_optimization_effort(0.2);
+  config.set_optimization_level(ExecutionOptions::EFFORT_O2);
   CompileModule(config);
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }

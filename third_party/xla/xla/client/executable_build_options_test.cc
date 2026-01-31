@@ -74,8 +74,8 @@ TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   p.set_num_partitions(5);
   p.set_use_spmd_partitioning(true);
   p.set_use_auto_spmd_partitioning(true);
-  p.set_exec_time_optimization_effort(6.0);
-  p.set_memory_fitting_effort(7.0);
+  p.set_optimization_level(ExecutionOptions::EFFORT_O1);
+  p.set_memory_fitting_level(ExecutionOptions::EFFORT_O1);
   p.set_deduplicate_hlo(true);
   DeviceAssignment{1, 1}.Serialize(p.mutable_device_assignment());
   p.mutable_device_assignment()->set_replica_count(1);
