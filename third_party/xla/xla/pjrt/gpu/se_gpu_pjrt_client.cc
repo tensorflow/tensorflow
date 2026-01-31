@@ -1143,7 +1143,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
                         raw_buffer.get())
                         ->local_device();
                 auto* stream = local_device->GetDeviceToDeviceStream();
-                auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
+                auto mem = absl::down_cast<PjRtStreamExecutorRawBuffer*>(
                                raw_buffer.get())
                                ->device_buffer();
                 CliqueId clique_id(serialized_descriptor);
