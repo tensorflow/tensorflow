@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -36,45 +37,9 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 using ::absl_testing::IsOkAndHolds;
-using ::testing::ElementsAre;
 
 namespace xla::gpu {
 namespace {
-
-// Wraps a matcher for a fusion instruction's output tile sizes.
-// Proto matchers would be nice, but b/229726259 is P2.
-MATCHER_P(ContractionTileSizesIs, matcher, "") {
-  auto backend_config = arg.template backend_config<Tile>();
-  if (!backend_config.ok()) {
-    *result_listener << "failed to get tile sizes: " << backend_config.status();
-    return false;
-  }
-  return ExplainMatchResult(matcher, backend_config->sizes(), result_listener);
-}
-
-// Wraps a matcher for a fusion instruction's output tile sizes.
-// Proto matchers would be nice, but b/229726259 is P2.
-MATCHER_P(OutputTileSizesIs, matcher, "") {
-  auto backend_config = arg.template backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    *result_listener << "failed to get backend config: "
-                     << backend_config.status();
-    return false;
-  }
-  FusionBackendConfig fusion_backend_config =
-      backend_config->fusion_backend_config();
-  if (!fusion_backend_config.has_block_level_fusion_config()) {
-    *result_listener << "has no block level fusion config";
-    return false;
-  }
-  if (fusion_backend_config.kind() != "__triton_nested_gemm_fusion") {
-    *result_listener << "fusion kind is not __triton_nested_gemm_fusion";
-    return false;
-  }
-  auto output_tile_sizes =
-      fusion_backend_config.block_level_fusion_config().output_tiles(0).sizes();
-  return ExplainMatchResult(matcher, output_tile_sizes, result_listener);
-}
 
 class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
  protected:
@@ -120,28 +85,72 @@ ENTRY entry {
 })";
 
   std::unique_ptr<VerifiedHloModule> module = RunConvertTritonGemmConfig(hlo);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: ROOT {{.*}} = f32[8192,512]{1,0} dot(
+    CHECK-SAME: backend_config={"sizes":["32"]}
+    CHECK: ENTRY
+    CHECK: ROOT{{.*}}fusion(
+    CHECK-SAME: kind=kCustom
+    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+    CHECK-SAME: "block_level_fusion_config"
+    CHECK-SAME: "num_warps":"4"
+    CHECK-SAME: "output_tiles":[{"sizes":["64","256"]}]
+    CHECK-SAME: "num_ctas":3
+    CHECK-SAME: "num_stages":5
+)"));
   const HloInstruction* fusion = nullptr;
   ASSERT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(match::Fusion(&fusion)));
-  EXPECT_THAT(*fusion, OutputTileSizesIs(ElementsAre(64, 256)));
-
-  BlockLevelFusionConfig block_level_fusion_config =
-      fusion->backend_config<GpuBackendConfig>()
-          ->fusion_backend_config()
-          .block_level_fusion_config();
-  EXPECT_THAT(block_level_fusion_config.output_tiles(0).sizes(),
-              ElementsAre(64, 256));
-  EXPECT_THAT(block_level_fusion_config.num_warps(), 4);
-  EXPECT_THAT(block_level_fusion_config.num_ctas(), 3);
-  EXPECT_THAT(block_level_fusion_config.num_stages(), 5);
-
-  EXPECT_THAT(*fusion->fused_expression_root(),
-              ContractionTileSizesIs(ElementsAre(32)));
-
   // The old GEMM config should have been deleted.
   EXPECT_FALSE(fusion->backend_config<GpuBackendConfig>()
                    ->fusion_backend_config()
                    .has_triton_gemm_config());
+}
+
+TEST_F(ConvertTritonGemmConfigTest, ScaledDot) {
+  absl::string_view hlo = R"(
+scaled_dot {
+  lhs = bf16[4,4] parameter(0)
+  rhs = bf16[4,4] parameter(1)
+  lhs_scale = bf16[1,1] parameter(2)
+  rhs_scale = bf16[1,1] parameter(3)
+  ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY entry {
+  p0 = bf16[4,4] parameter(0)
+  p1 = bf16[4,4] parameter(1)
+  p2 = bf16[1,1] parameter(2)
+  p3 = bf16[1,1] parameter(3)
+  ROOT fusion = bf16[4,4] fusion(p0, p1, p2, p3),
+    kind=kCustom, calls=scaled_dot, backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",
+        "triton_gemm_config": {
+          "block_m":"16", "block_n":"32", "block_k":"64",
+          "split_k":"1", "num_stages":"1", "num_warps":"4", "num_ctas":"1"
+        }
+      }
+    }
+})";
+
+  std::unique_ptr<VerifiedHloModule> module =
+      ParseAndReturnVerifiedModule(hlo).value();
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_scaled_dot_with_triton(true);
+  EXPECT_THAT(ConvertTritonGemmConfig(device_description_, &mlir_context_)
+                  .Run(module.get()),
+              IsOkAndHolds(true));
+  EXPECT_OK(verifier().Run(module.get()).status());
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+    CHECK: ROOT {{.*}} = bf16[4,4]{1,0} scaled-dot({{.*}}backend_config={"sizes":["64"]}
+    CHECK: ENTRY
+    CHECK: ROOT{{.*}}fusion(
+    CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+    CHECK-SAME: "output_tiles":[{"sizes":["16","32"]}]
+)"));
 }
 
 }  // namespace

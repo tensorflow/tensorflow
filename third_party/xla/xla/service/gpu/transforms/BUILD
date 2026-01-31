@@ -3471,6 +3471,7 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
