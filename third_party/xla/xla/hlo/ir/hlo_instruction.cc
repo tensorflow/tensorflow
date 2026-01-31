@@ -3038,6 +3038,44 @@ HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   return unique;
 }
 
+std::optional<int64_t> HloInstruction::MapUnaryOutputDimToOperandDim(
+    int64_t output_dim_idx) const {
+  if (operand_count() != 1) {
+    return std::nullopt;
+  }
+  if (IsElementwise()) {
+    return output_dim_idx;
+  }
+  switch (opcode()) {
+    case HloOpcode::kBroadcast: {
+      // dimensions() maps operand dim -> output dim.
+      const auto& bcast_dims = dimensions();
+      auto it = absl::c_find(bcast_dims, output_dim_idx);
+      if (it == bcast_dims.end()) {
+        return std::nullopt;
+      }
+      return std::distance(bcast_dims.begin(), it);
+    }
+    case HloOpcode::kReshape:
+    case HloOpcode::kBitcast: {
+      if (!ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape(),
+                                                        shape())) {
+        return std::nullopt;
+      }
+      auto unmodified_dims = ShapeUtil::DimensionsUnmodifiedByReshape(
+          operand(0)->shape(), shape());
+      for (const auto& [input_dim, output_dim] : unmodified_dims) {
+        if (output_dim == output_dim_idx) {
+          return input_dim;
+        }
+      }
+      return std::nullopt;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
 absl::Status HloInstruction::AddControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());

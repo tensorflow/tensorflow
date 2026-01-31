@@ -1841,6 +1841,19 @@ class HloInstruction {
   absl::InlinedVector<int64_t, 4> OperandIndices(
       const HloInstruction* operand) const;
 
+  // Returns the dimension index of the operand that corresponds to the given
+  // output dimension index, if the instruction is a "transparent" unary
+  // operation (e.g., Broadcast, Bitcast, Reshape, Elementwise Unary).
+  //
+  // Returns std::nullopt if:
+  // 1. The operation is not supported or not unary.
+  // 2. The output dimension is "new" (e.g., created by Broadcast or Reshape
+  // insertion).
+  // 3. The reshape is not a "trivial" reshape (i.e., not just
+  // inserting/deleting 1-sized dims).
+  std::optional<int64_t> MapUnaryOutputDimToOperandDim(
+      int64_t output_dim_idx) const;
+
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
   // this reshape merely inserts or deletes 1-sized dimensions, return the input
   // indices of the deleted dimensions and the output indices of the inserted

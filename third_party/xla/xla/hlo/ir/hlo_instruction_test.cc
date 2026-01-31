@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -404,6 +405,79 @@ TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
   EXPECT_EQ(param3_to_string,
             "tmp_2 = pred[] compare(f32[] tmp_0, f32[] tmp_1), direction=GT, "
             "type=TOTALORDER");
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimConvert) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  auto convert = HloInstruction::CreateConvert(shape, param.get());
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(convert->MapUnaryOutputDimToOperandDim(1), 1);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastScalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_param = HloInstruction::CreateParameter(0, scalar_shape, "p");
+  auto broadcast =
+      HloInstruction::CreateBroadcast(shape, scalar_param.get(), {});
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(broadcast->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimBroadcastVector) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape vector_shape = ShapeUtil::MakeShape(F32, {10});
+  auto vector_param = HloInstruction::CreateParameter(0, vector_shape, "p");
+  auto broadcast_vector =
+      HloInstruction::CreateBroadcast(shape, vector_param.get(), {0});
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(0), 0);
+  EXPECT_EQ(broadcast_vector->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeInsertDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto reshape_insert =
+      HloInstruction::CreateReshape(shape_1_10_1_20, param.get());
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(0), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(1), 0);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(2), std::nullopt);
+  EXPECT_EQ(reshape_insert->MapUnaryOutputDimToOperandDim(3), 1);
+}
+
+TEST_F(HloInstructionTest,
+       MapUnaryOutputDimToOperandDimReshapeDeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  Shape shape_1_10_1_20 = ShapeUtil::MakeShape(F32, {1, 10, 1, 20});
+  auto param = HloInstruction::CreateParameter(0, shape_1_10_1_20, "p");
+  auto reshape_delete = HloInstruction::CreateReshape(shape, param.get());
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape_delete->MapUnaryOutputDimToOperandDim(1), 3);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeNonTrivial) {
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
+  auto param = HloInstruction::CreateParameter(0, shape, "p");
+  Shape shape_200 = ShapeUtil::MakeShape(F32, {200});
+  auto reshape_non_trivial =
+      HloInstruction::CreateReshape(shape_200, param.get());
+  EXPECT_EQ(reshape_non_trivial->MapUnaryOutputDimToOperandDim(0),
+            std::nullopt);
+}
+
+TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 20});
+  auto param = HloInstruction::CreateParameter(0, input_shape, "p");
+  Shape output_shape = ShapeUtil::MakeShape(F32, {10, 1, 20});
+
+  auto reshape = HloInstruction::CreateReshape(output_shape, param.get());
+
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
+  EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
 }
 
 }  // namespace
