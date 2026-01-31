@@ -166,7 +166,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
-      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+      absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_EQ(
@@ -241,7 +241,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
-      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+      absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_EQ(

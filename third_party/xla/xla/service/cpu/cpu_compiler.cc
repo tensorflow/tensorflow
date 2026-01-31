@@ -2277,7 +2277,7 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
 
 absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
     Executable* executable) {
-  auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
+  auto* cpu_executable = absl::down_cast<CpuExecutable*>(executable);
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
 
