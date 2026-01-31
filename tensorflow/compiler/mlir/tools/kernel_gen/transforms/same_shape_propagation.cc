@@ -17,6 +17,9 @@ limitations under the License.
 // functions such that they use a single set of arguments for the strides and
 // sizes of operands with equal shapes.
 
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>
