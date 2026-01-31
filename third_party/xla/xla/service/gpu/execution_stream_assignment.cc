@@ -46,6 +46,29 @@ bool is_async_collective(HloInstruction* instruction) {
   return status_or_is_async_collective.value();
 }
 
+// Returns true if the instruction is a pipelined P2P send/recv with frontend
+// attribute.
+bool is_pipelined_p2p(HloInstruction* instruction) {
+  if (auto* send_recv = DynCast<HloSendRecvInstruction>(instruction)) {
+    return !send_recv->is_host_transfer() &&
+           instruction->frontend_attributes().map().contains(
+               kSendRecvPipelineAttr);
+  }
+  return false;
+}
+
+// Returns dedicated P2P stream ID based on _xla_send_recv_pipeline attribute.
+// Uses separate streams (1 and 2) for pipeline 0/1 to avoid deadlocks in cyclic
+// patterns, stream 0 is the main stream.
+ExecutionStreamId get_p2p_stream_id(HloInstruction* instruction) {
+  const auto& fe_map = instruction->frontend_attributes().map();
+  auto it = fe_map.find(kSendRecvPipelineAttr);
+  if (it != fe_map.end() && it->second == "1") {
+    return ExecutionStreamId(2);
+  }
+  return ExecutionStreamId(1);
+}
+
 std::optional<HloInstruction*> get_async_start_instruction(
     HloInstruction* instruction) {
   if (instruction->opcode() == HloOpcode::kAsyncDone ||
@@ -116,6 +139,9 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(
         streams.source_stream_id = source_stream_id;
         if (dest_stream_id.has_value()) {
           streams.destination_stream_id = dest_stream_id.value();
+          CHECK(async_instructions_.try_emplace(instruction, streams).second);
+        } else if (is_pipelined_p2p(instruction)) {
+          streams.destination_stream_id = get_p2p_stream_id(instruction);
           CHECK(async_instructions_.try_emplace(instruction, streams).second);
         } else if (is_async_collective(instruction)) {
           auto async_start_instruction =
