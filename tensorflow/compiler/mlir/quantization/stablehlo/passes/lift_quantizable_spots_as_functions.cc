@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "third_party/protobuf/text_format.h"
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
