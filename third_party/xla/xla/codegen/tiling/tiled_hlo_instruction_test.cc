@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -152,6 +158,74 @@ TEST_F(TiledHloInstructionTest,
           .message(),
       ::testing::HasSubstr("tile_offsets_indexing has 1 runtime variables, but "
                            "2 runtime variables were provided"));
+}
+
+TEST_F(TiledHloInstructionTest, ToString) {
+  auto create_simple_tiled_hlo = [&](int64_t number)
+      -> absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>,
+                                  std::unique_ptr<TiledHloInstruction>>> {
+    std::unique_ptr<HloInstruction> hlo = HloInstruction::CreateParameter(
+        /*parameter_number=*/number,
+        ShapeUtil::MakeShape(PrimitiveType::F32, {4}),
+        absl::StrCat("p", number));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<TiledHloInstruction> tiled_hlo,
+                        TiledHloInstruction::Create(
+                            hlo.get(), /*operands=*/{},
+                            /*runtime_variables=*/{},
+                            /*tile_sizes=*/{4},
+                            /*tile_strides=*/{1},
+                            IndexingMap::FromTensorSizes(
+                                ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+                                /*dim_upper_bounds=*/{0},
+                                /*symbol_upper_bounds=*/{})));
+    return std::make_pair(std::move(hlo), std::move(tiled_hlo));
+  };
+  TF_ASSERT_OK_AND_ASSIGN(auto p0, create_simple_tiled_hlo(0));
+  auto [p0_hlo, tiled_p0] = std::move(p0);
+  TF_ASSERT_OK_AND_ASSIGN(auto p1, create_simple_tiled_hlo(1));
+  auto [p1_hlo, tiled_p1] = std::move(p1);
+  TF_ASSERT_OK_AND_ASSIGN(auto p2, create_simple_tiled_hlo(2));
+  auto [p2_hlo, tiled_p2] = std::move(p2);
+
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0] -> (d0 * 16 + s0)", &mlir_context_),
+      /*dimensions=*/
+      {IndexingMap::Variable{0, 1}},
+      /*range_vars=*/{},
+      /*rt_vars=*/{IndexingMap::Variable{0, 3}});
+
+  std::vector<std::unique_ptr<TiledHloInstruction>> region;
+  region.push_back(std::move(tiled_p2));
+  llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>> regions;
+  regions.push_back(std::move(region));
+  std::unique_ptr<HloInstruction> p3_hlo = HloInstruction::CreateParameter(
+      /*parameter_number=*/3, ShapeUtil::MakeShape(PrimitiveType::F32, {32}),
+      "p3");
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<TiledHloInstruction> tiled_p3,
+      TiledHloInstruction::Create(p3_hlo.get(), /*operands=*/{tiled_p0.get()},
+                                  /*runtime_variables=*/{tiled_p1.get()},
+                                  /*tile_sizes=*/{16},
+                                  /*tile_strides=*/{1}, indexing_map,
+                                  std::move(regions)));
+
+  EXPECT_EQ(tiled_p3->ToString(),
+            R"""(	hlo: %p3 = f32[32]{0} parameter(3)
+	tile_sizes: (16)
+	tile_strides: (1)
+	tile_offsets_indexing: (d0){rt0} -> (d0 * 16 + rt0), domain: d0 in [0, 1], rt0 in [0, 3]
+	operands:
+		%p0 = parameter()
+	runtime variables:
+			hlo: %p1 = f32[4]{0} parameter(1)
+	tile_sizes: (4)
+	tile_strides: (1)
+	tile_offsets_indexing: KNOWN EMPTY
+
+
+	regions: (
+		#0 size 1)
+)""");
 }
 
 }  // namespace

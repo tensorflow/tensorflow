@@ -18,6 +18,8 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 
@@ -37,9 +39,19 @@ std::string SymbolicTiledHloInstruction::ToString(
   if (!runtime_variables_.empty()) {
     ss << field_separator;
     ss << "runtime variables: (" << field_separator;
-    for (const auto& rt_var : runtime_variables_) {
-      ss << rt_var->ToString(field_separator) << field_separator
-         << field_separator;
+    ss << absl::StrJoin(
+        runtime_variables_, absl::StrCat(field_separator, field_separator),
+        [&](std::string* out, const SymbolicTiledHloInstruction* rt_var) {
+          out->append(rt_var->ToString(field_separator));
+        });
+    ss << ")";
+  }
+  if (!regions_.empty()) {
+    ss << field_separator;
+    ss << "regions: (";
+    for (int i = 0; i < regions_.size(); ++i) {
+      ss << absl::StrCat(field_separator, "#", i,
+                         " size: ", regions_[i].size());
     }
     ss << ")";
   }

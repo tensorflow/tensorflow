@@ -263,7 +263,7 @@ std::string SymbolicTile::ToString() const {
 }
 
 void SymbolicTile::Print(std::ostream& out) const {
-  out << "Symbolic tile with \n";
+  out << "Symbolic tile with\n";
   out << "\toffset_map: " << offset_map();
   out << "\n\tsize_map: " << size_map();
   out << "\n\tstride_map: " << stride_map();

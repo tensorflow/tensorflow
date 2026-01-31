@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -29,7 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "tsl/platform/statusor.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
@@ -38,7 +41,7 @@ using ::testing::ElementsAre;
 using SymbolicTiledHloInstructionTest = HloHardwareIndependentTestBase;
 
 TEST_F(SymbolicTiledHloInstructionTest, TransposeTileSizesAreSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 fused_computation {
   p0 = f32[16,32] parameter(0)
   p1 = f32[32,16] parameter(1)
@@ -92,6 +95,60 @@ ENTRY main {
               ElementsAre(4, 8));
   EXPECT_THAT(EvaluateTileSizes(tiled_p1.symbolic_tile(), output_tile_sizes),
               ElementsAre(8, 4));
+}
+
+TEST_F(SymbolicTiledHloInstructionTest, ToString) {
+  mlir::MLIRContext mlir_ctx;
+  RegisterSymbolicExprStorage(&mlir_ctx);
+
+  std::unique_ptr<HloInstruction> p0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(xla::F32, {16, 32}), "p0");
+
+  std::unique_ptr<HloInstruction> p1 = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(xla::F32, {4}), "p1");
+  IndexingMap p1_indexing_map(
+      mlir::AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
+                           {mlir::getAffineDimExpr(0, &mlir_ctx)}, &mlir_ctx),
+      {IndexingMap::Variable{0, 3}}, {}, {});
+  auto tiled_p1 =
+      std::make_unique<SymbolicTiledHloInstruction>(p1.get(), p1_indexing_map);
+
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_ctx);
+  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_ctx);
+  mlir::AffineMap affine_map = mlir::AffineMap::get(
+      /*dimCount=*/2, /*symbolCount=*/1, {d1, d0}, &mlir_ctx);
+  IndexingMap indexing_map(
+      affine_map,
+      /*dimensions=*/
+      {IndexingMap::Variable{0, 31}, IndexingMap::Variable{0, 15}},
+      /*range_vars=*/{},
+      /*rt_vars=*/{IndexingMap::Variable{0, 3}});
+
+  std::optional<SymbolicTile> symbolic_tile =
+      SymbolicTile::FromIndexingMap(indexing_map);
+  ASSERT_TRUE(symbolic_tile.has_value());
+
+  SymbolicTiledHloInstruction tiled_p0(p0.get(), indexing_map,
+                                       {tiled_p1.get()});
+  tiled_p0.set_symbolic_tile(*symbolic_tile);
+
+  std::vector<std::unique_ptr<SymbolicTiledHloInstruction>> region;
+  region.push_back(std::move(tiled_p1));
+  tiled_p0.AddRegion(std::move(region));
+
+  EXPECT_EQ(tiled_p0.ToString(/*field_separator=*/"\n  "),
+            R"""(hlo: %p0 = f32[16,32]{1,0} parameter(0)
+  Symbolic tile with
+	offset_map: (d0, d1) -> (0, 0)
+	size_map: (d0, d1) -> (d1, d0)
+	stride_map: (d0, d1) -> (1, 1)
+  indexing map: (d0, d1){rt0} -> (d1, d0), domain: d0 in [0, 31], d1 in [0, 15], rt0 in [0, 3]
+  runtime variables: (
+  hlo: %p1 = f32[4]{0} parameter(1)
+  (no symbolic tile)
+  indexing map: (d0) -> (d0), domain: d0 in [0, 3])
+  regions: (
+  #0 size: 1))""");
 }
 
 }  // namespace
