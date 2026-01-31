@@ -25,6 +25,9 @@ from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.ops.numpy_ops import np_config
+
+np_config.enable_numpy_behavior()
 
 
 class MathTest(test.TestCase, parameterized.TestCase):
@@ -227,6 +230,24 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+    
+  def testIsCloseInt(self):
+    a = np.asarray([1, 2, 3], np.int32)
+    b = np.asarray([1, 3, 4], np.int32)
+
+    expected = np.isclose(a.astype(np.float64), b.astype(np.float64))
+    actual = np_math_ops.isclose(a, b)
+
+    self.match(actual, expected)
+
+  def testIsCloseIntBroadcasting(self):
+    a = np.asarray([[1, 2, 3], [4, 5, 6]], np.int32)
+    b = np.asarray([1], np.int32)
+
+    expected = np.isclose(a.astype(np.float64), b.astype(np.float64))
+    actual = np_math_ops.isclose(a, b)
+
+    self.match(actual, expected)
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
