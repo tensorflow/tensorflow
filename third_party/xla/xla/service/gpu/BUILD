@@ -1819,6 +1819,7 @@ cc_library(
         "//xla/service/gpu/transforms:layout_assignment",
         "//xla/service/gpu/transforms:move_copy_to_users",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
+        "//xla/service/gpu/transforms:onehot_rewriter",
         "//xla/service/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/service/gpu/transforms:ragged_all_to_all_decomposer",
         "//xla/service/gpu/transforms:ragged_all_to_all_multi_host_decomposer",
