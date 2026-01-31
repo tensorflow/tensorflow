@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/metrics.h"
 #include "xla/service/dump.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
@@ -172,6 +173,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
                              pass_name, hlo->name(), UniqueId(*hlo));
     }};
     VLOG(1) << "  HLO pass " << pass_name;
+    XLA_SET_METRICS_SCOPE(pass_name + "_" + std::to_string(i));
     std::optional<size_t> hash_before = std::nullopt;
     if (verify_pass_changed_report || VLOG_IS_ON(2)) {
       hash_before = absl::HashOf(*hlo);
@@ -216,6 +218,7 @@ absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
       compilation_stats_->EndPass(pass_name);
     }
   }
+  XLA_SET_METRICS_SCOPE("global");
   return changed;
 }
 
