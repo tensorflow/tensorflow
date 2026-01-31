@@ -2277,7 +2277,7 @@ Literal LiteralBase::Replicate(int64_t times) const {
 
   DimensionVector output_indices(bounds.size(), 0);
   absl::Span<const int64_t> input_indices = output_indices;
-  input_indices.remove_prefix(1);
+  input_indices.remove_prefi(1);
 
   bool done = false;
   while (!done) {
