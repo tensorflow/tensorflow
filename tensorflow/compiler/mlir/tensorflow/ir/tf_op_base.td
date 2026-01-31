@@ -188,6 +188,7 @@ def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
 def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
+def TF_RecordEventMetricForTensorResource : TF_ResourceBase<"RecordEventMetricForTensor">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
 def TF_GlobalIterIdResource : TF_ResourceBase<"GlobalIterId">;
@@ -252,6 +253,7 @@ def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
+def TF_RecordEventMetricForTensor : MemoryEffects<[MemWrite<TF_RecordEventMetricForTensorResource>]>;
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
