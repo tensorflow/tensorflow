@@ -639,6 +639,11 @@ class NonMaxSuppressionOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
 
     OP_REQUIRES(context, iou_threshold_ >= 0 && iou_threshold_ <= 1,
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
@@ -678,6 +683,11 @@ class NonMaxSuppressionV2Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -724,6 +734,11 @@ class NonMaxSuppressionV3Op : public OpKernel {
                                 max_output_size.shape().DebugString(),
                                 " (Shape must be rank 0 but is ", "rank ",
                                 max_output_size.dims(), ")"));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -780,6 +795,11 @@ class NonMaxSuppressionV4Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -849,6 +869,11 @@ class NonMaxSuppressionV5Op : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
@@ -926,6 +951,11 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
+    const int max_output_size_val = max_output_size.scalar<int>()();
+    OP_REQUIRES(context, max_output_size_val >= 0,
+                errors::InvalidArgument(
+                    "max_output_size must be non-negative, got ",
+                    max_output_size_val));
     // overlap_threshold: scalar
     const Tensor& overlap_threshold = context->input(3);
     OP_REQUIRES(

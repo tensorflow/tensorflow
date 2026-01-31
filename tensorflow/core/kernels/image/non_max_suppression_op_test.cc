@@ -206,6 +206,19 @@ TEST_F(NonMaxSuppressionOpTest, TestEmptyInput) {
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 
+TEST_F(NonMaxSuppressionOpTest, TestNegativeMaxOutputSize) {
+  MakeOp(.5);
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
+  AddInputFromArray<int>(TensorShape({}), {-1});
+  absl::Status s = RunOpKernel();
+
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "max_output_size must be non-negative"))
+      << s;
+}
+
 //
 // NonMaxSuppressionV2Op Tests
 //
@@ -366,6 +379,20 @@ TEST_F(NonMaxSuppressionV2OpTest, TestEmptyInput) {
   Tensor expected(allocator(), DT_INT32, TensorShape({0}));
   test::FillValues<int>(&expected, {});
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
+TEST_F(NonMaxSuppressionV2OpTest, TestNegativeMaxOutputSize) {
+  MakeOp();
+  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
+  AddInputFromArray<float>(TensorShape({1}), {.9f});
+  AddInputFromArray<int>(TensorShape({}), {-1});
+  AddInputFromArray<float>(TensorShape({}), {.5f});
+  absl::Status s = RunOpKernel();
+
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "max_output_size must be non-negative"))
+      << s;
 }
 
 //
@@ -621,6 +648,23 @@ TYPED_TEST(NonMaxSuppressionV3OpTest, TestEmptyInput) {
   Tensor expected(this->allocator(), DT_INT32, TensorShape({0}));
   test::FillValues<int>(&expected, {});
   test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
+}
+
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestNegativeMaxOutputSize) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType>(TensorShape({1, 4}), {0, 0, 1, 1});
+  this->template AddInputFromList<InputType>(TensorShape({1}), {.9f});
+  this->template AddInputFromList<int>(TensorShape({}), {-1});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  absl::Status s = this->RunOpKernel();
+
+  ASSERT_FALSE(s.ok());
+  EXPECT_TRUE(
+      absl::StrContains(s.ToString(), "max_output_size must be non-negative"))
+      << s;
 }
 
 //
