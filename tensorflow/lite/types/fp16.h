@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "fp16.h"  // from @FP16
+
 // This file is an excerpt from
 // https://github.com/Maratyszcza/FP16/blob/master/include/fp16/fp16.h,
 // including only the minimal functionality we need in XNNPACK. This works
