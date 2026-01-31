@@ -1132,6 +1132,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1146,6 +1147,7 @@ cc_library(
         "//xla/service:hlo_runner_pjrt",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
