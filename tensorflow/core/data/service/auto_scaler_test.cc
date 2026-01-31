@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/auto_scaler.h"
 
+#include <cstdint>
 #include <optional>
 
 #include <gmock/gmock.h>
