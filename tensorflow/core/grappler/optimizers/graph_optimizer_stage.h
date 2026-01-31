@@ -30,12 +30,12 @@ namespace tensorflow {
 namespace grappler {
 
 struct NodeScopeAndName {
-  string scope;
-  string name;
+  std::string scope;
+  std::string name;
 };
 
 // Parse scope and name: "a/b/c/Add_1" -> {"a/b/c", "Add_1"}
-const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
+const NodeScopeAndName ParseNodeScopeAndName(const std::string& node_name);
 
 // Context owned by GraphOptimizer, and passed to every stage at construction
 // time. Each optimizer stage is responsible for updating it according to the
@@ -46,11 +46,11 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
 // optimizer (see example of ArithmeticOptimizerContext). GraphOptimizerContext
 // should only have members that are useful to almost all optimizers.
 struct GraphOptimizerContext {
-  GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
-                        GraphDef* optimized_graph,
-                        GraphProperties* graph_properties, NodeMap* node_map,
-                        gtl::FlatSet<string>* feed_nodes,
-                        RewriterConfig::Toggle opt_level)
+  GraphOptimizerContext(
+      const std::unordered_set<std::string>* nodes_to_preserve,
+      GraphDef* optimized_graph, GraphProperties* graph_properties,
+      NodeMap* node_map, gtl::FlatSet<std::string>* feed_nodes,
+      RewriterConfig::Toggle opt_level)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
@@ -58,23 +58,24 @@ struct GraphOptimizerContext {
         feed_nodes(feed_nodes),
         opt_level(opt_level) {}
 
-  const std::unordered_set<string>* nodes_to_preserve;
+  const std::unordered_set<std::string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
-  gtl::FlatSet<string>* feed_nodes;
+  gtl::FlatSet<std::string>* feed_nodes;
   RewriterConfig::Toggle opt_level;
 };
 
-absl::Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
-                          NodeDef** node);
+absl::Status GetInputNode(const GraphOptimizerContext& ctx,
+                          const std::string& input, NodeDef** node);
 absl::Status GetTensorProperties(const GraphOptimizerContext& ctx,
-                                 const string& tensor,
+                                 const std::string& tensor,
                                  const OpInfo::TensorProperties** properties);
 
-NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const string& name,
+NodeDef* AddCopyNode(const GraphOptimizerContext& ctx, const std::string& name,
                      const NodeDef* node_to_copy);
-NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx, const string& name);
+NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx,
+                      const std::string& name);
 
 // WARNING:
 // Optimizer stage must try to re-use original nodes of a graph and
@@ -90,18 +91,17 @@ NodeDef* AddEmptyNode(const GraphOptimizerContext& ctx, const string& name);
 // Empty sub_scope or prefix ignored. At least one of them must be non-empty.
 //
 // Example: a/b/c/Add -> a/b/c/${sub_scope}/${prefix}_Add.
-const string MakeOptimizedNodeName(const NodeScopeAndName& node,
-                                   const string& sub_scope,
-                                   const string& prefix);
+const std::string MakeOptimizedNodeName(const NodeScopeAndName& node,
+                                        const std::string& sub_scope,
+                                        const std::string& prefix);
 // Make a name for a new node obtained by optimizing multiple nodes of the
 // original graph, starting from "root". The optimized node is placed under
 // the original scope of a "root" node.
 //
 // Example: [a/b/c/Add, x/y/z/Mul] -> a/b/c/${sub_scope}/${prefix}_Add_Mul
-const string MakeOptimizedNodeName(const NodeScopeAndName& root,
-                                   const std::vector<string> node_names,
-                                   const string& sub_scope,
-                                   const string& prefix);
+const std::string MakeOptimizedNodeName(
+    const NodeScopeAndName& root, const std::vector<std::string> node_names,
+    const std::string& sub_scope, const std::string& prefix);
 
 // Base class for multi-stage GraphOptimizers (ArithmeticOptimizer, etc...).
 //
@@ -115,14 +115,14 @@ const string MakeOptimizedNodeName(const NodeScopeAndName& root,
 template <typename Result>
 class GraphOptimizerStage {
  public:
-  explicit GraphOptimizerStage(const string& optimizer_name,
-                               const string& stage_name,
+  explicit GraphOptimizerStage(const std::string& optimizer_name,
+                               const std::string& stage_name,
                                const GraphOptimizerContext& ctx)
       : optimizer_name_(optimizer_name), stage_name_(stage_name), ctx_(ctx) {}
   virtual ~GraphOptimizerStage() = default;
 
-  const string& stage_name() const { return stage_name_; }
-  const string& optimizer_name() const { return optimizer_name_; }
+  const std::string& stage_name() const { return stage_name_; }
+  const std::string& optimizer_name() const { return optimizer_name_; }
 
   // Check if we should try to simplify node. Returning true doesn't
   // guarantee that node will be simplified.
@@ -158,47 +158,49 @@ class GraphOptimizerStage {
 
   // Get a name for a new node, created by this stage, based on one or multiple
   // nodes of an original graph.
-  const string OptimizedNodeName(const NodeScopeAndName& node) const {
+  const std::string OptimizedNodeName(const NodeScopeAndName& node) const {
     return MakeOptimizedNodeName(node, optimizer_name_, stage_name_);
   }
-  const string OptimizedNodeName(const NodeScopeAndName& root,
-                                 const std::vector<string>& nodes) const {
+  const std::string OptimizedNodeName(
+      const NodeScopeAndName& root,
+      const std::vector<std::string>& nodes) const {
     return MakeOptimizedNodeName(root, nodes, optimizer_name_, stage_name_);
   }
-  const string OptimizedNodeName(const NodeScopeAndName& node,
-                                 const string& rewrite_rule) const {
-    const string prefix = absl::StrCat(stage_name_, "_", rewrite_rule);
+  const std::string OptimizedNodeName(const NodeScopeAndName& node,
+                                      const std::string& rewrite_rule) const {
+    const std::string prefix = absl::StrCat(stage_name_, "_", rewrite_rule);
     return MakeOptimizedNodeName(node, optimizer_name_, prefix);
   }
 
-  const string UniqueOptimizedNodeName(const NodeScopeAndName& node) {
-    const string node_name = OptimizedNodeName(node);
+  const std::string UniqueOptimizedNodeName(const NodeScopeAndName& node) {
+    const std::string node_name = OptimizedNodeName(node);
     return UniqueNodeName(node_name);
   }
-  const string UniqueOptimizedNodeName(const NodeScopeAndName& node,
-                                       const string& rewrite_rule) {
-    const string node_name = OptimizedNodeName(node, rewrite_rule);
+  const std::string UniqueOptimizedNodeName(const NodeScopeAndName& node,
+                                            const std::string& rewrite_rule) {
+    const std::string node_name = OptimizedNodeName(node, rewrite_rule);
     return UniqueNodeName(node_name);
   }
 
   // Get a node by input name from a node map. Return an error if node was not
   // found.
-  absl::Status GetInputNode(const string& input, NodeDef** node) const {
+  absl::Status GetInputNode(const std::string& input, NodeDef** node) const {
     return ::tensorflow::grappler::GetInputNode(ctx_, input, node);
   }
   // Lookup tensor properties by name. Tensor name might have non-zero port
   // number. Return an error if tensor node doesn't exists in a graph, or it
   // doesn't have properties defined for requested port.
   absl::Status GetTensorProperties(
-      const string& tensor, const OpInfo::TensorProperties** properties) const {
+      const std::string& tensor,
+      const OpInfo::TensorProperties** properties) const {
     return ::tensorflow::grappler::GetTensorProperties(ctx_, tensor,
                                                        properties);
   }
 
-  NodeDef* AddCopyNode(const string& name, const NodeDef* node_to_copy) {
+  NodeDef* AddCopyNode(const std::string& name, const NodeDef* node_to_copy) {
     return ::tensorflow::grappler::AddCopyNode(ctx_, name, node_to_copy);
   }
-  NodeDef* AddEmptyNode(const string& name) {
+  NodeDef* AddEmptyNode(const std::string& name) {
     return ::tensorflow::grappler::AddEmptyNode(ctx_, name);
   }
 
@@ -206,8 +208,8 @@ class GraphOptimizerStage {
   const GraphOptimizerContext& ctx() const { return ctx_; }
 
  private:
-  const string UniqueNodeName(absl::string_view name) {
-    string node_name = string(name);
+  const std::string UniqueNodeName(absl::string_view name) {
+    std::string node_name = std::string(name);
     while (ctx_.node_map->NodeExists(node_name)) {
       node_name = absl::StrCat(name, "_unique",
                                optimized_node_name_counter_.fetch_add(1));
@@ -216,8 +218,8 @@ class GraphOptimizerStage {
     return node_name;
   }
 
-  const string optimizer_name_;
-  const string stage_name_;
+  const std::string optimizer_name_;
+  const std::string stage_name_;
   const GraphOptimizerContext ctx_;
   std::atomic<int64_t> optimized_node_name_counter_ = {0};
 };
@@ -292,8 +294,8 @@ class GraphOptimizerStagePipeline {
 
   std::size_t NumStages() { return stages_.size(); }
 
-  std::vector<string> StageNames() {
-    std::vector<string> names;
+  std::vector<std::string> StageNames() {
+    std::vector<std::string> names;
     names.reserve(stages_.size());
     for (const auto& stage : stages_) {
       names.push_back(stage->stage_name());
