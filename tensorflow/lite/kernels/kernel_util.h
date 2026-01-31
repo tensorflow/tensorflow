@@ -338,6 +338,13 @@ bool IsMobilePlatform();
 // Returns whether there is unspecified dimension in the tensor's dim signature.
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
 
+// Checks that input and output tensors have the same quantization parameters
+// (scale and zero_point) for quantized types. Returns kTfLiteOk if they match
+// or if the type is not quantized, otherwise returns kTfLiteError.
+TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     const TfLiteTensor* output);
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_KERNEL_UTIL_H_

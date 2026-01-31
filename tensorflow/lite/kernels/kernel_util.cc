@@ -596,4 +596,28 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
   return false;
 }
 
+namespace {
+bool IsQuantizedType(TfLiteType type) {
+  return type == kTfLiteUInt8 || type == kTfLiteInt8 ||
+         type == kTfLiteInt16 || type == kTfLiteInt4;
+}
+}  // namespace
+
+TfLiteStatus CheckQuantizationParams(TfLiteContext* context,
+                                     const TfLiteTensor* input,
+                                     const TfLiteTensor* output) {
+  if (!IsQuantizedType(input->type)) {
+    return kTfLiteOk;
+  }
+  if (input->params.scale != output->params.scale ||
+      input->params.zero_point != output->params.zero_point) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Input and output tensors must have the same scale and zero_point for "
+        "quantized operations.");
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
 }  // namespace tflite

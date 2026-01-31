@@ -372,6 +372,68 @@ TEST(TransposeTest, Test4DFlattenTwo) {
                                                13, 10, 14, 11, 15}));
 }
 
+class TransposeOpQuantizedModel : public SingleOpModel {
+ public:
+  TransposeOpQuantizedModel(TensorType tensor_type,
+                            std::initializer_list<int> input_shape,
+                            std::initializer_list<int> perm_shape,
+                            std::initializer_list<int> perm)
+      : tensor_type_(tensor_type) {
+    input_ = AddInput({tensor_type, input_shape, 0.0f, 0.0f, 0.5f, 1});
+    perm_ = AddConstInput(TensorType_INT32, perm, perm_shape);
+    output_ = AddOutput(tensor_type);
+    SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
+                 CreateTransposeOptions(builder_).Union());
+    BuildInterpreter({input_shape});
+  }
+
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
+    PopulateTensor<T>(input_, data);
+  }
+
+  void SetOutputQuantParams(float scale, int zero_point) {
+    TfLiteTensor* output_tensor = interpreter_->tensor(output_);
+    output_tensor->params.scale = scale;
+    output_tensor->params.zero_point = zero_point;
+  }
+
+  TensorType tensor_type() const { return tensor_type_; }
+
+ protected:
+  int input_;
+  int perm_;
+  int output_;
+  TensorType tensor_type_;
+};
+
+class TransposeOpQuantizationTest
+    : public ::testing::TestWithParam<TensorType> {};
+
+TEST_P(TransposeOpQuantizationTest, MismatchedQuantizationFails) {
+  TensorType tensor_type = GetParam();
+  TransposeOpQuantizedModel m(tensor_type, {2, 2}, {2}, {1, 0});
+  m.SetOutputQuantParams(0.25f, 2);
+  switch (tensor_type) {
+    case TensorType_UINT8:
+      m.SetInput<uint8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT8:
+      m.SetInput<int8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT16:
+      m.SetInput<int16_t>({1, 2, 3, 4});
+      break;
+    default:
+      break;
+  }
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizationTests, TransposeOpQuantizationTest,
+                         testing::Values(TensorType_UINT8, TensorType_INT8,
+                                        TensorType_INT16));
+
 TEST(TransposeTest, 3DDividedIntoTwo2DsOne) {
   std::vector<float> out = RunTestPermutation<float>({2, 3, 4}, {1, 2, 0});
   TransposeOpConstModel m({2, 3, 4}, {3}, {1, 2, 0});

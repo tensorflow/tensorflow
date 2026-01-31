@@ -73,6 +73,12 @@ class ResizeBilinearOpModel : public SingleOpModel {
     return ExtractVector<T>(output_);
   }
 
+  void SetOutputQuantParams(float scale, int zero_point) {
+    TfLiteTensor* output_tensor = interpreter_->tensor(output_);
+    output_tensor->params.scale = scale;
+    output_tensor->params.zero_point = zero_point;
+  }
+
  private:
   int input_;
   int size_;
@@ -464,6 +470,34 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt16) {
 
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
                          testing::Values(TestType::kConst, TestType::kDynamic));
+
+class ResizeBilinearOpQuantizationTest
+    : public ::testing::TestWithParam<TensorType> {};
+
+TEST_P(ResizeBilinearOpQuantizationTest, MismatchedQuantizationFails) {
+  TensorType tensor_type = GetParam();
+  ResizeBilinearOpModel m({tensor_type, {1, 2, 2, 1}, 0.0f, 0.0f, 0.5f, 1},
+                          {3, 3}, TestType::kConst);
+  m.SetOutputQuantParams(0.25f, 2);
+  switch (tensor_type) {
+    case TensorType_UINT8:
+      m.SetInput<uint8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT8:
+      m.SetInput<int8_t>({1, 2, 3, 4});
+      break;
+    case TensorType_INT16:
+      m.SetInput<int16_t>({1, 2, 3, 4});
+      break;
+    default:
+      break;
+  }
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+INSTANTIATE_TEST_SUITE_P(QuantizationTests, ResizeBilinearOpQuantizationTest,
+                         testing::Values(TensorType_UINT8, TensorType_INT8,
+                                        TensorType_INT16));
 
 }  // namespace
 }  // namespace tflite
