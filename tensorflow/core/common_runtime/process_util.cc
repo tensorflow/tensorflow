@@ -34,7 +34,54 @@ namespace tensorflow {
 
 namespace {
 
-// Use environment setting if specified (init once)
+constexpr int32 kDefaultFallbackThreads = 128;
+constexpr int32 kThreadOversubscriptionFactor = 8;
+constexpr int32 kMinimumThreadCount = 128;
+
+int32 ComputeMaxThreadCountFromHardwareConcurrency() {
+  static const int32 max_threads = []() {
+    const int hw_concurrency = std::thread::hardware_concurrency();
+    if (hw_concurrency == 0) {
+      return kDefaultFallbackThreads;
+    }
+    return std::max(hw_concurrency * kThreadOversubscriptionFactor, kMinimumThreadCount);
+  }();
+  return max_threads;
+}
+
+int32 ValidateThreadCount(int32 requested_threads, const char* thread_type) {
+  if (requested_threads == 0) {
+    return 0;
+  }
+
+  if (requested_threads < 0) {
+    LOG(WARNING) << thread_type << " thread count " << requested_threads
+                 << " is negative. Using 0 (auto-detect).";
+    return 0;
+  }
+
+  const int hardware_concurrency = std::thread::hardware_concurrency();
+  const int max_threads = ComputeMaxThreadCountFromHardwareConcurrency();
+  const int max_reasonable = std::max(hardware_concurrency * 2, 128);
+
+  if (requested_threads > max_threads) {
+    LOG(ERROR) << thread_type << " thread count " << requested_threads
+               << " exceeds hard limit of " << max_threads
+               << ". Clamping to " << max_threads
+               << ". Hardware concurrency: " << hardware_concurrency;
+    return max_threads;
+  }
+
+  if (requested_threads > max_reasonable) {
+    LOG(WARNING) << thread_type << " thread count " << requested_threads
+                 << " is very large for a system with " << hardware_concurrency
+                 << " CPUs. This may cause performance degradation.";
+  }
+
+  return requested_threads;
+}
+
+// Get the inter-op thread count from the environment variable.
 int32_t GetEnvNumInterOpThreads() {
   static int32_t env_num_threads = NumInterOpThreadsFromEnvironment();
   return env_num_threads;
@@ -44,7 +91,7 @@ int32_t DefaultNumInterOpThreads() {
 #ifndef __ANDROID__
   int32_t env_num_threads = GetEnvNumInterOpThreads();
   if (env_num_threads > 0) {
-    return env_num_threads;
+    return ValidateThreadCount(env_num_threads, "inter_op_parallelism (env)");
   }
 
   // Default to the maximum parallelism for the current process.
@@ -74,6 +121,10 @@ int32_t DefaultNumInterOpThreads() {
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   int32_t inter_op_parallelism_threads =
       options.config.inter_op_parallelism_threads();
+
+  inter_op_parallelism_threads = ValidateThreadCount(
+      inter_op_parallelism_threads, "inter_op_parallelism");
+
   if (inter_op_parallelism_threads == 0) {
     inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
@@ -101,6 +152,7 @@ int32_t NumIntraOpThreadsFromEnvironment() {
   const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
   return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
 }
+
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
 int32 OMPThreadsFromEnvironment() {
   // 1) std::getenv is thread-safe (as long as no other function modifies the
@@ -115,16 +167,19 @@ int32 DefaultNumIntraOpThreads() {
   // Use environment setting if specified (init once)
   static int env_num_threads = NumIntraOpThreadsFromEnvironment();
   if (env_num_threads > 0) {
-    return env_num_threads;
+    return ValidateThreadCount(env_num_threads, "intra_op_parallelism (env)");
   }
 
   // Default to the maximum parallelism for the current process.
   return port::MaxParallelism();
 }
 #endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
+
 int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
-  const int32_t inter_op = options.config.inter_op_parallelism_threads();
+  const int32_t inter_op = ValidateThreadCount(
+      options.config.inter_op_parallelism_threads(), "inter_op_parallelism");
   if (inter_op > 0) return inter_op;
+
   const int32_t env_inter_op = GetEnvNumInterOpThreads();
   if (env_inter_op > 0) return env_inter_op;
 
@@ -134,7 +189,8 @@ int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
     // Setting inter_op conservatively to avoid thread oversubscription that
     // could lead to severe perf degradations and OMP resource exhaustion.
     // Inter ops are set such that mkl_inter_op * mkl_intra_op <= NumCores.
-    const int32 intra_op = options.config.intra_op_parallelism_threads();
+    const int32 intra_op = ValidateThreadCount(
+        options.config.intra_op_parallelism_threads(), "intra_op_parallelism");
     const int32 omp_max_threads = OMPThreadsFromEnvironment();
     const int32 mkl_intra_op =
         (omp_max_threads > 0)
@@ -155,9 +211,13 @@ int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options, int32_t num_threads) {
+
+  num_threads = ValidateThreadCount(num_threads, "thread_pool");
+
   const int32_t num_threads_real =
       num_threads > 0 ? num_threads
                       : NumInterOpThreadsFromSessionOptions(options);
+
   VLOG(1) << "Session inter op parallelism threads: " << num_threads_real;
   return new thread::ThreadPool(
       options.env, ThreadOptions(), "Compute", num_threads_real,

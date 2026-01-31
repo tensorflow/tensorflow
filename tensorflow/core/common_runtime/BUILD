@@ -2853,9 +2853,15 @@ tf_cc_test(
     size = "small",
     srcs = ["process_util_test.cc"],
     deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
         ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/lib/core:threadpool",
     ],
 )
 
