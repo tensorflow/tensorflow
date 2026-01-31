@@ -262,6 +262,7 @@ cc_library(
     hdrs = ["translate.h"],
     deps = [
         ":hlo_to_mlir_hlo",
+        "//third_party/protobuf/io:tokenizer",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate:stablehlo",
         "//xla/mlir_hlo:mhlo_passes",
@@ -270,6 +271,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
