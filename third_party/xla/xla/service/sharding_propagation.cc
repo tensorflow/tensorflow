@@ -1602,6 +1602,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
 }
 
 // Return the sharding that should be propagated from user to instruction.
+// TODO(b/479748399): Update this function to use v3 representation.
 std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
     int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph,
