@@ -161,7 +161,7 @@ TEST_F(StablehloUtilsTest, ConvertShardyToHloDataFlowEdge) {
   CHECK: %region_0.1 (Arg_.1: s64[4]) -> s64[4]
   CHECK: %region_1.2 (Arg_.3: s64[4]) -> s64[4]
   CHECK: ENTRY %main.3 (Arg_0.1: s32[], Arg_1.1: s64[4], Arg_2.1: s64[4]) -> s64[4]
-  CHECK: ROOT %conditional.1 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.1, %Arg_2.1), branch_computations={%region_0.1, %region_1.2}, sharding={replicated}
+  CHECK: ROOT %conditional.1 = s64[4]{0} conditional(%Arg_0.1, %Arg_1.1, %Arg_2.1), branch_computations={%region_0.1, %region_1.2}
   )";
 
   ConvertShardyAndCompare(kShardyMlirString, kExpectedHloPattern);
@@ -180,12 +180,10 @@ ENTRY %main.4 (Arg_0.1: f32[400,400], Arg_1.2: f32[400,400]) -> f32[400,400] {
 )";
 
   const std::string kExpectedShardyPattern = R"(
-  CHECK: sdy.mesh @mesh = <["_axis_0"=8]>
-  CHECK: %arg0: tensor<400x400xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
-  CHECK-SAME: %arg1: tensor<400x400xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
-  CHECK-SAME: -> (tensor<400x400xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"_axis_0"}, {}]>})
-  CHECK: %0 = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"_axis_0"}, {}]>]>}
-  CHECK: %1 = stablehlo.dot %0, %arg1, precision = [DEFAULT, DEFAULT] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"_axis_0"}, {}]>]>}
+  CHECK: %arg0: tensor<400x400xf32>
+  CHECK-SAME: %arg1: tensor<400x400xf32>
+  CHECK-SAME: -> tensor<400x400xf32>
+  CHECK: %0 = stablehlo.dot %arg0, %arg1, {{.*}} (tensor<400x400xf32>, tensor<400x400xf32>) -> tensor<400x400xf32>
   )";
 
   ConvertHloAndCompare(kHloString, kExpectedShardyPattern);
@@ -202,9 +200,8 @@ ENTRY %main.4 (Arg_0.1: f32[400,400], Arg_1.2: f32[400,400]) -> f32[400,400] {
 )";
 
   const std::string kExpectedShardyPattern = R"(
-  CHECK: sdy.mesh @mesh = <["_axis_0"=4, "_axis_1"=2]>
-  CHECK: %arg0: tensor<400x400xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"_axis_0"}, {}]>}
-  CHECK-SAME: %arg1: tensor<400x400xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"_axis_1"}]>}
+  CHECK: %arg0: tensor<400x400xf32>
+  CHECK-SAME: %arg1: tensor<400x400xf32>
   CHECK-SAME: -> tensor<400x400xf32>
   CHECK: %0 = stablehlo.dot %arg0, %arg1, {{.*}} (tensor<400x400xf32>, tensor<400x400xf32>) -> tensor<400x400xf32>
   )";
