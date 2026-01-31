@@ -138,5 +138,60 @@ TEST_F(CollectiveOpsCommandBufferTest, SendRecv_Simple) {
                                      results[1]));
 }
 
+TEST_F(CollectiveOpsCommandBufferTest, AllGather_Dim1) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2, 1] broadcast(id), dimensions={}
+    a0 = u32[2, 1] constant({{10}, {15}})
+    a1 = u32[2, 1] add(id2, a0)
+    allgather = u32[2, 2] all-gather(a1), dimensions={1}
+    ROOT out = u32[4] reshape(allgather)
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  bool run_hlo_passes = true;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options().add_xla_gpu_enable_command_buffer(
+      DebugOptions::COLLECTIVES);
+  config.mutable_debug_options().set_xla_gpu_graph_min_graph_size(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  CHECK_OK(PreprocessModuleForTestRunner(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                          CreateExecutable(std::move(module), run_hlo_passes));
+
+  // Execute compiled module multiple times to exercise warm-up, create, and
+  // update paths. Last run uses new arguments to encourage device buffer
+  // address changes.
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices = kNumReplicas;
+  options.arguments = {};
+  options.run_hlo_passes = run_hlo_passes;
+  options.use_threads = true;
+
+  // Multiple executions to Warm-up (may run thunks) and
+  // Create (record and execute command buffer)
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      test_runner().ExecuteReplicatedWithExecutable(executable.get(), options));
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results2,
+      test_runner().ExecuteReplicatedWithExecutable(executable.get(), options));
+  ASSERT_EQ(results2.size(), kNumReplicas);
+}
+
 }  // namespace
 }  // namespace xla
