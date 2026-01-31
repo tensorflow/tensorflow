@@ -290,13 +290,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 // Tests `tf_device.cluster_func` with unsupported operand type.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
-  func.func @unsupported_operand_type(%arg0: tensor<?xi2>) {
-    // expected-error@+1 {{failed to determine operand type at index 0: Converting i2 to DataType}}
-    %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi2>) -> tensor<?xi2>
+  func.func @unsupported_operand_type(%arg0: tensor<?xi3>) {
+    // expected-error@+1 {{failed to determine operand type at index 0: Converting i3 to DataType}}
+    %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi3>) -> tensor<?xi3>
     func.return
   }
-  func.func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
-    func.return %arg0 : tensor<?xi2>
+  func.func @empty_func(%arg0: tensor<?xi3>) -> tensor<?xi3> {
+    func.return %arg0 : tensor<?xi3>
   }
 }
 
