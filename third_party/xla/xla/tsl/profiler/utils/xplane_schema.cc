@@ -338,6 +338,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"device_vendor", kDevVendor},
        {"has_megacore", kDevHasMegacore},
        {"has_merged_vmem", kDevHasMergedVmem},
+       {"dvfs_event", kDvfsEvent},
        // Batching related.
        {"batch_size_after_padding", kBatchSizeAfterPadding},
        {"padding_amount", kPaddingAmount},

@@ -286,6 +286,7 @@ enum StatType {
   kBytesTransferred,
   kDmaQueue,
   kDcnCollectiveInfo,
+  kDvfsEvent,
   // Performance counter related.
   kRawValue,
   kScaledValue,
