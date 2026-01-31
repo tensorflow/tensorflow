@@ -101,8 +101,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  TF_LITE_ENSURE(context,
-                 data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
+  TF_LITE_ENSURE(context, data->type == kTfLiteInt32 ||
+                              data->type == kTfLiteFloat32 ||
+                              data->type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, num_segments->type, kTfLiteInt32);
 
@@ -208,6 +209,9 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node,
       break;
     case kTfLiteFloat32:
       TF_LITE_UNSORTED_SEGMENT(float);
+      break;
+    case kTfLiteInt8:
+      TF_LITE_UNSORTED_SEGMENT(int8_t);
       break;
     default:
       TF_LITE_KERNEL_LOG(

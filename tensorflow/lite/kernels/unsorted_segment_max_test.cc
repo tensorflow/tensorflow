@@ -110,6 +110,17 @@ TEST(UnsortedSegmentMaxModelTest, FloatTest_Simple2D) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 4}));
 }
 
+TEST(UnsortedSegmentMaxModelTest, Int8Test_Simple) {
+  UnsortedSegmentMaxModel<int8_t> model(
+      {TensorType_INT8, {6}}, {TensorType_INT32, {6}}, {TensorType_INT32, {1}});
+  model.PopulateTensor<int8_t>(model.data(), {5, 1, 7, 2, 3, 4});
+  model.PopulateTensor<int32_t>(model.segment_ids(), {0, 0, 1, 1, 0, 1});
+  model.PopulateTensor<int32_t>(model.num_segments(), {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({5, 7}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
+}
+
 TEST(UnsortedSegmentMaxModelTest, SegmentsAreNegative) {
   UnsortedSegmentMaxModel<int32_t> model({TensorType_INT32, {2, 2}},
                                          {TensorType_INT32, {2}},
