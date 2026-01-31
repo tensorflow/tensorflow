@@ -133,7 +133,7 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnGraph");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
@@ -158,7 +158,7 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
                                               &meta_graph_def));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV1");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
@@ -199,7 +199,7 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV2) {
                                               &meta_graph_def));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV2");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
