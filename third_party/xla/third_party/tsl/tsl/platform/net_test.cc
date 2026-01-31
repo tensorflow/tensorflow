@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 
 namespace tsl {
-namespace internal {
+namespace net {
 
 TEST(Net, PickUnusedPortOrDie) {
   int port0 = PickUnusedPortOrDie();
@@ -49,5 +49,5 @@ TEST(Net, RecycleUnusedPortTwiceShallFail) {
   EXPECT_DEATH(RecycleUnusedPort(port0), "");
 }
 
-}  // namespace internal
+}  // namespace net
 }  // namespace tsl
