@@ -1646,7 +1646,6 @@ pywrap_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/python:_pywrap_converter_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_function_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
