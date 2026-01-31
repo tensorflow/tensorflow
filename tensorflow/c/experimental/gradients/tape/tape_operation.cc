@@ -63,8 +63,8 @@ absl::Status TapeOperation::Reset(const char* op, const char* raw_device_name) {
   forward_op_.outputs.clear();
   return parent_op_->Reset(op, raw_device_name);
 }
-const string& TapeOperation::Name() const { return parent_op_->Name(); }
-const string& TapeOperation::DeviceName() const {
+const std::string& TapeOperation::Name() const { return parent_op_->Name(); }
+const std::string& TapeOperation::DeviceName() const {
   return parent_op_->DeviceName();
 }
 absl::Status TapeOperation::SetDeviceName(const char* name) {
