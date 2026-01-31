@@ -7183,13 +7183,9 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
   for (HloInstruction* instruction : instruction_sequence) {
-    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
+    if (!options_.is_instruction_window_prefetchable_fn(instruction)) {
       continue;
     }
-    if (instruction->parent()->execution_thread() == "sparsecore") {
-      continue;
-    }
-
     window_prefetchable_instructions.insert(instruction);
 
     // This lambda sets an hlo's memory space to the alternate memory space.
