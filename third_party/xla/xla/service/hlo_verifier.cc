@@ -2938,10 +2938,22 @@ absl::Status CheckPendingSendRecvDeadlocks(
 }
 
 absl::Status VerifyNoCollectiveDeadlocksRecursive(
-    const HloComputation* computation, DfaState& current_state,
+    const HloModule& module, const HloComputation* computation,
+    DfaState& current_state,
     absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
-    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
-  for (const HloInstruction* instruction : computation->instructions()) {
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions,
+    bool is_async_comp = false) {
+  std::vector<HloInstruction*> instructions;
+  if (is_async_comp) {
+    instructions = std::vector<HloInstruction*>(
+        computation->instructions().begin(), computation->instructions().end());
+  } else {
+    instructions = std::vector<HloInstruction*>(
+        module.schedule().sequence(computation).instructions().begin(),
+        module.schedule().sequence(computation).instructions().end());
+  }
+
+  for (const HloInstruction* instruction : instructions) {
     if (instruction->called_computations().empty()) {
       if (instruction->opcode() == HloOpcode::kSend) {
         TF_RETURN_IF_ERROR(CheckDeadlocksForSend(
@@ -2974,16 +2986,17 @@ absl::Status VerifyNoCollectiveDeadlocksRecursive(
           absl::flat_hash_set<const HloRecvInstruction*>
               async_comp_recv_instructions;
           TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
-              computation, async_comp_current_state,
-              async_comp_send_instructions, async_comp_recv_instructions));
+              module, computation, async_comp_current_state,
+              async_comp_send_instructions, async_comp_recv_instructions,
+              /*is_async_comp=*/true));
           if (current_state != DfaState::kNoExpectation) {
             TF_RETURN_IF_ERROR(CheckPendingSendRecvDeadlocks(
                 async_comp_send_instructions, async_comp_recv_instructions));
           }
-        } else {
+        } else if (module.schedule().is_computation_scheduled(computation)) {
           // normal case
           TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
-              computation, current_state, send_instructions,
+              module, computation, current_state, send_instructions,
               recv_instructions));
         }
       }
@@ -2997,7 +3010,7 @@ absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
   absl::flat_hash_set<const HloSendInstruction*> send_instructions;
   absl::flat_hash_set<const HloRecvInstruction*> recv_instructions;
   TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
-      module.entry_computation(), current_state, send_instructions,
+      module, module.entry_computation(), current_state, send_instructions,
       recv_instructions));
   if (current_state != DfaState::kNoExpectation) {
     TF_RETURN_IF_ERROR(
