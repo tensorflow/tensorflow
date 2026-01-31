@@ -77,11 +77,24 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
       TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
+      if (padding_type == Padding::VALID) {
+        int64_t out_val;
+        if (c->ValueKnown(*output_size) &&
+            c->Value(*output_size, &out_val).ok() &&
+            out_val <= 0) {
+          return errors::InvalidArgument(
+              "Computed output size is <= 0 for VALID padding. ",
+              "This indicates an invalid configuration: input size too small "
+              "for the effective kernel size given the dilation rate.");
+        }
+      }
       break;
     case Padding::SAME:
       TF_RETURN_IF_ERROR(c->Add(input_size, stride - 1, output_size));
       TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
                                    /*evenly_divisible=*/false, output_size));
+      TF_RETURN_IF_ERROR(c->Divide(*output_size, stride,
+                             /*evenly_divisible=*/false, output_size));
       break;
   }
   return absl::OkStatus();
