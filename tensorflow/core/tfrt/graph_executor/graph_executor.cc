@@ -58,13 +58,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -204,8 +207,22 @@ absl::Status RunMlrtFunction(
 
   // TODO(chky): Set up cancellation.
 
-  work_queue.AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  const std::string& function_name = function.name().str();
+  work_queue.AddTask([&execution_context, function_name]() {
+    const uint64_t start_microseconds = EnvTime::NowMicros();
+    mlrt::Execute(execution_context);
+    const uint64_t end_microseconds = EnvTime::NowMicros();
+    std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+        tensorflow::CreateRequestCostAccessor();
+    if (cost_accessor != nullptr && function_name != kFallbackInitFunction &&
+        function_name != kResourceInitFunction) {
+      const char kExecutionTimeMicrosecondsMetric[] =
+          "execution_time_microseconds";
+      cost_accessor->GetRequestCost()->RecordMetrics(
+          {{kExecutionTimeMicrosecondsMetric,
+            end_microseconds - start_microseconds}});
+    }
+  });
 
   work_queue.Await(chain);
 
