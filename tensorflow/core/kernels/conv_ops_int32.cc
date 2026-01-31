@@ -39,7 +39,7 @@ REGISTER_KERNEL_BUILDER(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
-struct LaunchConv2DOp<GPUDevice, int32> {
+struct LaunchConv2DOp<GPUDevice, int32_t> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter, int row_dilation,
                   int col_dilation, int row_stride, int col_stride,
@@ -73,25 +73,25 @@ struct LaunchConv2DOp<GPUDevice, int32> {
         return;
       }
     }
-    LaunchGeneric<GPUDevice, int32>()(
+    LaunchGeneric<GPUDevice, int32_t>()(
         ctx, input, filter, row_stride, col_stride, row_dilation, col_dilation,
         padding, explicit_paddings, output, data_format);
   }
 };
 
 template <>
-struct LaunchConvOp<GPUDevice, int32> {
+struct LaunchConvOp<GPUDevice, int32_t> {
   void operator()(OpKernelContext* context, bool cudnn_use_autotune,
                   const Tensor& input, const Tensor& filter,
-                  const std::vector<int64>& dilations,
-                  const std::vector<int64>& strides, const Padding padding,
+                  const std::vector<int64_t>& dilations,
+                  const std::vector<int64_t>& strides, const Padding padding,
                   const std::vector<int64_t>& explicit_paddings,
                   TensorFormat data_format, Tensor* output) {
     // Cuda backend does not support int32. For 2D we fall back to Conv2D Eigen
     // based implementation and for 3D we throw an error.
     int spatial_dims = input.dims() - 2;
     if (spatial_dims == 2) {
-      LaunchConv2DOp<GPUDevice, int32>()(
+      LaunchConv2DOp<GPUDevice, int32_t>()(
           context, true, cudnn_use_autotune, input, filter, dilations[1],
           dilations[2], strides[1], strides[2], padding, explicit_paddings,
           output, data_format);
@@ -147,18 +147,18 @@ namespace functor {
       const T& padding_value);                                              \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
-DECLARE_GPU_SPEC(int32);
+DECLARE_GPU_SPEC(int32_t);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
 REGISTER_KERNEL_BUILDER(
-    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
-    Conv2DOp<GPUDevice, int32>);
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32_t>("T"),
+    Conv2DOp<GPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(
-    Name("Conv").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
-    ConvOp<GPUDevice, int32>);
+    Name("Conv").Device(DEVICE_GPU).TypeConstraint<int32_t>("T"),
+    ConvOp<GPUDevice, int32_t>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
