@@ -1602,7 +1602,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       int64_setter_for(
           &DebugOptions::set_xla_gpu_all_gather_combine_threshold_bytes),
       debug_options->xla_gpu_all_gather_combine_threshold_bytes(),
-      "Size threshold (in bytes) for the GPU all-gather combiner."));
+      "[Stable] Size threshold (in bytes) for the GPU all-gather combiner."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_reduce_scatter_combine_threshold_bytes",
       int64_setter_for(
@@ -2332,8 +2332,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_shard_autotuning",
       bool_setter_for(&DebugOptions::set_xla_gpu_shard_autotuning),
       debug_options->xla_gpu_shard_autotuning(),
-      "Shard autotuning between participating compiler processes (typically in "
-      "multi-host setups) and join the results when it's done."));
+      "[Stable] Shard autotuning between participating compiler processes "
+      "(typically in multi-host setups) and join the results when it's done."));
   flag_list->push_back(
       tsl::Flag("xla_syntax_sugar_async_ops",
                 bool_setter_for(&DebugOptions::set_xla_syntax_sugar_async_ops),
@@ -2932,6 +2932,7 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
       kStableFlags(absl::flat_hash_set<std::string>{
           // go/keep-sorted start
+          "xla_gpu_all_gather_combine_threshold_bytes",
           "xla_gpu_all_reduce_combine_threshold_bytes",
           "xla_gpu_autotune_level",
           "xla_gpu_collective_permute_decomposer_threshold",
@@ -2946,6 +2947,7 @@ FlagStatus GetFlagStatus(absl::string_view flag_name) {
           "xla_gpu_enable_while_loop_double_buffering",
           "xla_gpu_exhaustive_tiling_search",
           "xla_gpu_reduce_scatter_combine_threshold_bytes",
+          "xla_gpu_shard_autotuning",
           // go/keep-sorted end
       });
   static const absl::NoDestructor<absl::flat_hash_set<std::string>>
