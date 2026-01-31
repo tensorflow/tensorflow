@@ -751,14 +751,16 @@ class ResourceGatherOp : public OpKernel {
     tf_shared_lock ml(*v->mu());
     const Tensor& params = *v->tensor();
     const Tensor& indices = c->input(1);
+
     OP_REQUIRES(
         c, TensorShapeUtils::IsVectorOrHigher(params.shape()),
         absl::InvalidArgumentError("params must be at least 1 dimensional"));
-    OP_REQUIRES(c, params.shape().dims() >= batch_dims_,
-                absl::InvalidArgumentError(
-                    absl::StrCat("params must have at least ", batch_dims_,
-                                 " (batch_dims) dimensions but it has shape ",
-                                 params.shape().DebugString())));
+
+    OP_REQUIRES(
+        c, batch_dims_ < params.dims(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "batch_dims (", batch_dims_, ") must be less than rank(params) (",
+            params.dims(), ").")));
 
     // Check that we have enough index space
     const int64_t N = indices.NumElements();
