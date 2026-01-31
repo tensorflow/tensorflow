@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
