@@ -39,8 +39,9 @@ limitations under the License.
 namespace tensorflow {
 
 static void BM_UnsortedSegmentReduction(::testing::benchmark::State& state,
-                                        const string& reduction, int num_rows,
-                                        int num_cols, int segment_size) {
+                                        const std::string& reduction,
+                                        int num_rows, int num_cols,
+                                        int segment_size) {
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
@@ -108,7 +109,7 @@ BM_UnsortedReduce_Arg(4096, 1024, 128);
 
 template <typename Index>
 static void BM_SegmentReduction(::testing::benchmark::State& state,
-                                const string& reduction, Index num_rows,
+                                const std::string& reduction, Index num_rows,
                                 Index num_cols, Index segment_size) {
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -191,13 +192,13 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
 
   const int kNumIndices = size;
   Tensor indices(DT_INT32, TensorShape({kNumIndices}));
-  auto indices_flat = indices.flat<int32>();
+  auto indices_flat = indices.flat<int32_t>();
   Tensor segments(DT_INT32, TensorShape({kNumIndices}));
-  auto segments_flat = segments.flat<int32>();
+  auto segments_flat = segments.flat<int32_t>();
 
   int kUniqueIndices = uniqueness * kNumIndices;
   Tensor output_dim0(DT_INT32, TensorShape({}));
-  output_dim0.scalar<int32>()() = kUniqueIndices;
+  output_dim0.scalar<int32_t>()() = kUniqueIndices;
 
   for (int i = 0; i < kNumIndices; ++i) {
     indices_flat(i) = (i * 31) % kUniqueIndices;
