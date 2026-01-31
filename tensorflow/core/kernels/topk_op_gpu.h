@@ -440,10 +440,10 @@ struct ColumnIndexCreator {
 };
 
 template <typename T>
-Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
-                        int num_cols, int k,
-                        typename TTypes<T, 2>::Tensor values,
-                        TTypes<int, 2>::Tensor indices) {
+absl::Status LaunchSortKernel(OpKernelContext* ctx, const T* input,
+                              int num_rows, int num_cols, int k,
+                              typename TTypes<T, 2>::Tensor values,
+                              TTypes<int, 2>::Tensor indices) {
   const GPUDevice& d = ctx->eigen_device<GPUDevice>();
   const auto& cu_stream = GetGpuStream(ctx);
   size_t temp_storage_bytes = -1;
@@ -453,7 +453,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
   Tensor input_indices;
   TF_RETURN_IF_ERROR(ctx->allocate_temp(
       DT_INT32, TensorShape({num_rows, num_cols}), &input_indices));
-  auto input_indices_t = To32Bit(input_indices.flat<int32>());
+  auto input_indices_t = To32Bit(input_indices.flat<int32_t>());
   input_indices_t.device(d) =
       input_indices_t.generate(ColumnIndexCreator(num_cols));
 
@@ -477,7 +477,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     TF_RETURN_IF_ERROR(ctx->allocate_temp(DataTypeToEnum<T>::value,
                                           TensorShape({num_rows, num_cols}),
                                           &temp_values));
-    sorted_indices_ptr = temp_indices.flat<int32>().data();
+    sorted_indices_ptr = temp_indices.flat<int32_t>().data();
     sorted_values_ptr = temp_values.flat<T>().data();
   }
 
@@ -521,7 +521,7 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
         DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
     err = gpuprim::DeviceSegmentedRadixSort::SortPairsDescending(
-        /* d_temp_storage */ temp_storage.flat<int8>().data(),
+        /* d_temp_storage */ temp_storage.flat<int8_t>().data(),
         /* temp_storage_bytes */ temp_storage_bytes,
         /* d_keys_in */ input,
         /* d_keys_out */ sorted_values_ptr,
@@ -548,12 +548,12 @@ Status LaunchSortKernel(OpKernelContext* ctx, const T* input, int num_rows,
     // indices and outputs.
     const Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{0, 0};
     const Eigen::DSizes<Eigen::DenseIndex, 2> slice_sizes{num_rows, k};
-    To32Bit(indices).device(d) =
-        To32Bit(temp_indices.matrix<int32>()).slice(slice_indices, slice_sizes);
+    To32Bit(indices).device(d) = To32Bit(temp_indices.matrix<int32_t>())
+                                     .slice(slice_indices, slice_sizes);
     To32Bit(values).device(d) =
         To32Bit(temp_values.matrix<T>()).slice(slice_indices, slice_sizes);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace impl
@@ -562,11 +562,11 @@ namespace functor {
 
 template <typename T, typename Tidx>
 struct TopKFunctor<GPUDevice, T, Tidx> {
-  static EIGEN_ALWAYS_INLINE Status
-  Compute(OpKernelContext* context, bool sorted, int k,
-          const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
-          const int64 num_cols, typename TTypes<T, 2>::Tensor values,
-          typename TTypes<Tidx, 2>::Tensor indices) {
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
+      OpKernelContext* context, bool sorted, int k,
+      const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
+      const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
+      typename TTypes<Tidx, 2>::Tensor indices) {
     // For small k, use the heap implementation.  For larger k, use
     // the in-place gpuprim sort.  For k == num_cols, always use the
     // in-place gpuprim sort.  The thresholds for n and k were determined
@@ -583,7 +583,7 @@ struct TopKFunctor<GPUDevice, T, Tidx> {
         return errors::Internal(
             "Could not launch TopKKernel: ", cudaGetErrorString(err), ".");
       } else {
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
