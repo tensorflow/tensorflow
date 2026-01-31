@@ -20,7 +20,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/text_format.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "tensorflow/core/platform/errors.h"
