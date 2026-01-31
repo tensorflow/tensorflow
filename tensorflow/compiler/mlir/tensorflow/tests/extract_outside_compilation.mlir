@@ -2300,3 +2300,89 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
     return
   }
 }
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: test_that_string_constants_are_cloned
+  // CHECK: tf_device.launch
+  // CHECK: XlaRecv
+  // CHECK: %[[cnst:.*]] = "tf.Const"{{.*}}foobar
+  // CHECK: "tf.B"(%5, %[[cnst]])
+  // CHECK: tf_device.cluster
+  // CHECK: XlaHostCompute{{.*}}foobar
+  func.func @test_that_string_constants_are_cloned(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ({
+        %string = "tf.Const"() {device = "", value = dense<"foobar"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %4 = "tf.B"(%3, %string) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<!tf_type.string>) -> (tensor<?xi32>)
+        %5 = "tf.C"(%4) {_xla_outside_compilation = "cluster1"}: (tensor<?xi32>) -> tensor<?xi32>
+        %6 = "tf.D"(%5) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %6 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    func.return %1 : tensor<2xi32>
+  }
+}
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: test_that_string_constants_are_not_cloned_if_part_of_oc
+  // CHECK: tf_device.launch
+  // CHECK: XlaRecv
+  // CHECK: %[[cnst:.*]] = "tf.Const"{{.*}}foobar
+  // CHECK-NOT: tf.Const
+  // CHECK: "tf.B"({{.*}}, %[[cnst]])
+  // CHECK: tf_device.cluster
+  // CHECK: XlaHostCompute{{.*}}foobar
+  func.func @test_that_string_constants_are_not_cloned_if_part_of_oc(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ({
+        %string = "tf.Const"() {_xla_outside_compilation = "cluster1", device = "", value = dense<"foobar"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %4 = "tf.B"(%3, %string) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<!tf_type.string>) -> (tensor<?xi32>)
+        %5 = "tf.C"(%4) {_xla_outside_compilation = "cluster1"}: (tensor<?xi32>) -> tensor<?xi32>
+        %6 = "tf.D"(%5) : (tensor<?xi32>) -> tensor<2xi32>
+        tf_device.return %6 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    func.return %1 : tensor<2xi32>
+  }
+}
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  // CHECK-LABEL: test_string_constants_outside_of_cluster
+  // CHECK: tf.Const{{.*}}foobar
+  // CHECK: tf_device.launch
+  // CHECK: XlaRecv
+  // CHECK: %[[cnst:.*]] = "tf.Const"{{.*}}foobar
+  // CHECK: "tf.B"({{.*}}, %[[cnst]])
+  // CHECK: tf_device.cluster
+  // CHECK: XlaHostCompute
+  func.func @test_string_constants_outside_of_cluster(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    %string = "tf.Const"() {_xla_outside_compilation = "cluster1", device = "", value = dense<"foobar"> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
+    %0 = "tf.A"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<2xi32>) {n = 2 : i32} {
+      %2 = "tf_device.cluster"() ({
+        %3 = "tf.A"() : () -> (tensor<?xi32>)
+        %4 = "tf.B"(%3, %string) {_xla_outside_compilation = "cluster1"} : (tensor<?xi32>, tensor<!tf_type.string>) -> (tensor<2xi32>)
+        %5 = "tf.C"(%4) {_xla_outside_compilation = "cluster1"}: (tensor<2xi32>) -> tensor<2xi32>
+        %6 = "tf.D"(%5) : (tensor<2xi32>) -> tensor<2xi32>
+        tf_device.return %6 : tensor<2xi32>
+      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<2xi32>
+      tf_device.return %2 : tensor<2xi32>
+    }
+
+    func.return %1 : tensor<2xi32>
+  }
+}
