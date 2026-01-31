@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ApplyPowerSign"
-  endpoint {
-    name: "train.ApplyPowerSign"
-  }
-}

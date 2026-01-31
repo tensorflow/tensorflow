@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "ShardedFilename"
-  summary: "Generate a sharded filename. The filename is printf formatted as"
-  description: <<END
-   %s-%05d-of-%05d, basename, shard, num_shards.
-END
-}

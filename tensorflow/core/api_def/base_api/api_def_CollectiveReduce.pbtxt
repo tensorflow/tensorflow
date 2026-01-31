@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "CollectiveReduce"
-  summary: "Mutually reduces multiple tensors of identical type and shape."
-  visibility: HIDDEN
-}

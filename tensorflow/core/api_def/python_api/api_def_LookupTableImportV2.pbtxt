@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "LookupTableImportV2"
-  visibility: HIDDEN
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ConcatenateDataset"
-  endpoint {
-    name: "data.ConcatenateDataset"
-  }
-}

@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "Sqrt"
-  summary: "Computes square root of x element-wise."
-  description: <<END
-I.e., \\(y = \sqrt{x} = x^{1/2}\\).
-END
-}

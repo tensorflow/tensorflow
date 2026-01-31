@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "EmptyTensorMap"
-  summary: "Creates and returns an empty tensor map."
-  description: <<END
-handle: an empty tensor map
-END
-}

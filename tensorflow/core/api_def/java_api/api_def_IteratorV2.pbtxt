@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "IteratorV2"
-  endpoint {
-    name: "data.Iterator"
-  }
-}

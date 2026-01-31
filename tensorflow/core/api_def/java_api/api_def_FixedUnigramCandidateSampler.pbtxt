@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "FixedUnigramCandidateSampler"
-  endpoint {
-    name: "nn.FixedUnigramCandidateSampler"
-  }
-}

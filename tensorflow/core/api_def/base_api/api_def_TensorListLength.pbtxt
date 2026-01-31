@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "TensorListLength"
-  summary: "Returns the number of tensors in the input tensor list."
-  description: <<END
-input_handle: the input list
-length: the number of tensors in the list
-END
-}

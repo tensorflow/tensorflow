@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Round"
-  endpoint {
-    name: "math.Round"
-  }
-}

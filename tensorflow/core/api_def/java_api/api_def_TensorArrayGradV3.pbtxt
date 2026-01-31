@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "TensorArrayGradV3"
-  endpoint {
-    name: "TensorArrayGrad"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MatrixTriangularSolve"
-  endpoint {
-    name: "linalg.TriangularSolve"
-  }
-}

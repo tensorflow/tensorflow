@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Softmax"
-  endpoint {
-    name: "nn.Softmax"
-  }
-}

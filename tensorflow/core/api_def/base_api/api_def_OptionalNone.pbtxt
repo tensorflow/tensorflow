@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "OptionalNone"
-  summary: "Creates an Optional variant with no value."
-}

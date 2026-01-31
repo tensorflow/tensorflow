@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "TensorArrayV2"
-  visibility: SKIP
-  summary: "Deprecated. Use TensorArrayV3"
-}

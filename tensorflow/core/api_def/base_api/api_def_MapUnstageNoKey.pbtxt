@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "MapUnstageNoKey"
-  summary: "Op removes and returns a random (key, value)"
-  description: <<END
-from the underlying container.   If the underlying container
-does not contain elements, the op will block until it does.
-END
-}

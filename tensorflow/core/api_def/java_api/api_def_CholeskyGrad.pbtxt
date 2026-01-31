@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "CholeskyGrad"
-  endpoint {
-    name: "linalg.CholeskyGrad"
-  }
-}

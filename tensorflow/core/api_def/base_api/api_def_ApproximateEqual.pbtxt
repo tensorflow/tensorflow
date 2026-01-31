@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "ApproximateEqual"
-  summary: "Returns the truth value of abs(x-y) < tolerance element-wise."
-}

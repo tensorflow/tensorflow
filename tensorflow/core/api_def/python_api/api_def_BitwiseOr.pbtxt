@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BitwiseOr"
-  endpoint {
-    name: "bitwise.bitwise_or"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ExperimentalFunctionBufferingResourceGetNext"
-  endpoint {
-    name: "data.ExperimentalFunctionBufferingResourceGetNext"
-  }
-}

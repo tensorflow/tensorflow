@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "EncodeJpegVariableQuality"
-  endpoint {
-    name: "image.EncodeJpegVariableQuality"
-  }
-}

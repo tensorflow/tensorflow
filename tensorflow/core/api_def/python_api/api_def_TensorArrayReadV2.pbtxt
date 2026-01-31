@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "TensorArrayReadV2"
-  visibility: HIDDEN
-}

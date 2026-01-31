@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ExtractJpegShape"
-  endpoint {
-    name: "image.ExtractJpegShape"
-  }
-}

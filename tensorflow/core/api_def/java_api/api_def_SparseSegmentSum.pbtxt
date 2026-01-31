@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseSegmentSum"
-  endpoint {
-    name: "sparse.SparseSegmentSum"
-  }
-}

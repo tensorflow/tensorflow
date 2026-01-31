@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "UnsortedSegmentMin"
-  endpoint {
-    name: "math.UnsortedSegmentMin"
-  }
-}

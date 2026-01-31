@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Floor"
-  summary: "Returns element-wise largest integer not greater than x."
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "QuantizedInstanceNorm"
-  endpoint {
-    name: "nn.QuantizedInstanceNorm"
-  }
-}

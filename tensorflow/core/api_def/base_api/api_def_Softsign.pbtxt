@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Softsign"
-  summary: "Computes softsign: `features / (abs(features) + 1)`."
-}

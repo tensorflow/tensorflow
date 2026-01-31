@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "DecodeJSONExample"
-  endpoint {
-    name: "io.DecodeJsonExample"
-  }
-}

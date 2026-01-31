@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ExperimentalNonSerializableDataset"
-  endpoint {
-    name: "data.ExperimentalNonSerializableDataset"
-  }
-}

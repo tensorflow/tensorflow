@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Cos"
-  endpoint {
-    name: "math.Cos"
-  }
-}

@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "StagePeek"
-  summary: "Op peeks at the values at the specified index.  If the"
-  description: <<END
-underlying container does not contain sufficient elements
-this op will block until it does.   This Op is optimized for
-performance.
-END
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SigmoidGrad"
-  endpoint {
-    name: "math.SigmoidGrad"
-  }
-}

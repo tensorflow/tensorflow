@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "TileGrad"
-  summary: "Returns the gradient of `Tile`."
-  description: <<END
-Since `Tile` takes an input and repeats the input `multiples` times
-along each dimension, `TileGrad` takes in `multiples` and aggregates
-each repeated tile of `input` into `output`.
-END
-}

@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "HistogramFixedWidth"
-  visibility: HIDDEN
-}

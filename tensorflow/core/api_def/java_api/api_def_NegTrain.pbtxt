@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "NegTrain"
-  endpoint {
-    name: "train.NegTrain"
-  }
-}

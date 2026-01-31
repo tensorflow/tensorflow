@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "QuantizeAndDequantizeV2"
-  visibility: HIDDEN
-}

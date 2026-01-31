@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "ShapeN"
-  summary: "Returns shape of tensors."
-  description: <<END
-This operation returns N 1-D integer tensors representing shape of `input[i]s`.
-END
-}

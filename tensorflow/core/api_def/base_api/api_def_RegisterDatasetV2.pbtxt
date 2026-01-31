@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "RegisterDatasetV2"
-  visibility: HIDDEN
-  summary: "Registers a dataset with the tf.data service."
-}

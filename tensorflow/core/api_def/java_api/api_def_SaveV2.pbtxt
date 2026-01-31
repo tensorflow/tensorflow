@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SaveV2"
-  endpoint {
-    name: "train.Save"
-  }
-}

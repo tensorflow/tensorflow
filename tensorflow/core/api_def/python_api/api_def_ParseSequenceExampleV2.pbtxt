@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "ParseSequenceExampleV2"
-  visibility: HIDDEN
-}

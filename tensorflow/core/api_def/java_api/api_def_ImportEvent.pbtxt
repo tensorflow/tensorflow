@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ImportEvent"
-  endpoint {
-    name: "summary.ImportEvent"
-  }
-}

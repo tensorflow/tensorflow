@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Atan"
-  endpoint {
-    name: "math.Atan"
-  }
-}

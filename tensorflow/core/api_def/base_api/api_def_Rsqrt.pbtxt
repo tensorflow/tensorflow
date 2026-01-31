@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "Rsqrt"
-  summary: "Computes reciprocal of square root of x element-wise."
-  description: <<END
-I.e., \\(y = 1 / \sqrt{x}\\).
-END
-}

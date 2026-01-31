@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "StatelessRandomUniformInt"
-  endpoint {
-    name: "random.StatelessRandomUniformInt"
-  }
-}

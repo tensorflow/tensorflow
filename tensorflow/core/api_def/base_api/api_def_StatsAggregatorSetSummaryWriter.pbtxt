@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "StatsAggregatorSetSummaryWriter"
-  visibility: HIDDEN
-  summary: "Set a summary_writer_interface to record statistics using given stats_aggregator."
-}

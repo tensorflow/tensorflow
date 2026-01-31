@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "BatchMatMulV3"
-  visibility: HIDDEN
-}

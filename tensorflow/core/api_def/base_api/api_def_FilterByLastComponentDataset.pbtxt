@@ -1,7 +1,0 @@
-op {
-  graph_op_name: "FilterByLastComponentDataset"
-  visibility: HIDDEN
-  summary:
-    "Creates a dataset containing elements of first "
-    "component of `input_dataset` having true in the last component."
-}

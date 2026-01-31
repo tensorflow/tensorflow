@@ -1,9 +1,0 @@
-entries {
-  name: "Add"
-  params {
-    min_max {
-      min: -1
-      max: 1
-    }
-  }
-}

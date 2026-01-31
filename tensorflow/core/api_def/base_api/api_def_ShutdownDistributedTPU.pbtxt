@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "ShutdownDistributedTPU"
-  visibility: HIDDEN
-  summary: "Shuts down a running distributed TPU system."
-  description: <<END
-The op returns an error if no system is running.
-END
-}

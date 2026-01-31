@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "ConcatenateDataset"
-  visibility: HIDDEN
-  summary: "Creates a dataset that concatenates `input_dataset` with `another_dataset`."
-}

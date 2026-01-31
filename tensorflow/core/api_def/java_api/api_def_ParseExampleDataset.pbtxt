@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ParseExampleDataset"
-  endpoint {
-    name: "data.ParseExampleDataset"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "OptionalGetValue"
-  endpoint {
-    name: "data.OptionalGetValue"
-  }
-}

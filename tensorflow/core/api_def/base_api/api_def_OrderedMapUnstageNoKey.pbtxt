@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "OrderedMapUnstageNoKey"
-  summary: "Op removes and returns the (key, value) element with the smallest"
-  description: <<END
-key from the underlying container.   If the underlying container
-does not contain elements, the op will block until it does.
-END
-}

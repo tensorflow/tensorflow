@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Reciprocal"
-  endpoint {
-    name: "math.Reciprocal"
-  }
-}

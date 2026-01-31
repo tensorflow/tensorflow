@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "FloorMod"
-  endpoint {
-    name: "math.FloorMod"
-  }
-}

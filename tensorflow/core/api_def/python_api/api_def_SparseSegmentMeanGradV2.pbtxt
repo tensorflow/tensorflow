@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "SparseSegmentMeanGradV2"
-  visibility: HIDDEN
-}

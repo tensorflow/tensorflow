@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseSegmentMeanWithNumSegments"
-  endpoint {
-    name: "sparse.SparseSegmentMeanWithNumSegments"
-  }
-}

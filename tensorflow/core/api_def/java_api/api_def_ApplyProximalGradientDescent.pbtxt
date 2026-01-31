@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ApplyProximalGradientDescent"
-  endpoint {
-    name: "train.ApplyProximalGradientDescent"
-  }
-}

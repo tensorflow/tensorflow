@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "Unstage"
-  summary: "Op is similar to a lightweight Dequeue."
-  description: <<END
-The basic functionality is similar to dequeue with many fewer
-capabilities and options.  This Op is optimized for performance.
-END
-}

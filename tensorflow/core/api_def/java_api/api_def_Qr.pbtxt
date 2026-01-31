@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "Qr"
-  endpoint {
-    name: "linalg.Qr"
-  }
-}

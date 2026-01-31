@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "MergeV2Checkpoints"
-  visibility: HIDDEN
-}

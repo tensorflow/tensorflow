@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "MakeIterator"
-  summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
-  description: <<END
-This operation may be executed multiple times. Each execution will reset the
-iterator in `iterator` to the first element of `dataset`.
-END
-}

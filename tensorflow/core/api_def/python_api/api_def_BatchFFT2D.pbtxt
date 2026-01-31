@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "BatchFFT2D"
-  visibility: HIDDEN
-}

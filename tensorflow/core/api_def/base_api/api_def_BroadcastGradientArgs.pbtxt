@@ -1,8 +1,0 @@
-op {
-  graph_op_name: "BroadcastGradientArgs"
-  visibility: HIDDEN
-  summary: "Return the reduction indices for computing gradients of s0 op s1 with broadcast."
-  description: <<END
-This is typically used by gradient computations for a broadcasting operation.
-END
-}

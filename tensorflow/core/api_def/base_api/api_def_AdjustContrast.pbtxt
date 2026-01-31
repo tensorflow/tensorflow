@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "AdjustContrast"
-  summary: "Deprecated. Disallowed in GraphDef version >= 2."
-}

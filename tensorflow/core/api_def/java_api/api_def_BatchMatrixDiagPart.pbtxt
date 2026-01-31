@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "BatchMatrixDiagPart"
-  endpoint {
-    name: "linalg.BatchMatrixDiagPart"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "IRFFT3D"
-  endpoint {
-    name: "signal.Irfft3d"
-  }
-}

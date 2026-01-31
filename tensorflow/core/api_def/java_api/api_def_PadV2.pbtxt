@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "PadV2"
-  endpoint {
-    name: "Pad"
-  }
-}

@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseApplyProximalAdagrad"
-  endpoint {
-    name: "train.SparseApplyProximalAdagrad"
-  }
-}

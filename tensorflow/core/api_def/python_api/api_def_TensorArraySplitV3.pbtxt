@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "TensorArraySplitV3"
-  visibility: HIDDEN
-}

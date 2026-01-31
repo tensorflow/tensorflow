@@ -1,4 +1,0 @@
-op {
-  graph_op_name: "Cast"
-  summary: "Cast x of type SrcT to y of DstT."
-}

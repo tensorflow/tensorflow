@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "RandomGammaGrad"
-  visibility: HIDDEN
-  summary: "Computes the derivative of a Gamma random sample w.r.t. `alpha`."
-}

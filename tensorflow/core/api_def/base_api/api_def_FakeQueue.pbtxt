@@ -1,5 +1,0 @@
-op {
-  graph_op_name: "FakeQueue"
-  visibility: SKIP
-  summary: "Deprecated. Do not use."
-}

@@ -1,9 +1,0 @@
-op {
-  graph_op_name: "Greater"
-  endpoint {
-    name: "math.greater"
-  }
-  endpoint {
-    name: "greater"
-  }
-}

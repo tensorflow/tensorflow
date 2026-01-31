@@ -1,4 +1,0 @@
-foo
-bar
-baz
-wombat

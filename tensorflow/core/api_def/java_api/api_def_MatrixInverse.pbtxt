@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "MatrixInverse"
-  endpoint {
-    name: "linalg.Inv"
-  }
-}

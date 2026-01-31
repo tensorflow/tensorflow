@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "SparseDenseCwiseMul"
-  endpoint {
-    name: "sparse.SparseDenseCwiseMul"
-  }
-}
