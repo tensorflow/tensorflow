@@ -51,6 +51,20 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible1) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 4, 2, 4}, {4, 4, 8}, {0, 2, 1})));
+
+  {
+    Mesh mesh({4, 4, 2, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c"}},
+                                             /*replicated_axes=*/{"a", "d"}));
+    HloSharding s2(
+        test_utils::FromAxisNames(mesh, {{"a"}, {}, {}},
+                                  /*replicated_axes=*/{"b", "c", "d"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}},
+                                        /*replicated_axes=*/{"d"}));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible2) {
@@ -60,6 +74,19 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible2) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 2, 4, 4}, {4, 4, 8}, {0, 2, 1})));
+
+  {
+    Mesh mesh({4, 2, 4, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c"}},
+                                             /*replicated_axes=*/{"a", "d"}));
+    HloSharding s2(test_utils::FromAxisNames(
+        mesh, {{"a"}, {}, {}}, /*replicated_axes=*/{"b", "c", "d"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}},
+                                        /*replicated_axes=*/{"d"}));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible3) {
@@ -69,6 +96,20 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible3) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 2, 4, 4}, {16, 8}, {1, 0})));
+
+  {
+    Mesh mesh({4, 2, 4, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {}},
+                                             /*replicated_axes=*/{"c", "d"}));
+    HloSharding s2(
+        test_utils::FromAxisNames(mesh, {{}, {}, {"c"}},
+                                  /*replicated_axes=*/{"a", "b", "d"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}},
+                                        /*replicated_axes=*/{"d"}));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible4) {
@@ -79,6 +120,18 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible4) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst, HloSharding::PartialTile(
                      TileAssignment({4, 4, 2, 4}, {4, 32}, {1, 0})));
+  {
+    Mesh mesh({4, 4, 2, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c"}},
+                                             /*replicated_axes=*/{"a", "d"}));
+    HloSharding s2(test_utils::FromAxisNames(
+        mesh, {{"a"}, {}, {}}, /*replicated_axes=*/{"b", "c", "d"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}},
+                                        /*replicated_axes=*/{"d"}));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible5) {
@@ -87,6 +140,16 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible5) {
   HloSharding dst =
       HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {32, 4}, {1, 0}));
   EXPECT_FALSE(MergeShardingIfCompatible(to_merge, &dst));
+
+  {
+    Mesh mesh({4, 4, 2, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c"}},
+                                             /*replicated_axes=*/{"a", "d"}));
+    HloSharding s2(test_utils::FromAxisNames(
+        mesh, {{"b"}, {}, {}}, /*replicated_axes=*/{"a", "c", "d"}));
+
+    EXPECT_FALSE(MergeShardingIfCompatible(s1, &s2));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible6) {
@@ -94,6 +157,16 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible6) {
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}));
   HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
   EXPECT_FALSE(MergeShardingIfCompatible(to_merge, &dst));
+
+  {
+    Mesh mesh({4, 4, 2, 4}, {"a", "b", "c", "d"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}, {"b"}, {"c"}},
+                                             /*replicated_axes=*/{"a", "d"}));
+    HloSharding s2(test_utils::FromAxisNames(
+        mesh, {{"b"}, {}, {}}, /*replicated_axes=*/{"a", "c", "d"}));
+
+    EXPECT_FALSE(MergeShardingIfCompatible(s1, &s2));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible7) {
@@ -103,6 +176,18 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible7) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst,
             HloSharding::Tile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1})));
+
+  {
+    Mesh mesh({2, 2, 2}, {"x", "y", "z"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}, {}, {"y"}},
+                                             /*replicated_axes=*/{"z"}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{}, {"z"}, {}},
+                                             /*replicated_axes=*/{"x", "y"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x"}, {"z"}, {"y"}}));
+  }
 }
 
 TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
@@ -112,6 +197,18 @@ TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
   EXPECT_TRUE(MergeShardingIfCompatible(to_merge, &dst));
   EXPECT_EQ(dst,
             HloSharding::Tile(TileAssignment({2, 4}, {2, 2, 2}, {0, 2, 1})));
+
+  {
+    Mesh mesh({2, 2, 2}, {"x", "y", "z"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}, {}},
+                                             /*replicated_axes=*/{"y", "z"}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{}, {"y", "z"}},
+                                             /*replicated_axes=*/{"x"}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x"}, {"y", "z"}}));
+  }
 }
 
 TEST(HloShardingUtilTest, MoveAndMergeShardingTilesPartialTile) {
@@ -1628,6 +1725,101 @@ TEST_F(HloShardingUtilTestWithHlo, MultipleCallSitesForIota) {
                               ->root_instruction(),
                           *call_graph),
       std::nullopt);
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_Compatible) {
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}, {}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{}, {"y"}}));
+
+    EXPECT_TRUE(MergeNamedShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x"}, {"y"}}));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible_NamedSharding_Compatible) {
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}, {}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{}, {"y"}}));
+
+    EXPECT_TRUE(MergeShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2, HloSharding(test_utils::FromAxisNames(mesh, {{"x"}, {"y"}})));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_Same) {
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}, {"y"}}));
+    HloSharding s2 = s1;
+
+    EXPECT_TRUE(MergeNamedShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2, s1);
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_Overlap) {
+  {
+    Mesh mesh({2, 2, 2}, {"x", "y", "z"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{"y", "z"}}));
+
+    EXPECT_FALSE(MergeNamedShardingIfCompatible(s1, &s2));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_Prefix) {
+  {
+    Mesh mesh({2, 2, 2}, {"x", "y", "z"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{"x"}}));
+
+    EXPECT_TRUE(MergeNamedShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  }
+  {
+    Mesh mesh({2, 2, 2}, {"x", "y", "z"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    EXPECT_TRUE(MergeNamedShardingIfCompatible(s1, &s2));
+    EXPECT_EQ(s2.named_sharding(),
+              test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_IncompatibleMesh) {
+  {
+    Mesh mesh1({2}, {"x"});
+    Mesh mesh2({2}, {"y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh1, {{"x"}}));
+    HloSharding s2(test_utils::FromAxisNames(mesh2, {{"y"}}));
+    EXPECT_FALSE(MergeNamedShardingIfCompatible(s1, &s2));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_ManualConflict) {
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"x"}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{"x"}}));
+
+    EXPECT_FALSE(MergeNamedShardingIfCompatible(s1, &s2));
+  }
+}
+
+TEST(HloShardingUtilTest, MergeNamedShardingIfCompatible_ManualMismatch) {
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding s1(test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"x"}));
+    HloSharding s2(test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"y"}));
+
+    EXPECT_FALSE(MergeNamedShardingIfCompatible(s1, &s2));
+  }
 }
 
 }  // namespace
