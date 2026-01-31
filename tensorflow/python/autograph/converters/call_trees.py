@@ -32,6 +32,31 @@ from tensorflow.python.autograph.utils import ag_logging
 
 # TODO(mdan): Rename to FunctionCallsTransformer.
 
+# Python random module functions that produce values traced as constants.
+# These cause issues when used inside tf.function because the random value
+# is computed during tracing and becomes a static constant in the graph.
+_PYTHON_RANDOM_FUNCTIONS = frozenset([
+    'random.random',
+    'random.randint',
+    'random.randrange',
+    'random.uniform',
+    'random.choice',
+    'random.choices',
+    'random.sample',
+    'random.shuffle',
+    'random.gauss',
+    'random.normalvariate',
+    'random.betavariate',
+    'random.expovariate',
+    'random.gammavariate',
+    'random.lognormvariate',
+    'random.vonmisesvariate',
+    'random.paretovariate',
+    'random.weibullvariate',
+    'random.triangular',
+    'random.getrandbits',
+])
+
 
 class _Function(object):
 
@@ -42,6 +67,7 @@ class _Function(object):
 
 
 set_trace_warned = False
+python_random_warned = False
 
 
 class _ArgTemplateBuilder(object):
@@ -186,6 +212,25 @@ class CallTreeTransformer(converter.Base):
             'debugging.md.')
         set_trace_warned = True
       return node
+
+    # Warn when Python random module functions are used inside tf.function.
+    # These values are computed at trace time and become constants in the graph,
+    # which can cause shape mismatches or unexpected behavior at runtime,
+    # especially with XLA compilation.
+    if full_name in _PYTHON_RANDOM_FUNCTIONS:
+      global python_random_warned
+      if not python_random_warned:
+        ag_logging.warning(
+            'Detected use of Python\'s `%s()` inside a tf.function. '
+            'The random value is computed during tracing and becomes a '
+            'constant in the graph, which may cause shape mismatches or '
+            'unexpected behavior, especially with XLA compilation. '
+            'Use `tf.random` functions instead for dynamic random values. '
+            'For example, replace `random.randint(a, b)` with '
+            '`tf.random.uniform([], a, b, dtype=tf.int32)`. '
+            'See https://www.tensorflow.org/guide/function#executing_python_side_effects',
+            full_name)
+        python_random_warned = True
 
     if (full_name == 'print' and
         not self.ctx.user.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
