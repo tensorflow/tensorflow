@@ -868,7 +868,7 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
       context->allocate_temp(DataTypeToEnum<bool>::value, TensorShape({}),
                              &isvalid_host_tensor, alloc_attr),
       done);
-  se::DeviceMemoryBase wrapped(isvalid_dev.data(), sizeof(bool));
+  stream_executor::DeviceAddressBase wrapped(isvalid_dev.data(), sizeof(bool));
   const bool status =
       stream
           ->Memcpy(isvalid_host_tensor.scalar<bool>().data() /* destination */,
