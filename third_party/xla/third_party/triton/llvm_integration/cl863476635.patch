@@ -1,0 +1,64 @@
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2025-12-11 07:03:23.000000000 -0800
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2026-01-30 18:43:19.000000000 -0800
+@@ -86,9 +86,8 @@
+ namespace mlir::triton::NVIDIA {
+ 
+ // Check if the reduction can use a redux op and return the kind.
+-static std::optional<NVVM::ReduxKind> matchReduxKind(triton::ReduceOp op,
+-                                                     int computeCapability,
+-                                                     bool &useNanQualifier) {
++static std::optional<NVVM::ReductionKind> matchReduxKind(
++    triton::ReduceOp op, int computeCapability, bool &useNanQualifier) {
+   useNanQualifier = false;
+   if (computeCapability < 80)
+     return std::nullopt;
+@@ -99,29 +98,29 @@
+     if (isa<arith::MinimumFOp, arith::MaximumFOp>(reduceOp))
+       useNanQualifier = true;
+     if (isa<arith::MaxNumFOp, arith::MaximumFOp>(reduceOp))
+-      return NVVM::ReduxKind::FMAX;
++      return NVVM::ReductionKind::FMAX;
+     if (isa<arith::MinNumFOp, arith::MinimumFOp>(reduceOp))
+-      return NVVM::ReduxKind::FMIN;
++      return NVVM::ReductionKind::FMIN;
+   }
+   auto intType = dyn_cast<IntegerType>(reduceOp->getResultTypes()[0]);
+   if (!intType || intType.getWidth() > 32)
+     return std::nullopt;
+   if (isa<arith::AddIOp>(reduceOp))
+-    return NVVM::ReduxKind::ADD;
++    return NVVM::ReductionKind::ADD;
+   if (isa<arith::AndIOp>(reduceOp))
+-    return NVVM::ReduxKind::AND;
++    return NVVM::ReductionKind::AND;
+   if (isa<arith::OrIOp>(reduceOp))
+-    return NVVM::ReduxKind::OR;
++    return NVVM::ReductionKind::OR;
+   if (isa<arith::XOrIOp>(reduceOp))
+-    return NVVM::ReduxKind::XOR;
++    return NVVM::ReductionKind::XOR;
+   if (isa<arith::MinSIOp>(reduceOp))
+-    return NVVM::ReduxKind::MIN;
++    return NVVM::ReductionKind::MIN;
+   if (isa<arith::MinUIOp>(reduceOp))
+-    return NVVM::ReduxKind::UMIN;
++    return NVVM::ReductionKind::UMIN;
+   if (isa<arith::MaxSIOp>(reduceOp))
+-    return NVVM::ReduxKind::MAX;
++    return NVVM::ReductionKind::MAX;
+   if (isa<arith::MaxUIOp>(reduceOp))
+-    return NVVM::ReduxKind::UMAX;
++    return NVVM::ReductionKind::UMAX;
+   return std::nullopt;
+ }
+ 
+@@ -485,7 +484,7 @@
+         unsigned bitwidth = acc[i].getType().getIntOrFloatBitWidth();
+         if (acc[i].getType().isInteger()) {
+           if (bitwidth < 32) {
+-            if (*kind == NVVM::ReduxKind::MIN || *kind == NVVM::ReduxKind::MAX)
++            if (*kind == NVVM::ReductionKind::MIN || *kind == NVVM::ReductionKind::MAX)
+               acc[i] = b.sext(i32_ty, acc[i]);
+             else
+               acc[i] = b.zext(i32_ty, acc[i]);
