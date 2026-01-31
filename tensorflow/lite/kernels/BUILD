@@ -342,7 +342,6 @@ cc_library(
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
         "@ruy//ruy:context",
-        "@ruy//ruy:path",
         "@gemmlowp",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:macros",
@@ -435,10 +434,6 @@ cc_test(
         ":cpu_backend_context",
         ":cpu_backend_gemm",
         "@com_google_googletest//:gtest_main",
-        "@ruy//ruy:matrix",
-        # ruy:reference_mul provides the reference implementation
-        # that this test compares against.
-        "@ruy//ruy:reference_mul",
     ],
 )
 

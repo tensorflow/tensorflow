@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 
-#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -30,11 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "ruy/matrix.h"  // from @ruy
-#include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
 
 namespace tflite {
 
@@ -350,17 +346,71 @@ void ReferenceGemm(
     const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
     const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
     CpuBackendContext* context) {
-  ruy::Matrix<LhsScalar> ruy_lhs;
-  ruy::Matrix<RhsScalar> ruy_rhs;
-  ruy::Matrix<DstScalar> ruy_dst;
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, lhs_data, &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
+  const int lhs_row_stride =
+      lhs_params.order == cpu_backend_gemm::Order::kColMajor ? 1
+                                                             : lhs_params.cols;
+  const int lhs_col_stride =
+      lhs_params.order == cpu_backend_gemm::Order::kRowMajor ? 1
+                                                             : lhs_params.rows;
+  const int rhs_row_stride =
+      rhs_params.order == cpu_backend_gemm::Order::kColMajor ? 1
+                                                             : rhs_params.cols;
+  const int rhs_col_stride =
+      rhs_params.order == cpu_backend_gemm::Order::kRowMajor ? 1
+                                                             : rhs_params.rows;
+  const int dst_row_stride =
+      dst_params.order == cpu_backend_gemm::Order::kColMajor ? 1
+                                                             : dst_params.cols;
+  const int dst_col_stride =
+      dst_params.order == cpu_backend_gemm::Order::kRowMajor ? 1
+                                                             : dst_params.rows;
 
-  ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
-  cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
+  for (int i = 0; i < lhs_params.rows; i++) {
+    for (int j = 0; j < rhs_params.cols; j++) {
+      AccumScalar accum = 0;
+      for (int k = 0; k < lhs_params.cols; k++) {
+        AccumScalar lhs_val =
+            *(lhs_data + (i * lhs_row_stride + k * lhs_col_stride));
+        AccumScalar rhs_val =
+            *(rhs_data + (k * rhs_row_stride + j * rhs_col_stride));
+        accum += (lhs_val - lhs_params.zero_point) *
+                 (rhs_val - rhs_params.zero_point);
+      }
+      int channel = i;
+      if (params.bias != nullptr) {
+        accum += params.bias[channel];
+      }
 
-  ruy::ReferenceMul(ruy_lhs, ruy_rhs, ruy_mul_params, &ruy_dst);
+      // Apply quantization scale if needed avoiding float multiplication for
+      // hardware that doesn't support it. See comment in apply_multiplier.h in
+      // Ruy about it.
+      if (std::is_same<AccumScalar, int32_t>::value &&
+          !std::is_same<DstScalar, int32_t>::value) {
+        const AccumScalar quantized_multiplier =
+            params.multiplier_fixedpoint_perchannel == nullptr
+                ? params.multiplier_fixedpoint
+                : params.multiplier_fixedpoint_perchannel[channel];
+        const int shift = params.multiplier_exponent_perchannel == nullptr
+                              ? params.multiplier_exponent
+                              : params.multiplier_exponent_perchannel[channel];
+
+        int total_shift = 31 - shift;
+
+        int64_t x_64(accum);
+        int64_t quantized_multiplier_64(quantized_multiplier);
+        int64_t round = (int64_t)1 << (total_shift - 1);
+        int64_t result = x_64 * quantized_multiplier_64 + round;
+        result = result >> total_shift;
+
+        accum = static_cast<int32_t>(result);
+      }
+      accum += dst_params.zero_point;
+      accum = std::min<AccumScalar>(accum, params.clamp_max);
+      accum = std::max<AccumScalar>(accum, params.clamp_min);
+      *(dst_data + (i * dst_row_stride + j * dst_col_stride)) =
+          static_cast<DstScalar>(accum);
+    }
+  }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
