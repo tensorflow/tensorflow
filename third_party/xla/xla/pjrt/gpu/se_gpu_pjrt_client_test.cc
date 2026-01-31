@@ -1086,6 +1086,20 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
+  auto* device = client->addressable_devices()[0];
+  LocalDeviceState* local_device_state =
+      tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
+          ->local_device_state();
+  if (local_device_state != nullptr) {
+    se::StreamExecutor* executor = local_device_state->executor();
+    if (auto* cc = std::get_if<se::CudaComputeCapability>(
+            &executor->GetDeviceDescription().gpu_compute_capability())) {
+      // TODO(b/452317784): Re-enable once the flakiness is fixed.
+      if (cc->IsAtLeastBlackwell()) {
+        GTEST_SKIP() << "Skipping test on B200 GPUs due to flakiness.";
+      }
+    }
+  }
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
   TF_ASSERT_OK_AND_ASSIGN(
