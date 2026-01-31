@@ -120,6 +120,19 @@ nvidia_wheel_versions_repository(
 
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")
 
+# Initialize toolchains for ML projects.
+#
+# A hermetic build system is designed to produce completely reproducible builds for C++.
+# Details: https://github.com/google-ml-infra/rules_ml_toolchain
+http_archive(
+    name = "rules_ml_toolchain",
+    sha256 = "24af69d8bbb9ba50c96a2792a9e5b1cde70ec6006c290f016cbe0f2c2e89a8cb",
+    strip_prefix = "rules_ml_toolchain-eec6f9b99faedd277f8c2a626211487b602497cf",
+    urls = [
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/eec6f9b99faedd277f8c2a626211487b602497cf.tar.gz",
+    ],
+)
+
 load(
     "@rules_ml_toolchain//gpu/cuda:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
