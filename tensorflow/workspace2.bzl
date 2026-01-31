@@ -731,9 +731,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "build_bazel_rules_android",
-        sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
-        strip_prefix = "rules_android-0.1.1",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip"),
+        sha256 = "5a5182c74828da53165221987395264d4a5cee8c10c17178a0d5e123bbd1623c",
+        strip_prefix = "rules_android-0.6.5",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_android/archive/v0.6.5.tar.gz"),
     )
 
     tf_http_archive(
