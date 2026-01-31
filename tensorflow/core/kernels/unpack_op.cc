@@ -15,6 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <limits>
+
+#include "absl/log/check.h"
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
