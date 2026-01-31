@@ -35,7 +35,7 @@ namespace tflite {
 
 namespace {
 
-const std::string GetOpName(const OpSignature& op_sig) {
+std::string GetOpName(const OpSignature& op_sig) {
   if (op_sig.op == tflite::BuiltinOperator_CUSTOM) {
     return op_sig.custom_name;
   }
