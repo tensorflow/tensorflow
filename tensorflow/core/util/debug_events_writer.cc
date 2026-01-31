@@ -121,7 +121,7 @@ absl::Status SingleDebugEventFileWriter::Close() {
   return status;
 }
 
-const std::string SingleDebugEventFileWriter::FileName() { return file_path_; }
+std::string SingleDebugEventFileWriter::FileName() { return file_path_; }
 
 mutex DebugEventsWriter::factory_mu_(LINKER_INITIALIZED);
 
@@ -558,7 +558,7 @@ void DebugEventsWriter::SelectWriter(
   }
 }
 
-const std::string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
+std::string DebugEventsWriter::GetSuffix(DebugEventFileType type) {
   switch (type) {
     case METADATA:
       return kMetadataSuffix;
