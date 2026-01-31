@@ -811,7 +811,7 @@ class SliceHelper {
 
   // Slice through an input tensor. This may copy unaligned slices, but no
   // copying back will be done at the end.
-  Tensor InputSlice(const Tensor& t, int pos, const string& name) {
+  Tensor InputSlice(const Tensor& t, int pos, const std::string& name) {
     Tensor res = UnalignedSlice(t, pos);
     if (res.IsAligned()) {
       return res;
@@ -822,7 +822,7 @@ class SliceHelper {
 
   // Slice through an output tensor. This may copy unaligned slices, and
   // schedule copying back on destruction.
-  Tensor OutputSlice(Tensor* t, int pos, const string& name) {
+  Tensor OutputSlice(Tensor* t, int pos, const std::string& name) {
     Tensor res = UnalignedSlice(*t, pos);
     if (res.IsAligned()) {
       return res;
@@ -860,7 +860,7 @@ class SliceHelper {
 
   // Assumes input is not aligned, creates a temporary aligned tensor of the
   // same shape and copies the original tensor's content into it.
-  Tensor AlignTensor(const Tensor& t, const string& name) {
+  Tensor AlignTensor(const Tensor& t, const std::string& name) {
     VLOG(1) << "AlignTensor called for " << name << ", shape "
             << t.shape().DebugString()
             << ". This is unnecessary copying. Consider using shapes with even "
@@ -886,7 +886,7 @@ class SliceHelper {
   std::vector<std::pair<Tensor, const Tensor>> copy_out_;
   // A pool of pre-allocated temporary tensors, with an indicator for whether
   // it's in use.
-  std::map<string, std::pair<Tensor, bool>> pool_;
+  std::map<std::string, std::pair<Tensor, bool>> pool_;
   // Op context
   OpKernelContext* ctx_ = nullptr;
   // Device
