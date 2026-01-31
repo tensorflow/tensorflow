@@ -50,7 +50,7 @@ namespace stablehlo {
 class HloTypeConverter : public TypeConverter {
  public:
   HloTypeConverter();
-  virtual ~HloTypeConverter() = default;
+  ~HloTypeConverter() override = default;
 
   // Checks whether the given dialect is the source dialect of the type
   // conversion (e.g. MHLO for HloToStablehloTypeConverter).
