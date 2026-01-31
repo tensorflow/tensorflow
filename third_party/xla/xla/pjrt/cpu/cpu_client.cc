@@ -450,7 +450,7 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
 
 absl::StatusOr<std::string> PjRtCpuExecutable::SerializeExecutable() const {
   cpu::CpuCompiler compiler;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler.Export(cpu_executable_.get()));
 
   TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
@@ -489,7 +489,7 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   // Load a CpuExecutable
   cpu::CpuCompiler compiler;
   std::string str = std::move(*proto.mutable_serialized_executable());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler.LoadAotCompilationResult(str));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       std::move(*aot_result).LoadExecutable());
@@ -622,7 +622,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   // TODO (basioli): honor build_options.run_backend_only() for AOT.
   // Compile AOT.
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       compiler.CompileAheadOfTime(std::move(hlo_module), compile_options));
 
   if (aot_results.size() != 1) {
@@ -634,7 +634,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   // and deserialization works.
   TF_ASSIGN_OR_RETURN(std::string serialized_aot_result,
                       aot_results[0]->SerializeAsString());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       compiler.LoadAotCompilationResult(serialized_aot_result));
 
   return std::move(*aot_result).LoadExecutable();
