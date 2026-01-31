@@ -3311,7 +3311,7 @@ cc_test(
     ],
 )
 
-# TODO(b/249321616) pull unsorted_segment_test* into seperate `cc_library`.
+# TODO(b/249321616) pull unsorted_segment_test* into separate `cc_library`.
 cc_test(
     name = "unsorted_segment_prod_test",
     size = "small",

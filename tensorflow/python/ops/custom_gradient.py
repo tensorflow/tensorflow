@@ -711,7 +711,7 @@ def recompute_grad(f):
       result = f(*args, **kwargs)
 
     def grad_wrapper(*wrapper_args, variables=None):
-      """Wrapper function to accomodate lack of kwargs in graph mode custom_gradient."""
+      """Wrapper function to accommodate lack of kwargs in graph mode custom_gradient."""
 
       @custom_gradient
       def inner_recompute_grad(*dresult):

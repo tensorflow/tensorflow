@@ -87,7 +87,7 @@ def standard_or_nightly(standard, nightly):
 
 # All versions of TF need these packages. We indicate the widest possible range
 # of package releases possible to be as up-to-date as possible as well as to
-# accomodate as many pre-installed packages as possible.
+# accommodate as many pre-installed packages as possible.
 # For packages that don't have yet a stable release, we pin using `~= 0.x` which
 # means we accept any `0.y` version (y >= x) but not the first major release. We
 # will need additional testing for that.
