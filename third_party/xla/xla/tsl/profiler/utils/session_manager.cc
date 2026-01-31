@@ -127,6 +127,14 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   VLOG(2) << "repository_path set to "
           << options.profiler_options().repository_path();
 
+  for (const auto& opt : opts) {
+    std::visit(
+        [&](const auto& value) {
+          LOG(INFO) << "sannidhya opts: " << opt.first << " = " << value;
+        },
+        opt.second);
+  }
+
   for (const auto& kw : opts) {
     absl::string_view key = kw.first;
     if (key == "host_tracer_level") {
