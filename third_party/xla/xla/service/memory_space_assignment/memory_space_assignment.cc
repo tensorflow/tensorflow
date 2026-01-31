@@ -593,7 +593,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
           << buffer.ToString() << ", pos: " << defining_position.ToString();
     } else {
       VLOG(3) << " [" << chunk.offset << ", " << chunk.size
-              << "] : " << defining_position.ToString() << " ("
+              << ") : " << defining_position.ToString() << " ("
               << buffer.ToString() << ")";
       preset_assignments_->add_chunk(defining_position, chunk);
       seen_buffer_offsets[buffer.id()] = chunk.offset;
@@ -611,7 +611,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
           scoped_memory_source.instruction, chunk);
     }
     VLOG(3) << " [" << chunk.offset << ", " << chunk.size
-            << "] : " << scoped_memory_source.ToString();
+            << ") : " << scoped_memory_source.ToString();
   }
 
   if (!preset_assignments_->chunks().empty() ||
