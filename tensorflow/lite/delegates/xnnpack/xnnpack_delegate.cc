@@ -6859,6 +6859,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
         static_sparse_weights_.insert(node->outputs->data[0]);
+        abort();
 
         // Skip this node for now. If output of the node is consumed only by
         // delegated nodes, it will be added to nodes_to_delegate in the end.
