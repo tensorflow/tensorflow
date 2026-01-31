@@ -68,7 +68,7 @@ Safe_PyObjectPtr GetAttr_DType(PyObject* tensor) {
 // is called, then add its message as a suffix to the message string.
 template <typename... Args>
 void RaiseTypeError(Args... args) {
-  string message = absl::StrCat(args...);
+  std::string message = absl::StrCat(args...);
   if (!PyErr_Occurred()) {
     PyErr_SetString(PyExc_TypeError, message.c_str());
   } else {
