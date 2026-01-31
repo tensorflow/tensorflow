@@ -248,7 +248,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
   VLOG(3) << "Create NanoRtExecutable: name = " << module.name();
 
   // NanoRtExecutable requires a CPU executable with thunks.
-  auto* cpu_executable = tsl::down_cast<cpu::CpuExecutable*>(executable.get());
+  auto* cpu_executable = absl::down_cast<CpuExecutable*>(executable.get());
   if (cpu_executable == nullptr) {
     return Internal("NanoRtExecutable requires CPU executable");
   }
@@ -333,7 +333,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
                          {{"name", executable_->module().name()}});
   });
 
-  auto* executable = tsl::down_cast<cpu::CpuExecutable*>(executable_.get());
+  auto* executable = absl::down_cast<CpuExecutable*>(executable_.get());
 
   size_t num_arguments = argument_to_allocation_index_.size();
   size_t num_results = result_to_allocation_index_.size();
