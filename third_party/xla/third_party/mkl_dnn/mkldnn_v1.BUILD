@@ -99,8 +99,8 @@ expand_template(
     out = "include/oneapi/dnnl/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "3",
-        "@DNNL_VERSION_MINOR@": "7",
-        "@DNNL_VERSION_PATCH@": "3",
+        "@DNNL_VERSION_MINOR@": "8",
+        "@DNNL_VERSION_PATCH@": "2",
         "@DNNL_VERSION_HASH@": "N/A",
     },
     template = "include/oneapi/dnnl/dnnl_version.h.in",
@@ -130,30 +130,17 @@ _INCLUDES_LIST = [
     "include",
     "src",
     "src/common",
-    "src/common/ittnotify",
-    "src/common/spdlog",
-    "src/common/spdlog/details",
-    "src/common/spdlog/fmt",
-    "src/common/spdlog/fmt/bundled",
-    "src/common/spdlog/sinks",
     "src/cpu",
     "src/cpu/gemm",
-    "src/cpu/x64/xbyak",
     "src/graph",
 ]
 
 _TEXTUAL_HDRS_LIST = glob([
     "include/**/*",
     "src/common/*.hpp",
-    "src/common/ittnotify/**/*.h",
-    "src/common/spdlog/*.h",
-    "src/common/spdlog/details/*.h",
-    "src/common/spdlog/fmt/**/*.h",
-    "src/common/spdlog/sinks/*.h",
     "src/cpu/*.hpp",
     "src/cpu/**/*.hpp",
     "src/cpu/jit_utils/**/*.hpp",
-    "src/cpu/x64/xbyak/*.h",
     "src/graph/interface/*.hpp",
     "src/graph/backend/*.hpp",
     "src/graph/backend/dnnl/*.hpp",
@@ -168,6 +155,40 @@ _TEXTUAL_HDRS_LIST = glob([
     ":dnnl_version_h",
     ":dnnl_version_hash_h",
 ]
+
+cc_library(
+    name = "spdlog",
+    srcs = [],
+    hdrs = glob([
+        "third_party/spdlog/*.h",
+        "third_party/spdlog/details/*.h",
+        "third_party/spdlog/fmt/**/*.h",
+        "third_party/spdlog/sinks/*.h",
+    ]),
+    strip_include_prefix = "third_party",
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "ittnotify",
+    srcs = glob(["third_party/ittnotify/*.c"]),
+    hdrs = glob([
+        "third_party/ittnotify/*.h",
+        "third_party/ittnotify/**/*.h",
+    ]),
+    strip_include_prefix = "third_party",
+    visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "xbyak",
+    srcs = [],
+    hdrs = glob([
+        "third_party/xbyak/*.h",
+    ]),
+    strip_include_prefix = "third_party",
+    visibility = ["//visibility:private"],
+)
 
 # Large autogen files take too long time to compile with usual optimization
 # flags. These files just generate binary kernels and are not the hot spots,
@@ -184,7 +205,13 @@ cc_library(
     includes = _INCLUDES_LIST,
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
+    deps = [
+        ":ittnotify",
+        ":spdlog",
+        ":xbyak",
+    ],
 )
+
 
 cc_library(
     name = "mkl_dnn",
@@ -193,7 +220,6 @@ cc_library(
             "src/common/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/**/*.cpp",
-            "src/common/ittnotify/*.c",
             "src/cpu/jit_utils/**/*.cpp",
             "src/cpu/x64/**/*.cpp",
             "src/graph/interface/*.cpp",
@@ -225,8 +251,13 @@ cc_library(
     }),
     textual_hdrs = _TEXTUAL_HDRS_LIST,
     visibility = ["//visibility:public"],
-    deps = [":onednn_autogen"] + if_mkl_ml(
-        ["@xla//xla/tsl/mkl:intel_binary_blob"],
+       deps = [
+        ":ittnotify",
+        ":onednn_autogen",
+        ":spdlog",
+        ":xbyak",
+    ] + if_mkl_ml(
+        ["@local_xla//xla/tsl/mkl:intel_binary_blob"],
         [],
     ),
 )

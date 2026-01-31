@@ -233,20 +233,18 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "onednn",
-        build_file = "@xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        patch_file = ["@xla//third_party/mkl_dnn:setting_init.patch"],
-        sha256 = "071f289dc961b43a3b7c8cbe8a305290a7c5d308ec4b2f586397749abdc88296",
-        strip_prefix = "oneDNN-3.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.3.tar.gz"),
+        build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        sha256 = "fb96beb787124386f670a62e9bd256812e73f5d997b02584f83b64d57875c45d",
+        strip_prefix = "oneDNN-3.8.2",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.8.2.tar.gz"),
     )
 
     tf_http_archive(
         name = "onednn_async",
-        build_file = "@xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        patch_file = ["@xla//third_party/mkl_dnn:setting_init.patch"],
-        sha256 = "1cfa18fad65b4c3b46ef701a83c64b87411d63e79c8549cdb37f8c1fc10e2398",
-        strip_prefix = "oneDNN-dev-v3.7-thunk-preview",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/heads/dev-v3.7-thunk-preview.tar.gz"),
+        build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
+        sha256 = "336735cd5c5f5781f6addfd858b8c71d8bbead770b17ea926099dfc50e646f7b",
+        strip_prefix = "oneDNN-dev-v3.8-thunk-preview",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/heads/dev-v3.8-thunk-preview.tar.gz"),
     )
 
     tf_http_archive(
