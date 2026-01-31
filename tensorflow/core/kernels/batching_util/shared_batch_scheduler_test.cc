@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 
 #include <cstddef>
+#include <map>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
@@ -26,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -228,7 +230,8 @@ class SharedBatchSchedulerTestBase {
 
             output_tasks->resize(num_batches);
             for (int i = 0; i < num_batches; i++) {
-              (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
+              (*output_tasks)[i] = std::make_unique<FakeTask>(
+                  task_sizes[i], owned_input_task->criticality());
             }
 
             return absl::OkStatus();
@@ -2465,6 +2468,791 @@ BENCHMARK(BM_QueueSchedule)->Apply([](benchmark::internal::Benchmark* b) {
 });
 
 #endif  // PLATFORM_GOOGLE
+
+class SharedBatchSchedulerPriorityAwareTest
+    : public ::testing::TestWithParam<bool>,
+      public SharedBatchSchedulerTestBase {
+ protected:
+  bool enable_input_batch_split() const override { return GetParam(); }
+
+  QueueOptions CreatePriorityAwareQueueOptions(
+      size_t max_execution_batch_size, size_t batch_timeout_micros,
+      const std::map<tsl::criticality::Criticality, size_t>&
+          per_criticality_queue_size) {
+    QueueOptions options;
+    options.enable_priority_aware_scheduler = true;
+    options.max_execution_batch_size = max_execution_batch_size;
+    options.input_batch_size_limit = max_execution_batch_size;
+    options.batch_timeout_micros = batch_timeout_micros;
+    options.priority_aware_scheduler_options.per_criticality_queue_size =
+        per_criticality_queue_size;
+    options.enable_large_batch_splitting = enable_input_batch_split();
+    if (enable_input_batch_split()) {
+      options.split_input_task_func = get_split_func();
+      options.input_batch_size_limit = max_execution_batch_size * 10;
+    }
+    options.batch_padding_policy = kPadUpPolicy;
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    return options;
+  }
+};
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, BasicScheduling) {
+  bool callback_called = false;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    callback_called = true;
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(10, batch->task(0).size());
+  };
+
+  {
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+  }
+  EXPECT_TRUE(callback_called);
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, BasicSchedulingWithNotification) {
+  absl::Notification processed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(10, batch->task(0).size());
+    processed.Notify();
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
+
+  processed.WaitForNotification();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidTaskSize) {
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+
+  // Input batch size limit is 10 if splitting is disabled, 100 if enabled.
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  auto queue = CreateQueue(scheduler, options, [](auto) {});
+
+  size_t task_size = options.input_batch_size_limit + 1;
+  std::string expected_error = "Task size " + std::to_string(task_size) +
+                               " is larger than maximum input batch size " +
+                               std::to_string(options.input_batch_size_limit);
+
+  EXPECT_THAT(ScheduleTask(task_size, queue.get(),
+                           tsl::criticality::Criticality::kCritical),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr(expected_error)));
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, SchedulingAtMaxBatchSize) {
+  absl::Notification processed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_EQ(5, batch->task(0).size());
+    EXPECT_EQ(5, batch->task(1).size());
+    processed.Notify();
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 10;
+
+  // Set a large timeout to ensure the batch is scheduled due to size, not
+  // timeout.
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/20 * 1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  TF_ASSERT_OK(
+      ScheduleTask(5, queue.get(), tsl::criticality::Criticality::kCritical));
+  TF_ASSERT_OK(
+      ScheduleTask(5, queue.get(), tsl::criticality::Criticality::kCritical));
+
+  EXPECT_TRUE(processed.WaitForNotificationWithTimeout(absl::Seconds(10)));
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, SchedulingAtTimeout) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification processed;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      ASSERT_TRUE(batch->IsClosed());
+      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_EQ(5, batch->task(0).size());
+      EXPECT_EQ(4, batch->task(1).size());
+      processed.Notify();
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCritical] = 10;
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000, queue_sizes);
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    TF_ASSERT_OK(
+        ScheduleTask(5, queue.get(), tsl::criticality::Criticality::kCritical));
+    TF_ASSERT_OK(
+        ScheduleTask(4, queue.get(), tsl::criticality::Criticality::kCritical));
+
+    env.AdvanceByMicroseconds(1001);
+    EXPECT_TRUE(processed.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+    // Notify start_teardown to start the thread that advances time, which is
+    // needed for SharedBatchScheduler destructor to complete.
+    start_teardown.Notify();
+  }
+  // Notify stop_teardown to stop the thread.
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatching) {
+  // Test that tasks of different priorities are batched together and high
+  // priority comes first.
+  absl::Notification block_thread, thread_blocked;
+  absl::Notification batch_processed;
+
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->size() == 10 && batch->num_tasks() == 1) {
+      // Blocker task
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+    } else {
+      // Mixed batch
+      ASSERT_EQ(2, batch->num_tasks());
+      // High priority first
+      EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                batch->task(0).criticality());
+      EXPECT_EQ(4, batch->task(0).size());
+      // Low priority second
+      EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                batch->task(1).criticality());
+      EXPECT_EQ(6, batch->task(1).size());
+      batch_processed.Notify();
+    }
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+  queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 2;
+  queue_sizes[tsl::criticality::Criticality::kSheddable] = 2;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  // 1. Block thread
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // 2. Schedule Low Priority (6)
+  TF_ASSERT_OK(
+      ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kSheddable));
+
+  // 3. Schedule High Priority (4)
+  TF_ASSERT_OK(ScheduleTask(4, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+
+  // 4. Unblock
+  block_thread.Notify();
+
+  batch_processed.WaitForNotification();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingHighLoad) {
+  // Test that if we have more than max_batch_size tasks, we select highest
+  // criticality tasks first.
+  absl::Notification block_thread, thread_blocked;
+  absl::Notification first_batch_processed;
+
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->size() == 10 && batch->num_tasks() == 1 &&
+        batch->task(0).criticality() ==
+            tsl::criticality::Criticality::kCritical) {
+      // Blocker task
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+    } else {
+      // This is the batch we care about.
+      if (!first_batch_processed.HasBeenNotified()) {
+        ASSERT_TRUE(batch->IsClosed());
+        // We expect the two High Priority tasks (size 5 each) = 10.
+        ASSERT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                  batch->task(0).criticality());
+        EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                  batch->task(1).criticality());
+        first_batch_processed.Notify();
+      }
+    }
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 20;
+  queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 20;
+  queue_sizes[tsl::criticality::Criticality::kSheddable] = 20;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  // 1. Block thread with a Critical task (size 10)
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // 2. Schedule Low Priority (5)
+  TF_ASSERT_OK(
+      ScheduleTask(5, queue.get(), tsl::criticality::Criticality::kSheddable));
+
+  // 3. Schedule High Priority (5)
+  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+
+  // 4. Schedule High Priority (5)
+  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+
+  // Total queued: 15. Max batch: 10.
+  // Should pick 2 High Priority tasks.
+
+  // 5. Unblock
+  block_thread.Notify();
+
+  first_batch_processed.WaitForNotification();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingTimeout) {
+  // Test that even with a timeout pending on a low priority task, if higher
+  // priority tasks arrive and fill the batch (or are selected), they are
+  // preferred.
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification block_thread, thread_blocked;
+    absl::Notification first_batch_processed;
+
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      if (batch->size() == 10 && batch->num_tasks() == 1 &&
+          batch->task(0).criticality() ==
+              tsl::criticality::Criticality::kCritical) {
+        thread_blocked.Notify();
+        block_thread.WaitForNotification();
+      } else {
+        if (!first_batch_processed.HasBeenNotified()) {
+          ASSERT_TRUE(batch->IsClosed());
+          // Expect High Priority task (size 10)
+          ASSERT_EQ(1, batch->num_tasks());
+          EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                    batch->task(0).criticality());
+          first_batch_processed.Notify();
+        }
+      }
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCritical] = 20;
+    queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 20;
+    queue_sizes[tsl::criticality::Criticality::kSheddable] = 20;
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    // 1. Block thread
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+    thread_blocked.WaitForNotification();
+
+    // 2. Schedule Low Priority (5).
+    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    // 3. Advance clock to force timeout on Low Priority task.
+    env.AdvanceByMicroseconds(2000 * 1000);
+
+    // 4. Schedule High Priority (10).
+    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    // Total queued: 15. Max: 10. Low priority is timed out.
+    // Expect High Priority task to be selected first due to criticality.
+
+    // 5. Unblock
+    block_thread.Notify();
+
+    first_batch_processed.WaitForNotification();
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, PriorityOrdering) {
+  absl::Notification block_thread, thread_blocked, resume_thread;
+  absl::Notification first_batch_processed, second_batch_processed,
+      third_batch_processed;
+
+  int batch_count = 0;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    batch_count++;
+    if (batch_count == 1) {
+      // First batch acts as a blocker.
+      thread_blocked.Notify();
+      block_thread.WaitForNotification();
+      first_batch_processed.Notify();
+    } else if (batch_count == 2) {
+      // Should be high priority.
+      EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                batch->task(0).criticality());
+      second_batch_processed.Notify();
+    } else if (batch_count == 3) {
+      // Should be low priority.
+      EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                batch->task(0).criticality());
+      third_batch_processed.Notify();
+    }
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+  queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 2;
+  queue_sizes[tsl::criticality::Criticality::kSheddable] = 2;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  // 1. Schedule a task to block the thread.
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
+  thread_blocked.WaitForNotification();
+
+  // 2. Schedule low priority task.
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kSheddable));
+
+  // 3. Schedule high priority task.
+  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+                            tsl::criticality::Criticality::kCriticalPlus));
+
+  // 4. Unblock thread.
+  block_thread.Notify();
+
+  first_batch_processed.WaitForNotification();
+  second_batch_processed.WaitForNotification();
+  third_batch_processed.WaitForNotification();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, QueueSizeLimit) {
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;  // Size 2
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  // We need a callback that does nothing or blocks to fill the queue.
+  absl::Notification block, proceed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (!block.HasBeenNotified()) {
+      block.Notify();
+      proceed.WaitForNotification();
+    }
+  };
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  // 1. Schedule one task to occupy the thread.
+  TF_ASSERT_OK(
+      ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
+  block.WaitForNotification();
+
+  // 2. Schedule tasks to fill the queue.
+  // Queue size is 2.
+  // We have 1 task running (popped from queue).
+  // So we can enqueue 2 more tasks.
+
+  TF_ASSERT_OK(
+      ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
+  TF_ASSERT_OK(
+      ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
+
+  // Next one should fail.
+  EXPECT_FALSE(
+      ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical)
+          .ok());
+
+  proceed.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, LargeBatchSplitting) {
+  if (!enable_input_batch_split()) {
+    return;
+  }
+
+  absl::Notification processed_1, processed_2;
+  int batch_count = 0;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_EQ(10, batch->size());  // Batch size limit
+    batch_count++;
+    if (batch_count == 1) {
+      processed_1.Notify();
+    } else if (batch_count == 2) {
+      processed_2.Notify();
+    }
+  };
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 10;
+
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  // Schedule task larger than batch size (20).
+  TF_ASSERT_OK(
+      ScheduleTask(20, queue.get(), tsl::criticality::Criticality::kCritical));
+
+  processed_1.WaitForNotification();
+  processed_2.WaitForNotification();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, BatchSplittingAcrossTwoTasks) {
+  if (!enable_input_batch_split()) {
+    return;
+  }
+
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification first_batch_processed, second_batch_processed;
+    int batch_count = 0;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      batch_count++;
+      if (batch_count == 1) {
+        EXPECT_EQ(10, batch->size());
+        EXPECT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(6, batch->task(0).size());
+        EXPECT_EQ(4, batch->task(1).size());
+        first_batch_processed.Notify();
+      } else if (batch_count == 2) {
+        EXPECT_EQ(2, batch->size());
+        EXPECT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(2, batch->task(0).size());
+        second_batch_processed.Notify();
+      }
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCritical] = 10;
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000, queue_sizes);
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    TF_ASSERT_OK(
+        ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kCritical));
+    TF_ASSERT_OK(
+        ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kCritical));
+
+    EXPECT_TRUE(first_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    env.AdvanceByMicroseconds(1001);
+    EXPECT_TRUE(second_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       BatchSplittingAcrossTwoTasksMixedPriority) {
+  if (!enable_input_batch_split()) {
+    return;
+  }
+
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification first_batch_processed, second_batch_processed;
+    int batch_count = 0;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      batch_count++;
+      if (batch_count == 1) {
+        EXPECT_EQ(10, batch->size());
+        EXPECT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
+                  batch->task(0).criticality());
+        EXPECT_EQ(6, batch->task(0).size());
+        EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                  batch->task(1).criticality());
+        EXPECT_EQ(4, batch->task(1).size());
+        first_batch_processed.Notify();
+      } else if (batch_count == 2) {
+        EXPECT_EQ(2, batch->size());
+        EXPECT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(tsl::criticality::Criticality::kSheddable,
+                  batch->task(0).criticality());
+        EXPECT_EQ(2, batch->task(0).size());
+        second_batch_processed.Notify();
+      }
+    };
+
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env);
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 10;
+    queue_sizes[tsl::criticality::Criticality::kSheddable] = 10;
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000, queue_sizes);
+
+    auto queue = CreateQueue(scheduler, options, callback);
+
+    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    EXPECT_TRUE(first_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    env.AdvanceByMicroseconds(1001);
+    EXPECT_TRUE(second_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+  // Test missing queue sizes
+  {
+    QueueOptions options =
+        CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+    options.priority_aware_scheduler_options.per_criticality_queue_size.clear();
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid padding policy
+  {
+    QueueOptions options =
+        CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+    options.batch_padding_policy = kBatchDownPolicy;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid mixed priority policy
+  {
+    QueueOptions options =
+        CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityIsolation;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       NumEnqueuedTasksAndSchedulingCapacity) {
+  // Define queue sizes.
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+  // Total capacity = 2.
+
+  auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1);
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000 * 1000, queue_sizes);
+
+  absl::Notification processing, proceed;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (!processing.HasBeenNotified()) {
+      processing.Notify();
+    }
+    proceed.WaitForNotification();
+  };
+
+  auto queue = CreateQueue(scheduler, options, callback);
+
+  EXPECT_EQ(0, queue->NumEnqueuedTasks());
+  EXPECT_EQ(2, queue->SchedulingCapacity());
+
+  // Schedule one task to occupy the thread.
+  // Use task size 1 to avoid confusion between count-based capacity
+  // (PriorityQueue) and size-based capacity check (LargeBatchSplitting).
+  const size_t kTaskSize = 1;
+  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCritical));
+  processing.WaitForNotification();
+
+  // Task is processed, removed from queue.
+  EXPECT_EQ(0, queue->NumEnqueuedTasks());
+  EXPECT_EQ(2, queue->SchedulingCapacity());
+
+  // Enqueue 1 task.
+  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCritical));
+  EXPECT_EQ(1, queue->NumEnqueuedTasks());
+  EXPECT_EQ(1, queue->SchedulingCapacity());
+
+  // Enqueue another task.
+  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+                            tsl::criticality::Criticality::kCritical));
+  EXPECT_EQ(2, queue->NumEnqueuedTasks());
+  EXPECT_EQ(0, queue->SchedulingCapacity());
+
+  proceed.Notify();
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, RankQueuesPriority) {
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    std::vector<std::string> execution_order;
+    absl::Notification all_processed;
+    mutex mu;
+    auto callback_high = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      mutex_lock l(mu);
+      execution_order.push_back("high");
+      LOG(INFO) << "Executed high priority batch";
+      if (execution_order.size() == 2) all_processed.Notify();
+    };
+    auto callback_low = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      mutex_lock l(mu);
+      execution_order.push_back("low");
+      LOG(INFO) << "Executed low priority batch";
+      if (execution_order.size() == 2) all_processed.Notify();
+    };
+
+    // Rank queues = true.
+    auto scheduler = CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env,
+                                                /*rank_queues=*/true);
+
+    std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+    queue_sizes[tsl::criticality::Criticality::kCritical] = 10;
+    queue_sizes[tsl::criticality::Criticality::kCriticalPlus] = 10;
+
+    // Queue 1: Will have CriticalPlus task (Higher priority).
+    QueueOptions options1 =
+        CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+    auto queue_high = CreateQueue(scheduler, options1, callback_high);
+
+    // Queue 2: Will have Critical task (Lower priority).
+    QueueOptions options2 =
+        CreatePriorityAwareQueueOptions(10, 1000, queue_sizes);
+    auto queue_low = CreateQueue(scheduler, options2, callback_low);
+
+    // Schedule tasks.
+    TF_ASSERT_OK(ScheduleTask(1, queue_low.get(),
+                              tsl::criticality::Criticality::kCritical));
+    TF_ASSERT_OK(ScheduleTask(1, queue_high.get(),
+                              tsl::criticality::Criticality::kCriticalPlus));
+
+    // Advance clock to trigger timeouts.
+    env.AdvanceByMicroseconds(2000);
+    all_processed.WaitForNotification();
+
+    // Expect High then Low.
+    mutex_lock l(mu);
+    ASSERT_EQ(2, execution_order.size());
+    EXPECT_EQ("high", execution_order[0]);
+    EXPECT_EQ("low", execution_order[1]);
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
+}
+
+INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityAwareTest,
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace serving

@@ -577,7 +577,8 @@ BatchResourceBase::GetBatcherQueueOptions(
       /*low_priority_max_enqueued_batches=*/0,
       /*low_priority_allowed_batch_sizes=*/{},
       /*mixed_priority_batching_policy*/
-      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize);
+      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
+      /*enable_priority_aware_scheduler=*/false);
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -590,7 +591,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t low_priority_batch_timeout_micros,
     int32_t low_priority_max_enqueued_batches,
     const std::vector<int32_t>& low_priority_allowed_batch_sizes,
-    MixedPriorityBatchingPolicy mixed_priority_batching_policy) {
+    MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+    bool enable_priority_aware_scheduler) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -599,6 +601,30 @@ BatchResourceBase::GetBatcherQueueOptions(
       std::string(batch_padding_policy);
   if (low_priority_max_batch_size > 0) {
     batcher_queue_options.enable_priority_queue = true;
+  }
+  if (enable_priority_aware_scheduler) {
+    batcher_queue_options.enable_priority_aware_scheduler = true;
+
+    int64_t effective_max_execution_batch_size = max_batch_size;
+    if (!allowed_batch_sizes.empty()) {
+      effective_max_execution_batch_size = *allowed_batch_sizes.rbegin();
+    }
+    int64_t total_allowed_enqueued_entries =
+        effective_max_execution_batch_size * max_enqueued_batches;
+    // We split the total allowed enqueued entries equally across the 4
+    // criticalities.
+    size_t per_criticality_size = total_allowed_enqueued_entries / 4;
+    std::map<tsl::criticality::Criticality, size_t> per_criticality_queue_size;
+    per_criticality_queue_size[tsl::criticality::Criticality::kCriticalPlus] =
+        per_criticality_size;
+    per_criticality_queue_size[tsl::criticality::Criticality::kCritical] =
+        per_criticality_size;
+    per_criticality_queue_size[tsl::criticality::Criticality::kSheddablePlus] =
+        per_criticality_size;
+    per_criticality_queue_size[tsl::criticality::Criticality::kSheddable] =
+        per_criticality_size;
+    batcher_queue_options.priority_aware_scheduler_options
+        .per_criticality_queue_size = per_criticality_queue_size;
   }
   batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
       max_batch_size;

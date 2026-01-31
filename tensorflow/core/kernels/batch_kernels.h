@@ -116,6 +116,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_ = false;
   bool has_attribute_enable_large_batch_splitting_ = false;
+  bool enable_priority_aware_scheduler_ = false;
   bool enable_adaptive_batch_threads_ = false;
 
   mutex mu_;
