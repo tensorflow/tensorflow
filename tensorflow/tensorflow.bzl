@@ -3028,10 +3028,9 @@ _local_genrule_internal = rule(
 
 # Wrap the rule in a macro so we can pass in exec_compatible_with.
 def _local_genrule(**kwargs):
+    tags = kwargs.pop("tags", [])
+    tags = tags + ["no-remote-exec"]
     _local_genrule_internal(
-        exec_compatible_with = [
-            "@local_execution_config_platform//:platform_constraint",
-        ],
         **kwargs
     )
 
@@ -3405,7 +3404,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_python//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@onednn//:__subpackages__",
