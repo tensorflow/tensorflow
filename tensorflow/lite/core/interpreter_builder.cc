@@ -494,10 +494,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   quantization->type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
-  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
-  for (size_t i = 0; i < num_scales; ++i) {
-    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
-  }
+  affine_quantization->scale = TfLiteFloatArrayCreateView(
+      num_scales, (float*)src_quantization->scale()->Data());
   if (all_zero_points_same) {
     affine_quantization->zero_point = TfLiteIntArrayCreate(1);
     affine_quantization->zero_point->data[0] = zero_point;
