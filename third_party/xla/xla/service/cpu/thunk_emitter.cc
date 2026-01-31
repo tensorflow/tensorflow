@@ -465,10 +465,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitStochasticConvertThunk(instruction);
 
     case HloOpcode::kInfeed:
-      return EmitInfeedThunk(instruction);
+      return Unimplemented("Infeed is not supported by XLA:CPU");
 
     case HloOpcode::kOutfeed:
-      return EmitOutfeedThunk(instruction);
+      return Unimplemented("Infeed is not supported by XLA:CPU");
 
     case HloOpcode::kConvolution:
       return EmitConvolutionThunk(instruction);
