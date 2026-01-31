@@ -31,20 +31,20 @@ class AttrSpec {
   AttrSpec(const AttrSpec& other) = default;
   static AttrSpec Create(const OpDef::AttrDef& attr_def);
 
-  const string& name() const { return name_; }
-  const string& description() const { return description_; }
-  const string& full_type() const { return full_type_; }
-  const string& base_type() const { return base_type_; }
+  const std::string& name() const { return name_; }
+  const std::string& description() const { return description_; }
+  const std::string& full_type() const { return full_type_; }
+  const std::string& base_type() const { return base_type_; }
   const AttrValue& default_value() const { return default_value_; }
   const bool is_list() const { return is_list_; }
 
  private:
   explicit AttrSpec(const OpDef::AttrDef& attr_def);
 
-  string name_;
-  string description_;
-  string full_type_;
-  string base_type_;
+  std::string name_;
+  std::string description_;
+  std::string full_type_;
+  std::string base_type_;
   AttrValue default_value_;
   bool is_list_;
 };
