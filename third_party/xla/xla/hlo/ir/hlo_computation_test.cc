@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -142,6 +143,67 @@ ENTRY entry {
   // Verify that MakeInstructionPostOrder() is idempotent.
   auto post_order_2 = module->entry_computation()->MakeInstructionPostOrder();
   EXPECT_EQ(post_order, post_order_2);
+}
+
+TEST_F(HLOComputationTest, VerifyHashingIsCompleteAndOrderInvariant) {
+  // Verify that the hash of the computation is invariant to the order of
+  // instructions, and that it is computed based on all instructions even those
+  // not reachable from the root.
+  absl::string_view hlo_string0 = R"(
+HloModule module
+
+ENTRY entry {
+  after-all.0 = token[] after-all()
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  after-all.1 = token[] after-all()
+  add0 = f32[100] add(p0, p1)
+  mul0 = f32[100] multiply(p0, add0)
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module0,
+                          ParseAndReturnVerifiedModule(hlo_string0));
+
+  absl::string_view hlo_string1 = R"(
+HloModule module
+
+ENTRY entry {
+  p1 = f32[100] parameter(1)
+  p0 = f32[100] parameter(0)
+  after-all.1 = token[] after-all()
+  add0 = f32[100] add(p0, p1)
+  mul0 = f32[100] multiply(p0, add0)
+  after-all.0 = token[] after-all()
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnVerifiedModule(hlo_string1));
+
+  absl::string_view hlo_string2 = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  after-all.1 = token[] after-all()
+  add0 = f32[100] add(p0, p1)
+  mul0 = f32[100] multiply(p0, add0)
+  ROOT div0 = f32[100] divide(p1, mul0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnVerifiedModule(hlo_string2));
+
+  const auto entry0 = module0->entry_computation();
+  const auto entry1 = module1->entry_computation();
+  const auto entry2 = module2->entry_computation();
+
+  // Verify that the hashes are the same for the two computations with the same
+  // instructions in a different order.
+  EXPECT_EQ(absl::HashOf(*entry0), absl::HashOf(*entry1));
+  // Verify that the hashes are different for the two computations where a
+  // 'dangling' instruction is removed.
+  EXPECT_NE(absl::HashOf(*entry0), absl::HashOf(*entry2));
 }
 
 // Test AddCallee

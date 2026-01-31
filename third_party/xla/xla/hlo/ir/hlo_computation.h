@@ -427,23 +427,42 @@ class HloComputation {
   // with respect to HloComputation::Equal() method.
   template <typename H>
   friend H AbslHashValue(H h, const HloComputation& computation) {
-    // Walk the computation in post-order, computing (and caching) the
-    // Absl::Hash after each instruction to use to as an operand for
-    // subsequent instructions.
     auto instructions = computation.MakeInstructionPostOrder();
-    absl::flat_hash_map<HloInstruction*, size_t> instruction_hash_cache;
-    instruction_hash_cache.reserve(instructions.size());
+    absl::flat_hash_map<HloInstruction*, size_t> intermediate_hashes;
+    absl::btree_set<size_t> component_root_hashes;
+    intermediate_hashes.reserve(instructions.size());
+
+    // Perform a post-order traversal to build hashes inductively:
+    // - Base case: Leaf nodes (no operands) are visited first and hashed solely
+    //   on their own instruction details.
+    // - Inductive step: Subsequent nodes combine their instruction details with
+    //   the already-computed hashes of their operands.
     for (auto* instruction : instructions) {
       absl::InlinedVector<size_t, 2> operand_hashes;
       for (auto* operand : instruction->operands()) {
-        operand_hashes.push_back(instruction_hash_cache[operand]);
+        operand_hashes.push_back(intermediate_hashes[operand]);
       }
-      instruction_hash_cache.emplace(
-          instruction, absl::HashOf(*instruction, operand_hashes));
+      absl::btree_set<size_t> control_predecessor_hashes;
+      for (auto* pred : instruction->control_predecessors()) {
+        operand_hashes.push_back(intermediate_hashes[pred]);
+      }
+      size_t hash = absl::HashOf(*instruction, operand_hashes,
+                                 control_predecessor_hashes);
+
+      // Instructions with no users are roots of disconnected subgraphs
+      // (components). Store these separately, excluding the main computation
+      // ROOT which is handled explicitly at the end.
+      if (instruction->user_count() == 0 &&
+          instruction != computation.root_instruction()) {
+        component_root_hashes.insert(hash);
+      } else {
+        intermediate_hashes.emplace(instruction, hash);
+      }
     }
+
     return H::combine(std::move(h),
-                      instruction_hash_cache[computation.root_instruction()],
-                      instructions.size());
+                      intermediate_hashes[computation.root_instruction()],
+                      component_root_hashes, instructions.size());
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<
