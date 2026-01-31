@@ -331,15 +331,15 @@ class ImporterBase {
   // data type and shape information is maintained by the shape_refiner_.
   // TODO(jpienaar): Remove once shape inference on import is removed.
   absl::Status AddNodesToShapeRefiner(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Prune nodes that do not feed into fetch nodes.
   absl::Status PruneUnreachableNodes(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts feeds to Placeholder nodes.
   absl::Status ConvertFeedsToPlaceholders(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -446,13 +446,13 @@ class ImporterBase {
   // reconstructed.
   absl::StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
       const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-      const std::unordered_map<string, Node*>& node_name_map);
+      const std::unordered_map<std::string, Node*>& node_name_map);
 
   // Gets the input and output nodes corresponding to the specified input and
   // output nodes in specs_. If there are no input or output nodes specified,
   // nodes will be empty.
   absl::Status GetInputOutputNodes(
-      const std::unordered_map<string, Node*>& node_name_map,
+      const std::unordered_map<std::string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
@@ -531,7 +531,7 @@ absl::StatusOr<FeedsByNode> GetFeedsByNode(
 // Creates a unique name for a node that will be replacing a feed output tensor.
 std::string GetUniqueNodeName(
     absl::string_view node_name, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   std::string new_node_name_base = absl::StrCat(node_name, "_", index);
   int count = 0;
   std::string new_node_name = new_node_name_base;
@@ -646,7 +646,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
   // Copy over the stack traces.
   // TODO(jpienaar): This really shouldn't be needed, copying the Graph above
   // and then needing these traversals is unfortunate.
-  std::unordered_map<string, Node*> node_map = from.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> node_map = from.BuildNodeNameIndex();
   for (Node* node : to->nodes()) {
     if (const Node* old_node = node_map[node->name()]) {
       if (const std::shared_ptr<AbstractStackTrace>& stack =
@@ -671,7 +671,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
 absl::StatusOr<std::pair<Node*, bool>>
 ImporterBase::CreatePlaceholderNodeForFeed(
     const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   DCHECK_LT(index, node->num_outputs());
   const bool update_inplace = node->num_outputs() == 1 && index == 0;
   std::string new_node_name =
@@ -720,7 +720,7 @@ ImporterBase::CreatePlaceholderNodeForFeed(
 }
 
 absl::Status ImporterBase::GetInputOutputNodes(
-    const std::unordered_map<string, Node*>& node_name_map,
+    const std::unordered_map<std::string, Node*>& node_name_map,
     std::unordered_set<const Node*>* nodes) {
   auto add_node = [&](absl::string_view name) {
     auto it = node_name_map.find(std::string(name));
@@ -761,7 +761,7 @@ absl::Status ImporterBase::GetInputOutputNodes(
 
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 absl::Status ImporterBase::AddNodesToShapeRefiner(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   shape_refiner_ =
       std::make_unique<ShapeRefiner>(graph_->versions(), graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
@@ -1384,7 +1384,7 @@ absl::Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
 }
 
 absl::Status ImporterBase::PruneUnreachableNodes(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   std::unordered_set<const Node*> prune_start;
   TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
 
@@ -1401,7 +1401,7 @@ absl::Status ImporterBase::PruneUnreachableNodes(
 }
 
 absl::Status ImporterBase::ConvertFeedsToPlaceholders(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   // Feeds (edges) are converted into single-output placeholder nodes to
   // simplify the conversion process.
   TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
@@ -2347,8 +2347,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   auto scope_exit = [&]() {
     std::function<void()> cleanup = []() {};
     if (!disable_crash_analysis) {
-      static std::atomic<uint32> counter(0);
-      uint32 current_file_prefix = counter++;
+      static std::atomic<uint32_t> counter(0);
+      uint32_t current_file_prefix = counter++;
       const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
           absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
           *graph_def);
