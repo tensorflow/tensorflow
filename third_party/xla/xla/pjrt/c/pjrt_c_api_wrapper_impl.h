@@ -189,6 +189,8 @@ struct PJRT_LoadedExecutable {
 struct PJRT_Buffer {
   std::unique_ptr<xla::PjRtBuffer> buffer;
   PJRT_Client* client;
+  // Set and cached the first time PJRT_Buffer_Device is called.
+  std::optional<PJRT_Device*> device;
   // Set and cached the first time PJRT_Buffer_GetMemoryLayout is called.
   std::optional<pjrt::BufferMemoryLayoutData> layout_data;
   // Set and cached the first time PJRT_Buffer_UnpaddedDimensions is called.

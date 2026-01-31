@@ -2286,12 +2286,20 @@ PJRT_Error* PJRT_Buffer_Device(PJRT_Buffer_Device_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Buffer_Device_Args", PJRT_Buffer_Device_Args_STRUCT_SIZE,
       args->struct_size));
-  args->device = FindDeviceWrapper(args->buffer->buffer->device(),
-                                   args->buffer->client->addressable_devices);
-  CHECK(args->device != nullptr)
-      << "No PJRT_Device* found in the client's `addressable_devices` that "
-         "wraps this "
-      << args->buffer->buffer->device()->DebugString();
+
+  std::optional<PJRT_Device*> device = args->buffer->device;
+  {
+    absl::MutexLock lock(&args->buffer->mu);
+    if (!device.has_value()) {
+      device = FindDeviceWrapper(args->buffer->buffer->device(),
+                                 args->buffer->client->addressable_devices);
+      CHECK(device != nullptr)
+          << "No PJRT_Device* found in the client's `addressable_devices` that "
+             "wraps this "
+          << args->buffer->buffer->device()->DebugString();
+    }
+  }
+  args->device = device.value();
   return nullptr;
 }
 
