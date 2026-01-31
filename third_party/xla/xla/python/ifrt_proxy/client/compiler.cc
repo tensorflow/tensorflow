@@ -123,8 +123,12 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     // both should be set at the proxy client.
     auto& build_options = xla_options->compile_options.executable_build_options;
     *build_options.mutable_debug_options() = xla::GetDebugOptionsFromFlags();
-    TF_RETURN_IF_ERROR(
-        build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+
+    // TODO(b/284274097): Support GPU compilation environment when it is ready.
+    if (client_->platform_id() != xla::CudaId()) {
+      TF_RETURN_IF_ERROR(
+          build_options.mutable_comp_envs()->InitializeAllKnownEnvs());
+    }
 #endif
   }
 
