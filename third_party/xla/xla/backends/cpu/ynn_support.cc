@@ -203,12 +203,11 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
 
-  if ((dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) &&
-      dot_shape.batch_size > 1) {
-    // TODO(b/430079105): YNNPACK does not handle batch dimensions that are not
-    // matrix dimensions. We could handle this case by fully implementing dot
-    // (b/430079105), but we also could just insert dummy dimensions of size 1
-    // for the matrix dimensions, so the batch dimensions get handled correctly.
+  if (dot_canonical_dims.m == 1 || dot_canonical_dims.n == 1) {
+    // TODO(b/430079105): YNNPACK does not handle vectors in dots. We could
+    // insert dummy extent 1 dimensions to handle this case. We don't expect to
+    // see this because XLA handles these with its own codegen, but if dots get
+    // pulled into fusions, we need to reject them (b/469236467).
     return false;
   }
 
