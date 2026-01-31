@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
@@ -41,6 +42,7 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
 constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
+constexpr uint64_t kDefaultDelayMs = 3000;
 
 // Helper template function to set integer options in ProfilerOptions.
 template <typename T, typename Setter>
@@ -113,6 +115,7 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts) {
   RemoteProfilerSessionManagerOptions options;
+  options.set_delay_ms(kDefaultDelayMs);
   *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   // Store a timestamp of when this session was created. This will be the basis
   // of gRPC deadline afterwards.
