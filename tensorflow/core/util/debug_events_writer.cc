@@ -15,16 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_events_writer.h"
 
+#include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/protobuf/debug_event.pb.h"
 #include "tensorflow/core/public/release_version.h"
 
 namespace tensorflow {

@@ -15,6 +15,13 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system_writer.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/message_lite.h"
+#include "tensorflow/core/util/memmapped_file_system.pb.h"
 
 namespace tensorflow {
 
