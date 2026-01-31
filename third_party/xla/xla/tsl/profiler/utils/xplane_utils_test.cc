@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -59,12 +60,23 @@ XEvent CreateEvent(int64_t offset_ps, int64_t duration_ps) {
 TEST(XPlaneUtilsTest, AddAndRemovePlanes) {
   XSpace space;
 
+  auto get_unique_plane_id_count = [&]() {
+    absl::flat_hash_set<int64_t> plane_ids;
+    for (const auto& plane : space.planes()) {
+      plane_ids.insert(plane.id());
+    }
+    return plane_ids.size();
+  };
+
   auto* p1 = FindOrAddMutablePlaneWithName(&space, "p1");
   EXPECT_EQ(p1, FindPlaneWithName(space, "p1"));
+  EXPECT_EQ(get_unique_plane_id_count(), 1);  // {0}
   auto* p2 = FindOrAddMutablePlaneWithName(&space, "p2");
   EXPECT_EQ(p2, FindPlaneWithName(space, "p2"));
+  EXPECT_EQ(get_unique_plane_id_count(), 2);  // {0, 1}
   auto* p3 = FindOrAddMutablePlaneWithName(&space, "p3");
   EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+  EXPECT_EQ(get_unique_plane_id_count(), 3);  // {0, 1, 2}
 
   // Removing a plane does not invalidate pointers to other planes.
 
@@ -72,6 +84,24 @@ TEST(XPlaneUtilsTest, AddAndRemovePlanes) {
   EXPECT_EQ(space.planes_size(), 2);
   EXPECT_EQ(p1, FindPlaneWithName(space, "p1"));
   EXPECT_EQ(p3, FindPlaneWithName(space, "p3"));
+  EXPECT_EQ(get_unique_plane_id_count(), 2);  // {0, 2}
+
+  // Test special cases when user manually change plane id(s).
+  auto* p4 = FindOrAddMutablePlaneWithName(&space, "p4");
+  EXPECT_EQ(p4, FindPlaneWithName(space, "p4"));
+  EXPECT_EQ(get_unique_plane_id_count(), 3);  // {0, 2, 3}
+  p3->set_id(4);
+  EXPECT_EQ(get_unique_plane_id_count(), 3);  // {0, 4, 3}
+  auto* p5 = FindOrAddMutablePlaneWithName(&space, "p5");
+  EXPECT_EQ(get_unique_plane_id_count(), 4);  // {0, 4, 3, 5}
+  p5->set_id(std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(get_unique_plane_id_count(), 4);  // {0, 4, 3, MAX_INT64}
+  auto* p6 = FindOrAddMutablePlaneWithName(&space, "p6");
+  EXPECT_EQ(get_unique_plane_id_count(),
+            5);  // {0, 4, 3, MAX_INT64, MAX_INT64 - 1}
+  RemovePlane(&space, p6);
+  RemovePlane(&space, p5);
+  RemovePlane(&space, p4);
 
   RemovePlane(&space, p1);
   EXPECT_EQ(space.planes_size(), 1);
