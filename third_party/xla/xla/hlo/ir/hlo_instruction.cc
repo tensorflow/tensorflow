@@ -4085,10 +4085,25 @@ void HloInstruction::PrintWithCanonicalNameMap(
       (metadata_ != nullptr &&
        (!metadata_->op_type().empty() || !metadata_->op_name().empty() ||
         !metadata_->source_file().empty() ||
-        !metadata_->scheduling_name().empty()))) {
+        !metadata_->scheduling_name().empty() ||
+        metadata_->stack_frame_id() != 0))) {
     printer->Append(", metadata={");
-    printer->Append(xla::OpMetadataToString(
-        *metadata_, options.print_metadata_only_op_name()));
+    if (options.print_inline_stack_frames() &&
+        metadata_->stack_frame_id() != 0 && GetModule() != nullptr) {
+      OpMetadata metadata = *metadata_;
+      metadata.set_stack_frame_id(0);
+      auto frame = GetModule()->get_stack_frame(metadata_->stack_frame_id());
+      if (!frame.empty()) {
+        metadata.set_source_file(frame.file_name);
+        metadata.set_source_line(frame.line);
+        metadata.set_source_column(frame.column);
+      }
+      printer->Append(xla::OpMetadataToString(
+          metadata, options.print_metadata_only_op_name()));
+    } else {
+      printer->Append(xla::OpMetadataToString(
+          *metadata_, options.print_metadata_only_op_name()));
+    }
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
