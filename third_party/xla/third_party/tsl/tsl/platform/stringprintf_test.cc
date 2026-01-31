@@ -24,39 +24,39 @@ namespace strings {
 namespace {
 
 TEST(PrintfTest, Empty) {
-  EXPECT_EQ("", Printf("%s", string().c_str()));
-  EXPECT_EQ("", Printf("%s", ""));
+  EXPECT_EQ("", absl::StrFormat("%s", string().c_str()));
+  EXPECT_EQ("", absl::StrFormat("%s", ""));
 }
 
 TEST(PrintfTest, Misc) {
 // MSVC does not support $ format specifier.
 #if !defined(_MSC_VER)
-  EXPECT_EQ("123hello w", Printf("%3$d%2$s %1$c", 'w', "hello", 123));
+  EXPECT_EQ("123hello w", absl::StrFormat("%3$d%2$s %1$c", 'w', "hello", 123));
 #endif  // !_MSC_VER
 }
 
 TEST(AppendfTest, Empty) {
-  string value("Hello");
+  std::string value("Hello");
   const char* empty = "";
-  Appendf(&value, "%s", empty);
+  absl::StrAppendFormat(&value, "%s", empty);
   EXPECT_EQ("Hello", value);
 }
 
 TEST(AppendfTest, EmptyString) {
-  string value("Hello");
-  Appendf(&value, "%s", "");
+  std::string value("Hello");
+  absl::StrAppendFormat(&value, "%s", "");
   EXPECT_EQ("Hello", value);
 }
 
 TEST(AppendfTest, String) {
-  string value("Hello");
-  Appendf(&value, " %s", "World");
+  std::string value("Hello");
+  absl::StrAppendFormat(&value, " %s", "World");
   EXPECT_EQ("Hello World", value);
 }
 
 TEST(AppendfTest, Int) {
-  string value("Hello");
-  Appendf(&value, " %d", 123);
+  std::string value("Hello");
+  absl::StrAppendFormat(&value, " %d", 123);
   EXPECT_EQ("Hello 123", value);
 }
 
@@ -71,7 +71,7 @@ TEST(PrintfTest, Multibyte) {
   setlocale(LC_CTYPE, "en_US.utf8");
 
   const char kInvalidCodePoint[] = "\375\067s";
-  string value = Printf("%.*s", 3, kInvalidCodePoint);
+  std::string value = absl::StrFormat("%.*s", 3, kInvalidCodePoint);
 
   // In some versions of glibc (e.g. eglibc-2.11.1, aka GRTEv2), snprintf
   // returns error given an invalid codepoint. Other versions
@@ -85,7 +85,8 @@ TEST(PrintfTest, Multibyte) {
   char* buf = new char[n + 1];
   memset(buf, ' ', n - 3);
   memcpy(buf + n - 3, kInvalidCodePoint, 4);
-  value = Printf("%.*s", n, buf);
+  char* arg2 = buf;
+  value = absl::StrFormat("%.*s", n, arg2);
   // See GRTEv2 vs. GRTEv3 comment above.
   EXPECT_TRUE(value.empty() || value == buf);
   delete[] buf;
@@ -97,7 +98,7 @@ TEST(PrintfTest, NoMultibyte) {
   // No multibyte handling, but the string contains funny chars.
   char* old_locale = setlocale(LC_CTYPE, nullptr);
   setlocale(LC_CTYPE, "POSIX");
-  string value = Printf("%.*s", 3, "\375\067s");
+  std::string value = absl::StrFormat("%.*s", 3, "\375\067s");
   setlocale(LC_CTYPE, old_locale);
   EXPECT_EQ("\375\067s", value);
 }
@@ -107,7 +108,7 @@ TEST(PrintfTest, DontOverwriteErrno) {
   // something significantly larger than what people are normally
   // printing in their badly written PLOG() statements.
   errno = ECHILD;
-  string value = Printf("Hello, %s!", "World");
+  std::string value = absl::StrFormat("Hello, %s!", "World");
   EXPECT_EQ(ECHILD, errno);
 }
 
@@ -117,7 +118,8 @@ TEST(PrintfTest, LargeBuf) {
   char* buf = new char[n + 1];
   memset(buf, ' ', n);
   buf[n] = 0;
-  string value = Printf("%s", buf);
+  char* arg1 = buf;
+  std::string value = absl::StrFormat("%s", arg1);
   EXPECT_EQ(buf, value);
   delete[] buf;
 }

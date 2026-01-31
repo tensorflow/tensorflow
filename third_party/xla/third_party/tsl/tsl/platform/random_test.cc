@@ -25,9 +25,9 @@ namespace random {
 namespace {
 
 TEST(New64Test, SanityCheck) {
-  std::set<uint64> values;
+  std::set<uint64_t> values;
   for (int i = 0; i < 1000000; i++) {
-    uint64 x = New64();
+    uint64_t x = New64();
     EXPECT_TRUE(values.insert(x).second) << "duplicate " << x;
   }
 }
