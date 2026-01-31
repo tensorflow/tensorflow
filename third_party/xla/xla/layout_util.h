@@ -279,7 +279,8 @@ class LayoutUtil {
   // even if they _are_ effectively untiled.
   // The tiling should be valid for the provided shape.
   static bool IsUntiledLayout(absl::Span<const Tile> tiles,
-                              absl::Span<const int64_t> shape);
+                              absl::Span<const int64_t> shape,
+                              bool allow_trailing_padding = false);
 };
 
 }  // namespace xla
