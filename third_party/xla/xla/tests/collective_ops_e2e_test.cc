@@ -1338,6 +1338,59 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
   }
 };
 
+// Test that collective multi-streaming works correctly.
+TEST_F(CollectiveOpsTestE2E, CollectiveMultiStreaming) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id_mat = u32[2,2] broadcast(id), dimensions={}
+    a2a = u32[2,2] all-to-all(u32[2,2] id_mat), replica_groups={{0,1},{2,3}}, dimensions={0}
+    ag_start = (u32[2,2], u32[4,2]) all-gather-start(u32[2,2] id_mat), replica_groups={{0,2},{1,3}}, dimensions={0}
+    add.1 = u32[2,2] add(id_mat, id_mat)
+    ag_done = u32[4,2] all-gather-done(ag_start)
+    a2a_reshape = u32[4] reshape(a2a)
+    ag_reshape = u32[8] reshape(ag_done)
+    add_reshape.1 = u32[4] reshape(add.1)
+    ROOT out = (u32[4], u32[8], u32[4]) tuple(a2a_reshape, ag_reshape, add_reshape.1)
+  }
+  )";
+  const int64_t kNumReplicas = 4;
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_parallel_collective_overlap_limit(2);
+  debug_options.set_xla_gpu_experimental_enable_collective_multi_streaming(
+      true);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const HloModule* executable_module = execution_result.optimized_module;
+  ASSERT_NE(executable_module, nullptr);
+  ASSERT_TRUE(executable_module->has_schedule());
+  ASSERT_EQ(execution_result.results.size(), kNumReplicas);
+
+  // Check replica 0 outputs
+  std::vector<Literal> result_0_elems =
+      execution_result.results[0].DecomposeTuple();
+  ASSERT_EQ(result_0_elems.size(), 3);
+  // Flatten of [[0,0], [1,1]] = [0,0,1,1]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 1, 1}, result_0_elems[0]);
+  // Flatten of [[0,0], [0,0], [2,2], [2,2]] = [0,0,0,0,2,2,2,2]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0, 2, 2, 2, 2},
+                                           result_0_elems[1]);
+  // Flatten of [[0,0], [0,0]] = [0,0,0,0]
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0}, result_0_elems[2]);
+}
+
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllgatherMultiConsumer) {
   absl::string_view kModuleReplicatedStr = R"(
