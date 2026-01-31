@@ -272,6 +272,7 @@ cc_library(
     deps = [
         ":traceme_encode",
         "//tsl/platform",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
