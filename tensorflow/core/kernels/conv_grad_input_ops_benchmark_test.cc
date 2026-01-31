@@ -66,10 +66,10 @@ static Graph* Conv2DBackpropInput(int batch, int height, int width,
                 {batch, out_depth, conv2d_dims.out_rows, conv2d_dims.out_cols});
 
   Tensor input_dims_t(DT_INT32, TensorShape({4}));
-  input_dims_t.flat<int32>()(0) = input_t.dim_size(0);
-  input_dims_t.flat<int32>()(1) = input_t.dim_size(1);
-  input_dims_t.flat<int32>()(2) = input_t.dim_size(2);
-  input_dims_t.flat<int32>()(3) = input_t.dim_size(3);
+  input_dims_t.flat<int32_t>()(0) = input_t.dim_size(0);
+  input_dims_t.flat<int32_t>()(1) = input_t.dim_size(1);
+  input_dims_t.flat<int32_t>()(2) = input_t.dim_size(2);
+  input_dims_t.flat<int32_t>()(3) = input_t.dim_size(3);
 
   Node* input_dims =
       test::graph::HostConstant(graph, input_dims_t, "input_dims");

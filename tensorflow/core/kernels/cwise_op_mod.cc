@@ -30,15 +30,15 @@ REGISTER_KERNEL_BUILDER(Name("Mod")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_mod<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_mod<int32_t>>);
 REGISTER_KERNEL_BUILDER(Name("TruncateMod")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_mod<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_mod<int32_t>>);
 #endif
 REGISTER_KERNEL_BUILDER(Name("Mod")
                             .Device(DEVICE_DEFAULT)
