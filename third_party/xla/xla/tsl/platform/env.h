@@ -658,6 +658,11 @@ absl::Status ReadFileToString(Env* env, const std::string& fname,
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
                                absl::string_view data);
 
+/// A utility routine: append contents of `data` to file named `fname`.
+/// If the file does not exist, it is created.
+absl::Status AppendStringToFile(Env* env, const std::string& fname,
+                                absl::string_view data);
+
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,
                               const protobuf::MessageLite& proto);

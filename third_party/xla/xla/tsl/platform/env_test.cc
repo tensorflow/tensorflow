@@ -15,13 +15,21 @@ limitations under the License.
 
 #include "xla/tsl/platform/env.h"
 
+#include <string>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "tsl/platform/path.h"
 
 namespace tsl {
 namespace {
+
+using absl_testing::IsOk;
 
 TEST(EnvTest, StartDetachedThread) {
   Env* env = Env::Default();
@@ -37,6 +45,19 @@ TEST(EnvTest, StartDetachedThread) {
   }
 
   counter.Wait();
+}
+
+TEST(EnvTest, FileOperations) {
+  Env* env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string file_path = tsl::io::JoinPath(temp_dir.path(), "test.txt");
+  EXPECT_THAT(WriteStringToFile(env, file_path, "test1"), IsOk());
+  EXPECT_THAT(AppendStringToFile(env, file_path, "test2"), IsOk());
+  std::string content;
+  EXPECT_THAT(ReadFileToString(env, file_path, &content), IsOk());
+  EXPECT_EQ(content, "test1test2");
 }
 
 }  // namespace
