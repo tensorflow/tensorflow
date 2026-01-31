@@ -852,6 +852,10 @@ common:tf_public_cache_push --config=tf_public_cache --remote_upload_local_resul
 common:tf_public_macos_cache --remote_cache="https://storage.googleapis.com/tensorflow-macos-bazel-cache/oct2023" --remote_upload_local_results=false
 # Cache pushes are limited to TF's CI system.
 common:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_local_results=true --google_default_credentials
+# Public cache for Windows builds
+common:tf_public_windows_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/2025-11-11" --remote_upload_local_results=false
+# Cache pushes are limited to TF's CI system.
+common:tf_public_windows_cache_push --config=tf_public_windows_cache --remote_upload_local_results=true --google_default_credentials
 
 # END TF CACHE HELPER OPTIONS
 # BEGIN TF TEST SUITE OPTIONS
