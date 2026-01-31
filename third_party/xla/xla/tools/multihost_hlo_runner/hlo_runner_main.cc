@@ -105,6 +105,7 @@ struct HloRunnerConfig {
   bool compile_as_stablehlo = false;
   bool use_layouts_from_hlo_module = false;
   bool force_auto_layout = false;
+  bool use_random_val = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
@@ -176,6 +177,7 @@ RunningOptionsFromFlags(const HloRunnerConfig& opts) {
   }
 
   out.num_repeats = static_cast<size_t>(opts.num_repeats);
+  out.use_random_val = opts.use_random_val;
   out.log_input_output_mode =
       opts.log_output ? FunctionalHloRunner::LogOutputMode::kLogOutput
                       : FunctionalHloRunner::LogOutputMode::kNotLogOutput;
@@ -419,6 +421,9 @@ int main(int argc, char** argv) {
                 "entry_computation_layout."),
       tsl::Flag("force_auto_layout", &opts.force_auto_layout,
                 "If set, force auto layout."),
+      tsl::Flag("use_random_val", &opts.use_random_val,
+                "If set, use random values instead of device id in "
+                "use_device_id_as_input mode."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,

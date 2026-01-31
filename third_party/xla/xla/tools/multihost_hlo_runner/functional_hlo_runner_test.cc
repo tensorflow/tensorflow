@@ -1211,6 +1211,26 @@ TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSessionPerRepeat) {
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseDeviceIdAsInput;
+  // Use random value set to true to ensure MakeFakeLiteral uses random values.
+  running_options.use_random_val = true;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
 }  // namespace
 }  // namespace xla
 

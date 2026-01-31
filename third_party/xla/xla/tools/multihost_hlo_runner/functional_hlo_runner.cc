@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -154,8 +155,19 @@ void PopulateWithSameValue(Literal* literal, ElementType val) {
   }
 }
 
-absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
-                                                     int value) {
+template <typename ElementType>
+void PopulateWithRandomValues(Literal* literal, std::mt19937& gen,
+                              std::normal_distribution<double>& dist) {
+  // Iterate through the literal's elements and assign random values
+  for (ElementType& element : literal->data<ElementType>()) {
+    double random_gaussian_val = dist(gen);
+    element = static_cast<ElementType>(random_gaussian_val);
+  }
+}
+
+absl::StatusOr<Literal> MakeFakeLiteral(
+    const Shape& shape, int value, bool use_random, std::mt19937* gen = nullptr,
+    std::normal_distribution<double>* dist = nullptr) {
   if (shape.IsArray()) {
     Shape new_shape = shape;
     new_shape.mutable_layout()->clear_tiles();
@@ -165,9 +177,17 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
             using NativeT = primitive_util::NativeTypeOf<type>;
 
             Literal literal(new_shape);
-            PopulateWithSameValue(
-                &literal,
-                static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
+            if (use_random) {
+              if (gen == nullptr || dist == nullptr) {
+                return absl::InvalidArgumentError(
+                    "RNG not provided for PopulateWithRandomValues");
+              }
+              PopulateWithRandomValues<NativeT>(&literal, *gen, *dist);
+            } else {
+              PopulateWithSameValue(
+                  &literal, static_cast<NativeT>(type == PRED ? (value % 2) == 0
+                                                              : value));
+            }
             for (int i = 0; i < shape.dimensions().size(); i++) {
               if (shape.is_dynamic_dimension(i)) {
                 // TODO(b/378917570): We might need to set the dynamic size to
@@ -186,8 +206,9 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
   } else if (shape.IsTuple()) {
     std::vector<Literal> subliterals;
     for (const Shape& subshape : shape.tuple_shapes()) {
-      TF_ASSIGN_OR_RETURN(Literal subliteral,
-                          MakeFakeLiteralWithSameValue(subshape, value));
+      TF_ASSIGN_OR_RETURN(
+          Literal subliteral,
+          MakeFakeLiteral(subshape, value, use_random, gen, dist));
       subliterals.push_back(std::move(subliteral));
     }
     return LiteralUtil::MakeTupleOwned(std::move(subliterals));
@@ -882,6 +903,15 @@ CreateArgumentsOnDevice(PjRtClient& client,
       absl::StrFormat("Argument initialization is slow. Consider changing "
                       "--hlo_argument_mode."));
 
+  std::optional<std::mt19937> gen;
+  std::optional<std::normal_distribution<double>> dist;
+  if (running_options.module_argument_mode ==
+          ModuleArgumentMode::kUseDeviceIdAsInput &&
+      running_options.use_random_val) {
+    gen.emplace(absl::BitGen()());
+    dist.emplace(0.0, 1.0);
+  }
+
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
   size_t num_addressable_devices = addressable_devices.size();
@@ -931,8 +961,10 @@ CreateArgumentsOnDevice(PjRtClient& client,
       for (int j = 0; j < params.size(); ++j) {
         TF_ASSIGN_OR_RETURN(
             Literal argument_literal_j,
-            MakeFakeLiteralWithSameValue(params[j]->shape(),
-                                         addressable_devices[i]->id()));
+            MakeFakeLiteral(params[j]->shape(), addressable_devices[i]->id(),
+                            running_options.use_random_val,
+                            gen.has_value() ? &*gen : nullptr,
+                            dist.has_value() ? &*dist : nullptr));
         if (flatten_arguments) {
           std::vector<Literal> decomposed_argument_literals =
               argument_literal_j.DecomposeTuple();
