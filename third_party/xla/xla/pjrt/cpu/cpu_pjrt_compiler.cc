@@ -67,7 +67,7 @@ CreatePjRtCpuClientFromTopology(
                       topology_description.CoreCountOfDefaultTypePerProcess());
   CHECK_GE(*options.cpu_device_count, 1);
   auto cpu_topology_description =
-      tsl::down_cast<const xla::CpuTopologyDescription*>(&topology_description);
+      absl::down_cast<const CpuTopologyDescription*>(&topology_description);
   if (cpu_topology_description == nullptr) {
     return absl::InvalidArgumentError(
         "Topology description is not a CpuTopologyDescription");
