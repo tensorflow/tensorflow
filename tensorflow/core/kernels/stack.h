@@ -33,7 +33,7 @@ class StackOp : public OpKernel {
 
  private:
   DataType elem_type_;
-  string stack_name_;
+  std::string stack_name_;
 
   StackOp(const StackOp&) = delete;
   void operator=(const StackOp&) = delete;
