@@ -128,6 +128,7 @@ tf_proto_library(
 tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     protodeps = ["@xla//xla/tsl/protobuf:error_codes_proto_impl"],
     visibility = ["//visibility:public"],
@@ -196,6 +197,7 @@ tf_proto_library(
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
+    compatible_with = ["//buildenv/target:non_prod"],
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
