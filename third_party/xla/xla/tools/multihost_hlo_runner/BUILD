@@ -359,9 +359,7 @@ xla_py_strict_test(
     need_cuda_libs = True,
     tags = [
         "gpu",
-        # Transformer engine takes a long time to compile. Disabling it for CI tests.
-        "no_oss",
-        "requires-gpu-sm90-only",
+        "requires-gpu-nvidia",
     ],
     deps = [
         ":py_hlo_multihost_runner",
