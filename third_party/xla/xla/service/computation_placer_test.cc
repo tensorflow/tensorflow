@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
