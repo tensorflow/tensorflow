@@ -4287,15 +4287,16 @@ func.func @convert_pytorch_argmax(%arg0: tensor<1x9xi32>) -> tensor<1xi32> {
   %3 = mhlo.reshape %2 : (tensor<9xi32>) -> tensor<1x9xi32>
   %4:2 = mhlo.reduce(%arg0 init: %1), (%3 init: %0) across dimensions = [1] : (tensor<1x9xi32>, tensor<1x9xi32>, tensor<i32>, tensor<i32>) -> (tensor<1xi32>, tensor<1xi32>)
     reducer(%arg1: tensor<i32>, %arg3: tensor<i32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
-    %6 = mhlo.compare  GE, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %7 = mhlo.select %6, %arg1, %arg3 : tensor<i1>, tensor<i32>
-    %8 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %9 = mhlo.minimum %arg2, %arg4 : tensor<i32>
-    %10 = mhlo.select %6, %arg2, %arg4 : tensor<i1>, tensor<i32>
-    %11 = mhlo.select %8, %9, %10 : tensor<i1>, tensor<i32>
-    mhlo.return %7, %11 : tensor<i32>, tensor<i32>
+    %5 = mhlo.compare  GE, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %6 = mhlo.maximum %arg1, %arg3 : tensor<i32>
+    %7 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %8 = mhlo.minimum %arg2, %arg4 : tensor<i32>
+    %9 = mhlo.select %5, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    %10 = mhlo.select %7, %8, %9 : tensor<i1>, tensor<i32>
+    mhlo.return %6, %10 : tensor<i32>, tensor<i32>
   }
-  func.return %4#1 : tensor<1xi32>
+  return %4#1 : tensor<1xi32>
+
 
   // CHECK-DAG:  %cst = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
   // CHECK:  %cst_0 = "tf.Const"() <{value = dense<-2147483648> : tensor<i32>}> : () -> tensor<i32>
@@ -4323,20 +4324,20 @@ func.func @convert_argmax(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, ten
   %1 = mhlo.constant dense<0> : tensor<i32>
   %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<256xi32>
   %3 = "mhlo.broadcast_in_dim"(%2) <{broadcast_dimensions = dense<2> : tensor<1xi64>}> : (tensor<256xi32>) -> tensor<4x32x256xi32>
-  %4:2 = "mhlo.reduce"(%arg0, %3, %0, %1) ({
-  ^bb0(%arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<i32>):
-    %7 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %8 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %9 = mhlo.or %7, %8 : tensor<i1>
-    %10 = "mhlo.select"(%9, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-    %11 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %12 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %13 = mhlo.and %11, %12 : tensor<i1>
-    %14 = mhlo.or %9, %13 : tensor<i1>
-    %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
-  }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
-  func.return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
+  %4:2 = mhlo.reduce(%arg0 init: %0), (%3 init: %1) across dimensions = [2] : (tensor<4x32x256xf32>, tensor<4x32x256xi32>, tensor<f32>, tensor<i32>) -> (tensor<4x32xf32>, tensor<4x32xi32>)
+    reducer(%arg1: tensor<f32>, %arg3: tensor<f32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
+    %5 = mhlo.compare  GT, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %6 = mhlo.compare  NE, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %7 = mhlo.or %5, %6 : tensor<i1>
+    %8 = mhlo.select %7, %arg1, %arg3 : tensor<i1>, tensor<f32>
+    %9 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %10 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %11 = mhlo.and %9, %10 : tensor<i1>
+    %12 = mhlo.or %7, %11 : tensor<i1>
+    %13 = mhlo.select %12, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    mhlo.return %8, %13 : tensor<f32>, tensor<i32>
+  }
+  return %4#0, %4#1 : tensor<4x32xf32>, tensor<4x32xi32>
 }
 
 // CHECK-LABEL: func @convert_argmax_constant(
@@ -4401,12 +4402,12 @@ func.func @convert_argmax_constant_non_z_axis(%arg0: tensor<4x4xf32>) -> (tensor
 
 // CHECK-LABEL:   func.func @convert_argmax_bool(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<2xi1>) -> tensor<i32> {
+// CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<2> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Range"(%[[VAL_1]], %[[VAL_2]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
-// CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
-// CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<0> : tensor<1xi32>
 // CHECK:           %[[VAL_8:.*]] = "tf.Any"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
 // CHECK:           %[[VAL_9:.*]] = "tf.ArgMax"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
@@ -4414,13 +4415,13 @@ func.func @convert_argmax_constant_non_z_axis(%arg0: tensor<4x4xf32>) -> (tensor
 // CHECK:         }
 
 func.func @convert_argmax_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
-  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
+  %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<false> : tensor<i1>
-  %2 = mhlo.constant dense<0> : tensor<i32>
-  %3:2 = mhlo.reduce(%arg0 init: %1), (%0 init: %2) across dimensions = [0] : (tensor<2xi1>, tensor<2xi32>, tensor<i1>, tensor<i32>) -> (tensor<i1>, tensor<i32>)
+  %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
+  %3:2 = mhlo.reduce(%arg0 init: %1), (%2 init: %0) across dimensions = [0] : (tensor<2xi1>, tensor<2xi32>, tensor<i1>, tensor<i32>) -> (tensor<i1>, tensor<i32>)
     reducer(%arg1: tensor<i1>, %arg3: tensor<i1>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
     %4 = mhlo.compare  GT, %arg1, %arg3 : (tensor<i1>, tensor<i1>) -> tensor<i1>
-    %5 = mhlo.select %4, %arg1, %arg3 : tensor<i1>, tensor<i1>
+    %5 = mhlo.maximum %arg1, %arg3 : tensor<i1>
     %6 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i1>, tensor<i1>) -> tensor<i1>
     %7 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %8 = mhlo.and %6, %7 : tensor<i1>
@@ -4467,23 +4468,21 @@ func.func @convert_argmin(%arg0: tensor<4x32x256xf32>) -> (tensor<4x32xf32>, ten
 // CHECK:           return %[[VAL_10]], %[[VAL_11]]
 // CHECK:         }
 func.func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>) {
-  %0 = mhlo.constant dense<false> : tensor<i1>
-  %1 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
-  %2 = mhlo.constant dense<32767> : tensor<i16>
-  %3 = mhlo.constant dense<0> : tensor<i32>
-  %4:2 = "mhlo.reduce"(%arg0, %1, %2, %3) ({
-  ^bb0(%arg1: tensor<i16>, %arg2: tensor<i32>, %arg3: tensor<i16>, %arg4: tensor<i32>):
-    %11 = mhlo.constant dense<false> : tensor<i1>
-    %12 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i16>, tensor<i16>) -> tensor<i1>
-    %13 = "mhlo.select"(%12, %arg1, %arg3) : (tensor<i1>, tensor<i16>, tensor<i16>) -> tensor<i16>
-    %14 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<i16>, tensor<i16>) -> tensor<i1>
-    %15 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %16 = mhlo.and %14, %15 : tensor<i1>
-    %17 = mhlo.or %12, %16 : tensor<i1>
-    %18 = "mhlo.select"(%17, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    "mhlo.return"(%13, %18) : (tensor<i16>, tensor<i32>) -> ()
-  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi16>, tensor<2xi32>, tensor<i16>, tensor<i32>) -> (tensor<i16>, tensor<i32>)
-  func.return %4#0, %4#1 : tensor<i16>, tensor<i32>
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  %1 = mhlo.constant dense<32767> : tensor<i16>
+  %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
+  %3:2 = mhlo.reduce(%arg0 init: %1), (%2 init: %0) across dimensions = [0] : (tensor<2xi16>, tensor<2xi32>, tensor<i16>, tensor<i32>) -> (tensor<i16>, tensor<i32>)
+    reducer(%arg1: tensor<i16>, %arg3: tensor<i16>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
+    %4 = mhlo.compare  LT, %arg1, %arg3 : (tensor<i16>, tensor<i16>) -> tensor<i1>
+    %5 = mhlo.minimum %arg1, %arg3 : tensor<i16>
+    %6 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i16>, tensor<i16>) -> tensor<i1>
+    %7 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %8 = mhlo.and %6, %7 : tensor<i1>
+    %9 = mhlo.or %4, %8 : tensor<i1>
+    %10 = mhlo.select %9, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    mhlo.return %5, %10 : tensor<i16>, tensor<i32>
+  }
+  return %3#0, %3#1 : tensor<i16>, tensor<i32>
 }
 
 
@@ -4500,44 +4499,44 @@ func.func @convert_argmin_i16(%arg0: tensor<2xi16>) -> (tensor<i16>, tensor<i32>
 func.func @convert_argmin_constant(%arg0: tensor<2x2x4xf32>) -> (tensor<2x2xf32>, tensor<2x2xi32>) {
   %0 = mhlo.constant dense<0x7F800000> : tensor<f32>
   %1 = mhlo.constant dense<0> : tensor<i32>
-  %3 = mhlo.constant dense<[[[0, 1, 2, 3], [0, 1, 2, 3]], [[0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>
-  %4:2 = "mhlo.reduce"(%arg0, %3, %0, %1) ({
-  ^bb0(%arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<f32>, %arg4: tensor<i32>):
-    %7 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %8 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %9 = mhlo.or %7, %8 : tensor<i1>
-    %10 = "mhlo.select"(%9, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-    %11 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %12 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
-    %13 = mhlo.and %11, %12 : tensor<i1>
-    %14 = mhlo.or %9, %13 : tensor<i1>
-    %15 = "mhlo.select"(%14, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    "mhlo.return"(%10, %15) : (tensor<f32>, tensor<i32>) -> ()
-  }) {dimensions = dense<2> : tensor<1xi64>} : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
-  func.return %4#0, %4#1 : tensor<2x2xf32>, tensor<2x2xi32>
+  %2 = mhlo.constant dense<[[[0, 1, 2, 3], [0, 1, 2, 3]], [[0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x2x4xi32>
+  %3:2 = mhlo.reduce(%arg0 init: %0), (%2 init: %1) across dimensions = [2] : (tensor<2x2x4xf32>, tensor<2x2x4xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
+    reducer(%arg1: tensor<f32>, %arg3: tensor<f32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
+    %4 = mhlo.compare  LT, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %5 = mhlo.compare  NE, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %6 = mhlo.or %4, %5 : tensor<i1>
+    %7 = mhlo.select %6, %arg1, %arg3 : tensor<i1>, tensor<f32>
+    %8 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %9 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %10 = mhlo.and %8, %9 : tensor<i1>
+    %11 = mhlo.or %6, %10 : tensor<i1>
+    %12 = mhlo.select %11, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    mhlo.return %7, %12 : tensor<f32>, tensor<i32>
+  }
+  return %3#0, %3#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
 
 // CHECK-LABEL:   func.func @convert_argmin_bool(
 // CHECK-SAME:                                   %[[VAL_0:.*]]: tensor<2xi1>) -> tensor<i32> {
+// CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+// CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
 // CHECK-DAG:       %[[VAL_1:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_2:.*]] = "tf.Const"() <{value = dense<2> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_3:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Range"(%[[VAL_1]], %[[VAL_2]], %[[VAL_3]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<2xi32>
-// CHECK-DAG:       %[[VAL_5:.*]] = "tf.Const"() <{value = dense<false> : tensor<i1>}> : () -> tensor<i1>
-// CHECK-DAG:       %[[VAL_6:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-DAG:       %[[VAL_7:.*]] = arith.constant dense<0> : tensor<1xi32>
 // CHECK:           %[[VAL_8:.*]] = "tf.All"(%[[VAL_0]], %[[VAL_7]]) <{keep_dims = false}> : (tensor<2xi1>, tensor<1xi32>) -> tensor<i1>
 // CHECK:           %[[VAL_9:.*]] = "tf.ArgMin"(%[[VAL_0]], %[[VAL_7]]) : (tensor<2xi1>, tensor<1xi32>) -> tensor<i32>
 // CHECK:           return %[[VAL_9]] : tensor<i32>
 // CHECK:         }
 func.func @convert_argmin_bool(%arg0: tensor<2xi1>) -> tensor<i32> {
-  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
+  %0 = mhlo.constant dense<0> : tensor<i32>
   %1 = mhlo.constant dense<false> : tensor<i1>
-  %2 = mhlo.constant dense<0> : tensor<i32>
-  %3:2 = mhlo.reduce(%arg0 init: %1), (%0 init: %2) across dimensions = [0] : (tensor<2xi1>, tensor<2xi32>, tensor<i1>, tensor<i32>) -> (tensor<i1>, tensor<i32>)
+  %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2xi32>
+  %3:2 = mhlo.reduce(%arg0 init: %1), (%2 init: %0) across dimensions = [0] : (tensor<2xi1>, tensor<2xi32>, tensor<i1>, tensor<i32>) -> (tensor<i1>, tensor<i32>)
     reducer(%arg1: tensor<i1>, %arg3: tensor<i1>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
     %4 = mhlo.compare  LT, %arg1, %arg3 : (tensor<i1>, tensor<i1>) -> tensor<i1>
-    %5 = mhlo.select %4, %arg1, %arg3 : tensor<i1>, tensor<i1>
+    %5 = mhlo.minimum %arg1, %arg3 : tensor<i1>
     %6 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<i1>, tensor<i1>) -> tensor<i1>
     %7 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %8 = mhlo.and %6, %7 : tensor<i1>
@@ -4567,21 +4566,21 @@ func.func @convert_argmax_with_reshaped_iota(%arg0: tensor<1x32x1xf32>) -> (tens
   %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
   %1 = mhlo.constant dense<0> : tensor<i32>
   %2 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<32xi32>
-  %3 = "mhlo.reshape"(%2) : (tensor<32xi32>) -> tensor<1x32x1xi32>
+  %3 = mhlo.reshape %2 : (tensor<32xi32>) -> tensor<1x32x1xi32>
   %4:2 = mhlo.reduce(%arg0 init: %0), (%3 init: %1) across dimensions = [1] : (tensor<1x32x1xf32>, tensor<1x32x1xi32>, tensor<f32>, tensor<i32>) -> (tensor<1x1xf32>, tensor<1x1xi32>)
-   reducer(%arg1: tensor<f32>, %arg3: tensor<f32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
-    %5 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %6 = "mhlo.compare"(%arg1, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    reducer(%arg1: tensor<f32>, %arg3: tensor<f32>) (%arg2: tensor<i32>, %arg4: tensor<i32>)  {
+    %5 = mhlo.compare  GT, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %6 = mhlo.compare  NE, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
     %7 = mhlo.or %5, %6 : tensor<i1>
-    %8 = "mhlo.select"(%7, %arg1, %arg3) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
-    %9 = "mhlo.compare"(%arg1, %arg3) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-    %10 = "mhlo.compare"(%arg2, %arg4) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    %8 = mhlo.select %7, %arg1, %arg3 : tensor<i1>, tensor<f32>
+    %9 = mhlo.compare  EQ, %arg1, %arg3 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    %10 = mhlo.compare  LT, %arg2, %arg4 : (tensor<i32>, tensor<i32>) -> tensor<i1>
     %11 = mhlo.and %9, %10 : tensor<i1>
     %12 = mhlo.or %7, %11 : tensor<i1>
-    %13 = "mhlo.select"(%12, %arg2, %arg4) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
-    "mhlo.return"(%8, %13) : (tensor<f32>, tensor<i32>) -> ()
+    %13 = mhlo.select %12, %arg2, %arg4 : tensor<i1>, tensor<i32>
+    mhlo.return %8, %13 : tensor<f32>, tensor<i32>
   }
-  func.return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
+  return %4#0, %4#1 : tensor<1x1xf32>, tensor<1x1xi32>
 }
 
 // CHECK-LABEL:   func @convert_not(
