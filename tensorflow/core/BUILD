@@ -1916,6 +1916,10 @@ tf_cc_tests(
         "//tensorflow/core/lib/wav:wav_io_test.cc",
         "@xla//xla/tsl/lib/core:legacy_lib_core_all_tests",
     ],
+    tags = select({
+        "//tensorflow:linux_aarch64": ["no_linux_aarch64"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":lib",
         ":lib_internal",
