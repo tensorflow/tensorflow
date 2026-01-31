@@ -144,6 +144,9 @@ class IfrtServingExecutable {
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+    absl::flat_hash_map<IfrtLoadedVariableRegistry::Key,
+                        IfrtLoadedVariableRegistry::LoadedVariable>
+        variable_arrays;
 
     CachedExecutableBundle() = default;
     // Move only
@@ -236,21 +239,30 @@ class IfrtServingExecutable {
   H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
 
   // Asynchronously load the restored variable tensors to Ifrt array.
+  absl::Status LoadAndResgiterVariableOnExecutable(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices,
+      const xla::ifrt::DeviceListRef& device_list,
+      CachedExecutableBundle* executable_bundle);
   absl::Status AsyncLoadIfrtArray(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  absl::StatusOr<tsl::Future<SharedCachedExecutableBundle>>
-  LookUpOrCreateExecutable(absl::Span<const DtypeAndShape> dtypes_and_shapes,
-                           absl::Span<const int> variable_arg_indices);
+  absl::StatusOr<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const DtypeAndShape> dtypes_and_shapes,
+      absl::Span<const int> variable_arg_indices,
+      const xla::ifrt::DeviceListRef& device_list);
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
+      absl::Span<const tensorflow::Tensor> inputs,
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
-      absl::Span<const int> variable_arg_indices);
+      absl::Span<const int> variable_arg_indices,
+      const xla::ifrt::DeviceListRef& device_list);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,
