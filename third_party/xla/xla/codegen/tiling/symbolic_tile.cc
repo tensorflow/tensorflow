@@ -143,6 +143,9 @@ bool IndexingMapConstraintsCanBeIgnored(const IndexingMap& indexing_map) {
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     IndexingMap indexing_map) {
   VLOG(1) << "SymbolicTile::FromIndexingMap: " << indexing_map;
+  if (indexing_map.IsUndefined()) {
+    return std::nullopt;
+  }
 
   // We do not handle indexing maps with pre-existing constraints for now.
   // Let's try to simplify the indexing map, because the constraints my be

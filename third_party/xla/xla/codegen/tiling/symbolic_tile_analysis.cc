@@ -467,56 +467,37 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   return FusionDecision::Allow();
 }
 
-// Sets a SymbolicTile for each tiled hlo instruction and computes their
-// combined constraints. Returns a FusionDecision if a SymbolicTile cannot be
-// computed for some instruction or if the constraints are unsatisfiable.
-// Returns the combined constraints otherwise.
-std::variant<ConstraintExpression, FusionDecision>
-SetSymbolicTilesAndComputeConstraints(
-    std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-        tiled_hlo_instructions,
+// Sets a SymbolicTile for a single tiled hlo instruction and computes its
+// constraints. Returns a FusionDecision if a SymbolicTile cannot be
+// computed for some instruction, or constraints if successful.
+FusionDecision SetSymbolicTile(
+    SymbolicTiledHloInstruction* tiled_hlo_instruction,
     const HloFusionAdaptor& fusion_adaptor) {
-  ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
-  for (const std::unique_ptr<SymbolicTiledHloInstruction>&
-           tiled_hlo_instruction : tiled_hlo_instructions) {
-    const HloInstruction* hlo = tiled_hlo_instruction->hlo();
-    const IndexingMap& indexing_map = tiled_hlo_instruction->indexing_map();
+  const HloInstruction* hlo = tiled_hlo_instruction->hlo();
+  const IndexingMap& indexing_map = tiled_hlo_instruction->indexing_map();
 
-    // We first verify some preconditions on the instructions we intend to
-    // codegen. We first check whether an instruction is part of the fusion
-    // adaptor, as `tiled_hlo_instructions` may contain instructions that won't
-    // be codegen'd (the operands to the fusion computation).
-    if (fusion_adaptor.ContainsInstruction(hlo)) {
-      FusionDecision should_proceed =
-          ShouldProceedWithSymbolicTileDerivation(*tiled_hlo_instruction);
-      if (!should_proceed) {
-        return should_proceed;
-      }
+  // Check whether the instruction is part of the fusion: if it is a parameter
+  // of the fusion then it will not be codegen'd.
+  if (fusion_adaptor.ContainsInstruction(hlo)) {
+    if (FusionDecision should_proceed =
+            ShouldProceedWithSymbolicTileDerivation(*tiled_hlo_instruction);
+        !should_proceed) {
+      return should_proceed;
     }
-
-    auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
-    if (!symbolic_tile.has_value()) {
-      return FusionDecision::Forbid("Failed to compute symbolic tile for ")
-             << ToString(indexing_map) << " for HLO " << hlo->ToString();
-    }
-
-    if (!symbolic_tile->is_satisfiable()) {
-      return FusionDecision::Forbid("Symbolic tile ")
-             << symbolic_tile->ToString() << " is not satisfiable for "
-             << ToString(indexing_map) << " for HLO " << hlo->ToString();
-    }
-
-    constraints = constraints && symbolic_tile->constraints();
-    constraints.Simplify();
-
-    if (!constraints.is_satisfiable()) {
-      return FusionDecision::Forbid("Fusion has unsatisfiable constraints");
-    }
-
-    tiled_hlo_instruction->set_symbolic_tile(*std::move(symbolic_tile));
   }
-
-  return constraints;
+  std::optional<SymbolicTile> symbolic_tile_or =
+      SymbolicTile::FromIndexingMap(indexing_map);
+  if (!symbolic_tile_or.has_value()) {
+    return FusionDecision::Forbid("Failed to compute symbolic tile for ")
+           << ToString(indexing_map) << " for HLO " << hlo->ToString();
+  }
+  if (!symbolic_tile_or->is_satisfiable()) {
+    return FusionDecision::Forbid("Symbolic tile ")
+           << symbolic_tile_or->ToString() << " is not satisfiable for "
+           << ToString(indexing_map) << " for HLO " << hlo->ToString();
+  }
+  tiled_hlo_instruction->set_symbolic_tile(*std::move(symbolic_tile_or));
+  return FusionDecision::Allow();
 }
 
 // Sorts tiled hlo instructions in def-before-use order, starting from
@@ -1231,6 +1212,119 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
 
 }  // namespace
 
+/*static*/ std::variant<
+    std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>, FusionDecision>
+SymbolicTileAnalysis::AnalyzeFromInstruction(
+    std::unique_ptr<SymbolicTiledHloInstruction> instruction,
+    const HloFusionAdaptor& fusion,
+    const TilingSpecification::ParameterMapping& parameter_mapping,
+    MLIRContext* mlir_context,
+    IndexingMap::SimplifyPointDimensions simplification_mode,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+    ConstraintExpression& constraints) {
+  UnsafeSymbolicTiledHloInstructionOrderedSet tiled_hlo_instructions_set;
+  SymbolicTiledHloInstruction* from_instruction =
+      tiled_hlo_instructions_set.Insert(std::move(instruction)).first;
+  std::vector<SymbolicTiledHloInstruction*> worklist = {from_instruction};
+  while (!worklist.empty()) {
+    SymbolicTiledHloInstruction* tiled_hlo_instruction = worklist.back();
+    worklist.pop_back();
+    if (FusionDecision set_decision =
+            SetSymbolicTile(tiled_hlo_instruction, fusion);
+        !set_decision) {
+      return set_decision;
+    }
+    constraints =
+        constraints && tiled_hlo_instruction->symbolic_tile().constraints();
+    constraints.Simplify();
+    const HloInstruction* hlo = tiled_hlo_instruction->hlo();
+    if (!constraints.is_satisfiable()) {
+      return FusionDecision::Forbid(absl::StrCat(
+          "Tiling constraints are unsatisfiable at HLO ", hlo->ToString()));
+    }
+    if (!fusion.ContainsInstruction(hlo)) {
+      continue;
+    }
+    if (hlo->opcode() == HloOpcode::kFusion) {
+      // Don't analyze parameter operands of nested fusions.
+      // Check example in function docstring to see why this is needed.
+      continue;
+    }
+
+    HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
+    for (auto [operand_pos, operand_and_indexing_map_set] : llvm::enumerate(
+             llvm::zip(instruction_adaptor.GetOperands(),
+                       GetOperandIndexingMaps(hlo, mlir_context)))) {
+      auto& [operand, operand_indexing] = operand_and_indexing_map_set;
+
+      ComposeIndexingResult composed_indexing = ComposeInstructionIndexing(
+          tiled_hlo_instruction, *operand_indexing.begin(), simplification_mode,
+          tiled_hlo_instructions_set, operand, instruction_adaptor, operand_pos,
+          parameter_mapping);
+
+      if (composed_indexing.indexing_map.IsUndefined()) {
+        return FusionDecision::Forbid(
+                   "Couldn't compose indexing of instruction ")
+               << hlo->ToString() << " and operand "
+               << operand.instruction().ToString();
+      }
+
+      // New instruction indexing might use new instructions that were not
+      // previously in the worklist.
+      for (SymbolicTiledHloInstruction* add :
+           composed_indexing.new_instructions) {
+        worklist.push_back(add);
+      }
+
+      std::unique_ptr<SymbolicTiledHloInstruction> tiled_operand;
+      if (operand.opcode() == HloOpcode::kFusion &&
+          fusion.ContainsInstruction(&operand.instruction())) {
+        // The operand is a nested fusion, analyze it recursively.
+        std::unique_ptr<HloFusionAdaptor> nested_fusion_adaptor =
+            HloFusionAdaptor::ForComputation(
+                operand.instruction().fused_instructions_computation());
+
+        SymbolicTileAnalysisOrError analysis_or =
+            SymbolicTileAnalysis::AnalyzeNestedFusion(
+                *nested_fusion_adaptor, parameter_mapping, mlir_context,
+                composed_indexing.indexing_map, simplification_mode,
+                emitter_specific_constraints_builder,
+                composed_indexing.rt_operands);
+        if (std::holds_alternative<FusionDecision>(analysis_or)) {
+          return std::get<FusionDecision>(std::move(analysis_or));
+        }
+        SymbolicTileAnalysis analysis =
+            std::get<SymbolicTileAnalysis>(std::move(analysis_or));
+        constraints =
+            constraints && analysis.GetTilingSpecification().constraints();
+        constraints.Simplify();
+        tiled_operand = std::make_unique<SymbolicTiledHloFusionInstruction>(
+            &operand.instruction(), std::move(composed_indexing.indexing_map),
+            std::move(analysis), std::move(composed_indexing.rt_operands));
+      } else {
+        tiled_operand = std::make_unique<SymbolicTiledHloInstruction>(
+            &operand.instruction(), std::move(composed_indexing.indexing_map),
+            std::move(composed_indexing.rt_operands));
+      }
+      // TODO(b/393299275): propagation to operands is not correct when nesting,
+      // because we derive something all the way to the parameters that are
+      // outside the fusion. We should not derive anything for those operands.
+      auto [operand_tiled_hlo, inserted] =
+          tiled_hlo_instructions_set.Insert(std::move(tiled_operand));
+      tiled_hlo_instruction->AppendOperand(operand_tiled_hlo);
+
+      if (inserted) {
+        worklist.push_back(operand_tiled_hlo);
+      }
+    }
+  }
+
+  std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
+      tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
+  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, from_instruction);
+  return tiled_hlo_instructions;
+}
+
 // Computes symbolic tiles for all instructions in a fusion graph by
 // propagating mapping backward from the root to the parameters.
 //
@@ -1278,117 +1372,27 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
     IndexingMap::SimplifyPointDimensions simplification_mode,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
     std::vector<SymbolicTiledHloInstruction*> root_runtime_variables) {
-  UnsafeSymbolicTiledHloInstructionOrderedSet tiled_hlo_instructions_set;
-
-  // TODO(b/372454662): Once we get rid of the restriction of only one real
-  // root, this needs to be adapted.
-  auto [root_tiled_hlo, _] = tiled_hlo_instructions_set.Insert(
-      std::make_unique<SymbolicTiledHloInstruction>(
-          root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
-          std::move(root_runtime_variables)));
-  if (root_tiled_hlo->hlo()->opcode() == HloOpcode::kFusion) {
+  if (root_indexing.GetRealRoot()->opcode() == HloOpcode::kFusion) {
     // This is an acceptable restriction because we expect the user of a nested
     // fusion to be a dot or concatenate, which prevents it from being a root.
     return FusionDecision::Forbid("Root fusion instruction is not supported.");
   }
 
-  std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
+  // TODO(b/372454662): Once we get rid of the restriction of only one real
+  // root, this needs to be adapted.
+  auto root_tiled_hlo = std::make_unique<SymbolicTiledHloInstruction>(
+      root_indexing.GetRealRoot(), root_indexing.real_root_indexing,
+      std::move(root_runtime_variables));
   ConstraintExpression constraints = ConstraintExpression::GetAlwaysSatisfied();
-
-  while (!worklist.empty()) {
-    SymbolicTiledHloInstruction* tiled_hlo_instruction = worklist.back();
-    worklist.pop_back();
-    const HloInstruction* hlo = tiled_hlo_instruction->hlo();
-
-    if (!fusion.ContainsInstruction(hlo)) {
-      continue;
-    }
-    if (tiled_hlo_instruction->hlo()->opcode() == HloOpcode::kFusion) {
-      // Don't analyze parameter operands of nested fusions.
-      // Check example in function docstring to see why this is needed.
-      continue;
-    }
-
-    auto operands_indexing =
-        GetOperandIndexingMaps(tiled_hlo_instruction->hlo(), mlir_context);
-
-    HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
-    for (auto [operand_pos, operand_and_indexing_map_set] : llvm::enumerate(
-             llvm::zip(instruction_adaptor.GetOperands(), operands_indexing))) {
-      auto& [operand, operand_indexing] = operand_and_indexing_map_set;
-
-      ComposeIndexingResult composed_indexing = ComposeInstructionIndexing(
-          tiled_hlo_instruction, *operand_indexing.begin(), simplification_mode,
-          tiled_hlo_instructions_set, operand, instruction_adaptor, operand_pos,
-          parameter_mapping);
-
-      if (composed_indexing.indexing_map.IsUndefined()) {
-        return FusionDecision::Forbid(
-                   "Couldn't compose indexing of instruction ")
-               << hlo->ToString() << " and operand "
-               << operand.instruction().ToString();
-      }
-
-      // New instruction indexing might use new instructions that were not
-      // previously in the worklist.
-      for (const auto& add : composed_indexing.new_instructions) {
-        worklist.push_back(add);
-      }
-
-      std::unique_ptr<SymbolicTiledHloInstruction> tiled_operand;
-      if (operand.opcode() == HloOpcode::kFusion &&
-          fusion.ContainsInstruction(&operand.instruction())) {
-        // The operand is a nested fusion, analyze it recursively.
-        auto nested_fusion_adaptor = HloFusionAdaptor::ForComputation(
-            operand.instruction().fused_instructions_computation());
-
-        auto analysis_or = SymbolicTileAnalysis::AnalyzeNestedFusion(
-            *nested_fusion_adaptor, parameter_mapping, mlir_context,
-            composed_indexing.indexing_map, simplification_mode,
-            emitter_specific_constraints_builder,
-            composed_indexing.rt_operands);
-        if (std::holds_alternative<FusionDecision>(analysis_or)) {
-          return analysis_or;
-        }
-        SymbolicTileAnalysis analysis =
-            std::get<SymbolicTileAnalysis>(std::move(analysis_or));
-        constraints =
-            constraints && analysis.GetTilingSpecification().constraints();
-        constraints.Simplify();
-        tiled_operand = std::make_unique<SymbolicTiledHloFusionInstruction>(
-            &operand.instruction(), std::move(composed_indexing.indexing_map),
-            std::move(analysis), std::move(composed_indexing.rt_operands));
-      } else {
-        tiled_operand = std::make_unique<SymbolicTiledHloInstruction>(
-            &operand.instruction(), std::move(composed_indexing.indexing_map),
-            std::move(composed_indexing.rt_operands));
-      }
-      // TODO(b/393299275): propagation to operands is not correct when nesting,
-      // because we derive something all the way to the parameters that are
-      // outside the fusion. We should not derive anything for those operands.
-      auto [operand_tiled_hlo, inserted] =
-          tiled_hlo_instructions_set.Insert(std::move(tiled_operand));
-      tiled_hlo_instruction->AppendOperand(operand_tiled_hlo);
-
-      if (inserted) {
-        worklist.push_back(operand_tiled_hlo);
-      }
-    }
+  auto tiled_hlo_instructions_or = AnalyzeFromInstruction(
+      std::move(root_tiled_hlo), fusion, parameter_mapping, mlir_context,
+      simplification_mode, emitter_specific_constraints_builder, constraints);
+  if (std::holds_alternative<FusionDecision>(tiled_hlo_instructions_or)) {
+    return std::get<FusionDecision>(std::move(tiled_hlo_instructions_or));
   }
-
-  std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
-      tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
-
-  // Order instructions in def-before-use order.
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
-
-  // Set symbolic tiles for each tiled hlo instruction and compute combined
-  // constraints.
-  std::variant<ConstraintExpression, FusionDecision> constraints_or =
-      SetSymbolicTilesAndComputeConstraints(tiled_hlo_instructions, fusion);
-  if (std::holds_alternative<FusionDecision>(constraints_or)) {
-    return std::get<FusionDecision>(constraints_or);
-  }
+  auto tiled_hlo_instructions =
+      std::get<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>(
+          std::move(tiled_hlo_instructions_or));
 
   // Create emitter-specific constraints if a builder was provided.
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
@@ -1404,9 +1408,8 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
         std::move(*emitter_specific_constraints_applied);
   }
 
-  TilingSpecification tiling_specification = TilingSpecification(
-      std::move(parameter_mapping),
-      constraints && std::get<ConstraintExpression>(std::move(constraints_or)));
+  TilingSpecification tiling_specification =
+      TilingSpecification(std::move(parameter_mapping), std::move(constraints));
 
   return SymbolicTileAnalysis(std::move(tiled_hlo_instructions), root_indexing,
                               std::move(tiling_specification),
