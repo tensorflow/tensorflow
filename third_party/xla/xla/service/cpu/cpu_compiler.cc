@@ -1068,15 +1068,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }();
 
   // Outline ops in the entry computation into calls to subcomputations.
-  if (!is_aot_compile) {
-    // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
-    // Note this is not run for AOT because it would bring in thread pool
-    // and thread synchronization dependencies which would likely increase
-    // binary size (and most AOT applications are single-threaded).
-    // TODO(b/29630486) Support multi-threaded AOT.
-    pipeline.AddPass<ParallelTaskAssigner>(
-        max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
-  }
+  // Run ParallelTaskAssigner to assign parallel tasks to HLOs in module.
+  pipeline.AddPass<ParallelTaskAssigner>(
+      max_parallelism, ShapeSizeBytesFunction(), target_machine_features);
 
   // Copy insertion should be performed immediately before IR emission to
   // avoid inserting unnecessary copies (later pass adds an instruction which
