@@ -228,6 +228,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
