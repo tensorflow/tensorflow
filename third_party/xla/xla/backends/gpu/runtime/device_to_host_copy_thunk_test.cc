@@ -50,7 +50,7 @@ TEST(DeviceToHostCopyThunkTest, ToProto) {
   DeviceToHostCopyThunk thunk(thunk_info, {src_slice, shape},
                               {dst_slice, shape}, 256,
                               /*events=*/nullptr,
-                              /*instr=*/nullptr);
+                              /*instr_id=*/-1);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
@@ -151,7 +151,7 @@ TEST(DeviceToHostCopyThunkTest, FromProto) {
                  shape},
                 /*mem_size=*/256,
                 /*events=*/nullptr,
-                /*instr=*/nullptr));
+                /*instr_id=*/-1));
 }
 
 }  // namespace
