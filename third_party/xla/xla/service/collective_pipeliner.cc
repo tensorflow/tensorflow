@@ -351,8 +351,7 @@ CheckStoreIntoSliceIsCompatible(
     if (direction ==
         collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
       // TODO(maggioni): Support these ops in forward sink.
-      if (HloPredicateIsOp<HloOpcode::kGetTupleElement,
-                           HloOpcode::kReduceScatter>(i)) {
+      if (HloPredicateIsOp<HloOpcode::kGetTupleElement>(i)) {
         return false;
       }
     }
@@ -2294,6 +2293,22 @@ absl::Status TransformFormattingOp(
             all_gather_instruction->channel_id(),
             all_gather_instruction->use_global_device_ids()));
     pipelined_map[formatting_op] = expanded_all_gather;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kReduceScatter) {
+    auto* reduce_scatter_instruction =
+        Cast<HloReduceScatterInstruction>(formatting_op);
+    auto operands = collect_operands(formatting_op);
+    HloInstruction* expanded_reduce_scatter =
+        loop_computation->AddInstruction(HloInstruction::CreateReduceScatter(
+            ComputeFullOutputShape(to_move, formatting_op->shape()), operands,
+            reduce_scatter_instruction->to_apply(),
+            reduce_scatter_instruction->replica_groups(),
+            reduce_scatter_instruction->constrain_layout(),
+            reduce_scatter_instruction->channel_id(),
+            reduce_scatter_instruction->use_global_device_ids(),
+            reduce_scatter_instruction->scatter_dimension() + 1));
+    pipelined_map[formatting_op] = expanded_reduce_scatter;
     return absl::OkStatus();
   }
   if (formatting_op->opcode() == HloOpcode::kReduce) {
