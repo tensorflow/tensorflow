@@ -5159,6 +5159,39 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "conditional_sinking",
+    srcs = ["conditional_sinking.cc"],
+    hdrs = ["conditional_sinking.h"],
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "conditional_sinking_test",
+    srcs = ["conditional_sinking_test.cc"],
+    deps = [
+        ":conditional_sinking",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "source_map_util",
     srcs = [],
     hdrs = ["source_map_util.h"],
