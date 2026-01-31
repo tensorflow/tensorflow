@@ -50,3 +50,6 @@ export IP_ADDR=$(powershell -command "(Get-NetIPAddress -AddressFamily IPv4 -Int
 netsh interface portproxy add v4tov4 listenaddress=$IP_ADDR listenport=80 connectaddress=169.254.169.254 connectport=80
 # A local firewall rule for the container is added in
 # ci/official/utilities/setup_docker.sh.
+
+
+# Test!
