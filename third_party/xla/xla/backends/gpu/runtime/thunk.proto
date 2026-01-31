@@ -153,6 +153,7 @@ message KernelThunkProto {
   optional stream_executor.ClusterDimProto cluster_dim = 5;
   int64 shmem_bytes = 6;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;
+  repeated int64 zeroed_output_buffer_indices = 9;
 }
 
 message GemmThunkProto {
@@ -340,7 +341,7 @@ message CustomCallThunkProto {
   bytes opaque = 4;
   CustomCallApiVersion api_version = 5;
   xla.ffi.AttributesMapProto attributes = 6;
-  // The name of the called computation. It needs to match the HloCompuation in
+  // The name of the called computation. It needs to match the HloComputation in
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
   optional xla.ffi.ExecutionStateProto execution_state = 8;

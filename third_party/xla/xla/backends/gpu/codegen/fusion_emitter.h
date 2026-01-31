@@ -97,7 +97,7 @@ class KernelFusionInterface : public FusionInterface {
   // block sizes in the given launch dimensions.
   static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, mlir::MLIRContext* ctx);
+      const Shape& shape, mlir::MLIRContext* mlir_context);
 };
 
 void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
@@ -112,7 +112,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
     llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name);
+    const std::string& sanitized_kernel_name, bool keep_scratch = false);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

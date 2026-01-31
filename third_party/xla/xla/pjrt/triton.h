@@ -27,6 +27,10 @@ namespace xla::triton {
 struct CompilationResult {
   std::string asm_text;
   int64_t smem_bytes;
+  int32_t global_scratch_size;
+  int cluster_dim_x;
+  int cluster_dim_y;
+  int cluster_dim_z;
 };
 
 absl::StatusOr<CompilationResult> Compile(absl::string_view module,

@@ -1258,8 +1258,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     const HloCustomCallInstruction* instr) {
-  auto generate = [this, &instr]() -> absl::StatusOr<KernelReuseCache::Entry> {
-    mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
+  mlir::MLIRContext& mlir_context = *ir_emitter_context_->mlir_context();
+
+  auto generate = [this, &instr,
+                   &mlir_context]() -> absl::StatusOr<KernelReuseCache::Entry> {
     LoadMlirDialectsForTriton(mlir_context);
     auto call =
         TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
@@ -1298,6 +1300,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
     block_level_parameters.num_stages = call.num_stages;
     block_level_parameters.num_warps = call.num_warps;
     block_level_parameters.num_ctas = 1;
+    block_level_parameters.global_scratch_memory_size =
+        call.global_scratch_memory_size;
+    block_level_parameters.is_tma_allowed = call.is_tma_allowed;
 
     TF_ASSIGN_OR_RETURN(
         auto result,
@@ -1323,7 +1328,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
       TF_ASSIGN_OR_RETURN(
           llvm::Function * kernel,
           RemoveUnusedTritonAbiArguments(result.llvm_module.get(),
-                                         *ir_emitter_context_, kernel_name));
+                                         *ir_emitter_context_, kernel_name,
+                                         call.global_scratch_memory_size > 0));
 
       AnnotateAttrsIfUnset(kernel_arguments, *kernel);
       TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
@@ -1346,11 +1352,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
 
+  LoadMlirDialectsForTriton(mlir_context);
+  auto call =
+      TritonCall::Parse(instr->raw_backend_config_string(), &mlir_context);
+
   return GetThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
-      /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata));
+      /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata,
+      /*zeroed_output_buffer_indices=*/call.zeroed_outputs));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(

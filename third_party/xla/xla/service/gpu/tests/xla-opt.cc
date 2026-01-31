@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace {
 
@@ -59,6 +59,7 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
         "Runs all Triton passes, including the ones from XLA.",
         [](mlir::OpPassManager& pm, const TritonPipelineOptions& options) {
           stream_executor::GpuComputeCapability gpu_cc;
+
           if (auto cuda_cc =
                   stream_executor::CudaComputeCapability().FromString(
                       options.target);
@@ -73,6 +74,7 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
           xla::gpu::CreateTritonXlaPipeline(
               &pm, gpu_cc, options.rewrite_int4, options.allow_tma,
               options.num_stages, warp_specialization_allowed);
+
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
                                          options.num_ctas, options.num_stages);
         });
