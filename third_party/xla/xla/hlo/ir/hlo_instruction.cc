@@ -4969,6 +4969,9 @@ static absl::Status PostOrderDFS(
     }
 
     visitor->SetVisitState(current_id, Visitor::kVisiting);
+    if (!visitor->ShouldVisitOperands(current_node)) {
+      continue;
+    }
 
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
