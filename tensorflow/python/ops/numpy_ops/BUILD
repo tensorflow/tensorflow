@@ -20,6 +20,8 @@ py_strict_library(
         ":np_dtypes",
         ":np_math_ops",
         ":np_random",
+        ":np_signal_ops",
+        ":np_statistics_ops",
         ":np_utils",
         "//tensorflow/python/ops:array_ops",
     ],
@@ -154,6 +156,40 @@ py_strict_library(
     ],
 )
 
+py_strict_library(
+    name = "np_statistics_ops",
+    srcs = ["np_statistics_ops.py"],
+    deps = [
+        ":np_array_ops",
+        ":np_dtypes",
+        ":np_utils",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:sort_ops",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "np_signal_ops",
+    srcs = ["np_signal_ops.py"],
+    deps = [
+        ":np_array_ops",
+        ":np_utils",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
 cuda_py_strict_test(
     name = "np_dtypes_test",
     srcs = ["np_dtypes_test.py"],
@@ -274,6 +310,29 @@ cuda_py_strict_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "np_statistics_ops_test",
+    srcs = ["np_statistics_ops_test.py"],
+    deps = [
+        ":np_array_ops",
+        ":np_statistics_ops",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "np_signal_ops_test",
+    srcs = ["np_signal_ops_test.py"],
+    deps = [
+        ":np_array_ops",
+        ":np_signal_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
