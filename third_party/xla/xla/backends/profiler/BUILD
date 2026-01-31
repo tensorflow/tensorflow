@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//xla/tsl:tsl.bzl",
+    "if_oss",
     "if_with_tpu_support",
     "internal_visibility",
 )
@@ -21,9 +22,10 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     visibility = internal_visibility(["//xla:internal"]),
     deps = [
-        "//xla/backends/profiler/cpu:host_tracer",
         "//xla/backends/profiler/cpu:metadata_collector",
-    ] + if_with_tpu_support(
+    ] + if_oss([
+        "//xla/backends/profiler/cpu:host_tracer",
+    ]) + if_with_tpu_support(
         [
             "//xla/backends/profiler/tpu:tpu_tracer",
         ],
