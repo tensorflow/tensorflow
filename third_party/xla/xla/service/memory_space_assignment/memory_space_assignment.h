@@ -444,6 +444,8 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64_t, std::vector<HloInstruction*>> schedule_before_;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*>
+      jit_copy_start_to_copy_done_;
 };
 
 }  // namespace memory_space_assignment
