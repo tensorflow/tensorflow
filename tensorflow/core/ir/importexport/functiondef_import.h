@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_FUNCTIONDEF_IMPORT_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_FUNCTIONDEF_IMPORT_H_
 
+#include "absl/status/status.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/ir/ops.h"
