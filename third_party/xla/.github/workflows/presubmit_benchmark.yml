@@ -54,7 +54,7 @@ jobs:
     name: Run Benchmark (${{ matrix.benchmark_entry.config_id }}) # Use the full config_id: {name}_{hw-short}_{topo}_{workflow} e.g., gemma3_1b_flax_call_l4_1h1d_presubmit
     needs: generate_matrix
     # Also check if the generate_matrix job itself was skipped due to its `if` condition
-    if: success() && needs.generate_matrix.result != 'skipped' && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
+    if: success() && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
 
     strategy:
       fail-fast: false
@@ -99,6 +99,17 @@ jobs:
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
+
+      - name: Get PR Labels
+        id: get_labels
+        run: |
+          # Get labels from the PR event context and store in GITHUB_LABELS.
+          # This is used to skip benchmarks.
+          LABELS=$(jq -r '[.pull_request.labels[] | .name] | join(" ")' "${GITHUB_EVENT_PATH}" | tr -d '\n')
+          echo "Discovered labels: $LABELS"
+          echo "GITHUB_LABELS=$LABELS" >> "$GITHUB_ENV"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Print Job Info & Set Full Paths in ENV
         run: |
@@ -166,13 +177,23 @@ jobs:
            DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
            LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
            OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
+           GITHUB_LABELS: ${{ env.GITHUB_LABELS }}
            # Other job-level env vars are automatically inherited
         run: |
            # The run_benchmark.sh script is expected to create $OUTPUT_DIR/results.json
            bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
 
-           # Print the content of results.json for debugging
            RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
+           if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
+             BENCHMARK_RUN_STATUS=$(jq -r '.run_status' "$RESULTS_JSON_FILE_PATH")
+             echo "Benchmark run_status detected: $BENCHMARK_RUN_STATUS"
+             echo "run_status=$BENCHMARK_RUN_STATUS" >> "$GITHUB_OUTPUT"
+           else
+             echo "::warning::results.json not found at $RESULTS_JSON_FILE_PATH. Setting run_status to UNKNOWN."
+             echo "run_status=UNKNOWN" >> "$GITHUB_OUTPUT"
+           fi
+
+           # Print the content of results.json for debugging (optional, but useful)
            echo "--- Content of results.json (from workflow) ---"
            if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
              if command -v jq &> /dev/null && jq '.' "$RESULTS_JSON_FILE_PATH" > /dev/null 2>&1; then
@@ -190,7 +211,10 @@ jobs:
            echo "---------------------------------------------"
 
       - name: Compare Results to Baseline
-        if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
+        if: |
+          (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) &&
+          env.skip_comparison_due_to_yaml_install_failure != 'true' &&
+          steps.run_hlo.outputs.run_status != 'SKIPPED_BY_LABEL'
         run: |
           echo "Starting baseline comparison..."
           bash "$RESOLVED_RUN_COMPARISON_SCRIPT"
