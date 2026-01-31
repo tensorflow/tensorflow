@@ -50,7 +50,7 @@ class TestGpuRadixSortKernel : public tensorflow::OpKernel {
                                         ? nullptr
                                         : indices_in.flat<Tindex>().data();
 
-    int64 size = keys_in.NumElements();
+    int64_t size = keys_in.NumElements();
 
     Tkey* keys_out_data = nullptr;
     if (need_keys_out_) {
@@ -90,8 +90,8 @@ REGISTER_OP("TestGpuRadixSort")
                               .TypeConstraint<Tkey>("Tkey")      \
                               .TypeConstraint<Tindex>("Tindex"), \
                           TestGpuRadixSortKernel<Tkey, Tindex>)
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(int32, int32);
+REGISTER_KERNELS(float, int32_t);
+REGISTER_KERNELS(int32_t, int32_t);
 #undef REGISTER_KERNELS
 
 template <typename T>
@@ -104,7 +104,7 @@ class TestGpuInclusivePrefixSumKernel : public tensorflow::OpKernel {
   void Compute(tensorflow::OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const T* input_data = input.flat<T>().data();
-    int64 size = input.NumElements();
+    int64_t size = input.NumElements();
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
@@ -125,7 +125,7 @@ REGISTER_OP("TestGpuInclusivePrefixSum")
                               .Device(tensorflow::DEVICE_GPU) \
                               .TypeConstraint<T>("T"),        \
                           TestGpuInclusivePrefixSumKernel<T>)
-REGISTER_KERNELS(int32);
+REGISTER_KERNELS(int32_t);
 #undef REGISTER_KERNELS
 
 template <typename T, typename Toffset, typename ReduceOp>
@@ -175,7 +175,7 @@ REGISTER_OP("TestGpuSegmentedSum")
           .TypeConstraint<T>("T")              \
           .TypeConstraint<Toffset>("Toffset"), \
       TestGpuSegmentedReduceKernel<T, Toffset, gpuprim::Sum>)
-REGISTER_KERNELS(int32, int32);
+REGISTER_KERNELS(int32_t, int32_t);
 #undef REGISTER_KERNELS
 
 template <typename T>
@@ -213,8 +213,8 @@ class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
     int64_t output_size_host;
     OP_REQUIRES_OK(
         context, stream->Memcpy(&output_size_host,
-                                se::DeviceMemoryBase(output_size_data,
-                                                     sizeof(output_size_data)),
+                                stream_executor::DeviceAddressBase(
+                                    output_size_data, sizeof(output_size_data)),
                                 sizeof(output_size_host)));
     OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
     OP_REQUIRES(context, output_size_host == output_size_,
@@ -237,7 +237,7 @@ REGISTER_OP("TestGpuSelectFlagged")
                               .Device(tensorflow::DEVICE_GPU) \
                               .TypeConstraint<T>("T"),        \
                           TestGpuSelectFlaggedKernel<T>)
-REGISTER_KERNELS(int32);
+REGISTER_KERNELS(int32_t);
 #undef REGISTER_KERNELS
 
 class GpuPrimHelpersTest : public OpsTestBase {
@@ -275,7 +275,7 @@ class GpuPrimHelpersTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-  void MakeSelectFlagged(DataType type, int64 output_size) {
+  void MakeSelectFlagged(DataType type, int64_t output_size) {
     TF_ASSERT_OK(NodeDefBuilder("test_op", "TestGpuSelectFlagged")
                      .Input(FakeInput(type))
                      .Input(FakeInput(DT_BOOL))
@@ -288,7 +288,7 @@ class GpuPrimHelpersTest : public OpsTestBase {
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_Keys) {
   MakeRadixSort(DT_FLOAT, DT_INT32);
   AddInputFromArray<float>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({0}), {});                        // inds
+  AddInputFromArray<int32_t>(TensorShape({0}), {});                      // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_keys_out(allocator(), DT_FLOAT, TensorShape({8}));
@@ -296,14 +296,15 @@ TEST_F(GpuPrimHelpersTest, GpuRadixSort_Keys) {
   test::ExpectTensorEqual<float>(expected_keys_out, *GetOutput(0));
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {6, 4, 1, 5, 0, 7, 2, 3});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {6, 4, 1, 5, 0, 7, 2, 3});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_KeysAndIndices) {
   MakeRadixSort(DT_FLOAT, DT_INT32);
   AddInputFromArray<float>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({8}), {7, 6, 5, 4, 3, 2, 1, 0});  // inds
+  AddInputFromArray<int32_t>(TensorShape({8}),
+                             {7, 6, 5, 4, 3, 2, 1, 0});  // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_keys_out(allocator(), DT_FLOAT, TensorShape({8}));
@@ -311,118 +312,122 @@ TEST_F(GpuPrimHelpersTest, GpuRadixSort_KeysAndIndices) {
   test::ExpectTensorEqual<float>(expected_keys_out, *GetOutput(0));
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {1, 3, 6, 2, 7, 0, 5, 4});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {1, 3, 6, 2, 7, 0, 5, 4});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_NoKeysOut) {
   MakeRadixSort(DT_FLOAT, DT_INT32, /*need_keys_out=*/false);
   AddInputFromArray<float>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({0}), {});                        // inds
+  AddInputFromArray<int32_t>(TensorShape({0}), {});                      // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {6, 4, 1, 5, 0, 7, 2, 3});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {6, 4, 1, 5, 0, 7, 2, 3});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_WithNumBits) {
   // Only sort by the lowest 2 bits, otherwise keep input order (stable sort).
   MakeRadixSort(DT_INT32, DT_INT32, /*need_keys_out=*/true, /*num_bits=*/2);
-  AddInputFromArray<int32>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({0}), {});                        // inds
+  AddInputFromArray<int32_t>(TensorShape({8}),
+                             {4, 2, 6, 7, 1, 3, 0, 5});  // keys
+  AddInputFromArray<int32_t>(TensorShape({0}), {});      // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_keys_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_keys_out, {4, 0, 1, 5, 2, 6, 7, 3});
-  test::ExpectTensorEqual<int32>(expected_keys_out, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_keys_out, {4, 0, 1, 5, 2, 6, 7, 3});
+  test::ExpectTensorEqual<int32_t>(expected_keys_out, *GetOutput(0));
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {0, 6, 4, 7, 1, 2, 3, 5});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {0, 6, 4, 7, 1, 2, 3, 5});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_WithNumBitsZero) {
   // Check that num_bits=0 is handled correctly.
   MakeRadixSort(DT_INT32, DT_INT32, /*need_keys_out=*/true, /*num_bits=*/0);
-  AddInputFromArray<int32>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({0}), {});                        // inds
+  AddInputFromArray<int32_t>(TensorShape({8}),
+                             {4, 2, 6, 7, 1, 3, 0, 5});  // keys
+  AddInputFromArray<int32_t>(TensorShape({0}), {});      // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_keys_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_keys_out, {4, 2, 6, 7, 1, 3, 0, 5});
-  test::ExpectTensorEqual<int32>(expected_keys_out, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_keys_out, {4, 2, 6, 7, 1, 3, 0, 5});
+  test::ExpectTensorEqual<int32_t>(expected_keys_out, *GetOutput(0));
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {0, 1, 2, 3, 4, 5, 6, 7});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {0, 1, 2, 3, 4, 5, 6, 7});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuRadixSort_KeysAndIndices_WithNumBitsZero) {
   // Check that num_bits=0 is handled correctly (with indices_in).
   MakeRadixSort(DT_INT32, DT_INT32, /*need_keys_out=*/true, /*num_bits=*/0);
-  AddInputFromArray<int32>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});  // keys
-  AddInputFromArray<int32>(TensorShape({8}), {7, 6, 5, 4, 3, 2, 1, 0});  // inds
+  AddInputFromArray<int32_t>(TensorShape({8}),
+                             {4, 2, 6, 7, 1, 3, 0, 5});  // keys
+  AddInputFromArray<int32_t>(TensorShape({8}),
+                             {7, 6, 5, 4, 3, 2, 1, 0});  // inds
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_keys_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_keys_out, {4, 2, 6, 7, 1, 3, 0, 5});
-  test::ExpectTensorEqual<int32>(expected_keys_out, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_keys_out, {4, 2, 6, 7, 1, 3, 0, 5});
+  test::ExpectTensorEqual<int32_t>(expected_keys_out, *GetOutput(0));
 
   Tensor expected_indices_out(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_indices_out, {7, 6, 5, 4, 3, 2, 1, 0});
-  test::ExpectTensorEqual<int32>(expected_indices_out, *GetOutput(1));
+  test::FillValues<int32_t>(&expected_indices_out, {7, 6, 5, 4, 3, 2, 1, 0});
+  test::ExpectTensorEqual<int32_t>(expected_indices_out, *GetOutput(1));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuInclusivePrefixSum) {
   MakeInclusivePrefixSum(DT_INT32);
-  AddInputFromArray<int32>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});
+  AddInputFromArray<int32_t>(TensorShape({8}), {4, 2, 6, 7, 1, 3, 0, 5});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({8}));
-  test::FillValues<int32>(&expected_output, {4, 6, 12, 19, 20, 23, 23, 28});
-  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_output, {4, 6, 12, 19, 20, 23, 23, 28});
+  test::ExpectTensorEqual<int32_t>(expected_output, *GetOutput(0));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuSegmentedReduce_Sum) {
   MakeSegmentedSum(DT_INT32, DT_INT32);
   // Input.
-  AddInputFromArray<int32>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32_t>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
   // Segment IDs.
-  AddInputFromArray<int32>(TensorShape({6}), {1, 3, 4, 4, 8, 10});
+  AddInputFromArray<int32_t>(TensorShape({6}), {1, 3, 4, 4, 8, 10});
   // Initial value.
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({5}));
-  test::FillValues<int32>(&expected_output, {3, 3, 0, 22, 17});
-  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_output, {3, 3, 0, 22, 17});
+  test::ExpectTensorEqual<int32_t>(expected_output, *GetOutput(0));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuSelectFlagged) {
   MakeSelectFlagged(DT_INT32, 3);
   // Input.
-  AddInputFromArray<int32>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+  AddInputFromArray<int32_t>(TensorShape({10}), {0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
   // Flags.
   AddInputFromArray<bool>(TensorShape({10}), {0, 0, 1, 0, 1, 0, 0, 1, 0, 0});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({3}));
-  test::FillValues<int32>(&expected_output, {2, 4, 7});
-  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_output, {2, 4, 7});
+  test::ExpectTensorEqual<int32_t>(expected_output, *GetOutput(0));
 }
 
 TEST_F(GpuPrimHelpersTest, GpuSelectFlagged_Empty) {
   MakeSelectFlagged(DT_INT32, 0);
   // Input.
-  AddInputFromArray<int32>(TensorShape({0}), {});
+  AddInputFromArray<int32_t>(TensorShape({0}), {});
   // Flags.
   AddInputFromArray<bool>(TensorShape({0}), {});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_output(allocator(), DT_INT32, TensorShape({0}));
-  test::FillValues<int32>(&expected_output, {});
-  test::ExpectTensorEqual<int32>(expected_output, *GetOutput(0));
+  test::FillValues<int32_t>(&expected_output, {});
+  test::ExpectTensorEqual<int32_t>(expected_output, *GetOutput(0));
 }
 
 }  // namespace

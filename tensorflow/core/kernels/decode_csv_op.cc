@@ -27,7 +27,7 @@ namespace tensorflow {
 class DecodeCSVOp : public OpKernel {
  public:
   explicit DecodeCSVOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string delim;
+    std::string delim;
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("OUT_TYPE", &out_type_));
     OP_REQUIRES(ctx, out_type_.size() < std::numeric_limits<int>::max(),
@@ -83,7 +83,7 @@ class DecodeCSVOp : public OpKernel {
 
     for (int64_t i = 0; i < records_size; ++i) {
       const absl::string_view record(records_t(i));
-      std::vector<string> fields;
+      std::vector<std::string> fields;
       ExtractFields(ctx, record, &fields);
       OP_REQUIRES(ctx, fields.size() == out_type_.size(),
                   errors::InvalidArgument("Expect ", out_type_.size(),
@@ -103,14 +103,15 @@ class DecodeCSVOp : public OpKernel {
                               "Field ", f,
                               " is required but missing in record ", i, "!"));
 
-              output[f]->flat<int32>()(i) = record_defaults[f].flat<int32>()(0);
+              output[f]->flat<int32_t>()(i) =
+                  record_defaults[f].flat<int32_t>()(0);
             } else {
               int32_t value;
               OP_REQUIRES(ctx, absl::SimpleAtoi(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid int32: ", fields[f]));
-              output[f]->flat<int32>()(i) = value;
+              output[f]->flat<int32_t>()(i) = value;
             }
             break;
           }
@@ -204,10 +205,10 @@ class DecodeCSVOp : public OpKernel {
   char delim_;
   bool use_quote_delim_;
   bool select_all_cols_;
-  string na_value_;
+  std::string na_value_;
 
   void ExtractFields(OpKernelContext* ctx, absl::string_view input,
-                     std::vector<string>* result) {
+                     std::vector<std::string>* result) {
     int64_t current_idx = 0;
     int64_t num_fields_parsed = 0;
     int64_t selector_idx = 0;  // Keep track of index into select_cols
@@ -230,7 +231,7 @@ class DecodeCSVOp : public OpKernel {
         }
 
         // This is the body of the field;
-        string field;
+        std::string field;
         if (!quoted) {
           while (static_cast<size_t>(current_idx) < input.size() &&
                  input[current_idx] != delim_) {
@@ -289,7 +290,7 @@ class DecodeCSVOp : public OpKernel {
                                    static_cast<size_t>(num_fields_parsed));
       // Check if the last field is missing
       if (include && input[input.size() - 1] == delim_)
-        result->push_back(string());
+        result->push_back(std::string());
     }
   }
 };
