@@ -39,20 +39,26 @@ __global__ void MultiGpuBarrierKernelImpl(
     signal_buffers[i] = reinterpret_cast<uint32_t*>(signal_buffers_void[i]);
   }
 
-  // 2. Read State
+  // 2. Read State & Pre-Increment
+  // Pre-increment allows to initialize the counter to 0. We sync on 1.
   // Every rank maintains its own counter, so this read is local and fast.
   // Since we launch 1 block, a standard load is sufficient, as all threads see
   // the same value.
-  uint32_t signal_value = *sync_counter;
+  uint32_t signal_value = *sync_counter + 1;
 
   // 3. Barrier
   SyncRemoteBlocks<PlatformT, MultiGpuBarrierKernel::kMaxPeers>(
       signal_buffers, rank, num_ranks, signal_value);
 
+  // Explicit synchronization.
+  // Adding __syncthreads() ensures that all threads have finished accessing
+  // global memory/peers before we update the state for the next iteration.
+  __syncthreads();
+
   // 4. Update State
   // Only the first thread needs to update the counter for the NEXT execution.
   if (threadIdx.x == 0 && blockIdx.x == 0) {
-    *sync_counter = signal_value + 1;
+    *sync_counter = signal_value;
   }
 }
 

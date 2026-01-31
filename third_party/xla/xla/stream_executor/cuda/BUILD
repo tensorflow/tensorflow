@@ -1456,6 +1456,7 @@ cc_library(
         ":cudnn_plugin",
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
+        ":multi_gpu_barrier_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
         ":redzone_allocator_kernel_cuda",
         ":repeat_buffer_kernel_cuda",

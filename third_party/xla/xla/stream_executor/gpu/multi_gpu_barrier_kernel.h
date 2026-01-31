@@ -24,12 +24,27 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+// Multi-GPU Barrier Kernel.
+//
+// This kernel synchronizes multiple GPUs by using peer-to-peer memory writes
+// (SyncRemoteBlocks: PutSignalFlag + WaitSignalFlag).
+//
 // Kernel signature:
-// 1. rank (int64_t)
-// 2. num_ranks (int64_t)
-// 3. signal_buffers (array of pointers)
+// 1. rank (int64_t): Rank of the current device.
+// 2. num_ranks (int64_t): Total number of participating devices.
+// 3. signal_buffers (std::array<void*, kMaxPeers>): Array of pointers to the
+//    'signal_buffer' on each peer device.
 // 4. sync_counter: DeviceMemory<uint32_t>: Device ptr to a monotonic counter
-//    that increments after every barrier execution. Stores last signal_value.
+//    that increments after every barrier execution. Stores the last completed
+//    signal_value.
+//
+// Usage Requirements:
+//   * Memory Initialization: Both 'signal_buffers' (the array of flags) and
+//     'sync_counter' (the local monotonic counter) MUST be initialized to ZERO
+//     before the first kernel launch.
+//   * Logic: The kernel uses a pre-increment scheme (syncs on value + 1).
+//     Zero-initialized memory correctly sets up the wait condition for the
+//     first barrier launch.
 struct MultiGpuBarrierKernel {
   // Maximum number of peers supported by the barrier.
   // Can be extended to support larger GPU clusters in the future.

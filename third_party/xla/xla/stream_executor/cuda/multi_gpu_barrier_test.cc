@@ -106,6 +106,8 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
   std::vector<void*> counter_ptrs;
   for (int i = 0; i < num_devices_; ++i) {
     auto c = executors_[i]->AllocateArray<uint32_t>(1);
+    // It is ok to initialize the counter to 0,
+    // as the kernel pre-increments signal_value.
     ASSERT_OK(streams_[i]->MemZero(&c, sizeof(uint32_t)));
     counters.push_back(c);
     counter_ptrs.push_back(c.opaque());
@@ -142,6 +144,27 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
     ASSERT_OK(streams_[i]->Memcpy(&val, counters[i], sizeof(uint32_t)));
     ASSERT_OK(streams_[i]->BlockHostUntilDone());
     EXPECT_EQ(val, 8) << "Counter on device " << i << " failed to increment";
+  }
+
+  // 6. Verify Signal Buffers
+  // Each device's signal buffer is an array of size 'num_devices'.
+  // By the end of step 8, every device should have written the value '8'
+  // into its designated slot on every peer's buffer.
+  for (int i = 0; i < num_devices_; ++i) {
+    std::vector<uint32_t> host_buffer(num_devices_);
+
+    // Copy the device's signal buffer back to the host
+    ASSERT_OK(streams_[i]->Memcpy(host_buffer.data(), signal_buffers[i],
+                                  num_devices_ * sizeof(uint32_t)));
+    ASSERT_OK(streams_[i]->BlockHostUntilDone());
+
+    // Verify every slot contains the final step value (8)
+    for (int j = 0; j < num_devices_; ++j) {
+      EXPECT_EQ(host_buffer[j], 8)
+          << "Signal buffer on Device " << i << " at slot " << j
+          << " (which belongs to Peer " << j << ")"
+          << " has incorrect value.";
+    }
   }
 }
 
