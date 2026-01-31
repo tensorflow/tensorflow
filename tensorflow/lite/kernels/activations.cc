@@ -230,7 +230,8 @@ TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8 ||
       input->type == kTfLiteInt16) {
-    double real_multiplier = input->params.scale / output->params.scale;
+    double real_multiplier = static_cast<double>(input->params.scale) /
+                             static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
   }
@@ -310,11 +311,13 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
     const auto* params =
         reinterpret_cast<TfLiteLeakyReluParams*>(node->builtin_data);
 
-    double alpha_multiplier =
-        input->params.scale * params->alpha / output->params.scale;
+    double alpha_multiplier = static_cast<double>(input->params.scale) *
+                              static_cast<double>(params->alpha) /
+                              static_cast<double>(output->params.scale);
     QuantizeMultiplier(alpha_multiplier, &data->output_multiplier_alpha,
                        &data->output_shift_alpha);
-    double identity_multiplier = input->params.scale / output->params.scale;
+    double identity_multiplier = static_cast<double>(input->params.scale) /
+                                 static_cast<double>(output->params.scale);
     QuantizeMultiplier(identity_multiplier, &data->output_multiplier_identity,
                        &data->output_shift_identity);
   }
@@ -636,8 +639,9 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
-    double input_scale_beta_rescale =
-        input->params.scale * params->beta /
+    const double input_scale_beta_rescale =
+        static_cast<double>(input->params.scale) *
+        static_cast<double>(params->beta) /
         (10.0 / 65535.0);  // scale the input_diff such that [-65535, 0]
                            // correspond to [-10.0, 0.0]
     QuantizeMultiplier(input_scale_beta_rescale, &data->params.input_multiplier,
@@ -731,9 +735,11 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
     // output real multiplier 1 is input_scale / output_scale;
     // for input_q - input_zp < 0:
     // output real multiplier 2 is input_scale  * alpha_scale/ output_scale.
-    double real_multiplier_1 = input->params.scale / output->params.scale;
-    double real_multiplier_2 =
-        input->params.scale * alpha->params.scale / output->params.scale;
+    double real_multiplier_1 = static_cast<double>(input->params.scale) /
+                               static_cast<double>(output->params.scale);
+    double real_multiplier_2 = static_cast<double>(input->params.scale) *
+                               static_cast<double>(alpha->params.scale) /
+                               static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier_1, &data->output_multiplier_1,
                        &data->output_shift_1);
     QuantizeMultiplier(real_multiplier_2, &data->output_multiplier_2,

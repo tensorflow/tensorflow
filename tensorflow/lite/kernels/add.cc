@@ -179,14 +179,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // therefore the addition will still fit in a 32 bit accumulator.
     data->left_shift = general_scale_int16 ? 15 : 20;
     const double twice_max_input_scale =
-        2 * std::max(input1->params.scale, input2->params.scale);
+        2 * static_cast<double>(
+                std::max(input1->params.scale, input2->params.scale));
     const double real_input1_multiplier =
-        input1->params.scale / twice_max_input_scale;
+        static_cast<double>(input1->params.scale) / twice_max_input_scale;
     const double real_input2_multiplier =
-        input2->params.scale / twice_max_input_scale;
+        static_cast<double>(input2->params.scale) / twice_max_input_scale;
     const double real_output_multiplier =
-        twice_max_input_scale /
-        ((1 << data->left_shift) * output->params.scale);
+        twice_max_input_scale / (static_cast<double>(1 << data->left_shift) *
+                                 static_cast<double>(output->params.scale));
 
     QuantizeMultiplierSmallerThanOneExp(
         real_input1_multiplier, &data->input1_multiplier, &data->input1_shift);
