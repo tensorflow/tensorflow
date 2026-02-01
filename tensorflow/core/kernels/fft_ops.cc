@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -182,22 +183,25 @@ class FFTBase : public OpKernel {
                         "fft_length[", i,
                         "] must >= 0, but got: ", fft_length_as_vec(i)));
         fft_shape[i] = fft_length_as_vec(i);
-        // Each input dimension must have length of at least fft_shape[i]. For
-        // IRFFTs, the inner-most input dimension must have length of at least
-        // fft_shape[i] / 2 + 1.
         bool inner_most = (i == fft_rank - 1);
-        uint64_t min_input_dim_length =
-            !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
         auto input_index = input_shape.dims() - fft_rank + i;
-        OP_REQUIRES(
-            ctx,
-            // We pass through empty tensors, so special case them here.
-            input_shape.dim_size(input_index) == 0 ||
-                input_shape.dim_size(input_index) >= min_input_dim_length,
-            errors::InvalidArgument(
-                "Input dimension ", input_index,
-                " must have length of at least ", min_input_dim_length,
-                " but got: ", input_shape.dim_size(input_index)));
+        if (!IsForward()) {
+          // For IRFFTs, the inner-most input dimension must have length of
+          // at least fft_shape[i] / 2 + 1.
+          uint64_t min_input_dim_length =
+              inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
+          OP_REQUIRES(
+              ctx,
+              input_shape.dim_size(input_index) == 0 ||
+                  input_shape.dim_size(input_index) >=
+                      static_cast<int64_t>(min_input_dim_length),
+              errors::InvalidArgument(
+                  "Input dimension ", input_index,
+                  " must have length of at least ", min_input_dim_length,
+                  " but got: ", input_shape.dim_size(input_index)));
+        }
+        // For forward RFFTs, inputs smaller than fft_length will be
+        // zero-padded before calling DoFFT (see padding logic below).
         uint64_t dim = IsForward() && inner_most && fft_shape[i] != 0
                            ? fft_shape[i] / 2 + 1
                            : fft_shape[i];
@@ -242,7 +246,83 @@ class FFTBase : public OpKernel {
       return;
     }
 
-    DoFFT(ctx, in, fft_shape, out);
+    // For forward RFFTs, zero-pad the input if any FFT dimension is larger
+    // than the corresponding input dimension. This matches NumPy/SciPy
+    // convention and makes raw ops consistent with the Python API.
+    Tensor padded_in;
+    const Tensor* fft_input = &in;
+    if (IsReal() && IsForward()) {
+      bool needs_padding = false;
+      TensorShape padded_shape = input_shape;
+      for (int i = 0; i < fft_rank; ++i) {
+        int dim_idx = input_shape.dims() - fft_rank + i;
+        if (input_shape.dim_size(dim_idx) <
+            static_cast<int64_t>(fft_shape[i])) {
+          needs_padding = true;
+          padded_shape.set_dim(dim_idx, fft_shape[i]);
+        }
+      }
+      if (needs_padding) {
+        OP_REQUIRES_OK(ctx,
+                       ctx->allocate_temp(in.dtype(), padded_shape, &padded_in));
+        // Zero the entire padded tensor (IEEE 754: all-zero bytes = 0.0).
+        memset(padded_in.data(), 0, padded_in.TotalBytes());
+        // Copy input data into the padded tensor, row by row.
+        const int elem_size = DataTypeSize(in.dtype());
+        const char* src = static_cast<const char*>(in.data());
+        char* dst = static_cast<char*>(padded_in.data());
+        const int num_dims = input_shape.dims();
+        int64_t batch_size = 1;
+        for (int d = 0; d < num_dims - fft_rank; ++d) {
+          batch_size *= input_shape.dim_size(d);
+        }
+        if (fft_rank == 1) {
+          const int64_t in_n = input_shape.dim_size(num_dims - 1);
+          const int64_t pad_n = padded_shape.dim_size(num_dims - 1);
+          for (int64_t b = 0; b < batch_size; ++b) {
+            memcpy(dst + b * pad_n * elem_size, src + b * in_n * elem_size,
+                   in_n * elem_size);
+          }
+        } else if (fft_rank == 2) {
+          const int64_t in_h = input_shape.dim_size(num_dims - 2);
+          const int64_t in_w = input_shape.dim_size(num_dims - 1);
+          const int64_t pad_h = padded_shape.dim_size(num_dims - 2);
+          const int64_t pad_w = padded_shape.dim_size(num_dims - 1);
+          for (int64_t b = 0; b < batch_size; ++b) {
+            for (int64_t h = 0; h < in_h; ++h) {
+              memcpy(
+                  dst + (b * pad_h * pad_w + h * pad_w) * elem_size,
+                  src + (b * in_h * in_w + h * in_w) * elem_size,
+                  in_w * elem_size);
+            }
+          }
+        } else {
+          // fft_rank == 3
+          const int64_t in_d = input_shape.dim_size(num_dims - 3);
+          const int64_t in_h = input_shape.dim_size(num_dims - 2);
+          const int64_t in_w = input_shape.dim_size(num_dims - 1);
+          const int64_t pad_d = padded_shape.dim_size(num_dims - 3);
+          const int64_t pad_h = padded_shape.dim_size(num_dims - 2);
+          const int64_t pad_w = padded_shape.dim_size(num_dims - 1);
+          for (int64_t b = 0; b < batch_size; ++b) {
+            for (int64_t d = 0; d < in_d; ++d) {
+              for (int64_t h = 0; h < in_h; ++h) {
+                memcpy(dst + (b * pad_d * pad_h * pad_w + d * pad_h * pad_w +
+                              h * pad_w) *
+                                 elem_size,
+                       src + (b * in_d * in_h * in_w + d * in_h * in_w +
+                              h * in_w) *
+                                 elem_size,
+                       in_w * elem_size);
+              }
+            }
+          }
+        }
+        fft_input = &padded_in;
+      }
+    }
+
+    DoFFT(ctx, *fft_input, fft_shape, out);
   }
 
  protected:
