@@ -281,14 +281,24 @@ def _constant_impl(
     value, dtype, shape, name, verify_shape, allow_broadcast
 ) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Implementation of constant."""
+  # Provide a descriptive error message if a Tensor is passed to tf.constant.
+  # This prevents unclear errors during XLA compilation or control flow tracing.
+  if hasattr(value, "__tensor_metadata__") or isinstance(value, ops.Tensor):
+    raise TypeError(
+        f"tf.constant() expected a Python scalar, list, or numpy array, "
+        f"but got a tensor instead: {value}\n"
+        f"Note: You are passing an existing tensor into tf.constant(), which "
+        f"is not supported. If you already have a tensor, use it directly."
+    )
+
   ctx = context.context()
   if ctx.executing_eagerly():
-    if trace.enabled:
+    if trace.enabled: 
       with trace.Trace("tf.constant"):
         return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
     return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
 
-  const_tensor = ops._create_graph_constant(  # pylint: disable=protected-access
+  const_tensor = ops._create_graph_constant(
       value, dtype, shape, name, verify_shape, allow_broadcast
   )
   return const_tensor
