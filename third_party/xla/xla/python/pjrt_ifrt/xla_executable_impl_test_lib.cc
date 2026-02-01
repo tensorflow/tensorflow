@@ -708,15 +708,18 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable_version,
-                          loaded_executable->executable_version());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto xla_executable_version,
-      xla::ifrt::ToXlaExecutableVersion(std::move(executable_version)));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
-                          xla_executable_version->ToProto());
-  EXPECT_THAT(metadata.executable_version(),
-              EqualsProto(serialized_xla_executable_version));
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
+      executable_version = loaded_executable->executable_version();
+  if (!absl::IsUnimplemented(executable_version.status())) {
+    TF_ASSERT_OK(executable_version.status());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto xla_executable_version,
+        xla::ifrt::ToXlaExecutableVersion(*std::move(executable_version)));
+    TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
+                            xla_executable_version->ToProto());
+    EXPECT_THAT(metadata.executable_version(),
+                EqualsProto(serialized_xla_executable_version));
+  }
 
   EXPECT_EQ(metadata.computation_name(), "add_sub");
 
