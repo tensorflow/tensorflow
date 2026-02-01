@@ -1158,6 +1158,8 @@ class BlockLSTMGradOp : public OpKernel {
                     "`seq_len_max_tensor` must be rank 0 but is rank ",
                     seq_len_max_tensor->dims()));
 
+    const int64_t seq_len_max = seq_len_max_tensor->scalar<int64_t>()();
+
     const Tensor* x;
     OP_REQUIRES_OK(ctx, ctx->input("x", &x));
     OP_REQUIRES(
@@ -1166,6 +1168,12 @@ class BlockLSTMGradOp : public OpKernel {
     const int64_t timelen = x->dim_size(0);
     const int64_t batch_size = x->dim_size(1);
     const int64_t input_size = x->dim_size(2);
+
+    OP_REQUIRES(
+        ctx, timelen >= seq_len_max,
+        absl::InvalidArgumentError(absl::StrCat(
+            "x time dimension must be >= seq_len_max. ",
+            "Got timelen = ", timelen, ", seq_len_max = ", seq_len_max, ".")));
 
     const Tensor* cs_prev_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_prev", &cs_prev_tensor));
@@ -1360,7 +1368,6 @@ class BlockLSTMGradOp : public OpKernel {
     functor::TensorZero<Device, T>()(device, wco_grad_tensor->flat<T>());
     functor::TensorZero<Device, T>()(device, b_grad_tensor->flat<T>());
 
-    const int64_t seq_len_max = seq_len_max_tensor->scalar<int64_t>()();
     SliceHelper<Device, T> slicer(ctx);
     for (int64_t t = seq_len_max - 1; t >= 0; --t) {
       const Tensor& x_tensor = slicer.InputSlice(*x, t, "x");
