@@ -419,9 +419,14 @@ void TensorShapeBase<Shape>::AddDim(int64_t size) {
   int64_t new_num_elements;
   if (kIsPartial && (num_elements() < 0 || size < 0)) {
     new_num_elements = -1;
+  } else if (num_elements() == 0 || size == 0) {
+    // If either operand is 0, the total elements must be 0.
+    // This prevents overflow checks from failing on massive dimensions
+    // when the total volume is mathematically zero.
+    new_num_elements = 0;
   } else {
     new_num_elements = MultiplyWithoutOverflow(num_elements(), size);
-    CHECK_LE(0, new_num_elements);
+    CHECK_LE(0, new_num_elements) << "Overflow computing total elements";
   }
   UnsafeAddDim(size, new_num_elements);
 }
