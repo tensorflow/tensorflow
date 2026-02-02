@@ -355,6 +355,31 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "linalg_custom_call_benchmark_test",
+    srcs = ["linalg_custom_call_benchmark_test.cc"],
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
+        "//third_party/py/jax/jaxlib/cpu:cpu_kernels",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
     name = "gather_benchmark_test",
     srcs = ["gather_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
