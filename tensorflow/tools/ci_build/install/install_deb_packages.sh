@@ -19,7 +19,7 @@ set -e
 # Install dependencies from ubuntu deb repository.
 apt-get update
 
-apt-get install -y \
+apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
@@ -37,6 +37,7 @@ apt-get install -y \
     python-virtualenv \
     python3-dev \
     python3-pip \
+    rsync \
     sudo \
     swig \
     unzip \

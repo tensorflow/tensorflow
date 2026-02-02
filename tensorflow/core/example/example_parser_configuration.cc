@@ -157,4 +157,42 @@ Status ExtractExampleParserConfiguration(
   return Status::OK();
 }
 
+Status ExampleParserConfigurationProtoToFeatureVectors(
+    const ExampleParserConfiguration& config_proto,
+    std::vector<FixedLenFeature>* fixed_len_features,
+    std::vector<VarLenFeature>* var_len_features) {
+  const auto& feature_map = config_proto.feature_map();
+  for (auto it = feature_map.cbegin(); it != feature_map.cend(); ++it) {
+    string key = it->first;
+    const auto& config = it->second;
+    if (config.has_fixed_len_feature()) {
+      const auto& fixed_config = config.fixed_len_feature();
+      FixedLenFeature f;
+      f.key = key;
+      f.dtype = fixed_config.dtype();
+      f.shape = TensorShape(fixed_config.shape());
+      Tensor default_value(f.dtype, f.shape);
+      if (!default_value.FromProto(fixed_config.default_value())) {
+        return errors::InvalidArgument(
+            "Invalid default_value in config proto ",
+            fixed_config.default_value().DebugString());
+      }
+      f.default_value = default_value;
+      f.values_output_tensor_name = fixed_config.values_output_tensor_name();
+      fixed_len_features->push_back(f);
+    } else {
+      const auto& var_len_config = config.var_len_feature();
+      VarLenFeature v;
+      v.key = key;
+      v.dtype = var_len_config.dtype();
+      v.values_output_tensor_name = var_len_config.values_output_tensor_name();
+      v.indices_output_tensor_name =
+          var_len_config.indices_output_tensor_name();
+      v.shapes_output_tensor_name = var_len_config.shapes_output_tensor_name();
+      var_len_features->push_back(v);
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

@@ -181,10 +181,16 @@ int PickUnusedPortOrDie() {
 }
 
 string TensorFlowSrcRoot() {
-  // 'bazel test' sets TEST_SRCDIR
+  // 'bazel test' sets TEST_SRCDIR, and also TEST_WORKSPACE if a new
+  // enough version of bazel is used.
   const char* env = getenv("TEST_SRCDIR");
+  const char* workspace = getenv("TEST_WORKSPACE");
   if (env && env[0] != '\0') {
-    return strings::StrCat(env, "/tensorflow");
+    if (workspace && workspace[0] != '\0') {
+      return strings::StrCat(env, "/", workspace, "/tensorflow");
+    } else {
+      return strings::StrCat(env, "/tensorflow");
+    }
   } else {
     LOG(WARNING) << "TEST_SRCDIR environment variable not set: "
                  << "using $PWD/tensorflow as TensorFlowSrcRoot() for tests.";

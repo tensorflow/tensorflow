@@ -33,6 +33,7 @@ Some examples use the `pandas` library for data processing (`sudo pip install pa
 ## Image classification
 
 * [Convolutional Neural Networks on MNIST Data](mnist.py)
+* [Recurrent Neural Networks on MNIST Data](mnist_rnn.py)
 * [Deep Residual Networks on MNIST Data](resnet.py)
 
 

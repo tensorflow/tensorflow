@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 
 const char kSignaturesKey[] = "serving_signatures";
 
@@ -117,7 +117,7 @@ Status BindGenericInputs(const GenericSignature& signature,
 Status BindGenericNames(const GenericSignature& signature,
                         const std::vector<string>& input_names,
                         std::vector<string>* bound_names);
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_SIGNATURE_H_

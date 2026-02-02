@@ -57,6 +57,10 @@ class ThreadPool {
   // Returns the number of threads in the pool.
   int NumThreads() const;
 
+  // Returns current thread id between 0 and NumThreads() - 1, if called from a
+  // thread in the pool. Returns -1 otherwise.
+  int CurrentThreadId() const;
+
   struct Impl;
 
  private:

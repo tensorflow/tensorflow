@@ -572,7 +572,7 @@ class EventAccumulator(object):
 
     If by_tags is True, purge all events that occurred after the given
     event.step, but only for the tags that the event has. Non-sequential
-    event.steps suggest that a Tensorflow restart occurred, and we discard
+    event.steps suggest that a TensorFlow restart occurred, and we discard
     the out-of-order events to display a consistent view in TensorBoard.
 
     Discarding by tags is the safer method, when we are unsure whether a restart

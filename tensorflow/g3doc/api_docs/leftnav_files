@@ -16,6 +16,10 @@ python/train.md
 python/script_ops.md
 python/test.md
 python/contrib.layers.md
+python/contrib.losses.md
+python/contrib.metrics.md
+python/contrib.learn.md
+python/contrib.framework.md
 python/contrib.util.md
 >>> [C++ API](/api_docs/cc/index.md)
 cc/ClassEnv.md

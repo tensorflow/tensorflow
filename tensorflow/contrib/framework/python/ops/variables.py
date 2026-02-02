@@ -229,10 +229,6 @@ def variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                                        collections=collections,
                                        caching_device=caching_device)
 
-# TODO(sguada) move it to ops.GraphKeys or to contrib.framework.GraphKeys
-# Collection containing all the variables created using model_variables.
-MODEL_VARIABLES = '_model_variables_'
-
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
@@ -251,8 +247,8 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
     trainable: If `True` also add the variable to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     collections: A list of collection names to which the Variable will be added.
-      Note that the variable is always also added to the tf.GraphKeys.VARIABLES
-      and MODEL_VARIABLES collections.
+      Note that the variable is always also added to the `GraphKeys.VARIABLES`
+      and `GraphKeys.MODEL_VARIABLES` collections.
     caching_device: Optional device string or function describing where the
         Variable should be cached for reading.  Defaults to the Variable's
         device.
@@ -263,9 +259,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
     The created or existing variable.
   """
   collections = list(collections or [])
-
-  # Make sure variables are added to tf.GraphKeys.VARIABLES and MODEL_VARIABLES
-  collections += [ops.GraphKeys.VARIABLES, MODEL_VARIABLES]
+  collections += [ops.GraphKeys.VARIABLES, ops.GraphKeys.MODEL_VARIABLES]
   return variable(name, shape=shape, dtype=dtype,
                   initializer=initializer, regularizer=regularizer,
                   trainable=trainable, collections=collections,
@@ -273,13 +267,13 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
 
 
 def add_model_variable(var):
-  """Adds a variable to the MODEL_VARIABLES collection.
+  """Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
   Args:
     var: a variable.
   """
-  if var not in ops.get_collection(MODEL_VARIABLES):
-    ops.add_to_collection(MODEL_VARIABLES, var)
+  if var not in ops.get_collection(ops.GraphKeys.MODEL_VARIABLES):
+    ops.add_to_collection(ops.GraphKeys.MODEL_VARIABLES, var)
 
 
 def get_variables(scope=None, suffix=None, collection=ops.GraphKeys.VARIABLES):
@@ -310,7 +304,7 @@ def get_model_variables(scope=None, suffix=None):
   Returns:
     a list of variables in colelction with scope and suffix.
   """
-  return get_variables(scope, suffix, MODEL_VARIABLES)
+  return get_variables(scope, suffix, ops.GraphKeys.MODEL_VARIABLES)
 
 
 def get_local_variables(scope=None, suffix=None):

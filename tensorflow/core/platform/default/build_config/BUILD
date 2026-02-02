@@ -43,16 +43,27 @@ cc_library(
     linkopts = ["-framework IOKit"],
 )
 
+# Minimal lib so that tools used for mobile compilation
+# don't have to depend on platformlib.
+cc_library(
+    name = "proto_parsing",
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:protos_cc",
+    ],
+)
+
 cc_library(
     name = "platformlib",
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:protos_cc",
         "@farmhash_archive//:farmhash",
+        "@gif_archive//:gif",
+        "@highwayhash//:sip_hash",
         "@jpeg_archive//:jpeg",
         "@png_archive//:png",
-        "@highwayhash//:sip_hash",
         "@re2//:re2",
-        "//tensorflow/core:protos_cc",
     ],
 )
 

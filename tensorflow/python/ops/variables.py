@@ -255,6 +255,10 @@ class Variable(object):
 
     if collections is None:
       collections = [ops.GraphKeys.VARIABLES]
+    if not isinstance(collections, (list, tuple, set)):
+      raise ValueError(
+          "collections argument to Variable constructor must be a list, tuple, "
+          "or set. Got %s of type %s" % (collections, type(collections)))
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.control_dependencies(None):
@@ -610,6 +614,15 @@ class Variable(object):
     else:
       setattr(Variable, operator, lambda a, b: Variable._RunOp(operator, a, b))
 
+  # NOTE(mrry): This enables the Variable's overloaded "right" binary
+  # operators to run when the left operand is an ndarray, because it
+  # accords the Variable class higher priority than an ndarray, or a
+  # numpy matrix.
+  # TODO(mrry): Convert this to using numpy's __numpy_ufunc__
+  # mechanism, which allows more control over how Variables interact
+  # with ndarrays.
+  __array_priority__ = 100
+
   @staticmethod
   def _RunOp(operator, a, b):
     """Run the operator 'op' for 'a'.
@@ -866,6 +879,15 @@ def local_variables():
     A list of local Variable objects.
   """
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)
+
+
+def model_variables():
+  """Returns all variables in the MODEL_VARIABLES collection.
+
+  Returns:
+    A list of local Variable objects.
+  """
+  return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES)
 
 
 def moving_average_variables():

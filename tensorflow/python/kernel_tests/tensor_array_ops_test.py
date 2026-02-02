@@ -477,7 +477,7 @@ class TensorArrayCPUTest(tf.test.TestCase):
   def testTensorArrayWriteGradientAddMultipleAdds(self):
     for dtype in (tf.int32, tf.int64, tf.float32,
                   tf.float64, tf.complex64, tf.complex128):
-        self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
+      self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
 
   def testMultiTensorArray(self):
     with self.test_session(use_gpu=self._use_gpu):
@@ -925,10 +925,60 @@ class TensorArrayCPUTest(tf.test.TestCase):
       grad_r0_vals = session.run(grad_r0)[0]
       self.assertAllEqual(grad_r0_vals, [1.0, 0.0])
 
+  def testTensorArrayUnpackDynamic(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32, size=3,
+                                        dynamic_size=True)
+      x = tf.constant([1.0, 2.0, 3.0])
+      w0 = ta.unpack(x)
+      w1 = w0.write(3, 4.0)
+      r = w1.pack()
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      grad = tf.gradients(ys=[r], xs=[x])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]),
+                          sess.run(grad)[0])
+
+  def testTensorArraySplitDynamic(self):
+    with self.test_session(use_gpu=self._use_gpu) as sess:
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32, size=3,
+                                        dynamic_size=True)
+      x = tf.constant([1.0, 2.0, 3.0])
+      w0 = ta.split(x, [1, 1, 1])
+      w1 = w0.write(3, [4.0])
+      r = w1.concat()
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      grad = tf.gradients(ys=[r], xs=[x])
+      self.assertAllEqual(np.array([1.0, 1.0, 1.0]),
+                          sess.run(grad)[0])
+
+  def testTensorArrayEvalEmpty(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32,
+                                        size=0,
+                                        dynamic_size=False,
+                                        infer_shape=False)
+      with self.assertRaisesOpError(
+          "TensorArray has size zero, but element shape <unknown> is not fully "
+          "defined. Currently only static shapes are supported when packing "
+          "zero-size TensorArrays."):
+        ta.pack().eval()
+
+  def testTensorArrayEvalEmptyWithDefault(self):
+    with self.test_session(use_gpu=self._use_gpu):
+      ta = tensor_array_ops.TensorArray(dtype=tf.float32,
+                                        size=0,
+                                        dynamic_size=False,
+                                        infer_shape=True)
+      self.assertEqual(0, ta.size().eval())
+      ta.unpack(tf.zeros([0, 3, 5]))
+      self.assertAllEqual([0, 3, 5], ta.pack().eval().shape)
+      # Concatenating zero tensors along their first dimension gives a
+      # first dimension of zero
+      self.assertAllEqual([0, 5], ta.concat().eval().shape)
+
 
 class TensorArrayGPUTest(TensorArrayCPUTest):
   _use_gpu = True
-
 
 if __name__ == "__main__":
   tf.test.main()

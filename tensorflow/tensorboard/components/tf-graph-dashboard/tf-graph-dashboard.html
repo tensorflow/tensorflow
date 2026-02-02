@@ -26,36 +26,40 @@ by default. The user can select a different run from a dropdown menu.
 <tf-dashboard-layout>
 <div class="sidebar">
   <tf-graph-controls id="controls"
-      color-by-params="[[_colorByParams]]"
-      stats="[[_stats]]"
-      color-by="{{_colorBy}}",
-      datasets="[[_datasets]]",
-      selected-dataset="{{_selectedDataset}}"
-      selected-file="{{_selectedFile}}"
-      selected-metadata-tag="{{_selectedMetadataTag}}"
+        devices-for-stats="{{_devicesForStats}}"
+        color-by-params="[[_colorByParams]]"
+        stats="[[_stats]]"
+        color-by="{{_colorBy}}"
+        datasets="[[_datasets]]"
+        render-hierarchy="[[_renderHierarchy]]"
+        selected-dataset="{{_selectedDataset}}"
+        selected-file="{{_selectedFile}}"
+        selected-metadata-tag="{{_selectedMetadataTag}}"
   ></tf-graph-controls>
   <tf-graph-loader id="loader"
-          datasets="[[_datasets]]",
-          selected-dataset="[[_selectedDataset]]"
-          selected-metadata-tag="[[_selectedMetadataTag]]"
-          selected-file="[[_selectedFile]]"
-          out-graph-hierarchy="{{_graphHierarchy}}"
-          out-graph="{{_graph}}"
-          out-stats="{{_stats}}"
-          progress="{{_progress}}"
-          out-hierarchy-params="{{_hierarchyParams}}"
+        datasets="[[_datasets]]"
+        selected-dataset="[[_selectedDataset]]"
+        selected-metadata-tag="[[_selectedMetadataTag]]"
+        selected-file="[[_selectedFile]]"
+        out-graph-hierarchy="{{_graphHierarchy}}"
+        out-graph="{{_graph}}"
+        out-stats="{{_stats}}"
+        progress="{{_progress}}"
+out-hierarchy-params="{{_hierarchyParams}}"
   ></tf-graph-loader>
 </div>
 <div class="center">
     <tf-graph-board id="graphboard"
-                graph-hierarchy="[[_graphHierarchy]]"
-                graph="[[_graph]]"
-                stats="[[_stats]]"
-                progress="[[_progress]]"
-                color-by="[[_colorBy]]"
-                color-by-params="{{_colorByParams}}"
-                hierarchy-params="[[_hierarchyParams]]">
-    </tf-graph-board>
+        devices-for-stats="[[_devicesForStats]]"
+        color-by="[[_colorBy]]"
+        color-by-params="{{_colorByParams}}"
+        graph-hierarchy="[[_graphHierarchy]]"
+        graph="[[_graph]]"
+        hierarchy-params="[[_hierarchyParams]]"
+        progress="[[_progress]]"
+        render-hierarchy="{{_renderHierarchy}}"
+        stats="[[_stats]]"
+    ></tf-graph-board>
 </div>
 </tf-dashboard-layout>
 </template>
@@ -80,9 +84,9 @@ Polymer({
   is: 'tf-graph-dashboard',
   properties: {
     _datasets: Object,
+    _renderHierarchy: Object,
     backend: {type: Object, observer: 'reload'},
-    router: {type: Object},
-    runs: Array,
+    runs: Array
   },
   reload: function() {
     Promise.all([this.backend.graphRuns(), this.backend.runMetadataRuns()])
@@ -92,14 +96,14 @@ Polymer({
       var datasets = _.map(runsWithGraph, function(runName) {
         return {
           name: runName,
-          path: this.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
+          path: this.backend.router.graph(runName, tf.graph.LIMIT_ATTR_SIZE,
             tf.graph.LARGE_ATTRS_KEY),
-          runMetadata: _.map(runToMetadata[runName], function(tag) {
+          runMetadata: runToMetadata[runName] ? _.map(runToMetadata[runName].sort(), function(tag) {
             return {
               tag: tag,
-              path: this.router.runMetadata(tag, runName)
+              path: this.backend.router.runMetadata(tag, runName)
             };
-          }, this)
+          }, this) : []
         };
       }, this);
       this.set('_datasets', datasets);

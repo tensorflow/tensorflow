@@ -382,7 +382,7 @@ dimension.
 ##### Args:
 
 
-*  <b>`image`</b>: 3-D tensor of shape [height, width, channels]
+*  <b>`image`</b>: 3-D tensor of shape `[height, width, channels]`
 *  <b>`target_height`</b>: Target height.
 *  <b>`target_width`</b>: Target width.
 
@@ -461,7 +461,8 @@ This op does nothing if `offset_*` is zero and the image already has size
 
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
-    `target_*` arguments
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative.
 
 
 - - -
@@ -494,7 +495,8 @@ lower-right corner is at
 
 
 *  <b>`ValueError`</b>: If the shape of `image` is incompatible with the `offset_*` or
-  `target_*` arguments
+    `target_*` arguments, or either `offset_height` or `offset_width` is
+    negative, or either `target_height` or `target_width` is not positive.
 
 
 - - -
@@ -513,26 +515,105 @@ glimpse_width, channels]`. The channels and batch dimensions are the
 same as that of the input tensor. The height and width of the output
 windows are specified in the `size` parameter.
 
-The argument `normalized` and `centered` controls how the windows are
+The argument `normalized` and `centered` controls how the windows are built:
+
+* If the coordinates are normalized but not centered, 0.0 and 1.0
+  correspond to the minimum and maximum of each height and width
+  dimension.
+* If the coordinates are both normalized and centered, they range from
+  -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+  left corner, the lower right corner is located at (1.0, 1.0) and the
+  center is at (0, 0).
+* If the coordinates are not normalized they are interpreted as
+  numbers of pixels.
 
 ##### Args:
 
 
 *  <b>`input`</b>: A `Tensor` of type `float32`.
+    A 4-D float tensor of shape `[batch_size, height, width, channels]`.
 *  <b>`size`</b>: A `Tensor` of type `int32`.
+    A 1-D tensor of 2 elements containing the size of the glimpses
+    to extract.  The glimpse height must be specified first, following
+    by the glimpse width.
 *  <b>`offsets`</b>: A `Tensor` of type `float32`.
+    A 2-D integer tensor of shape `[batch_size, 2]` containing
+    the x, y locations of the center of each window.
 *  <b>`centered`</b>: An optional `bool`. Defaults to `True`.
+    indicates if the offset coordinates are centered relative to
+    the image, in which case the (0, 0) offset is relative to the center
+    of the input images. If false, the (0,0) offset corresponds to the
+    upper left corner of the input images.
 *  <b>`normalized`</b>: An optional `bool`. Defaults to `True`.
+    indicates if the offset coordinates are normalized.
 *  <b>`uniform_noise`</b>: An optional `bool`. Defaults to `True`.
+    indicates if the noise should be generated using a
+    uniform distribution or a gaussian distribution.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
   A `Tensor` of type `float32`.
+  A tensor representing the glimpses `[batch_size,
+  glimpse_height, glimpse_width, channels]`.
 
 
 
-## Flipping and Transposing
+- - -
+
+### `tf.image.crop_and_resize(image, boxes, box_ind, crop_size, method=None, extrapolation_value=None, name=None)` {#crop_and_resize}
+
+Extracts crops from the input image tensor and bilinearly resizes them (possibly
+
+with aspect ratio change) to a common output size specified by `crop_size`. This
+is more general than the `crop_to_bounding_box` op which extracts a fixed size
+slice from the input image and does not allow resizing or aspect ratio change.
+
+Returns a tensor with `crops` from the input `image` at positions defined at the
+bounding box locations in `boxes`. The cropped boxes are all resized (with
+bilinear interpolation) to a fixed `size = [crop_height, crop_width]`. The
+result is a 4-D tensor `[num_boxes, crop_height, crop_width, depth]`.
+
+##### Args:
+
+
+*  <b>`image`</b>: A `Tensor`. Must be one of the following types: `uint8`, `int8`, `int16`, `int32`, `int64`, `half`, `float32`, `float64`.
+    A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+    Both `image_height` and `image_width` need to be positive.
+*  <b>`boxes`</b>: A `Tensor` of type `float32`.
+    A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+    specifies the coordinates of a box in the `box_ind[i]` image and is specified
+    in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+    `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+    `[0, 1]` interval of normalized image height is mapped to
+    `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+    which case the sampled crop is an up-down flipped version of the original
+    image. The width dimension is treated similarly. Normalized coordinates
+    outside the `[0, 1]` range are allowed, in which case we use
+    `extrapolation_value` to extrapolate the input image values.
+*  <b>`box_ind`</b>: A `Tensor` of type `int32`.
+    A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+    The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+*  <b>`crop_size`</b>: A `Tensor` of type `int32`.
+    A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`. All
+    cropped image patches are resized to this size. The aspect ratio of the image
+    content is not preserved. Both `crop_height` and `crop_width` need to be
+    positive.
+*  <b>`method`</b>: An optional `string` from: `"bilinear"`. Defaults to `"bilinear"`.
+    A string specifying the interpolation method. Only 'bilinear' is
+    supported for now.
+*  <b>`extrapolation_value`</b>: An optional `float`. Defaults to `0`.
+    Value used for extrapolation, when applicable.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `float32`.
+  A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+
+
+
+## Flipping, Rotating and Transposing
 
 - - -
 
@@ -666,6 +747,24 @@ See also `transpose()`.
 
 
 
+- - -
+
+### `tf.image.rot90(image, k=1)` {#rot90}
+
+Rotate an image counter-clockwise by 90 degrees.
+
+##### Args:
+
+
+*  <b>`image`</b>: A 3-D tensor of shape `[height, width, channels].`
+*  <b>`k`</b>: Number of times the image is rotated by 90 degrees.
+
+##### Returns:
+
+  A rotated 3-D tensor of the same type and shape as `image`.
+
+
+
 ## Converting Between Colorspaces.
 
 Image ops work either on individual images or on batches of images, depending on
@@ -685,7 +784,7 @@ Internally, images are either stored in as one `float32` per channel per pixel
 (implicitly, values are assumed to lie in `[0,1)`) or one `uint8` per channel
 per pixel (values are assumed to lie in `[0,255]`).
 
-Tensorflow can convert between images in RGB or HSV. The conversion functions
+TensorFlow can convert between images in RGB or HSV. The conversion functions
 work only on float images, so you need to convert images in other formats using
 [`convert_image_dtype`](#convert-image-dtype).
 
@@ -756,13 +855,13 @@ See `rgb_to_hsv` for a description of the HSV encoding.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. HSV data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to RGB.
+  A `Tensor`. Has the same type as `images`. `images` converted to RGB.
 
 
 - - -
@@ -782,13 +881,13 @@ corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
 ##### Args:
 
 
-*  <b>`images`</b>: A `Tensor` of type `float32`.
+*  <b>`images`</b>: A `Tensor`. Must be one of the following types: `float32`, `float64`.
     1-D or higher rank. RGB data to convert. Last dimension must be size 3.
 *  <b>`name`</b>: A name for the operation (optional).
 
 ##### Returns:
 
-  A `Tensor` of type `float32`. `images` converted to HSV.
+  A `Tensor`. Has the same type as `images`. `images` converted to HSV.
 
 
 
@@ -1121,7 +1220,7 @@ Draw bounding boxes on a batch of images.
 
 Outputs a copy of `images` but draws on top of the pixels zero or more bounding
 boxes specified by the locations in `boxes`. The coordinates of the each
-bounding box in `boxes are encoded as `[y_min, x_min, y_max, x_max]`. The
+bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The
 bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
 height of the underlying image.
 
@@ -1146,6 +1245,54 @@ Parts of the bounding box may fall outside the image.
   A `Tensor`. Has the same type as `images`.
   4-D with the same shape as `images`. The batch of input images with
   bounding boxes drawn on the images.
+
+
+- - -
+
+### `tf.image.non_max_suppression(boxes, scores, max_output_size, iou_threshold=None, name=None)` {#non_max_suppression}
+
+Greedily selects a subset of bounding boxes in descending order of score,
+
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system.  Note that this
+algorithm is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the tf.gather operation.  For example:
+
+  selected_indices = tf.image.non_max_suppression(
+      boxes, scores, max_output_size, iou_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+
+##### Args:
+
+
+*  <b>`boxes`</b>: A `Tensor` of type `float32`.
+    A 2-D float tensor of shape `[num_boxes, 4]`.
+*  <b>`scores`</b>: A `Tensor` of type `float32`.
+    A 1-D float tensor of shape `[num_boxes]` representing a single
+    score corresponding to each box (each row of boxes).
+*  <b>`max_output_size`</b>: A `Tensor` of type `int32`.
+    A scalar integer tensor representing the maximum number of
+    boxes to be selected by non max suppression.
+*  <b>`iou_threshold`</b>: An optional `float`. Defaults to `0.5`.
+    A float representing the threshold for deciding whether boxes
+    overlap too much with respect to IOU.
+*  <b>`name`</b>: A name for the operation (optional).
+
+##### Returns:
+
+  A `Tensor` of type `int32`.
+  A 1-D integer tensor of shape `[M]` representing the selected
+  indices from the boxes tensor, where `M <= max_output_size`.
 
 
 - - -

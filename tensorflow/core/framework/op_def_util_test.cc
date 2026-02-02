@@ -37,13 +37,13 @@ class ValidateOpDefTest : public ::testing::Test {
   Status TestProto(const string& text) { return ValidateOpDef(FromText(text)); }
 
   Status TestBuilder(const OpDefBuilder& builder) {
-    OpDef op_def;
-    Status status = builder.Finalize(&op_def);
+    OpRegistrationData op_reg_data;
+    Status status = builder.Finalize(&op_reg_data);
     TF_EXPECT_OK(status);
     if (!status.ok()) {
       return status;
     } else {
-      return ValidateOpDef(op_def);
+      return ValidateOpDef(op_reg_data.op_def);
     }
   }
 

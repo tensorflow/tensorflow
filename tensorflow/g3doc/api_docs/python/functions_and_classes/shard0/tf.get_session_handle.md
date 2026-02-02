@@ -9,17 +9,6 @@ used to retrieve `data` in a subsequent run().
 
 Combined with `get_session_tensor`, we can keep a tensor produced in
 one run call in place, and use it as the input in a future run call.
-Below is a simple example:
-
-```python
-c = tf.mul(a, b)
-h = tf.get_session_handle(c)
-h = sess.run(h)
-
-p, a = tf.get_session_tensor(tf.float32)
-b = tf.mul(a, 10)
-c = sess.run(b, feed_dict={p: h.handle})
-```
 
 ##### Args:
 
@@ -35,4 +24,17 @@ c = sess.run(b, feed_dict={p: h.handle})
 
 
 *  <b>`TypeError`</b>: if `data` is not a Tensor.
+
+
+*  <b>`Example`</b>: 
+
+```python
+c = tf.mul(a, b)
+h = tf.get_session_handle(c)
+h = sess.run(h)
+
+p, a = tf.get_session_tensor(h.handle, tf.float32)
+b = tf.mul(a, 10)
+c = sess.run(b, feed_dict={p: h.handle})
+```
 

@@ -51,7 +51,10 @@ cc_library(
     hdrs = glob([
         "**/*.h",
     ]),
-    includes = [".", "include"],
+    includes = [
+        ".",
+        "include",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -66,7 +69,7 @@ cc_library(
         "-lpthread",
     ] + select({
         "//tensorflow:darwin": [],
-        "//conditions:default": ["-lrt"]
+        "//conditions:default": ["-lrt"],
     }),
     visibility = ["//visibility:public"],
 )
@@ -74,65 +77,65 @@ cc_library(
 cc_library(
     name = "cudart",
     srcs = [
-        cuda_library_path("cudart")
+        cuda_library_path("cudart"),
     ],
     data = [
-        cuda_library_path("cudart")
+        cuda_library_path("cudart"),
     ],
     includes = ["include/"],
-    visibility = ["//visibility:public"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cublas",
     srcs = [
-        cuda_library_path("cublas")
+        cuda_library_path("cublas"),
     ],
     data = [
-        cuda_library_path("cublas")
+        cuda_library_path("cublas"),
     ],
     includes = ["include/"],
-    visibility = ["//visibility:public"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cudnn",
     srcs = [
-        cudnn_library_path()
+        cudnn_library_path(),
     ],
     data = [
-        cudnn_library_path()
+        cudnn_library_path(),
     ],
     includes = ["include/"],
-    visibility = ["//visibility:public"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cufft",
     srcs = [
-        cuda_library_path("cufft")
+        cuda_library_path("cufft"),
     ],
     data = [
-        cuda_library_path("cufft")
+        cuda_library_path("cufft"),
     ],
     includes = ["include/"],
-    visibility = ["//visibility:public"],
     linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
+    visibility = ["//visibility:public"],
     deps = [
+        ":cublas",
         ":cuda_headers",
         ":cudart",
-        ":cublas",
         ":cudnn",
         ":cufft",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -140,7 +143,10 @@ cc_library(
     hdrs = glob([
         "**/*.h",
     ]),
-    includes = [".", "extras/CUPTI/include/"],
+    includes = [
+        ".",
+        "extras/CUPTI/include/",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -151,7 +157,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
 )
-
 
 # TODO(opensource): for now, we have to invoke the cuda_config.sh manually in the source tree.
 # This rule checks if Cuda libraries in the source tree has been properly configured.
@@ -182,21 +187,21 @@ genrule(
 
         # Under non-cuda config, create all dummy files to make the build go through
         ";".join([
-           "mkdir -p $(@D)/include",
-           "mkdir -p $(@D)/lib64",
-           "mkdir -p $(@D)/extras/CUPTI/include",
-           "mkdir -p $(@D)/extras/CUPTI/lib64",
-           "touch $(@D)/include/cuda.h",
-           "touch $(@D)/include/cublas.h",
-           "touch $(@D)/include/cudnn.h",
-           "touch $(@D)/extras/CUPTI/include/cupti.h",
-           "touch $(@D)/{}".format(cuda_static_library_path("cudart")),
-           "touch $(@D)/{}".format(cuda_library_path("cublas")),
-           "touch $(@D)/{}".format(cudnn_library_path()),
-           "touch $(@D)/{}".format(cuda_library_path("cudart")),
-           "touch $(@D)/{}".format(cuda_library_path("cufft")),
-           "touch $(@D)/{}".format(cupti_library_path()),
-         ]),
+            "mkdir -p $(@D)/include",
+            "mkdir -p $(@D)/lib64",
+            "mkdir -p $(@D)/extras/CUPTI/include",
+            "mkdir -p $(@D)/extras/CUPTI/lib64",
+            "touch $(@D)/include/cuda.h",
+            "touch $(@D)/include/cublas.h",
+            "touch $(@D)/include/cudnn.h",
+            "touch $(@D)/extras/CUPTI/include/cupti.h",
+            "touch $(@D)/{}".format(cuda_static_library_path("cudart")),
+            "touch $(@D)/{}".format(cuda_library_path("cublas")),
+            "touch $(@D)/{}".format(cudnn_library_path()),
+            "touch $(@D)/{}".format(cuda_library_path("cudart")),
+            "touch $(@D)/{}".format(cuda_library_path("cufft")),
+            "touch $(@D)/{}".format(cupti_library_path()),
+        ]),
     ),
     local = 1,
 )
@@ -212,7 +217,7 @@ genrule(
 
         # Under non-cuda config, create the dummy file
         ";".join([
-         "touch $(@D)/cuda.config",
+            "touch $(@D)/cuda.config",
         ]),
     ),
     local = 1,

@@ -19,8 +19,8 @@ of the result tensor is `fn(initializer, values[0]).shape`.
 *  <b>`elems`</b>: A tensor that is unpacked into a sequence of tensors to apply `fn`.
 *  <b>`initializer`</b>: (optional) The initial value for the accumulator.
 *  <b>`parallel_iterations`</b>: (optional) The number of iterations allowed to run
-                       in parallel.
-*  <b>`back_prop`</b>: (optional) True enables back propagation.
+    in parallel.
+*  <b>`back_prop`</b>: (optional) True enables support for back propagation.
 *  <b>`swap_memory`</b>: (optional) True enables GPU-CPU memory swapping.
 *  <b>`name`</b>: (optional) Name prefix for the returned tensors.
 

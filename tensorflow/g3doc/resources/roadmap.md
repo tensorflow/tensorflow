@@ -10,7 +10,9 @@ and we welcome
 The features on this list are targeted for the next few months. At this point,
 we do not have timelines for these features.
 
-### Improve support for C++ only users
+### Improve non-Python language support
+C and C++ APIs for:
+
 * Graph construction
 * Gradients
 * Shape Inference

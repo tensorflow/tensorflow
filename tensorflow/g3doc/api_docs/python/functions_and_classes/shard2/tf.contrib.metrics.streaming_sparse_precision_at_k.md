@@ -13,16 +13,17 @@ If `class_id` is not specified, we'll calculate precision as how often on
 `streaming_sparse_precision_at_k` creates two local variables,
 `true_positive_at_<k>` and `false_positive_at_<k>`, that are used to compute
 the precision@k frequency. This frequency is ultimately returned as
-`recall_at_<k>`: an idempotent operation that simply divides
-`true_positive_at_<k>` by total (`true_positive_at_<k>` + `recall_at_<k>`). To
-facilitate the estimation of precision@k over a stream of data, the function
-utilizes three steps.
+`precision_at_<k>`: an idempotent operation that simply divides
+`true_positive_at_<k>` by total (`true_positive_at_<k>` +
+`false_positive_at_<k>`). To facilitate the estimation of
+precision@k over a stream of data, the function utilizes three
+steps.
 * A `top_k` operation computes a tensor whose elements indicate the top `k`
   predictions of the `predictions` `Tensor`.
 * Set operations are applied to `top_k` and `labels` to calculate true
   positives and false positives.
 * An `update_op` operation increments `true_positive_at_<k>` and
-  `false_positive_at_<k>`. It also returns the recall value.
+  `false_positive_at_<k>`. It also returns the precision value.
 
 ##### Args:
 

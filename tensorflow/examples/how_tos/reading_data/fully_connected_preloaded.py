@@ -94,8 +94,8 @@ def run_training():
     saver = tf.train.Saver()
 
     # Create the op for initializing variables.
-    init_op = tf.initialize_all_variables()
-
+    init_op = tf.group(tf.initialize_all_variables(),
+                       tf.initialize_local_variables())
     # Create a session for running Ops on the Graph.
     sess = tf.Session()
 

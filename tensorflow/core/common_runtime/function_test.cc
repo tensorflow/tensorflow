@@ -38,9 +38,7 @@ namespace tensorflow {
 typedef FunctionDefHelper FDH;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
-  Status s;
-  *sig = OpRegistry::Global()->LookUp(op, &s);
-  return s;
+  return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {
@@ -148,7 +146,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     FunctionDefLibrary proto;
     for (auto fdef : flib) *(proto.add_function()) = fdef;
     delete lib_def_;
-    lib_def_ = new FunctionLibraryDefinition(proto);
+    lib_def_ = new FunctionLibraryDefinition(OpRegistry::Global(), proto);
     delete lib_;
     OptimizerOptions opts;
     lib_ = NewFunctionLibraryRuntime(nullptr, device_, TF_GRAPH_DEF_VERSION,

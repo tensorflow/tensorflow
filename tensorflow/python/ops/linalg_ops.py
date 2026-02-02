@@ -93,7 +93,7 @@ def _BatchSelfAdjointEigShape(op):
 @ops.RegisterShape("MatrixTriangularSolve")
 def _SquareMatrixSolveShape(op):
   lhs_shape = op.inputs[0].get_shape().with_rank(2)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank(2)
   # The matrix must be square.
   lhs_shape[0].assert_is_compatible_with(lhs_shape[1])
   # The matrix and right-hand side must have the same number of rows.
@@ -117,7 +117,7 @@ def _BatchSquareMatrixSolveShape(op):
 @ops.RegisterShape("MatrixSolveLs")
 def _MatrixSolveLsShape(op):
   lhs_shape = op.inputs[0].get_shape().with_rank(2)
-  rhs_shape = op.inputs[1].get_shape().with_rank_at_least(2)
+  rhs_shape = op.inputs[1].get_shape().with_rank(2)
   # The matrix and right-hand side must have the same number of rows.
   lhs_shape[0].assert_is_compatible_with(rhs_shape[0])
   return [[lhs_shape[1], rhs_shape[1]]]

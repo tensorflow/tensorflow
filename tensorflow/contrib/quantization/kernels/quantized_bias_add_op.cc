@@ -24,6 +24,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
 template <class T1, class T2, class T3>
 class QuantizedBiasAddOp : public OpKernel {
  public:
@@ -55,64 +57,12 @@ class QuantizedBiasAddOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
-    const auto& input_flat = input.flat<T1>();
-    const int64 input_element_count = input.NumElements();
-    const auto& bias_flat = bias.flat<T2>();
-    const int64 bias_element_count = bias.NumElements();
-    auto output_flat = output->flat<T3>();
-    const size_t how_many_iterations =
-        (input_element_count / bias_element_count);
 
-    // We need to have a good range to add our two arguments together in. This
-    // is surprisingly tricky, since it has to satisfy a few different needs:
-    //  - Must be symmetrical around zero, so that 0 + 0 = 0.
-    //  - Must hold the largest of the argument ranges.
-    //  - Should have enough range that the bits of the lowest and highest
-    //    arguments overlap if possible without the lower getting truncated.
-    //  - Should have some headroom so that there's no overflow.
-    //  - Needs to be signed.
-    // This leads us to use a scheme where we (assuming the inputs are eight bit
-    // and the output is 32-bit) use the bottom 32 - 17 = 15 bits to store the
-    // accumulated results. This gives us all the properties we need.
-    const float total_max =
-        std::max(input_max,
-                 std::max(-input_min, std::max(bias_max, -bias_min))) *
-        (1 << 17);
-    const float total_min = -total_max;
-
-    // To do addition properly, we need to compensate for a possibly unbalanced
-    // zero point in the total representation. The quantized value that
-    // represents the real number zero needs to be subtracted before addition to
-    // make sure that the identity of zero + zero = zero holds.
-    const T3 zero_in_total_space =
-        FloatToQuantized<T3>(0.0f, total_min, total_max);
-
-    // This is a reference implementation of the bias addition for quantized
-    // buffers, designed to provide a clear specification for the result we
-    // want. We'll want to specialize this for particular hardware, and
-    // probably even fuse it with matrix multiplications in a lot of cases. It's
-    // important to show the clamping behavior we want in particular.
-    for (size_t iteration = 0; iteration < how_many_iterations; ++iteration) {
-      const size_t offset = iteration * bias_element_count;
-      for (int c = 0; c < bias_element_count; ++c) {
-        const int index = (offset + c);
-        // The two numbers we're going to add can each be in very different
-        // ranges (e.g. the quantized value '127' may represent very different
-        // real numbers in both) so we need to convert them to a common range
-        // before we sum them.
-        const T1 input_value = input_flat(index);
-        const T3 input_in_total_space = RequantizeInNewRange<T1, T3>(
-            input_value, input_min, input_max, total_min, total_max);
-        const T2 bias_value = bias_flat(c);
-        const T3 bias_in_total_space = RequantizeInNewRange<T2, T3>(
-            bias_value, bias_min, bias_max, total_min, total_max);
-        const T3 total_pre = input_in_total_space + bias_in_total_space;
-        // As noted above, we need to compensate for the offset of the actual
-        // zero point in the space we're operating in.
-        const T3 total = total_pre + zero_in_total_space;
-        output_flat(index) = total;
-      }
-    }
+    float total_min;
+    float total_max;
+    QuantizedAddUsingEigen<T1, T2, T3>(
+        context->template eigen_device<CPUDevice>(), input, input_min,
+        input_max, bias, bias_min, bias_max, output, &total_min, &total_max);
 
     Tensor* output_min = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(1, {}, &output_min));

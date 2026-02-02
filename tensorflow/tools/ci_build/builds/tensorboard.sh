@@ -21,13 +21,9 @@ export LAUNCHPAD_CHROME=${LAUNCHPAD_CHROME:-$(which chromium-browser)}
 cd tensorflow/tensorboard
 
 # Install all js dependencies (tooling via npm, frontend assets via bower)
-npm install
-npm install bower gulp
-./node_modules/bower/bin/bower install
+npm run prepare
 
-# Compile the frontend code
-./node_modules/gulp/bin/gulp.js compile.all
+npm run compile
 
 # Run wct in headless chrome using xvfb
 xvfb-run ./node_modules/web-component-tester/bin/wct --skip-plugin=sauce
-

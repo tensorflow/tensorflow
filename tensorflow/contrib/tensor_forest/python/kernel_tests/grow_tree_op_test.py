@@ -32,7 +32,6 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
                              [-2, 0], [-2, 0], [-2, 0], [-2, 0]])
     self.tree_thresholds = tf.Variable([0., 0., 0., 0., 0., 0., 0.])
     self.eot = tf.Variable([3])
-    self.depths = tf.Variable([1, 2, 2, -1, -1, -1, -1])
     self.node_map = [-1, 0, 1, -1, -1, -1, -1]
     self.finished = [1, 2]
     self.best_splits = [2, 3]
@@ -43,10 +42,10 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
   def testSimple(self):
     with self.test_session():
       tf.initialize_all_variables().run()
-      update_list, tree_updates, threshold_updates, depth_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.depths, self.node_map,
-                             self.finished, self.best_splits,
-                             self.split_features, self.split_thresholds))
+      update_list, tree_updates, threshold_updates, new_eot = (
+          self.ops.grow_tree(self.eot, self.node_map, self.finished,
+                             self.best_splits, self.split_features,
+                             self.split_thresholds))
 
       self.assertAllEqual([1, 3, 4, 2, 5, 6], update_list.eval())
       self.assertAllEqual(
@@ -54,7 +53,6 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
           tree_updates.eval())
       self.assertAllEqual([30.0, 0.0, 0.0, 80.0, 0.0, 0.0],
                           threshold_updates.eval())
-      self.assertAllEqual([2, 3, 3, 2, 3, 3], depth_updates.eval())
       self.assertAllEqual([7], new_eot.eval())
 
   def testNoRoomToGrow(self):
@@ -63,29 +61,27 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
       # Even though there's one free node, there needs to be 2 to grow.
       tf.assign(self.eot, [6]).eval()
 
-      update_list, tree_updates, threshold_updates, depth_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.depths, self.node_map,
-                             self.finished, self.best_splits,
-                             self.split_features, self.split_thresholds))
+      update_list, tree_updates, threshold_updates, new_eot = (
+          self.ops.grow_tree(self.eot, self.node_map, self.finished,
+                             self.best_splits, self.split_features,
+                             self.split_thresholds))
 
       self.assertAllEqual([], update_list.eval())
       self.assertEquals((0, 2), tree_updates.eval().shape)
       self.assertAllEqual([], threshold_updates.eval())
-      self.assertAllEqual([], depth_updates.eval())
       self.assertAllEqual([6], new_eot.eval())
 
   def testNoFinished(self):
     with self.test_session():
       tf.initialize_all_variables().run()
 
-      update_list, tree_updates, threshold_updates, depth_updates, new_eot = (
-          self.ops.grow_tree(self.eot, self.depths, self.node_map, [], [],
+      update_list, tree_updates, threshold_updates, new_eot = (
+          self.ops.grow_tree(self.eot, self.node_map, [], [],
                              self.split_features, self.split_thresholds))
 
       self.assertAllEqual([], update_list.eval())
       self.assertAllEqual((0, 2), tree_updates.eval().shape)
       self.assertAllEqual([], threshold_updates.eval())
-      self.assertAllEqual([], depth_updates.eval())
       self.assertAllEqual([3], new_eot.eval())
 
   def testBadInput(self):
@@ -94,10 +90,10 @@ class GrowTreeTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(
           'Number of finished nodes should be the same in finished and '
           'best_splits.'):
-        update_list, _, _, _, _ = (
-            self.ops.grow_tree(self.eot, self.depths, self.node_map,
-                               [], self.best_splits,
-                               self.split_features, self.split_thresholds))
+        update_list, _, _, _ = (self.ops.grow_tree(self.eot, self.node_map, [],
+                                                   self.best_splits,
+                                                   self.split_features,
+                                                   self.split_thresholds))
         self.assertAllEqual([], update_list.eval())
 
 

@@ -175,6 +175,19 @@ py_test(
 )
 
 py_test(
+    name = "target_column_test",
+    size = "small",
+    srcs = ["python/layers/target_column_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
     name = "bucketization_op_test",
     size = "small",
     srcs = ["python/kernel_tests/bucketization_op_test.py"],
@@ -191,6 +204,32 @@ py_test(
     name = "sparse_feature_cross_op_test",
     size = "medium",
     srcs = ["python/kernel_tests/sparse_feature_cross_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "embedding_ops_test",
+    size = "small",
+    srcs = ["python/layers/embedding_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":layers_py",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "utils_test",
+    size = "small",
+    srcs = ["python/layers/utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":layers_py",

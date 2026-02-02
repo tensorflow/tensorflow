@@ -69,6 +69,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":ops",
+        "//tensorflow/contrib/quantization:quantized_ops_py",
+        "//tensorflow/contrib/quantization/kernels:quantized_kernels_py",
     ],
 )
 

@@ -17,13 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import threading
 
-import tensorflow as tf
-
+from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 
 
 TRAINING_OPS_FILE = '_training_ops.so'
@@ -45,7 +45,10 @@ def _CountExtremelyRandomStatsShape(op):
   """Shape function for CountExtremelyRandomStats Op."""
   regression = op.get_attr('regression')
   num_points = op.inputs[0].get_shape()[0].value
-  num_nodes = op.inputs[2].get_shape()[0].value
+  sparse_shape = op.inputs[3].get_shape()
+  if sparse_shape.ndims > 0:
+    num_points = None
+  num_nodes = op.inputs[6].get_shape()[0].value
   num_classes = op.get_attr('num_classes')
   # The output of TraverseTree is [leaf_node_index(x) for x in input_data].
   return [tensor_shape.TensorShape([num_nodes, num_classes]),  # node sums
@@ -66,7 +69,7 @@ def _CountExtremelyRandomStatsShape(op):
 @ops.RegisterShape('SampleInputs')
 def _SampleInputsShape(op):
   """Shape function for SampleInputs Op."""
-  num_splits = op.inputs[3].get_shape()[1].value
+  num_splits = op.inputs[6].get_shape()[1].value
   return [[None], [None, num_splits], [None, num_splits]]
 
 
@@ -79,13 +82,13 @@ def _BestSplitsShape(op):
 @ops.RegisterShape('GrowTree')
 def _GrowTreeShape(unused_op):
   """Shape function for GrowTree Op."""
-  return [[None], [None, 2], [None], [None], [1]]
+  return [[None], [None, 2], [None], [1]]
 
 
 @ops.RegisterShape('FinishedNodes')
 def _FinishedNodesShape(unused_op):
   """Shape function for FinishedNodes Op."""
-  return [[None]]
+  return [[None], [None]]
 
 
 @ops.RegisterShape('ScatterAddNdim')
@@ -97,7 +100,7 @@ def _ScatterAddNdimShape(unused_op):
 @ops.RegisterShape('UpdateFertileSlots')
 def _UpdateFertileSlotsShape(unused_op):
   """Shape function for UpdateFertileSlots Op."""
-  return [[None, 2], [None], [None], [None], [None]]
+  return [[2, None], [None], [None]]
 
 
 # Workaround for the fact that importing tensorflow imports contrib
@@ -105,16 +108,14 @@ def _UpdateFertileSlotsShape(unused_op):
 # there's not yet any guarantee that the shared object exists.
 # In which case, "import tensorflow" will always crash, even for users that
 # never use contrib.
-def Load(library_base_dir=''):
+def Load():
   """Load training ops library and return the loaded module."""
   with _ops_lock:
     global _training_ops
     if not _training_ops:
-      data_files_path = os.path.join(library_base_dir,
-                                     tf.resource_loader.get_data_files_path())
-      tf.logging.info('data path: %s', data_files_path)
-      _training_ops = tf.load_op_library(os.path.join(
-          data_files_path, TRAINING_OPS_FILE))
+      ops_path = resource_loader.get_path_to_datafile(TRAINING_OPS_FILE)
+      logging.info('data path: %s', ops_path)
+      _training_ops = load_library.load_op_library(ops_path)
 
       assert _training_ops, 'Could not load _training_ops.so'
   return _training_ops

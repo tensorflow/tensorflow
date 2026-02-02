@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_KERNELS_RANDOM_OP_H_
 #define TENSORFLOW_KERNELS_RANDOM_OP_H_
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/lib/random/random_distributions.h"
+
 namespace tensorflow {
 
 class OpKernelContext;
@@ -25,10 +28,17 @@ namespace functor {
 template <typename Device, class Distribution>
 struct FillPhiloxRandom;
 
-// TODO(zongheng): migrate Multinomial out of random_op.
-// Generic helper functor for the Multinomial Op.
-template <typename Device, typename T>
-struct MultinomialFunctor;
+#if GOOGLE_CUDA
+typedef Eigen::GpuDevice GPUDevice;
+// Declares the partially GPU-specialized functor struct.
+template <class Distribution>
+struct FillPhiloxRandom<GPUDevice, Distribution> {
+  void operator()(OpKernelContext* ctx, const GPUDevice& d,
+                  random::PhiloxRandom gen,
+                  typename Distribution::ResultElementType* data, int64 size,
+                  Distribution dist);
+};
+#endif  // GOOGLE_CUDA
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # encoding: utf-8
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #

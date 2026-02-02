@@ -19,6 +19,9 @@ set -e
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.
 
+pip install wheel
+pip3 install wheel
+
 # Use pip to install numpy to the latest version, instead of 1.8.2 through
 # apt-get
 wget -q https://pypi.python.org/packages/17/f3/404bc85be67150663024d2bb5af654c7d16cf678077690dda27b91be14eb/numpy-1.8.2-cp27-cp27mu-manylinux1_x86_64.whl#md5=3ccf5c004fc99bd06dd443de80d622e6
@@ -76,3 +79,10 @@ pip3 install py-cpuinfo
 # pylint tests require the following:
 pip install pylint
 pip3 install pylint
+
+# pep8 tests require the following:
+pip install pep8
+pip3 install pep8
+
+# tf.mock require the following for python2:
+pip install mock

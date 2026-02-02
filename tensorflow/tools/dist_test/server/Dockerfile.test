@@ -25,6 +25,8 @@ MAINTAINER Shanqing Cai <cais@google.com>
 RUN apt-get update && apt-get install -y \
         curl \
         dnsutils \
+        python \
+        python-dev \
         python-numpy \
         python-pip \
         && \
@@ -34,6 +36,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
+
+# Install python panda for the census wide&deep test
+RUN pip install --upgrade pandas==0.18.1
 
 # Install TensorFlow CPU version.
 RUN pip --no-cache-dir install \
@@ -53,6 +58,13 @@ RUN curl -o /tmp/mnist-data/t10k-labels-idx1-ubyte.gz \
     http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz
 RUN curl -o /tmp/mnist-data/t10k-images-idx3-ubyte.gz \
     http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz
+
+# Download Census data for Wide & Deep test
+RUN mkdir -p /tmp/census-data
+RUN curl -o /tmp/census-data/adult.data \
+    https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data
+RUN curl -o /tmp/census-data/adult.test \
+    https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test
 
 # Container entry point
 ENTRYPOINT ["/var/tf-k8s/server/grpc_tensorflow_server_wrapper.sh"]

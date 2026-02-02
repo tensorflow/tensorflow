@@ -28,8 +28,7 @@ limitations under the License.
 // There are no EXPECT_NOT_OK/ASSERT_NOT_OK macros since they would not
 // provide much value (when they fail, they would just print the OK status
 // which conveys no more information than EXPECT_FALSE(status.ok());
-// If you want to check for particular errors, better alternatives are:
-// EXPECT_EQ(::util::Status(...expected error...), status.StripMessage());
-// EXPECT_THAT(status.ToString(), HasSubstr("expected error"));
+// If you want to check for particular errors, a better alternative is:
+// EXPECT_EQ(..expected tensorflow::error::Code..., status.code());
 
 #endif  // TENSORFLOW_LIB_CORE_STATUS_TEST_UTIL_H_

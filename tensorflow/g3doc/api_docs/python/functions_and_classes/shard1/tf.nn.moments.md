@@ -21,8 +21,8 @@ When using these moments for batch normalization (see
 *  <b>`shift`</b>: A `Tensor` containing the value by which to shift the data for
     numerical stability, or `None` if no shift is to be performed. A shift
     close to the true mean provides the most numerically stable results.
-*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 *  <b>`name`</b>: Name used to scope the operations that compute the moments.
+*  <b>`keep_dims`</b>: produce moments with the same dimensionality as the input.
 
 ##### Returns:
 

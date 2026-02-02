@@ -1,6 +1,6 @@
-### `tf.delete_session_tensor(name=None)` {#delete_session_tensor}
+### `tf.delete_session_tensor(handle, name=None)` {#delete_session_tensor}
 
-Delete the tensor by feeding a tensor handle.
+Delete the tensor for the given tensor handle.
 
 This is EXPERIMENTAL and subject to change.
 
@@ -10,6 +10,7 @@ in a previous run() and stored in the state of the session.
 ##### Args:
 
 
+*  <b>`handle`</b>: The string representation of a persistent tensor handle.
 *  <b>`name`</b>: Optional name prefix for the return tensor.
 
 ##### Returns:

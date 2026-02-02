@@ -14,14 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
     .Attr("out_type: {float,double,int32,uint8,int16,int8,int64}")
     .Attr("little_endian: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      // Note: last dimension is data dependent.
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Concatenate(
+          c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Reinterpret the bytes of a string as a vector of numbers.
 
@@ -191,6 +204,21 @@ REGISTER_OP("DecodeCSV")
     .Output("output: OUT_TYPE")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .SetShapeFn([](InferenceContext* c) {
+      // Validate the record_defaults inputs.
+      for (int i = 1; i < c->num_inputs(); ++i) {
+        const Shape* v;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
+        if (c->Value(c->Dim(v, 0)) > 1) {
+          return errors::InvalidArgument(
+              "Shape of a default must be a length-0 or length-1 vector");
+        }
+      }
+
+      // Propagate shape of the records input.
+      for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, c->input(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Convert CSV records to tensors. Each column maps to one tensor.
 

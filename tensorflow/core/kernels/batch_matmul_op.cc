@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
@@ -152,9 +153,12 @@ template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
+    constexpr perftools::gputools::blas::Transpose kTranspose =
+        is_complex<Scalar>::value
+            ? perftools::gputools::blas::Transpose::kConjugateTranspose
+            : perftools::gputools::blas::Transpose::kTranspose;
     perftools::gputools::blas::Transpose trans[] = {
-        perftools::gputools::blas::Transpose::kNoTranspose,
-        perftools::gputools::blas::Transpose::kTranspose};
+        perftools::gputools::blas::Transpose::kNoTranspose, kTranspose};
     const uint64 m = in_x.dim_size(adj_x ? 2 : 1);
     const uint64 k = in_x.dim_size(adj_x ? 1 : 2);
     const uint64 n = in_y.dim_size(adj_y ? 1 : 2);
@@ -302,6 +306,8 @@ REGISTER_CPU(complex128);
 
 #ifdef GOOGLE_CUDA
 REGISTER_GPU(float);
+REGISTER_GPU(complex64);
+REGISTER_GPU(complex128);
 #endif  // GOOGLE_CUDA
 
 #undef REGISTER_CPU

@@ -77,6 +77,10 @@ void* aligned_malloc(size_t size, int minimum_alignment) {
 
 void aligned_free(void* aligned_memory) { free(aligned_memory); }
 
+void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
+  // No-op.
+}
+
 std::size_t MallocExtension_GetAllocatedSize(const void* p) { return 0; }
 
 void AdjustFilenameForLogging(string* filename) {

@@ -828,7 +828,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
         lib, library_graph_def.add_function()));
   }
 
-  FunctionLibraryDefinition flib(library_graph_def);
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
   Graph g(&flib);
   Tensor t(DT_FLOAT, TensorShape({}));
   t.scalar<float>()() = {1.2};

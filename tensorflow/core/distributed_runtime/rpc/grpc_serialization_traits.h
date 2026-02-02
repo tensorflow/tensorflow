@@ -80,10 +80,25 @@ class GrpcBufferWriter GRPC_FINAL
 
 class GrpcBufferReader GRPC_FINAL
     : public ::grpc::protobuf::io::ZeroCopyInputStream {
+  typedef void (CoreCodegenInterface::*OldReaderInitAPI)(
+      grpc_byte_buffer_reader* reader, grpc_byte_buffer* buffer);
+  typedef int (CoreCodegenInterface::*NewReaderInitAPI)(
+      grpc_byte_buffer_reader* reader, grpc_byte_buffer* buffer);
+  void ReaderInit(OldReaderInitAPI ptr, grpc_byte_buffer_reader* reader,
+                  grpc_byte_buffer* buffer) {
+    (g_core_codegen_interface->*ptr)(reader, buffer);
+  }
+  void ReaderInit(NewReaderInitAPI ptr, grpc_byte_buffer_reader* reader,
+                  grpc_byte_buffer* buffer) {
+    int result = (g_core_codegen_interface->*ptr)(reader, buffer);
+    (void)result;
+  }
+
  public:
   explicit GrpcBufferReader(grpc_byte_buffer* buffer)
       : byte_count_(0), backup_count_(0) {
-    g_core_codegen_interface->grpc_byte_buffer_reader_init(&reader_, buffer);
+    ReaderInit(&CoreCodegenInterface::grpc_byte_buffer_reader_init, &reader_,
+               buffer);
   }
   ~GrpcBufferReader() GRPC_OVERRIDE {
     g_core_codegen_interface->grpc_byte_buffer_reader_destroy(&reader_);

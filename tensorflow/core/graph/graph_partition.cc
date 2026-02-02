@@ -1000,6 +1000,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         } else {
           AddInput(dst_def, recv_node_name, 0);
         }
+        ref_control_inputs.push_back(recv_node_name);
+
         // We want the start_time for the recv to be the smallest of the start
         // times of it's consumers. So we update this whenever we use a recv,
         // and write it out to the attribute at the end of the subroutine

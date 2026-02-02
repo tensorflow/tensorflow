@@ -146,7 +146,7 @@ for step in xrange(1000000):
 # When done, ask the threads to stop.
 coord.request_stop()
 # And wait for them to actually do it.
-coord.join(threads)
+coord.join(enqueue_threads)
 ```
 
 ## Handling Exceptions

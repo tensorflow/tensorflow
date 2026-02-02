@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """## Sparse Tensor Representation
 
-Tensorflow supports a `SparseTensor` representation for data that is sparse
+TensorFlow supports a `SparseTensor` representation for data that is sparse
 in multiple dimensions. Contrast this representation with `IndexedSlices`,
 which is efficient for representing tensors that are sparse in their first
 dimension, and dense along all other dimensions.
@@ -35,6 +35,7 @@ dimension, and dense along all other dimensions.
 
 @@sparse_concat
 @@sparse_reorder
+@@sparse_reshape
 @@sparse_split
 @@sparse_retain
 @@sparse_reset_shape
@@ -47,6 +48,8 @@ dimension, and dense along all other dimensions.
 @@sparse_add
 @@sparse_softmax
 @@sparse_tensor_dense_matmul
+@@sparse_maximum
+@@sparse_minimum
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -271,11 +274,10 @@ def sparse_add(a, b, thresh=0):
 @ops.RegisterShape("SparseAdd")
 def _SparseAddShape(op):  # pylint: disable=invalid-name
   input_shape_shape = op.inputs[2].get_shape()
-  dim = input_shape_shape.num_elements()
+  input_shape_shape.assert_has_rank(1)
   return [
-      tensor_shape.TensorShape([None, dim]),
-      tensor_shape.unknown_shape(1),
-      input_shape_shape
+      tensor_shape.TensorShape([None, input_shape_shape[0]]),
+      tensor_shape.unknown_shape(1), input_shape_shape
   ]
 
 
@@ -403,6 +405,75 @@ def _SparseReorderShape(op):
   unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
 
   return [input_indices_shape, input_values_shape]
+
+
+def sparse_reshape(sp_input, shape, name=None):
+  """Reshapes a `SparseTensor` to represent values in a new dense shape.
+
+  This operation has the same semantics as `reshape` on the represented dense
+  tensor.  The indices of non-empty values in `sp_input` are recomputed based
+  on the new dense shape, and a new `SparseTensor` is returned containing the
+  new indices and new shape.  The order of non-empty values in `sp_input` is
+  unchanged.
+
+  If one component of `shape` is the special value -1, the size of that
+  dimension is computed so that the total dense size remains constant.  At
+  most one component of `shape` can be -1.  The number of dense elements
+  implied by `shape` must be the same as the number of dense elements
+  originally represented by `sp_input`.
+
+  For example, if `sp_input` has shape `[2, 3, 6]` and `indices` / `values`:
+
+      [0, 0, 0]: a
+      [0, 0, 1]: b
+      [0, 1, 0]: c
+      [1, 0, 0]: d
+      [1, 2, 3]: e
+
+  and `shape` is `[9, -1]`, then the output will be a `SparseTensor` of
+  shape `[9, 4]` and `indices` / `values`:
+
+      [0, 0]: a
+      [0, 1]: b
+      [1, 2]: c
+      [4, 2]: d
+      [8, 1]: e
+
+  Args:
+    sp_input: The input `SparseTensor`.
+    shape: A 1-D (vector) int64 `Tensor` specifying the new dense shape of the
+      represented `SparseTensor`.
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A `SparseTensor` with the same non-empty values but with indices calculated
+    by the new dense shape.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  if not isinstance(sp_input, ops.SparseTensor):
+    raise TypeError("Input must be a SparseTensor")
+
+  with ops.op_scope([sp_input], name, "SparseReshape") as name:
+    reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
+        sp_input.indices, sp_input.shape, shape, name=name)
+
+    return ops.SparseTensor(reshaped_ind, array_ops.identity(sp_input.values),
+                            reshaped_shape)
+
+
+@ops.RegisterShape("SparseReshape")
+def _SparseReshapeShape(op):  # pylint: disable=invalid-name
+  """Shape function for SparseReshape op."""
+  input_indices_shape = op.inputs[0].get_shape().with_rank(2)
+  unused_input_shape_shape = op.inputs[1].get_shape().with_rank(1)
+  new_shape_shape = op.inputs[2].get_shape().with_rank(1)
+
+  new_indices_shape = tensor_shape.matrix(input_indices_shape[0],
+                                          new_shape_shape[0])
+
+  return [new_indices_shape, new_shape_shape]
 
 
 def sparse_split(split_dim, num_split, sp_input, name=None):
@@ -1417,3 +1488,84 @@ def _SparseSoftmaxShape(op):  # pylint: disable=invalid-name
   unused_shape_shape = op.inputs[2].get_shape().with_rank(1)
   nnz = values_shape[0]
   return [tensor_shape.vector(nnz)]
+
+
+def sparse_maximum(sp_a, sp_b, name=None):
+  """Returns the element-wise max of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = ops.SparseTensor([[0]], [0], [7])
+  sp_one = ops.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_maximum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 1], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
+                    name, "SparseSparseMaximum") as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_maximum(sp_a.indices,
+                                                                   sp_a.values,
+                                                                   sp_a.shape,
+                                                                   sp_b.indices,
+                                                                   sp_b.values,
+                                                                   sp_b.shape,
+                                                                   name=name)
+  return ops.SparseTensor(out_indices, out_values, sp_a.shape)
+
+
+def sparse_minimum(sp_a, sp_b, name=None):
+  """Returns the element-wise min of two SparseTensors.
+
+  Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+  Example:
+
+  ```python
+  sp_zero = ops.SparseTensor([[0]], [0], [7])
+  sp_one = ops.SparseTensor([[1]], [1], [7])
+  res = tf.sparse_minimum(sp_zero, sp_one).eval()
+  # "res" should be equal to SparseTensor([[0], [1]], [0, 0], [7]).
+  ```
+
+  Args:
+    sp_a: a `SparseTensor` operand whose dtype is real, and indices
+      lexicographically ordered.
+    sp_b: the other `SparseTensor` operand with the same requirements (and the
+      same shape).
+    name: optional name of the operation.
+  Returns:
+    output: the output SparseTensor.
+  """
+  with ops.op_scope([sp_a.indices, sp_a.values, sp_b.indices, sp_b.values],
+                    name, "SparseSparseMinimum") as name:
+    out_indices, out_values = gen_sparse_ops.sparse_sparse_minimum(sp_a.indices,
+                                                                   sp_a.values,
+                                                                   sp_a.shape,
+                                                                   sp_b.indices,
+                                                                   sp_b.values,
+                                                                   sp_b.shape,
+                                                                   name=name)
+  return ops.SparseTensor(out_indices, out_values, sp_a.shape)
+
+
+@ops.RegisterShape("SparseSparseMaximum")
+@ops.RegisterShape("SparseSparseMinimum")
+def _SparseSparseMaximumMinimumShape(op):  # pylint: disable=invalid-name
+  """Shape function for SparseSparseMaximum and SparseSparseMinimum."""
+  op.inputs[0].get_shape().assert_has_rank(2)  # a_indices
+  op.inputs[1].get_shape().assert_has_rank(1)  # a_values
+  op.inputs[2].get_shape().assert_has_rank(1)  # a_shape
+  op.inputs[3].get_shape().assert_has_rank(2)  # b_indices
+  op.inputs[4].get_shape().assert_has_rank(1)  # b_values
+  op.inputs[5].get_shape().assert_has_rank(1)  # b_shape
+  return [tensor_shape.unknown_shape(2), tensor_shape.unknown_shape(1)]

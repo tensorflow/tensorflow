@@ -20,24 +20,29 @@ from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import distribution  # pylint: disable=line-too-long
 from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util  # pylint: disable=line-too-long
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
 
-class Uniform(distribution.ContinuousDistribution):
+class Uniform(distribution.Distribution):
   """Uniform distribution with `a` and `b` parameters.
 
   The PDF of this distribution is constant between [`a`, `b`], and 0 elsewhere.
   """
 
-  def __init__(self, a=0.0, b=1.0, name="Uniform"):
+  def __init__(self,
+               a=0.0,
+               b=1.0,
+               validate_args=True,
+               allow_nan_stats=False,
+               name="Uniform"):
     """Construct Uniform distributions with `a` and `b`.
 
     The parameters `a` and `b` must be shaped in a way that supports
@@ -64,13 +69,22 @@ class Uniform(distribution.ContinuousDistribution):
     Args:
       a: `float` or `double` tensor, the minimum endpoint.
       b: `float` or `double` tensor, the maximum endpoint. Must be > `a`.
+      validate_args: Whether to assert that `a > b`. If `validate_args` is False
+        and inputs are invalid, correct behavior is not guaranteed.
+      allow_nan_stats:  Boolean, default False.  If False, raise an exception if
+        a statistic (e.g. mean/mode/etc...) is undefined for any batch member.
+        If True, batch members with valid parameters leading to undefined
+        statistics will return NaN for this statistic.
       name: The name to prefix Ops created by this distribution class.
 
     Raises:
-      InvalidArgumentError: if `a >= b`.
+      InvalidArgumentError: if `a >= b` and `validate_args=True`.
     """
+    self._allow_nan_stats = allow_nan_stats
+    self._validate_args = validate_args
     with ops.op_scope([a, b], name):
-      with ops.control_dependencies([check_ops.assert_less(a, b)]):
+      with ops.control_dependencies([check_ops.assert_less(a, b)] if
+                                    validate_args else []):
         a = array_ops.identity(a, name="a")
         b = array_ops.identity(b, name="b")
 
@@ -81,6 +95,16 @@ class Uniform(distribution.ContinuousDistribution):
     self._event_shape = tensor_shape.TensorShape([])
 
     contrib_tensor_util.assert_same_float_dtype((a, b))
+
+  @property
+  def allow_nan_stats(self):
+    """Boolean describing behavior when a stat is undefined for batch member."""
+    return self._allow_nan_stats
+
+  @property
+  def validate_args(self):
+    """Boolean describing behavior on invalid input."""
+    return self._validate_args
 
   @property
   def name(self):
@@ -114,7 +138,7 @@ class Uniform(distribution.ContinuousDistribution):
   def b(self):
     return self._b
 
-  def pdf(self, x, name="pdf"):
+  def prob(self, x, name="prob"):
     """The PDF of observations in `x` under these Uniform distribution(s).
 
     Args:
@@ -122,8 +146,8 @@ class Uniform(distribution.ContinuousDistribution):
       name: The name to give this op.
 
     Returns:
-      pdf: tensor of dtype `dtype`, the pdf values of `x`. If `x` is `nan`, will
-          return `nan`.
+      prob: tensor of dtype `dtype`, the prob values of `x`. If `x` is `nan`,
+          will return `nan`.
     """
     with ops.name_scope(self.name):
       with ops.op_scope([self.a, self.b, x], name):
@@ -140,8 +164,8 @@ class Uniform(distribution.ContinuousDistribution):
                 array_ops.zeros_like(broadcasted_x),
                 (1.0 / self.range()) * array_ops.ones_like(broadcasted_x)))
 
-  def log_pdf(self, x, name="log_pdf"):
-    return super(Uniform, self).log_pdf(x, name)
+  def log_prob(self, x, name="log_prob"):
+    return super(Uniform, self).log_prob(x, name)
 
   def cdf(self, x, name="cdf"):
     """CDF of observations in `x` under these Uniform distribution(s).
@@ -187,7 +211,7 @@ class Uniform(distribution.ContinuousDistribution):
       with ops.op_scope([self.a, self.b, self.range()], name):
         return math_ops.log(self.range())
 
-  def sample(self, n, seed=None, name="sample"):
+  def sample_n(self, n, seed=None, name="sample_n"):
     """Sample `n` observations from the Uniform Distributions.
 
     Args:
@@ -249,3 +273,7 @@ class Uniform(distribution.ContinuousDistribution):
 
   def _zeros(self):
     return array_ops.zeros_like(self.a + self.b)
+
+  @property
+  def is_continuous(self):
+    return True

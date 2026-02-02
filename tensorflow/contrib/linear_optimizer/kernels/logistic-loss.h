@@ -29,7 +29,14 @@ class LogisticLossUpdater : public DualLossUpdater {
   // Use an approximate step that is guaranteed to decrease the dual loss.
   // Derivation of this is available in  Page 14 Eq 16 of
   // http://arxiv.org/pdf/1211.2717v1.pdf
-  double ComputeUpdatedDual(const double label, const double example_weight,
+  //
+  // Adding vs. Averaging in Distributed Primal-Dual Optimization.
+  // Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan, Peter
+  // Richtarik, Martin Takac http://arxiv.org/abs/1502.03508
+  //
+  // TODO(sibyl-Aix6ihai): Add a readme.md for the derivation here.
+  double ComputeUpdatedDual(const int num_partitions, const double label,
+                            const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm,
                             const double primal_loss,
@@ -48,9 +55,9 @@ class LogisticLossUpdater : public DualLossUpdater {
     double multiplier =
         (primal_loss + dual_loss + wx_dual + smooth_delta_dual_squared) /
         std::max(1.0,
-                 delta_dual_squared *
-                     (gamma +
-                      weighted_example_norm * example_weight * example_weight));
+                 delta_dual_squared * (gamma +
+                                       num_partitions * weighted_example_norm *
+                                           example_weight * example_weight));
     // Multiplier must be in the range [0, 1].
     multiplier = std::max(std::min(1.0, multiplier), 0.0);
     return current_dual + delta_dual * multiplier;

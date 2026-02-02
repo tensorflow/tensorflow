@@ -15,7 +15,7 @@ limitations under the License.
 
 // A set of lightweight wrappers which simplify access to Example features.
 //
-// Tensorflow Example proto uses associative maps on top of oneof fields.
+// TensorFlow Example proto uses associative maps on top of oneof fields.
 // So accessing feature values is not very convenient.
 //
 // For example, to read a first value of integer feature "tag":

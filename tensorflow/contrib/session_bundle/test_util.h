@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace test_util {
 
 // Creates an absolute test srcdir path to the linked in runfiles given a path
@@ -32,7 +32,7 @@ namespace test_util {
 string TestSrcDirPath(const string& relative_path);
 
 }  // namespace test_util
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_SESSION_BUNDLE_TEST_UTIL_H_

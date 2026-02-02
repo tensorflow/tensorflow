@@ -1,6 +1,6 @@
 ### `tf.contrib.framework.add_model_variable(var)` {#add_model_variable}
 
-Adds a variable to the MODEL_VARIABLES collection.
+Adds a variable to the `GraphKeys.MODEL_VARIABLES` collection.
 
 ##### Args:
 

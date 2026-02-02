@@ -5,7 +5,7 @@ describe('end-to-end test', () => {
     var tabs = (<any>tb.node()).$.tabs;
 
     function testTab(tabIndex: number) {
-      it(`selecting ${TF.TensorBoard.TABS[tabIndex]} tab`, done => {
+      it(`selecting ${TF.Globals.TABS[tabIndex]} tab`, done => {
         // Every dashboard emits a rendered event when it is done rendering.
         tb.on('rendered', () => done());
         tabs.set('selected', tabIndex);
@@ -18,7 +18,7 @@ describe('end-to-end test', () => {
       // have failed. Re-selecting the default tab and listening for
       // "rendered" event won't work since the content is not re-stamped.
       let selected = +tabs.get('selected');
-      for (let i = 0; i < TF.TensorBoard.TABS.length; i++) {
+      for (let i = 0; i < TF.Globals.TABS.length; i++) {
         if (i !== selected) {
           testTab(i);
         }

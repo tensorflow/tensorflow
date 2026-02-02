@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # encoding: utf-8
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
@@ -24,7 +23,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.contrib.learn.python.learn.io import HAS_PANDAS
+from tensorflow.contrib.learn.python.learn.learn_io import HAS_PANDAS
 from tensorflow.contrib.learn.python.learn.preprocessing import categorical
 
 

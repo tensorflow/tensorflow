@@ -51,7 +51,7 @@ class Array {
  public:
   PHILOX_DEVICE_INLINE Array() {
     for (int i = 0; i < ElementCount; ++i) {
-      data_[i] = T();
+      data_[i] = T(0);
     }
   }
 

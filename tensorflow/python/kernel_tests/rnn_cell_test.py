@@ -263,6 +263,23 @@ class RNNCellTest(tf.test.TestCase):
         # The numbers in results were not calculated, this is just a smoke test.
         self.assertAllClose(res[0], [[0.17139, 0.17139]])
 
+  def testEmbeddingWrapperWithDynamicRnn(self):
+    with self.test_session() as sess:
+      with tf.variable_scope("root"):
+        inputs = tf.convert_to_tensor([[[0], [0]]], dtype=tf.int64)
+        input_lengths = tf.convert_to_tensor([2], dtype=tf.int64)
+        embedding_cell = tf.nn.rnn_cell.EmbeddingWrapper(
+            tf.nn.rnn_cell.BasicLSTMCell(1, state_is_tuple=True),
+            embedding_classes=1,
+            embedding_size=2)
+        outputs, _ = tf.nn.dynamic_rnn(cell=embedding_cell,
+                                       inputs=inputs,
+                                       sequence_length=input_lengths,
+                                       dtype=tf.float32)
+        sess.run([tf.initialize_all_variables()])
+        # This will fail if output's dtype is inferred from input's.
+        sess.run(outputs)
+
   def testMultiRNNCell(self):
     with self.test_session() as sess:
       with tf.variable_scope("root", initializer=tf.constant_initializer(0.5)):

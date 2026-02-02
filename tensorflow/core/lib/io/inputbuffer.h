@@ -31,8 +31,7 @@ namespace io {
 class InputBuffer {
  public:
   // Create an InputBuffer for "file" with a buffer size of
-  // "buffer_bytes" bytes.  Takes ownership of "file" and will
-  // delete it when the InputBuffer is destroyed.
+  // "buffer_bytes" bytes.  'file' must outlive *this.
   InputBuffer(RandomAccessFile* file, size_t buffer_bytes);
   ~InputBuffer();
 
@@ -61,7 +60,7 @@ class InputBuffer {
  private:
   Status FillBuffer();
 
-  RandomAccessFile* file_;  // Owned
+  RandomAccessFile* file_;  // Not owned
   int64 file_pos_;          // Next position to read from in "file_"
   size_t size_;             // Size of "buf_"
   char* buf_;               // The buffer itself

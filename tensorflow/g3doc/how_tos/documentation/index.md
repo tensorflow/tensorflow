@@ -318,7 +318,7 @@ or class docstring where the Ops constructors are called out.
 
 Here's an example from the module docsting in `image_ops.py`:
 
-    Tensorflow can convert between images in RGB or HSV. The conversion
+    TensorFlow can convert between images in RGB or HSV. The conversion
     functions work only on `float` images, so you need to convert images in
     other formats using [`convert_image_dtype`](#convert-image-dtype).
 

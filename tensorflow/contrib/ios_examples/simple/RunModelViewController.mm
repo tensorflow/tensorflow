@@ -25,6 +25,7 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/message_lite.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -156,7 +157,7 @@ NSString* RunInferenceOnImage() {
   LOG(INFO) << "Creating session.";
   tensorflow::Status s = session->Create(tensorflow_graph);
   if (!s.ok()) {
-    LOG(ERROR) << "Could not create Tensorflow Graph: " << s;
+    LOG(ERROR) << "Could not create TensorFlow Graph: " << s;
     return @"";
   }
 
@@ -202,7 +203,7 @@ NSString* RunInferenceOnImage() {
       tensorflow::uint8* in_pixel = in_row + (in_x * image_channels);
       float* out_pixel = out_row + (x * wanted_channels);
       for (int c = 0; c < wanted_channels; ++c) {
-        out_pixel[c] = (in_pixel[c] / input_std) - input_mean;
+        out_pixel[c] = (in_pixel[c] - input_mean) / input_std;
       }
     }
   }
@@ -218,6 +219,7 @@ NSString* RunInferenceOnImage() {
 				               {output_layer}, {}, &outputs);
   if (!run_status.ok()) {
     LOG(ERROR) << "Running model failed: " << run_status;
+    tensorflow::LogAllRegisteredKernels();
     result = @"Error running model";
     return result;
   }

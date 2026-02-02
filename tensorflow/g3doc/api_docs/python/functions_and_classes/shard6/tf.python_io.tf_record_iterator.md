@@ -1,4 +1,4 @@
-### `tf.python_io.tf_record_iterator(path)` {#tf_record_iterator}
+### `tf.python_io.tf_record_iterator(path, options=None)` {#tf_record_iterator}
 
 An iterator that read the records from a TFRecords file.
 
@@ -6,6 +6,7 @@ An iterator that read the records from a TFRecords file.
 
 
 *  <b>`path`</b>: The path to the TFRecords file.
+*  <b>`options`</b>: (optional) A TFRecordOptions object.
 
 ##### Yields:
 

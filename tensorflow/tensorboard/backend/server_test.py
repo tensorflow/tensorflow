@@ -36,6 +36,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from google.protobuf import text_format
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.summary import event_multiplexer
 from tensorflow.tensorboard.backend import server
 
@@ -286,6 +287,13 @@ class ParseEventFilesSpecTest(tf.test.TestCase):
     logdir_string = 'gs://foo/path'
     expected = {'gs://foo/path': None}
     self.assertEqual(server.ParseEventFilesSpec(logdir_string), expected)
+
+
+class TensorBoardAssetsTest(tf.test.TestCase):
+
+  def testTagFound(self):
+    tag = resource_loader.load_resource('tensorboard/TAG')
+    self.assertTrue(tag)
 
 
 if __name__ == '__main__':

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -21,8 +23,49 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/concat_lib_cpu.h"
 
 namespace tensorflow {
+
+namespace {
+template <typename T>
+struct RequantizeCopier {
+  RequantizeCopier(
+      const std::vector<std::pair<float, float>>* input_min_and_max,
+      float output_min, float output_max)
+      : output_min(output_min),
+        output_max(output_max),
+        input_min_and_max(input_min_and_max) {}
+
+  inline void Copy(T* dst, const T* src, int input_index, size_t n) {
+    const float input_min = (*input_min_and_max)[input_index].first;
+    const float input_max = (*input_min_and_max)[input_index].second;
+    if (input_min == output_min && input_max == output_max) {
+      DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+      memcpy(dst, src, n * sizeof(T));
+    } else {
+      Eigen::array<Eigen::DenseIndex, 1> dims;
+      dims[0] = n;
+      typename TTypes<T, 1>::UnalignedConstTensor input_array(src, dims);
+      typename TTypes<T, 1>::UnalignedTensor output_array(dst, dims);
+
+      QuantizedToFloatStruct<T> q2f(input_min, input_max);
+      auto input_float = DEQUANTIZE_WITH_EIGEN(input_array, q2f);
+      FloatToQuantizedStruct<T> f2q(output_min, output_max);
+      auto input_requantized = QUANTIZE_WITH_EIGEN(input_float, f2q, T);
+
+      // RequantizeCopier::Copy is called from within a shard of computation, so
+      // don't use the threadpool device here, simply assign with default CPU
+      // device.
+      output_array = input_requantized;
+    }
+  }
+
+  float output_min;
+  float output_max;
+  const std::vector<std::pair<float, float>>* input_min_and_max;
+};
+}  // namespace
 
 template <typename T>
 class QuantizedConcatOp : public OpKernel {
@@ -32,20 +75,24 @@ class QuantizedConcatOp : public OpKernel {
 
   explicit QuantizedConcatOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void CalculateOutputRange(const OpInputList& input_mins,
-                            const OpInputList& input_maxes, const size_t N,
-                            float* output_min, float* output_max) {
+  void CalculateInputAndOutputRange(
+      const OpInputList& input_mins, const OpInputList& input_maxes,
+      const size_t N,
+      std::vector<std::pair<float, float>>* input_mins_and_maxes,
+      float* output_min, float* output_max) {
+    input_mins_and_maxes->reserve(N);
     float overall_min = std::numeric_limits<float>::max();
     float overall_max = std::numeric_limits<float>::lowest();
     for (int i = 0; i < N; ++i) {
       const float input_min = input_mins[i].flat<float>()(0);
       const float input_max = input_maxes[i].flat<float>()(0);
+      input_mins_and_maxes->emplace_back(input_min, input_max);
       overall_min = std::min(overall_min, input_min);
       overall_max = std::max(overall_max, input_max);
     }
     if (std::is_signed<T>::value) {
       // For signed, we want a symmetrical distribution including zero for the
-      // output, so pick  a range that meets that need.
+      // output, so pick a range that meets that need.
       const float largest_value =
           std::max(std::abs(overall_min), std::abs(overall_max));
       *output_min = -largest_value;
@@ -143,7 +190,10 @@ class QuantizedConcatOp : public OpKernel {
 
     float output_min = std::numeric_limits<float>::max();
     float output_max = std::numeric_limits<float>::lowest();
-    CalculateOutputRange(input_mins, input_maxes, N, &output_min, &output_max);
+    std::vector<std::pair<float, float>> input_mins_and_maxes;
+    CalculateInputAndOutputRange(input_mins, input_maxes, N,
+                                 &input_mins_and_maxes, &output_min,
+                                 &output_max);
     const int64 inputs_flat_dim0 = CalculateInputsDim(input_shape, concat_dim);
     ConstMatrixVector inputs_flat;
     int output_concat_dim;
@@ -159,43 +209,14 @@ class QuantizedConcatOp : public OpKernel {
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+
     if (output->NumElements() > 0) {
       int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
-      size_t num_inputs = inputs_flat.size();
-      std::vector<ptrdiff_t> sizes;
-      sizes.reserve(num_inputs);
-      int row_size = 0;
-      for (int j = 0; j < num_inputs; ++j) {
-        sizes.push_back(inputs_flat[j]->dimension(1));
-        row_size += sizes.back();
-      }
-      T* out = &(output_flat(0, 0));
-      std::vector<const T*> inp;
-      inp.reserve(num_inputs);
-      for (int j = 0; j < num_inputs; ++j) {
-        inp.push_back(&(*inputs_flat[j])(0, 0));
-      }
-      const int dim0 = output_flat.dimension(0);
-      for (int i = 0; i < dim0; ++i) {
-        for (int j = 0; j < num_inputs; ++j) {
-          auto size = sizes[j];
-          const float input_min = input_mins[j].flat<float>()(0);
-          const float input_max = input_maxes[j].flat<float>()(0);
-          T* dst = out;
-          const T* src = inp[j];
-          for (int k = 0; k < size; ++k) {
-            // TODO(petewarden): This is a very slow reference implementation of
-            // the range conversion, we need to offer an optimized approach. The
-            // biggest optimization will be making sure we construct graphs so
-            // that all inputs' ranges match, so this can just be a copy.
-            *dst++ = RequantizeInNewRange<T, T>(*src++, input_min, input_max,
-                                                output_min, output_max);
-          }
-          out += size;
-          inp[j] += size;
-        }
-      }
+      ConcatCPUImpl<T>(
+          context->device(), inputs_flat, sizeof(T) /* cost_per_unit */,
+          RequantizeCopier<T>(&input_mins_and_maxes, output_min, output_max),
+          &output_flat);
     }
 
     Tensor* output_min_tensor = nullptr;

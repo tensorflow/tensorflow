@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -54,6 +54,6 @@ val_monitor = monitors.ValidationMonitor(X_val, y_val, every_n_steps=50)
 classifier = learn.TensorFlowEstimator(model_fn=conv_model, n_classes=10,
                                         steps=1000, learning_rate=0.05,
                                         batch_size=128)
-classifier.fit(X_train, y_train, val_monitor)
+classifier.fit(X_train, y_train, monitors=[val_monitor])
 score = metrics.accuracy_score(y_test, classifier.predict(X_test))
 print('Test Accuracy: {0:f}'.format(score))

@@ -85,7 +85,7 @@ class Device : public DeviceBase {
   // Asynchronous kernel's compute.
   virtual void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                             AsyncOpKernel::DoneCallback done) {
-    op_kernel->ComputeAsync(context, done);
+    op_kernel->ComputeAsync(context, std::move(done));
   }
 
   // Takes ownership of the references in tensors. If necessary, a

@@ -24,6 +24,12 @@ inline uint64 Fingerprint64(const string& s) {
   return ::util::Fingerprint64(s);
 }
 
+inline Fprint128 Fingerprint128(const string& s) {
+  const auto fingerprint = ::util::Fingerprint128(s);
+  return {::util::Uint128Low64(fingerprint),
+          ::util::Uint128High64(fingerprint)};
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_FINGERPRINT_H_

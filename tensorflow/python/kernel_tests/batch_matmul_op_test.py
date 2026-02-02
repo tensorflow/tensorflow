@@ -128,25 +128,27 @@ class BatchMatmulOpTest(tf.test.TestCase):
     return np.array(vals, dtype=np.complex64).reshape(shape)
 
   def testSimpleComplex(self):
-    self._compare(self._randComplex([7, 2, 3]),
-                  self._randComplex([7, 3, 5]), False, False)
-    self._compare(self._randComplex([7, 2, 3]),
-                  self._randComplex([7, 5, 3]), False, True)
-    self._compare(self._randComplex([7, 3, 2]),
-                  self._randComplex([7, 3, 5]), True, False)
-    self._compare(self._randComplex([7, 3, 2]),
-                  self._randComplex([7, 5, 3]), True, True)
+    for use_gpu in [False, True]:
+      self._compare(self._randComplex([7, 2, 3]),
+                    self._randComplex([7, 3, 5]), False, False, use_gpu)
+      self._compare(self._randComplex([7, 2, 3]),
+                    self._randComplex([7, 5, 3]), False, True, use_gpu)
+      self._compare(self._randComplex([7, 3, 2]),
+                    self._randComplex([7, 3, 5]), True, False, use_gpu)
+      self._compare(self._randComplex([7, 3, 2]),
+                    self._randComplex([7, 5, 3]), True, True, use_gpu)
 
   def testLargeComplex(self):
-    self._compare(self._randComplex([10, 64, 75]),
-                  self._randComplex([10, 75, 30]), False,
-                  False)
-    self._compare(self._randComplex([10, 64, 75]),
-                  self._randComplex([10, 30, 75]), False, True)
-    self._compare(self._randComplex([10, 75, 64]),
-                  self._randComplex([10, 75, 30]), True, False)
-    self._compare(self._randComplex([10, 75, 64]),
-                  self._randComplex([10, 30, 75]), True, True)
+    for use_gpu in [False, True]:
+      self._compare(self._randComplex([10, 64, 75]),
+                    self._randComplex([10, 75, 30]), False,
+                    False, use_gpu)
+      self._compare(self._randComplex([10, 64, 75]),
+                    self._randComplex([10, 30, 75]), False, True, use_gpu)
+      self._compare(self._randComplex([10, 75, 64]),
+                    self._randComplex([10, 75, 30]), True, False, use_gpu)
+      self._compare(self._randComplex([10, 75, 64]),
+                    self._randComplex([10, 30, 75]), True, True, use_gpu)
 
   def testEmpty(self):
     self._compare(np.zeros([0, 3, 2]).astype(np.float32),
@@ -163,10 +165,10 @@ class BatchMatmulGradientTest(tf.test.TestCase):
 
   # loss = sum(batch_matmul(x, y)). Verify dl/dx and dl/dy via the
   # gradient checker.
-  def _checkGrad(self, x, y, adj_x, adj_y):
+  def _checkGrad(self, x, y, adj_x, adj_y, use_gpu):
     assert 3 == x.ndim
     assert 3 == y.ndim
-    with self.test_session():
+    with self.test_session(use_gpu=use_gpu):
       inx = tf.convert_to_tensor(x)
       iny = tf.convert_to_tensor(y)
       z = tf.batch_matmul(inx, iny, adj_x, adj_y)
@@ -192,19 +194,22 @@ class BatchMatmulGradientTest(tf.test.TestCase):
   # n, k] y is a 3D tensor of shape [b, k, m] the batched matmul
   # computes z of shape [b, n, m], where z[i, :, :] = x[i, :, :]
   # matmul y[i, :, :]
-  def _compare(self, b, n, k, m):
+  def _compare(self, b, n, k, m, use_gpu):
     x = np.random.normal(0, 1, b * n * k).astype(np.float32).reshape([b, n, k])
     y = np.random.normal(0, 1, b * k * m).astype(np.float32).reshape([b, k, m])
-    self._checkGrad(x, y, False, False)
-    self._checkGrad(x.reshape([b, k, n]), y, True, False)
-    self._checkGrad(x, y.reshape([b, m, k]), False, True)
-    self._checkGrad(x.reshape([b, k, n]), y.reshape([b, m, k]), True, True)
+    self._checkGrad(x, y, False, False, use_gpu)
+    self._checkGrad(x.reshape([b, k, n]), y, True, False, use_gpu)
+    self._checkGrad(x, y.reshape([b, m, k]), False, True, use_gpu)
+    self._checkGrad(x.reshape([b, k, n]), y.reshape([b, m, k]), True, True,
+                    use_gpu)
 
   def testSmall(self):
-    self._compare(1, 2, 3, 5)
+    for use_gpu in [False, True]:
+      self._compare(1, 2, 3, 5, use_gpu)
 
   def testMedium(self):
-    self._compare(3, 4, 7, 10)
+    for use_gpu in [False, True]:
+      self._compare(3, 4, 7, 10, use_gpu)
 
   # Can't do testLarge using very large inputs because gradient
   # checker will take way too long time.

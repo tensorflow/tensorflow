@@ -19,21 +19,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.ops.batch_norm_ops import batch_normalize
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import nn
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.contrib.framework import deprecated
+from tensorflow.contrib.layers import convolution2d
+
+from tensorflow.python.ops import init_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
+@deprecated(date="2016-08-15",
+            instructions="Please use tf.contrib.layers.conv2d instead.")
 def conv2d(tensor_in,
            n_filters,
            filter_shape,
            strides=None,
-           padding='SAME',
+           padding="SAME",
            bias=True,
            activation=None,
            batch_norm=False):
   """Creates 2D convolutional subgraph with bank of filters.
+
+  This is deprecated. Please use contrib.layers.convolution2d.
 
   Uses tf.nn.conv2d under the hood.
   Creates a filter bank:
@@ -57,18 +62,23 @@ def conv2d(tensor_in,
   Returns:
     A Tensor with resulting convolution.
   """
-  with vs.variable_scope('convolution'):
-    if strides is None:
-      strides = [1, 1, 1, 1]
-    input_shape = tensor_in.get_shape()
-    filter_shape = list(filter_shape) + [input_shape[3], n_filters]
-    filters = vs.get_variable('filters', filter_shape, dtypes.float32)
-    output = nn.conv2d(tensor_in, filters, strides, padding)
-    if bias:
-      bias_var = vs.get_variable('bias', [1, 1, 1, n_filters], dtypes.float32)
-      output += bias_var
-    if batch_norm:
-      output = batch_normalize(output, convnet=True)
-    if activation:
-      output = activation(output)
-    return output
+  if batch_norm:
+    logging.warn("batch_norm will not work with learn.ops.conv2d, "
+                 "use tf.contrib.layers.conv2d.")
+
+  if bias:
+    bias_init = init_ops.zeros_initializer
+  if strides is None:
+    strides = [1, 1]
+  else:
+    strides = strides[1:3]  # only take height and width
+    logging.warn("strides may not be passed correctly. Please instead "
+                 "use and see documentation for contrib.layers.convolution2d.")
+  return convolution2d(
+      tensor_in,
+      num_outputs=n_filters,
+      kernel_size=list(filter_shape),
+      stride=strides,
+      padding=padding,
+      biases_initializer=bias_init,
+      activation_fn=activation)

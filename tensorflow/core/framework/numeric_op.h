@@ -88,6 +88,7 @@ class BinaryElementWiseOp : public BinaryOp<T> {
     break;                                                                     \
   }
 
+      NDIM_CASE(0);
       NDIM_CASE(1);
       NDIM_CASE(2);
       NDIM_CASE(3);

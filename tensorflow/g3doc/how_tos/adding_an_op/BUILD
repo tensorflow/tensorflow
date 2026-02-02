@@ -82,7 +82,6 @@ py_test(
         ":zero_out_grad_2",
         ":zero_out_op_2",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:kernel_tests/gradient_checker",
     ],
 )
 

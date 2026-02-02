@@ -26,7 +26,8 @@ class DualLossUpdater {
   // Compute update dual (alpha), based on a single example. Various strategies
   // can be employed here, like newton step and/or line search or approximate
   // step that decreases the dual sub-optimality.
-  virtual double ComputeUpdatedDual(const double label,
+  virtual double ComputeUpdatedDual(const int num_partitions,
+                                    const double label,
                                     const double example_weight,
                                     const double current_dual, const double wx,
                                     const double weighted_example_norm,

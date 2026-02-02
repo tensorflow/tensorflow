@@ -111,6 +111,9 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
     if (status.ok() && at_end) {
       status = OnWorkFinishedLocked();
       work_finished_ = work_started_;
+      if (records_produced_this_call > 0) {
+        return records_produced_this_call;
+      }
     }
     if (!status.ok()) {
       context->SetStatus(status);
@@ -123,7 +126,7 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
 Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<string>* keys,
                                   std::vector<string>* values, int64* num_read,
                                   bool* at_end) {
-  bool produced;
+  bool produced = false;
   string key;
   string value;
   Status status = ReadLocked(&key, &value, &produced, at_end);

@@ -6,7 +6,7 @@ The inputs must be two-dimensional matrices, with matching inner dimensions,
 possibly after transposition.
 
 Both matrices must be of the same type. The supported types are:
-`float`, `double`, `int32`, `complex64`.
+`float32`, `float64`, `int32`, `complex64`.
 
 Either matrix can be transposed on the fly by setting the corresponding flag
 to `True`. This is `False` by default.
@@ -32,7 +32,7 @@ c = tf.matmul(a, b) => [[58 64]
 ##### Args:
 
 
-*  <b>`a`</b>: `Tensor` of type `float`, `double`, `int32` or `complex64`.
+*  <b>`a`</b>: `Tensor` of type `float32`, `float64`, `int32` or `complex64`.
 *  <b>`b`</b>: `Tensor` with same type as `a`.
 *  <b>`transpose_a`</b>: If `True`, `a` is transposed before multiplication.
 *  <b>`transpose_b`</b>: If `True`, `b` is transposed before multiplication.

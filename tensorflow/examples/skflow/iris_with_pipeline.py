@@ -1,4 +1,4 @@
-#  Copyright 2015-present The Scikit Flow Authors. All Rights Reserved.
+#  Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -11,31 +11,45 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+
+"""Example of DNNClassifier for Iris plant dataset, with pipeline."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from sklearn.pipeline import Pipeline
-from sklearn.datasets import load_iris
 from sklearn import cross_validation
-from sklearn.preprocessing import StandardScaler
+from sklearn.datasets import load_iris
 from sklearn.metrics import accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+
 from tensorflow.contrib import learn
 
-iris = load_iris()
-X_train, X_test, y_train, y_test = cross_validation.train_test_split(iris.data, iris.target,
-    test_size=0.2, random_state=42)
 
-# It's useful to scale to ensure Stochastic Gradient Descent will do the right thing
-scaler = StandardScaler()
+def main(unused_argv):
+  iris = load_iris()
+  x_train, x_test, y_train, y_test = cross_validation.train_test_split(
+      iris.data, iris.target, test_size=0.2, random_state=42)
 
-# DNN classifier
-DNNclassifier = learn.TensorFlowDNNClassifier(hidden_units=[10, 20, 10], n_classes=3, steps=200)
+  # It's useful to scale to ensure Stochastic Gradient Descent
+  # will do the right thing.
+  scaler = StandardScaler()
 
-pipeline = Pipeline([('scaler', scaler), ('DNNclassifier', DNNclassifier)])
+  # DNN classifier.
+  classifier = learn.DNNClassifier(
+      feature_columns=learn.infer_real_valued_columns_from_input(x_train),
+      hidden_units=[10, 20, 10], n_classes=3)
 
-pipeline.fit(X_train, y_train)
+  pipeline = Pipeline([('scaler', scaler),
+                       ('DNNclassifier', classifier)])
 
-score = accuracy_score(y_test, pipeline.predict(X_test))
+  pipeline.fit(x_train, y_train, DNNclassifier__steps=200)
 
-print('Accuracy: {0:f}'.format(score))
+  score = accuracy_score(y_test, pipeline.predict(x_test))
+  print('Accuracy: {0:f}'.format(score))
+
+
+if __name__ == '__main__':
+  tf.app.run()

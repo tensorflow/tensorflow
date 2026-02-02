@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 Google Inc. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,25 +14,234 @@
 # ==============================================================================
 """Contains TF-Slim code for training models.
 
-This script contains various functions for training models which includes
-creating train tensors, altering gradients and optimizing loss functions. The
-following presents an example of how to use the learning module:
+This script contains various functions for training models. These include
+manipulating gradients, creating a `train_op` (an operation that computes the
+loss and applies the gradients) and a training loop function. The training loop
+allows the user to pass in the `train_op` and runs the optimization according
+to user-specified arguments. Note that the training loop uses the tf.Supervisor
+and its managed_session in its implementation to ensure the ability of worker
+processes to recover from failures.
 
-  g = tf.Graph()
+************************************
+* A simple working training script *
+************************************
 
-  # Setup the model and losses
+  # Load data and create the model:
   images, labels = LoadData(...)
-  predictions = CreateNetwork(images)
-  total_loss = slim.losses.log_loss(predictions, labels)
+  predictions = MyModel(images)
 
-  # Define the optimizer.
+  # Define the loss:
+  slim.losses.log_loss(predictions, labels)
+  total_loss = slim.losses.get_total_loss()
+
+  # Define the optimizer:
   optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
 
-  # Set up training gradients and dependencies.
-  train_tensor = slim.learning.create_train_tensor(total_loss, optimizer)
+  # Create the train_op
+  train_op = slim.learning.create_train_op(total_loss, optimizer)
 
   # Run training.
-  learning.train(train_tensor, my_log_dir)
+  slim.learning.train(train_op, my_log_dir)
+
+*************************
+* Creating the train_op *
+*************************
+
+In order to train, TF-Slim's train loop needs a train_op: an `Operation` that
+(a) computes the loss, (b) applies the gradients to update the weights and
+(c) returns the value of the loss. slim.learning.create_train_op creates
+such an `Operation`. This function also provides the ability to manipulate
+the gradients using a few arguments:
+
+  # Create the train_op and clip the gradient norms:
+  train_op = slim.learning.create_train_op(
+      total_loss,
+      optimizer,
+      clip_gradient_norm=4)
+
+  # Create the train_op and scale the gradients by providing a map from variable
+  # name (or variable) to a scaling coefficient:
+  gradient_multipliers = {
+    'conv0/weights': 1.2,
+    'fc8/weights': 3.4,
+  }
+  train_op = slim.learning.create_train_op(
+      total_loss,
+      optimizer,
+      gradient_multipliers=gradient_multipliers)
+
+****************************************************************
+* Performing additional (non-gradient) updates during training *
+****************************************************************
+
+Many networks utilize modules, like BatchNorm, that require performing a series
+of non-gradient updates during training. slim.learning.create_train_op allows
+a user to pass in a list of update_ops to call along with the gradient updates.
+
+  train_op = slim.learning.create_train_op(total_loss, optimizer, update_ops)
+
+By default, slim.learning.create_train_op includes all update ops that are
+part of the `tf.GraphKeys.UPDATE_OPS` collection. Additionally, TF-Slim's
+slim.batch_norm function adds the moving mean and moving variance updates to
+this collection. Consequently, users who want to use slim.batch_norm will not
+need to take any additional steps in order to have the moving mean and moving
+variance updates be computed.
+
+However, users with additional, specialized updates can either override the
+default update ops or simply add additional update ops to the
+`tf.GraphKeys.UPDATE_OPS` collection:
+
+  # Force TF-Slim NOT to use ANY update_ops:
+  train_op = slim.learning.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=[])
+
+  # Use an alternative set of update ops:
+  train_op = slim.learning.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=my_other_update_ops)
+
+  # Use an alternative set of update ops in addition to the default updates:
+  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update0)
+  tf.add_to_collection(tf.GraphKeys.UPDATE_OPS, my_update1)
+
+  train_op = slim.learning.create_train_op(
+     total_loss,
+     optimizer)
+
+  # Which is the same as:
+  train_op = slim.learning.create_train_op(
+     total_loss,
+     optimizer,
+     update_ops=tf.get_collection(tf.GraphKeys.UPDATE_OPS))
+
+******************************************
+* Initializing a model from a checkpoint *
+******************************************
+
+It is common to want to 'warm-start' a model from a pre-trained checkpoint.
+TF-Slim provides a convenient mechanism for doing so:
+
+  ...
+
+  # Create the train_op
+  train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+  # Create the initial assignment op
+  checkpoint_path = '/cns/.../old_model_checkpoint'
+  variables_to_restore = slim.get_model_variables()
+  init_assign_op, init_feed_dict = slim.assign_from_checkpoint(
+      checkpoint_path, variables_to_restore)
+
+  # Create an initial assignment function.
+  def InitAssignFn(sess):
+      sess.run(init_assign_op, init_feed_dict)
+
+  # Run training.
+  slim.learning.train(train_op, my_log_dir, init_fn=InitAssignFn)
+
+***************************************************************************
+* Initializing a model from a checkpoint whose variable names don't match *
+***************************************************************************
+
+At times, a user may want to initialize a new model with values from a
+checkpoint whose variable names do not match those of the current model. In this
+case, one needs to create a mapping from the checkpoint variable names to the
+current model variables. This requires only a small modification of the code
+above:
+  ...
+  # Creates a model with two variables, var0 and var1
+  predictions = MyModel(images)
+  ...
+
+  # Create the train_op
+  train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+  checkpoint_path = '/cns/.../old_model_checkpoint'
+
+  # Create the mapping:
+  variables_to_restore = {
+      'name_var_0_in_checkpoint': slim.get_unique_variable('var0'),
+      'name_var_1_in_checkpoint': slim.get_unique_variable('var1')
+  }
+  init_assign_op, init_feed_dict = slim.assign_from_checkpoint(
+      checkpoint_path, variables_to_restore)
+
+  # Create an initial assignment function.
+  def InitAssignFn(sess):
+      sess.run(init_assign_op, init_feed_dict)
+
+  # Run training.
+  slim.learning.train(train_op, my_log_dir, init_fn=InitAssignFn)
+
+
+*************************************************
+* Fine-Tuning Part of a model from a checkpoint *
+*************************************************
+
+Rather than initializing all of the weights of a given model, we sometimes
+only want to restore some of the weights from a checkpoint. To do this, one
+need only filter those variables to initialize as follows:
+
+  ...
+
+  # Create the train_op
+  train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+  checkpoint_path = '/cns/.../old_model_checkpoint'
+
+  # Specify the variables to restore via a list of inclusion or exclusion
+  # patterns:
+  variables_to_restore = slim.get_variables_to_restore(
+      include=["conv"], exclude=["fc8", "fc9])
+  # or
+  variables_to_restore = slim.get_variables_to_restore(exclude=["conv"])
+
+  init_assign_op, init_feed_dict = slim.assign_from_checkpoint(
+      checkpoint_path, variables_to_restore)
+
+  # Create an initial assignment function.
+  def InitAssignFn(sess):
+      sess.run(init_assign_op, init_feed_dict)
+
+  # Run training.
+  slim.learning.train(train_op, my_log_dir, init_fn=InitAssignFn)
+
+******************************************************
+* Initializing model variables from values in memory *
+******************************************************
+
+One may want to initialize the weights of a model from values from an arbitrary
+source (a text document, matlab file, etc). While this is technically feasible
+using plain TensorFlow, it also results in the values of your weights being
+stored in the graph. For large models, this becomes prohibitively large. TF-Slim
+allows you to perform this initial assignment without having to store the values
+of the initial model in the graph itself by using placeholders and a feed
+dictionary:
+
+  ...
+
+  # Create the train_op
+  train_op = slim.learning.create_train_op(total_loss, optimizer)
+
+  # Create the mapping from variable names to values:
+  var0_initial_value = ReadFromDisk(...)
+  var1_initial_value = ReadFromDisk(...)
+
+  var_names_to_values = {
+    'var0': var0_initial_value,
+    'var1': var1_initial_value,
+  }
+  init_assign_op, init_feed_dict = slim.assign_from_values(var_names_to_values)
+
+  # Create an initial assignment function.
+  def InitAssignFn(sess):
+      sess.run(init_assign_op, init_feed_dict)
+
+  # Run training.
+  slim.learning.train(train_op, my_log_dir, init_fn=InitAssignFn)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -42,10 +251,11 @@ import sys
 import time
 
 from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -58,9 +268,11 @@ from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
 __all__ = [
+    'add_gradients_summaries',
     'clip_gradient_norms',
     'multiply_gradients',
     'create_train_op',
+    'train_step',
     'train'
 ]
 
@@ -127,6 +339,32 @@ def multiply_gradients(grads_and_vars, gradient_multipliers):
   return multiplied_grads_and_vars
 
 
+def add_gradients_summaries(grads_and_vars):
+  """Add summaries to gradients.
+
+  Args:
+    grads_and_vars: A list of gradient to variable pairs (tuples).
+
+  Returns:
+    The list of created summaries.
+  """
+  summaries = []
+  for grad, var in grads_and_vars:
+    if grad is not None:
+      if isinstance(grad, ops.IndexedSlices):
+        grad_values = grad.values
+      else:
+        grad_values = grad
+      summaries.append(logging_ops.histogram_summary(
+          var.op.name + ':gradient', grad_values))
+      summaries.append(logging_ops.histogram_summary(
+          var.op.name + ':gradient_norm', clip_ops.global_norm([grad_values])))
+    else:
+      logging.info('Var %s has no gradient', var.op.name)
+
+  return summaries
+
+
 def create_train_op(
     total_loss,
     optimizer,
@@ -137,7 +375,8 @@ def create_train_op(
     summarize_gradients=False,
     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
     aggregation_method=None,
-    colocate_gradients_with_ops=False):
+    colocate_gradients_with_ops=False,
+    gradient_multipliers=None):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -159,7 +398,9 @@ def create_train_op(
       Valid values are defined in the class `AggregationMethod`.
     colocate_gradients_with_ops: Whether or not to try colocating the gradients
       with the ops that generated them.
-
+    gradient_multipliers: A dictionary of either `Variables` or `Variable` op
+      names to the coefficient by which the associated gradient should be
+      scaled.
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
       loss value.
@@ -167,11 +408,19 @@ def create_train_op(
   if global_step is None:
     global_step = variables.get_or_create_global_step()
 
-  update_ops = set(update_ops or [])
+  # Update ops use GraphKeys.UPDATE_OPS collection if update_ops is None.
+  global_update_ops = set(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
+  if update_ops is None:
+    update_ops = global_update_ops
+  else:
+    update_ops = set(update_ops)
+  if not global_update_ops.issubset(update_ops):
+    logging.warning('update_ops in create_train_op does not contain all the '
+                    ' update_ops in GraphKeys.UPDATE_OPS')
 
   # Make sure update_ops are computed before total_loss.
   if update_ops:
-    with control_flow_ops.control_dependencies(update_ops):
+    with ops.control_dependencies(update_ops):
       barrier = control_flow_ops.no_op(name='update_barrier')
     total_loss = control_flow_ops.with_dependencies([barrier], total_loss)
 
@@ -192,23 +441,17 @@ def create_train_op(
       aggregation_method=aggregation_method,
       colocate_gradients_with_ops=colocate_gradients_with_ops)
 
+  # Scale gradients.
+  if gradient_multipliers:
+    grads = multiply_gradients(grads, gradient_multipliers)
+
   # Clip gradients.
   if clip_gradient_norm > 0:
     grads = clip_gradient_norms(grads, clip_gradient_norm)
 
   # Summarize gradients.
   if summarize_gradients:
-    for grad, var in grads:
-      if grad is not None:
-        if isinstance(grad, ops.IndexedSlices):
-          grad_values = grad.values
-        else:
-          grad_values = grad
-        logging_ops.histogram_summary(var.op.name + ':gradient', grad_values)
-        logging_ops.histogram_summary(var.op.name + ':gradient_norm',
-                                      clip_ops.global_norm([grad_values]))
-      else:
-        logging.info('Var %s has no gradient', var.op.name)
+    add_gradients_summaries(grads)
 
   # Create gradient updates.
   grad_updates = optimizer.apply_gradients(grads, global_step=global_step)
@@ -234,47 +477,48 @@ def _wait_for_step(sess, global_step, step):
     time.sleep(1.0)
 
 
-def train_loop(sv,
-               sess,
-               train_op,
-               should_stop_op,
-               should_log_op,
-               global_step,
-               cleanup_op=None):
-  """Runs the training loop.
+def train_step(sess, train_op, global_step, train_step_kwargs):
+  """Function that takes a gradient step and specifies whether to stop.
 
   Args:
-    sv: The supervisor instance.
-    sess: The session.
+    sess: The current session.
     train_op: An `Operation` that evaluates the gradients and returns the
       total loss.
-    should_stop_op: A boolean `Tensor` that signals the end of training.
-    should_log_op: A boolean `Tensor` that signals whether or not we should log
-      the global step and current loss.
     global_step: A `Tensor` representing the global training step.
-    cleanup_op: An operation to run if an exception is thrown.
+    train_step_kwargs: A dictionary of keyword arguments.
 
   Returns:
-    total_loss: The total loss value after training.
+    The total loss and a boolean indicating whether or not to stop training.
   """
-  total_loss = 0
+  start_time = time.time()
+  total_loss, np_global_step = sess.run([train_op, global_step])
+  time_elapsed = time.time() - start_time
 
-  try:
-    while not sv.should_stop():
-      start_time = time.time()
-      total_loss, np_global_step, np_should_log, np_should_stop = sess.run(
-          [train_op, global_step, should_log_op, should_stop_op])
-      time_elapsed = time.time() - start_time
+  if 'should_log' in train_step_kwargs:
+    if sess.run(train_step_kwargs['should_log']):
+      logging.info('global step %d: loss = %.4f (%.2f sec)',
+                   np_global_step, total_loss, time_elapsed)
 
-      if np_should_log:
-        logging.info('global step %d: loss = %.4f (%.2f sec)',
-                     np_global_step, total_loss, time_elapsed)
-      if np_should_stop:
-        break
-  finally:
-    if sv.is_chief and cleanup_op is not None:
-      sess.run(cleanup_op)
-  return total_loss
+  # TODO(nsilberman): figure out why we can't put this into sess.run. The
+  # issue right now is that the stop check depends on the global step. The
+  # increment of global step often happens via the train op, which used
+  # created using optimizer.apply_gradients.
+  #
+  # Since running `train_op` causes the global step to be incremented, one
+  # would expected that using a control dependency would allow the
+  # should_stop check to be run in the same session.run call:
+  #
+  #   with ops.control_dependencies([train_op]):
+  #     should_stop_op = ...
+  #
+  # However, this actually seems not to work on certain platforms.
+  if 'should_stop' in train_step_kwargs:
+    should_stop = sess.run(train_step_kwargs['should_stop'])
+  else:
+    should_stop = False
+
+  return total_loss, should_stop
+
 
 _USE_DEFAULT = 0
 
@@ -282,6 +526,8 @@ _USE_DEFAULT = 0
 def train(
     train_op,
     logdir,
+    train_step_fn=train_step,
+    train_step_kwargs=_USE_DEFAULT,
     log_every_n_steps=1,
     graph=None,
     master='',
@@ -290,6 +536,7 @@ def train(
     number_of_steps=None,
     init_op=_USE_DEFAULT,
     init_feed_dict=None,
+    local_init_op=None,
     init_fn=None,
     summary_op=_USE_DEFAULT,
     save_summaries_secs=600,
@@ -305,7 +552,14 @@ def train(
   Args:
     train_op: A `Tensor` that, when executed, will apply the gradients and
       return the loss value.
-    logdir: the directory where training logs are written to.
+    logdir: The directory where training logs are written to. If None, model
+      checkpoints and summaries will not be written.
+    train_step_fn: The function to call in order to execute a single gradient
+      step. The function must have take exactly four arguments: the current
+      session, the `train_op` `Tensor`, a global step `Tensor` and a dictionary.
+    train_step_kwargs: A dictionary which is passed to the `train_step_fn`. By
+      default, two `Boolean`, scalar ops called "should_stop" and "should_log"
+      are provided.
     log_every_n_steps: The frequency, in terms of global steps, that the loss
       and global step and logged.
     graph: The graph to pass to the supervisor. If no graph is supplied the
@@ -317,15 +571,19 @@ def train(
       then slim.variables.get_or_create_global_step() is used.
     number_of_steps: The max number of gradient steps to take during training.
       If the value is left as None, training proceeds indefinitely.
-    init_op: The initialization operation.
+    init_op: The initialization operation. If left to its default value, then
+      the session is initialized by calling `tf.initialize_all_variables()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
+    local_init_op: The local initialization operation. If None,
+      then the session is initialized by calling
+      `tf.initialize_local_variables()` and `tf.initialize_all_tables()`.
     init_fn: An optional callable to be executed after `init_op` is called. The
       callable must accept one argument, the session being initialized.
     summary_op: The summary operation.
     save_summaries_secs: How often, in seconds, to save summaries.
     startup_delay_steps: The number of steps to wait for before beginning. Note
       that this must be 0 if a sync_optimizer is supplied.
-    saver: Saver to save checkpoints. If none, a default one will be created
+    saver: Saver to save checkpoints. If None, a default one will be created
       and used.
     save_interval_secs: How often, in seconds, to save the model to `logdir`.
     sync_optimizer: an instance of tf.train.SyncReplicasOptimizer. If the
@@ -343,6 +601,12 @@ def train(
   if train_op is None:
     raise ValueError('train_op cannot be None.')
 
+  if logdir is None:
+    if summary_op != _USE_DEFAULT:
+      raise ValueError('Cannot provide summary_op because logdir=None')
+    if saver is not None:
+      raise ValueError('Cannot provide saver because logdir=None')
+
   if sync_optimizer and startup_delay_steps > 0:
     raise ValueError(
         'startup_delay_steps must be zero when sync_optimizer is supplied.')
@@ -352,43 +616,42 @@ def train(
         '`number_of_steps` must be either None or a positive number.')
 
   graph = graph or ops.get_default_graph()
-  if global_step is None:
-    global_step = variables.get_or_create_global_step()
-  saver = saver or tf_saver.Saver()
+  with graph.as_default():
+    if global_step is None:
+      global_step = variables.get_or_create_global_step()
+    saver = saver or tf_saver.Saver()
 
-  if init_op is None:
-    init_op = control_flow_ops.group(
-        tf_variables.initialize_all_variables(),
-        tf_variables.initialize_local_variables(),
-        tf_variables.initialize_all_tables())
+    if init_op == _USE_DEFAULT:
+      init_op = tf_variables.initialize_all_variables()
 
-  if summary_op == _USE_DEFAULT:
-    summary_op = logging_ops.merge_all_summaries()
+    if summary_op == _USE_DEFAULT:
+      summary_op = logging_ops.merge_all_summaries()
 
-  local_init_op = None
-  cleanup_op = None
+    cleanup_op = None
 
-  if is_chief and sync_optimizer:
-    if not isinstance(sync_optimizer,
-                      sync_replicas_optimizer.SyncReplicasOptimizer):
-      raise ValueError(
-          '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
+    if is_chief and sync_optimizer:
+      if not isinstance(sync_optimizer,
+                        sync_replicas_optimizer.SyncReplicasOptimizer):
+        raise ValueError(
+            '`sync_optimizer` must be a tf.train.SyncReplicasOptimizer')
 
-    # Need to create these BEFORE the supervisor finalizes the graph:
-    local_init_op = sync_optimizer.get_init_tokens_op()
-    chief_queue_runner = sync_optimizer.get_chief_queue_runner()
-    cleanup_op = sync_optimizer.get_clean_up_op()
+      # Need to create these BEFORE the supervisor finalizes the graph:
+      with ops.control_dependencies([init_op]):
+        init_tokens_op = sync_optimizer.get_init_tokens_op()
+      init_op = init_tokens_op
+      chief_queue_runner = sync_optimizer.get_chief_queue_runner()
+      cleanup_op = sync_optimizer.get_clean_up_op()
 
-  if number_of_steps:
-    # Need to subtract 1 since the check for greater/equality is done
-    # concurrently with the increment of global_step.
-    # TODO(nsilberman): add a dependency to ensure the order of operations.
-    should_stop_op = math_ops.greater_equal(global_step, number_of_steps-1)
-  else:
-    should_stop_op = constant_op.constant(False)
+    if train_step_kwargs == _USE_DEFAULT:
+      train_step_kwargs = {}
 
-  should_log_op = math_ops.equal(math_ops.mod(global_step, log_every_n_steps),
-                                 0)
+      if number_of_steps:
+        should_stop_op = math_ops.greater_equal(global_step, number_of_steps)
+      else:
+        should_stop_op = constant_op.constant(False)
+      train_step_kwargs['should_stop'] = should_stop_op
+      train_step_kwargs['should_log'] = math_ops.equal(
+          math_ops.mod(global_step, log_every_n_steps), 0)
 
   sv = supervisor.Supervisor(
       graph=graph,
@@ -404,25 +667,42 @@ def train(
       save_model_secs=save_interval_secs,
       init_fn=init_fn)
 
-  with sv.managed_session(master, start_standard_services=False) as sess:
-    if is_chief:
-      sv.start_standard_services(sess)
-    elif not is_chief and startup_delay_steps > 0:
-      _wait_for_step(sess, global_step,
-                     min(startup_delay_steps, number_of_steps or sys.maxint))
-    sv.start_queue_runners(sess)
-    if is_chief and sync_optimizer:
-      sv.start_queue_runners(sess, [chief_queue_runner])
+  should_retry = True
+  while should_retry:
+    try:
+      should_retry = False
+      with sv.managed_session(master, start_standard_services=False) as sess:
+        logging.info('Starting Session.')
+        if is_chief:
+          if logdir:
+            sv.start_standard_services(sess)
+        elif startup_delay_steps > 0:
+          _wait_for_step(sess, global_step,
+                         min(startup_delay_steps,
+                             number_of_steps or sys.maxint))
+        sv.start_queue_runners(sess)
+        logging.info('Starting Queues.')
+        if is_chief and sync_optimizer:
+          sv.start_queue_runners(sess, [chief_queue_runner])
+        try:
+          while not sv.should_stop():
+            total_loss, should_stop = train_step_fn(
+                sess, train_op, global_step, train_step_kwargs)
+            if should_stop:
+              logging.info('Stopping Training.')
+              break
+          if logdir and sv.is_chief:
+            logging.info('Finished training! Saving model to disk.')
+            sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
+        finally:
+          if sv.is_chief and cleanup_op is not None:
+            logging.info('About to execute sync_clean_up_op!')
+            sess.run(cleanup_op)
 
-    total_loss = train_loop(
-        sv, sess, train_op, should_stop_op, should_log_op, global_step,
-        cleanup_op)
+    except errors.AbortedError:
+      # Always re-run on AbortedError as it indicates a restart of one of the
+      # distributed tensorflow servers.
+      logging.info('Retrying training!')
+      should_retry = True
 
-    # This waits for service threads to finish.
-    sv.Stop()
-
-    if sv.is_chief:
-      logging.info('Finished training! Saving model to disk.')
-      sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
-
-    return total_loss
+  return total_loss

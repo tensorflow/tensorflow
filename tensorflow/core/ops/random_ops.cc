@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -96,6 +97,39 @@ seed2: A second seed to avoid seed collision.
 output: A tensor of the specified shape filled with random normal values.
 )doc");
 
+REGISTER_OP("ParameterizedTruncatedNormal")
+    .Input("shape: T")
+    .Input("means: dtype")
+    .Input("stdevs: dtype")
+    .Input("minvals: dtype")
+    .Input("maxvals: dtype")
+    .SetIsStateful()
+    .Output("output: dtype")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("dtype: {half,float,double}")
+    .Attr("T: {int32, int64}")
+    .Doc(R"doc(
+Outputs random values from a normal distribution. The parameters may each be a
+scalar which applies to the entire output, or a vector of length shape[0] which
+stores the parameters for each batch.
+
+shape: The shape of the output tensor. Batches are indexed by the 0th dimension.
+means: The mean parameter of each batch.
+stdevs: The standard deviation parameter of each batch. Must be greater than 0.
+minvals: The minimum cutoff. May be -infinity.
+maxvals: The maximum cutoff. May be +infinity, and must be more than the minval
+  for each batch.
+dtype: The type of the output.
+seed: If either `seed` or `seed2` are set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, it is seeded by a
+  random seed.
+seed2: A second seed to avoid seed collision.
+
+output: A matrix of shape num_batches x samples_per_batch, filled with random
+  truncated normal values using the parameters for each row.
+)doc");
+
 REGISTER_OP("TruncatedNormal")
     .Input("shape: T")
     .SetIsStateful()
@@ -129,6 +163,7 @@ REGISTER_OP("RandomShuffle")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Randomly shuffles a tensor along its first dimension.
 
@@ -171,6 +206,36 @@ seed: If either seed or seed2 is set to be non-zero, the internal random number
 seed2: A second seed to avoid seed collision.
 output: 2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`
   contains the drawn class labels with range `[0, num_classes)`.
+)doc");
+
+REGISTER_OP("RandomGamma")
+    .SetIsStateful()
+    .Input("shape: S")
+    .Input("alpha: T")
+    .Output("output: T")
+    .Attr("seed: int = 0")
+    .Attr("seed2: int = 0")
+    .Attr("S: {int32, int64}")
+    .Attr("T: {half, float, double}")
+    .Doc(R"doc(
+Outputs random values from the Gamma distribution(s) described by alpha.
+
+This op uses the algorithm by Marsaglia et al. to acquire samples via
+transformation-rejection from pairs of uniform and normal random variables.
+See http://dl.acm.org/citation.cfm?id=358414
+
+shape: 1-D integer tensor. Shape of independent samples to draw from each
+  distribution described by the shape parameters given in alpha.
+alpha: A tensor in which each scalar is a "shape" parameter describing the
+  associated gamma distribution.
+seed: If either `seed` or `seed2` are set to be non-zero, the random number
+  generator is seeded by the given seed.  Otherwise, it is seeded by a
+  random seed.
+seed2: A second seed to avoid seed collision.
+
+output: A tensor with shape `shape + shape(alpha)`. Each slice
+  `[:, ..., :, i0, i1, ...iN]` contains the samples drawn for
+  `alpha[i0, i1, ...iN]`. The dtype of the output matches the dtype of alpha.
 )doc");
 
 }  // namespace tensorflow

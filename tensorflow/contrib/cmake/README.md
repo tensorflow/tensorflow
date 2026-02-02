@@ -49,7 +49,7 @@ Change to your working directory:
 
 Where *C:\Path\to* is the path to your real working directory.
 
-Create a folder where Tensorflow headers/libraries/binaries will be installed
+Create a folder where TensorFlow headers/libraries/binaries will be installed
 after they are built:
 
     C:\Path\to>mkdir install
@@ -83,7 +83,7 @@ Go to the project folder:
     C:\Path\to>cd tensorflow
     C:\Path\to\tensorflow>
 
-Now go to *tensorflow\contrib\cmake* folder in Tensorflow's contrib sources:
+Now go to *tensorflow\contrib\cmake* folder in TensorFlow's contrib sources:
 
     C:\Path\to\tensorflow>cd tensorflow\contrib\cmake
     C:\Path\to\tensorflow\tensorflow\contrib\cmake>
@@ -101,7 +101,7 @@ and
 [Visual Studio](http://www.cmake.org/cmake/help/latest/manual/cmake-generators.7.html#visual-studio-generators)
 generators.
 
-We will use shadow building to separate the temporary files from the Tensorflow
+We will use shadow building to separate the temporary files from the TensorFlow
 source code.
 
 Create a temporary *build* folder and change your working directory to it:
@@ -143,7 +143,7 @@ It will generate *Visual Studio* solution file *tensorflow.sln* in current
 directory.
 
 If the *gmock* directory does not exist, and/or you do not want to build
-Tensorflow unit tests, you need to add *cmake* command argument
+TensorFlow unit tests, you need to add *cmake* command argument
 `-Dtensorflow_BUILD_TESTS=OFF` to disable testing.
 
 Compiling
@@ -219,7 +219,7 @@ If all tests are passed, safely continue.
 Installing
 ==========
 
-To install Tensorflow to the specified *install* folder:
+To install TensorFlow to the specified *install* folder:
 
      [...]\contrib\cmake\build\release>nmake install
 
@@ -232,7 +232,7 @@ It sounds not so strange and it works.
 
 This will create the following folders under the *install* location:
   * bin - that contains tensorflow binaries;
-  * include - that contains C++ headers and Tensorflow *.proto files;
+  * include - that contains C++ headers and TensorFlow *.proto files;
   * lib - that contains linking libraries and *CMake* configuration files for
     *tensorflow* package.
 
@@ -251,7 +251,7 @@ should link against release libtensorflow.lib library.
 DLLs vs. static linking
 =======================
 
-Static linking is now the default for the Tensorflow Buffer libraries.  Due to
+Static linking is now the default for the TensorFlow Buffer libraries.  Due to
 issues with Win32's use of a separate heap for each DLL, as well as binary
 compatibility issues between different versions of MSVC's STL library, it is
 recommended that you use static linkage only.  However, it is possible to
@@ -270,7 +270,7 @@ compatibility between releases, so it is likely that future versions of these
 libraries will *not* be usable as drop-in replacements.
 
 If your project is itself a DLL intended for use by third-party software, we
-recommend that you do NOT expose Tensorflow objects in your library's
+recommend that you do NOT expose TensorFlow objects in your library's
 public interface, and that you statically link them into your library.
 
 Notes on Compiler Warnings

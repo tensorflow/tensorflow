@@ -121,6 +121,16 @@ Node* Var(Graph* g, const DataType dtype, const TensorShape& shape) {
   return ret;
 }
 
+Node* Var(Graph* g, const DataType dtype, const TensorShape& shape,
+          const string& name) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(name, "Variable")
+                  .Attr("dtype", dtype)
+                  .Attr("shape", shape)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Assign(Graph* g, Node* var, Node* val) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Assign")
@@ -186,6 +196,16 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype) {
 
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype) {
   return RandomNumberGenerator("TruncatedNormal", g, input, dtype);
+}
+
+Node* RandomGamma(Graph* g, Node* shape, Node* alpha) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "RandomGamma")
+                  .Input(shape)
+                  .Input(alpha)
+                  .Attr("seed", 0)
+                  .Finalize(g, &ret));
+  return ret;
 }
 
 Node* Unary(Graph* g, const string& func, Node* input, int index) {
@@ -380,6 +400,46 @@ Node* GetSessionTensor(Graph* g, Node* in) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GetSessionTensor")
                   .Input(in, 0)
                   .Attr("dtype", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Relu6(Graph* g, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Relu6")
+                  .Input(in, 0)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* BiasAdd(Graph* g, Node* value, Node* bias) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "BiasAdd")
+                  .Input(value)
+                  .Input(bias)
+                  .Attr("T", DT_FLOAT)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Conv2D(Graph* g, Node* in0, Node* in1) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Conv2D")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("strides", {1, 1, 1, 1})
+                  .Attr("padding", "SAME")
                   .Finalize(g, &ret));
   return ret;
 }

@@ -101,7 +101,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     }                                                                         \
   } while (0)
 
-  void HandleRPCsLoop() {
+  void HandleRPCsLoop() override {
     ENQUEUE_REQUEST(CreateSession, true);
     ENQUEUE_REQUEST(ExtendSession, false);
     for (int i = 0; i < 100; ++i) {

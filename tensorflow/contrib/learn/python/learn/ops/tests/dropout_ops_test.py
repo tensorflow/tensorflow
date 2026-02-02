@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,6 +28,7 @@ class DropoutTest(tf.test.TestCase):
 
   def test_dropout_float(self):
     with self.test_session() as session:
+      tf.add_to_collection("IS_TRAINING", True)
       x = tf.placeholder(tf.float32, [5, 5])
       ops.dropout(x, 0.5)
       probs = tf.get_collection(ops.DROPOUTS)
@@ -38,6 +38,7 @@ class DropoutTest(tf.test.TestCase):
 
   def test_dropout_tensor(self):
     with self.test_session():
+      tf.add_to_collection("IS_TRAINING", True)
       x = tf.placeholder(tf.float32, [5, 5])
       y = tf.get_variable("prob", [], initializer=tf.constant_initializer(0.5))
       ops.dropout(x, y)

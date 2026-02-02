@@ -182,7 +182,8 @@ path can be passed directly to a call to `restore()`.
 
 
 *  <b>`TypeError`</b>: If `sess` is not a `Session`.
-*  <b>`ValueError`</b>: If `latest_filename` contains path components.
+*  <b>`ValueError`</b>: If `latest_filename` contains path components, or if it
+    collides with `save_path`.
 
 
 - - -

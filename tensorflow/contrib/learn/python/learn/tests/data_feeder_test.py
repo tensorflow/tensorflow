@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +23,7 @@ import six
 
 import tensorflow as tf
 # pylint: disable=wildcard-import
-from tensorflow.contrib.learn.python.learn.io import *
+from tensorflow.contrib.learn.python.learn.learn_io import *
 # pylint: enable=wildcard-import
 
 
@@ -135,16 +134,15 @@ class DataFeederTest(tf.test.TestCase):
 
   def test_hdf5_data_feeder(self):
     try:
-      # pylint: disable=g-import-not-at-top
-      import h5py
+      import h5py  # pylint: disable=g-import-not-at-top
       x = np.matrix([[1, 2], [3, 4]])
       y = np.array([1, 2])
       h5f = h5py.File('test_hdf5.h5', 'w')
-      h5f.create_dataset('X', data=x)
+      h5f.create_dataset('x', data=x)
       h5f.create_dataset('y', data=y)
       h5f.close()
       h5f = h5py.File('test_hdf5.h5', 'r')
-      x = h5f['X']
+      x = h5f['x']
       y = h5f['y']
       df = data_feeder.DataFeeder(x, y, n_classes=0, batch_size=3)
       inp, out = df.input_builder()
@@ -157,10 +155,10 @@ class DataFeederTest(tf.test.TestCase):
 
 
 class SetupPredictDataFeederTest(tf.test.TestCase):
-  # pylint: disable=undefined-variable
   """Tests for `DataFeeder.setup_predict_data_feeder`."""
 
   def test_iterable_data(self):
+    # pylint: disable=undefined-variable
     x = iter([[1, 2], [3, 4], [5, 6]])
     df = data_feeder.setup_predict_data_feeder(x, batch_size=2)
     self.assertAllClose(six.next(df), [[1, 2], [3, 4]])

@@ -215,11 +215,10 @@ class DequeueManyOp : public QueueAccessOpKernel {
     const Tensor& Tnum_elements = ctx->input(1);
     int32 num_elements = Tnum_elements.flat<int32>()(0);
 
-    OP_REQUIRES_ASYNC(
-        ctx, num_elements >= 0,
-        errors::InvalidArgument("DequeueManyOp must request a positive number "
-                                "of elements"),
-        callback);
+    OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
+                      errors::InvalidArgument("DequeueManyOp requested ",
+                                              num_elements, " < 0 elements"),
+                      callback);
 
     OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
                                                   queue->component_dtypes()),
@@ -292,11 +291,10 @@ class DequeueUpToOp : public QueueAccessOpKernel {
     const Tensor& Tnum_elements = ctx->input(1);
     int32 num_elements = Tnum_elements.flat<int32>()(0);
 
-    OP_REQUIRES_ASYNC(
-        ctx, num_elements >= 0,
-        errors::InvalidArgument("DequeueUpToOp must request a positive number "
-                                "of elements"),
-        callback);
+    OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
+                      errors::InvalidArgument("DequeueUpToOp requested ",
+                                              num_elements, " < 0 elements"),
+                      callback);
 
     OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
                                                   queue->component_dtypes()),

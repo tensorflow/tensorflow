@@ -39,16 +39,15 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
   Tensor constant_tensor(DT_FLOAT, constant_shape);
   test::FillFn<float>(&constant_tensor, [](int) -> float { return 3.0; });
 
-  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  Node* placeholder =
-      ops::Placeholder(DT_FLOAT, b.opts().WithAttr("shape", input_shape));
-  const string input_name = placeholder->name();
-  Node* constant = ops::Const(constant_tensor, b.opts());
-  const string output_name =
-      ops::MatMul(placeholder, constant, b.opts())->name();
+  auto root = Scope::NewRootScope().ExitOnError();
+  auto placeholder =
+      ops::Placeholder(root, DT_FLOAT, ops::Placeholder::Shape(input_shape));
+  const string input_name = placeholder.node()->name();
+  auto m = ops::MatMul(root, placeholder, constant_tensor);
+  const string output_name = m.node()->name();
 
   GraphDef graph_def;
-  TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  TF_ASSERT_OK(root.ToGraphDef(&graph_def));
   string graph_def_serialized;
   graph_def.SerializeToString(&graph_def_serialized);
   TF_ASSERT_OK(

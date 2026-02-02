@@ -23,7 +23,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 
-#include "tensorflow/stream_executor/cuda/multi_op_activation.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace perftools {
@@ -44,9 +43,7 @@ class ScopedActivateExecutorContext {
 
   // Form that takes a pImpl executor and extracts a CUDA implementation --
   // fatal failure if it is not CUDA inside.
-  explicit ScopedActivateExecutorContext(
-      StreamExecutor* stream_exec,
-      MultiOpActivation unused = MultiOpActivation::kNo);
+  explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
   ~ScopedActivateExecutorContext();
 

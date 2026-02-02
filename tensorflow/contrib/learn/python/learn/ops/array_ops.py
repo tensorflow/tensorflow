@@ -19,11 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.framework import deprecated
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import math_ops
 
 
+@deprecated('2016-08-01', 'Please use tf.unpack instead.')
 def split_squeeze(dim, num_split, tensor_in):
   """Splits input on given dimension and then squeezes that dimension.
 
@@ -39,6 +42,7 @@ def split_squeeze(dim, num_split, tensor_in):
           for t in array_ops_.split(dim, num_split, tensor_in)]
 
 
+@deprecated('2016-08-15', 'Please use tf.pack instead.')
 def expand_concat(dim, inputs):
   """Expands inputs on given dimension and then concatenates them.
 

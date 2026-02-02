@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <sys/stat.h>
+
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -26,6 +28,15 @@ namespace tensorflow {
 FileSystem::~FileSystem() {}
 
 string FileSystem::TranslateName(const string& name) const { return name; }
+
+Status FileSystem::IsDirectory(const string& name) {
+  FileStatistics stat;
+  TF_RETURN_IF_ERROR(Stat(name, &stat));
+  if (S_ISDIR(stat.mode)) {
+    return Status::OK();
+  }
+  return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+}
 
 RandomAccessFile::~RandomAccessFile() {}
 

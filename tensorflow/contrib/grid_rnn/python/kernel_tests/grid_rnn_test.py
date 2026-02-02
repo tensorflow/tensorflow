@@ -465,7 +465,7 @@ class GridRNNCellTest(tf.test.TestCase):
 
       # for 1-LSTM, we only feed the first step
       inputs = [tf.placeholder(tf.float32, shape=(batch_size, input_size))] \
-               + (max_length - 1) * [tf.zeros([0, 0])]
+                + (max_length - 1) * [tf.zeros([batch_size, input_size])]
 
       outputs, state = tf.nn.rnn(cell, inputs, dtype=tf.float32)
 

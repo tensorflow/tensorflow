@@ -35,8 +35,6 @@ namespace tensorflow {
 // TODO(andydavis) Remove some of the code duplicated between this module
 // and that in 'common_runtime/function.cc'.
 // A few string constant used throughout this module.
-static const char* const kArgOp = "_Arg";
-static const char* const kRetOp = "_Retval";
 static const char* const kGradientOp = "SymbolicGradient";
 static const char* const kNodeLabel = "Func";
 

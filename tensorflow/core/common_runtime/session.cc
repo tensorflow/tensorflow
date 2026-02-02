@@ -76,4 +76,11 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   return Status::OK();
 }
 
+Status Reset(const SessionOptions& options,
+             const std::vector<string>& containers) {
+  SessionFactory* factory;
+  TF_RETURN_IF_ERROR(SessionFactory::GetFactory(options, &factory));
+  return factory->Reset(options, containers);
+}
+
 }  // namespace tensorflow

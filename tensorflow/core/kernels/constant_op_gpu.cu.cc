@@ -95,6 +95,8 @@ struct SetZeroFunctor<GPUDevice, T> {
 DEFINE_SETZERO_GPU(Eigen::half);
 DEFINE_SETZERO_GPU(float);
 DEFINE_SETZERO_GPU(double);
+DEFINE_SETZERO_GPU(complex64);
+DEFINE_SETZERO_GPU(complex128);
 #undef DEFINE_SETZERO_GPU
 
 }  // end namespace functor

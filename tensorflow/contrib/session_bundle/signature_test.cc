@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 static bool HasSubstr(const string& base, const string& substr) {
@@ -478,6 +478,47 @@ TEST(SetAndGetSignatures, RoundTrip) {
                         .tensor_name());
 }
 
+TEST(GetSignatures, MissingSignature) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("Expected exactly one"))
+      << status.error_message();
+}
+
+TEST(GetSignatures, WrongProtoInAny) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  // Put an unexpected type into the Signatures Any.
+  any->PackFrom(TensorBinding());
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("Expected signature Any type_url for: "
+                            "tensorflow.serving.Signatures"))
+      << status.error_message();
+}
+
+TEST(GetSignatures, JunkInAny) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  // Create a valid Any then corrupt it.
+  any->PackFrom(Signatures());
+  any->set_value("junk junk");
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("Failed to unpack"))
+      << status.error_message();
+}
+
 // GenericSignature test fixture that contains a signature initialized with two
 // bound Tensors.
 class GenericSignatureTest : public ::testing::Test {
@@ -598,5 +639,5 @@ TEST_F(GenericSignatureTest, BindGenericNamesMissingBinding) {
 }
 
 }  // namespace
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

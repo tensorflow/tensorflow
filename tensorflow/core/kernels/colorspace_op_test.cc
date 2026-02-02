@@ -29,183 +29,241 @@ limitations under the License.
 
 namespace tensorflow {
 
+template <typename T>
 class RGBToHSVOpTest : public OpsTestBase {
  protected:
-  RGBToHSVOpTest() {
+  void MakeOp(DataType data_type) {
     TF_EXPECT_OK(NodeDefBuilder("rgb_to_hsv_op", "RGBToHSV")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(data_type))
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
+
+  void CheckBlack(DataType data_type) {
+    // Black pixel should map to hsv = [0,0,0]
+    AddInputFromArray<T>(TensorShape({3}), {0, 0, 0});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {0.0, 0.0, 0.0});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckGray(DataType data_type) {
+    // Gray pixel should have hue = saturation = 0.0, value = r/255
+    AddInputFromArray<T>(TensorShape({3}), {.5, .5, .5});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {0.0, 0.0, .5});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckWhite(DataType data_type) {
+    // Gray pixel should have hue = saturation = 0.0, value = 1.0
+    AddInputFromArray<T>(TensorShape({3}), {1, 1, 1});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {0.0, 0.0, 1.0});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckRedMax(DataType data_type) {
+    // Test case where red channel dominates
+    AddInputFromArray<T>(TensorShape({3}), {.8, .4, .2});
+    TF_ASSERT_OK(RunOpKernel());
+
+    T expected_h = 1. / 6. * .2 / .6;
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.;
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {expected_h, expected_s, expected_v});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckGreenMax(DataType data_type) {
+    // Test case where green channel dominates
+    AddInputFromArray<T>(TensorShape({3}), {.2, .8, .4});
+    TF_ASSERT_OK(RunOpKernel());
+
+    T expected_h = 1. / 6. * (2.0 + (.2 / .6));
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.;
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {expected_h, expected_s, expected_v});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckBlueMax(DataType data_type) {
+    // Test case where blue channel dominates
+    AddInputFromArray<T>(TensorShape({3}), {.4, .2, .8});
+    TF_ASSERT_OK(RunOpKernel());
+
+    T expected_h = 1. / 6. * (4.0 + (.2 / .6));
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.;
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {expected_h, expected_s, expected_v});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckNegativeDifference(DataType data_type) {
+    AddInputFromArray<T>(TensorShape({3}), {0, .1, .2});
+    TF_ASSERT_OK(RunOpKernel());
+
+    T expected_h = 1. / 6. * (4.0 + (-.1 / .2));
+    T expected_s = .2 / .2;
+    T expected_v = .2 / 1.;
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {expected_h, expected_s, expected_v});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
 };
 
-TEST_F(RGBToHSVOpTest, CheckBlack) {
-  // Black pixel should map to hsv = [0,0,0]
-  AddInputFromArray<float>(TensorShape({3}), {0, 0, 0});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {0.0, 0.0, 0.0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
-
-TEST_F(RGBToHSVOpTest, CheckGray) {
-  // Gray pixel should have hue = saturation = 0.0, value = r/255
-  AddInputFromArray<float>(TensorShape({3}), {.5, .5, .5});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {0.0, 0.0, .5});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
-
-TEST_F(RGBToHSVOpTest, CheckWhite) {
-  // Gray pixel should have hue = saturation = 0.0, value = 1.0
-  AddInputFromArray<float>(TensorShape({3}), {1, 1, 1});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {0.0, 0.0, 1.0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
-
-TEST_F(RGBToHSVOpTest, CheckRedMax) {
-  // Test case where red channel dominates
-  AddInputFromArray<float>(TensorShape({3}), {.8, .4, .2});
-  TF_ASSERT_OK(RunOpKernel());
-
-  float expected_h = 1. / 6. * .2 / .6;
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.;
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {expected_h, expected_s, expected_v});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
-TEST_F(RGBToHSVOpTest, CheckGreenMax) {
-  // Test case where green channel dominates
-  AddInputFromArray<float>(TensorShape({3}), {.2, .8, .4});
-  TF_ASSERT_OK(RunOpKernel());
-
-  float expected_h = 1. / 6. * (2.0 + (.2 / .6));
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.;
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {expected_h, expected_s, expected_v});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
-TEST_F(RGBToHSVOpTest, CheckBlueMax) {
-  // Test case where blue channel dominates
-  AddInputFromArray<float>(TensorShape({3}), {.4, .2, .8});
-  TF_ASSERT_OK(RunOpKernel());
-
-  float expected_h = 1. / 6. * (4.0 + (.2 / .6));
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.;
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {expected_h, expected_s, expected_v});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
-TEST_F(RGBToHSVOpTest, CheckNegativeDifference) {
-  AddInputFromArray<float>(TensorShape({3}), {0, .1, .2});
-  TF_ASSERT_OK(RunOpKernel());
-
-  float expected_h = 1. / 6. * (4.0 + (-.1 / .2));
-  float expected_s = .2 / .2;
-  float expected_v = .2 / 1.;
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {expected_h, expected_s, expected_v});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
+template <typename T>
 class HSVToRGBOpTest : public OpsTestBase {
  protected:
-  HSVToRGBOpTest() {
+  void MakeOp(DataType data_type) {
     TF_EXPECT_OK(NodeDefBuilder("hsv_to_rgb_op", "HSVToRGB")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(data_type))
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
+
+  void CheckBlack(DataType data_type) {
+    // Black pixel should map to rgb = [0,0,0]
+    AddInputFromArray<T>(TensorShape({3}), {0.0, 0.0, 0.0});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {0, 0, 0});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckGray(DataType data_type) {
+    // Gray pixel should have hue = saturation = 0.0, value = r/255
+    AddInputFromArray<T>(TensorShape({3}), {0.0, 0.0, .5});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {.5, .5, .5});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckWhite(DataType data_type) {
+    // Gray pixel should have hue = saturation = 0.0, value = 1.0
+    AddInputFromArray<T>(TensorShape({3}), {0.0, 0.0, 1.0});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {1, 1, 1});
+    test::ExpectTensorEqual<T>(expected, *GetOutput(0));
+  }
+
+  void CheckRedMax(DataType data_type) {
+    // Test case where red channel dominates
+    T expected_h = 1. / 6. * .2 / .6;
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.;
+
+    AddInputFromArray<T>(TensorShape({3}),
+                         {expected_h, expected_s, expected_v});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {.8, .4, .2});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckGreenMax(DataType data_type) {
+    // Test case where green channel dominates
+    T expected_h = 1. / 6. * (2.0 + (.2 / .6));
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.;
+
+    AddInputFromArray<T>(TensorShape({3}),
+                         {expected_h, expected_s, expected_v});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {.2, .8, .4});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckBlueMax(DataType data_type) {
+    // Test case where blue channel dominates
+    T expected_h = 1. / 6. * (4.0 + (.2 / .6));
+    T expected_s = .6 / .8;
+    T expected_v = .8 / 1.0;
+
+    AddInputFromArray<T>(TensorShape({3}),
+                         {expected_h, expected_s, expected_v});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {.4, .2, .8});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
+
+  void CheckNegativeDifference(DataType data_type) {
+    T expected_h = 1. / 6. * (4.0 + (-.1 / .2));
+    T expected_s = .2 / .2;
+    T expected_v = .2 / 1.;
+
+    AddInputFromArray<T>(TensorShape({3}),
+                         {expected_h, expected_s, expected_v});
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor expected(allocator(), data_type, TensorShape({3}));
+    test::FillValues<T>(&expected, {0, .1, .2});
+    test::ExpectTensorNear<T>(expected, *GetOutput(0), 1e-6);
+  }
 };
 
-TEST_F(HSVToRGBOpTest, CheckBlack) {
-  // Black pixel should map to rgb = [0,0,0]
-  AddInputFromArray<float>(TensorShape({3}), {0.0, 0.0, 0.0});
-  TF_ASSERT_OK(RunOpKernel());
+#define TEST_COLORSPACE(test, dt)                               \
+  TEST_F(test, CheckBlack) {                                    \
+    MakeOp(dt);                                                 \
+    CheckBlack(dt);                                             \
+  }                                                             \
+  TEST_F(test, CheckGray) {                                     \
+    MakeOp(dt);                                                 \
+    CheckGray(dt);                                              \
+  }                                                             \
+  TEST_F(test, CheckWhite) {                                    \
+    MakeOp(dt);                                                 \
+    CheckWhite(dt);                                             \
+  }                                                             \
+  TEST_F(test, CheckRedMax) {                                   \
+    MakeOp(dt);                                                 \
+    CheckRedMax(dt);                                            \
+  }                                                             \
+  TEST_F(test, CheckGreenMax) {                                 \
+    MakeOp(dt);                                                 \
+    CheckGreenMax(dt);                                          \
+  }                                                             \
+  TEST_F(test, CheckBlueMax) {                                  \
+    MakeOp(dt);                                                 \
+    CheckBlueMax(dt);                                           \
+  }                                                             \
+  TEST_F(test, CheckNegativeDifference) {                       \
+    MakeOp(dt);                                                 \
+    CheckNegativeDifference(dt);                                \
+  }
 
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {0, 0, 0});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
+typedef RGBToHSVOpTest<float> rgb_to_hsv_float;
+typedef RGBToHSVOpTest<double> rgb_to_hsv_double;
 
-TEST_F(HSVToRGBOpTest, CheckGray) {
-  // Gray pixel should have hue = saturation = 0.0, value = r/255
-  AddInputFromArray<float>(TensorShape({3}), {0.0, 0.0, .5});
-  TF_ASSERT_OK(RunOpKernel());
+TEST_COLORSPACE(rgb_to_hsv_float, DT_FLOAT);
+TEST_COLORSPACE(rgb_to_hsv_double, DT_DOUBLE);
 
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {.5, .5, .5});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
+typedef HSVToRGBOpTest<float> hsv_to_rgb_float;
+typedef HSVToRGBOpTest<double> hsv_to_rgb_double;
 
-TEST_F(HSVToRGBOpTest, CheckWhite) {
-  // Gray pixel should have hue = saturation = 0.0, value = 1.0
-  AddInputFromArray<float>(TensorShape({3}), {0.0, 0.0, 1.0});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {1, 1, 1});
-  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
-}
-
-TEST_F(HSVToRGBOpTest, CheckRedMax) {
-  // Test case where red channel dominates
-  float expected_h = 1. / 6. * .2 / .6;
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.;
-
-  AddInputFromArray<float>(TensorShape({3}),
-                           {expected_h, expected_s, expected_v});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {.8, .4, .2});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
-TEST_F(HSVToRGBOpTest, CheckGreenMax) {
-  // Test case where green channel dominates
-  float expected_h = 1. / 6. * (2.0 + (.2 / .6));
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.;
-
-  AddInputFromArray<float>(TensorShape({3}),
-                           {expected_h, expected_s, expected_v});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {.2, .8, .4});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
-
-TEST_F(HSVToRGBOpTest, CheckBlueMax) {
-  // Test case where blue channel dominates
-  float expected_h = 1. / 6. * (4.0 + (.2 / .6));
-  float expected_s = .6 / .8;
-  float expected_v = .8 / 1.0;
-
-  AddInputFromArray<float>(TensorShape({3}),
-                           {expected_h, expected_s, expected_v});
-  TF_ASSERT_OK(RunOpKernel());
-
-  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
-  test::FillValues<float>(&expected, {.4, .2, .8});
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-6);
-}
+TEST_COLORSPACE(hsv_to_rgb_float, DT_FLOAT);
+TEST_COLORSPACE(hsv_to_rgb_double, DT_DOUBLE);
 }  // namespace tensorflow

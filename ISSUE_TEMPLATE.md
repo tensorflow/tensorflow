@@ -16,9 +16,12 @@ Installed version of CUDA and cuDNN:
 If installed from binary pip package, provide:
 
 1. Which pip package you installed.
-2. The output from python -c "import tensorflow; print(tensorflow.__version__)".
+2. The output from `python -c "import tensorflow; print(tensorflow.__version__)"`.
 
-If installed from sources, provide the commit hash:
+If installed from source, provide 
+
+1. The commit hash (`git rev-parse HEAD`)
+2. The output of `bazel version`
 
 ### Steps to reproduce
 1.

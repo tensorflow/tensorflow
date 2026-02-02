@@ -14,13 +14,119 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
+
+using shape_inference::Dimension;
+using shape_inference::InferenceContext;
+using shape_inference::Shape;
+
+namespace {
+
+// Return in <out> the result of making <s> a square matrix.
+Status MakeSquareMatrix(InferenceContext* c, const Shape* s,
+                        const Shape** out) {
+  TF_RETURN_IF_ERROR(c->WithRank(s, 2, &s));
+  const Dimension* d;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(s, 0), c->Dim(s, 1), &d));
+  *out = c->Matrix(d, d);
+  return Status::OK();
+}
+
+Status UnchangedSquareShapeFn(InferenceContext* c) {
+  const Shape* out;
+  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+// Return in <out> the result of making the end of <s> a square matrix.
+Status MakeBatchSquareMatrix(InferenceContext* c, const Shape* input,
+                             const Shape** out) {
+  const Shape* s;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(input, 2, &s));
+
+  const Dimension* d;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(s, -2), c->Dim(s, -1), &d));
+
+  const Shape* batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(s, 0, -2, &batch_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(d, d), out));
+  return Status::OK();
+}
+
+Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
+  const Shape* out;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+Status SquareMatrixSolveShapeFn(InferenceContext* c) {
+  const Shape* lhs;
+  const Shape* rhs;
+  TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &lhs));
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
+
+  // lhs and rhs have the same number of rows. Make a new output
+  // shape that uses rows to replace rhs.dim[0].
+  const Dimension* rows;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &rows));
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->ReplaceDim(rhs, 0, rows, &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+// Inputs are [...,M,N] and [...,M,K].  Output is [...,N,K].
+// If <square>, then input is [...,M,M].
+Status BatchMatrixSolveShapeFn(InferenceContext* c, bool square) {
+  const Shape* lhs;
+  const Shape* rhs;
+  if (square) {
+    TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &lhs));
+  } else {
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &lhs));
+  }
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  // Make the common batch subshape between the two dimensions.
+  const Shape* lhs_batch_shape;
+  const Shape* batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &batch_shape));
+  TF_RETURN_IF_ERROR(c->Merge(lhs_batch_shape, batch_shape, &batch_shape));
+
+  // lhs and rhs have the same value for m.
+  const Dimension* m;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, -2), c->Dim(rhs, -2), &m));
+
+  const Dimension* n = c->Dim(lhs, -1);
+  if (square) {
+    TF_RETURN_IF_ERROR(c->Merge(m, n, &n));
+  }
+
+  // Build final shape (batch_shape + n + k) in <out>.
+  const Shape* out;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &out));
+  TF_RETURN_IF_ERROR(c->Concatenate(out, c->Vector(c->Dim(rhs, -1)), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
+}  // namespace
 
 REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates the determinant of a square matrix.
 
@@ -32,11 +138,24 @@ REGISTER_OP("BatchMatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+
+      const Dimension* unused;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(input, -1), c->Dim(input, -2), &unused));
+
+      const Shape* out;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates the determinants for a batch of square matrices.
 
 The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-form square matrices. The output is a 1-D tensor containing the determinants
+form square matrices. The output is a tensor containing the determinants
 for all input submatrices `[..., :, :]`.
 
 input: Shape is `[..., M, M]`.
@@ -48,6 +167,7 @@ REGISTER_OP("MatrixInverse")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the inverse of a square invertible matrix or its adjoint (conjugate
 transpose).
@@ -69,6 +189,7 @@ REGISTER_OP("BatchMatrixInverse")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the inverse of square invertible matrices or their adjoints
 (conjugate transposes).
@@ -91,6 +212,7 @@ REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the Cholesky decomposition of a square matrix.
 
@@ -109,6 +231,7 @@ REGISTER_OP("BatchCholesky")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the Cholesky decomposition of a batch of square matrices.
 
@@ -126,6 +249,7 @@ REGISTER_OP("CholeskyGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(UnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the reverse mode backpropagated gradient of the Cholesky algorithm.
 
@@ -144,6 +268,7 @@ REGISTER_OP("BatchCholeskyGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: {float, double}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Calculates the reverse mode backpropagated gradient of the Cholesky algorithm.
 
@@ -163,6 +288,16 @@ REGISTER_OP("SelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(MakeSquareMatrix(c, c->input(0), &input));
+
+      const Dimension* d = c->Dim(input, 0);
+      const Dimension* d_plus_1;
+      TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
+      c->set_output(0, c->Matrix(d_plus_1, d));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates the Eigen Decomposition of a square Self-Adjoint matrix.
 
@@ -180,6 +315,20 @@ REGISTER_OP("BatchSelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: {double, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* input;
+      TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input));
+
+      const Dimension* d = c->Dim(input, -1);
+      const Dimension* d_plus_1;
+      TF_RETURN_IF_ERROR(c->Add(d, 1, &d_plus_1));
+
+      const Shape* s;
+      TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &s));
+      TF_RETURN_IF_ERROR(c->Concatenate(s, c->Matrix(d_plus_1, d), &s));
+      c->set_output(0, s);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Calculates the Eigen Decomposition of a batch of square self-adjoint matrices.
 
@@ -200,6 +349,7 @@ REGISTER_OP("MatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(SquareMatrixSolveShapeFn)
     .Doc(R"doc(
 Solves a system of linear equations. Checks for invertibility.
 
@@ -217,6 +367,9 @@ REGISTER_OP("BatchMatrixSolve")
     .Output("output: T")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      return BatchMatrixSolveShapeFn(c, true /* square (*/);
+    })
     .Doc(R"doc(
 Solves systems of linear equations. Checks for invertibility.
 
@@ -241,6 +394,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn(SquareMatrixSolveShapeFn)
     .Doc(R"doc(
 Solves a system of linear equations with an upper or lower triangular matrix by
 backsubstitution.
@@ -272,6 +426,9 @@ REGISTER_OP("BatchMatrixTriangularSolve")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      return BatchMatrixSolveShapeFn(c, true /* square (*/);
+    })
     .Doc(R"doc(
 Solves systems of linear equations with upper or lower triangular matrices by
 backsubstitution.
@@ -306,6 +463,19 @@ REGISTER_OP("MatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
+    .SetShapeFn([](InferenceContext* c) {
+      const Shape* lhs;
+      const Shape* rhs;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &lhs));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &rhs));
+
+      // The matrix and right-hand side must have the same number of rows.
+      const Dimension* unused;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, 0), c->Dim(rhs, 0), &unused));
+
+      c->set_output(0, c->Matrix(c->Dim(lhs, 1), c->Dim(rhs, 1)));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Solves a linear least-squares problem.
 
@@ -349,6 +519,9 @@ REGISTER_OP("BatchMatrixSolveLs")
     .Output("output: T")
     .Attr("T: {double, float}")
     .Attr("fast: bool = True")
+    .SetShapeFn([](InferenceContext* c) {
+      return BatchMatrixSolveShapeFn(c, false /* square */);
+    })
     .Doc(R"doc(
 Solves multiple linear least-squares problems.
 

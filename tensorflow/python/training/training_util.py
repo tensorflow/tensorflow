@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import os.path
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.lib.io import file_io
 
 
 def global_step(sess, global_step_tensor):
@@ -69,10 +69,10 @@ def write_graph(graph_def, logdir, name, as_text=True):
     as_text: If `True`, writes the graph as an ASCII proto.
   """
   # gcs does not have the concept of directory at the moment.
-  if not pywrap_tensorflow.file_exists(logdir) and not logdir.startswith("gs:"):
-    pywrap_tensorflow.recursive_create_dir(logdir)
+  if not file_io.file_exists(logdir) and not logdir.startswith("gs:"):
+    file_io.recursive_create_dir(logdir)
   path = os.path.join(logdir, name)
   if as_text:
-    pywrap_tensorflow.write_string_to_file(path, str(graph_def))
+    file_io.write_string_to_file(path, str(graph_def))
   else:
-    pywrap_tensorflow.write_string_to_file(path, graph_def.SerializeToString())
+    file_io.write_string_to_file(path, graph_def.SerializeToString())

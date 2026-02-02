@@ -123,19 +123,20 @@ class EigenAllocator : public ::Eigen::Allocator {
 #else
 class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice() : scratch_(nullptr) { Eigen::initializeDeviceProp(); }
+  EigenCudaStreamDevice() : scratch_(nullptr), semaphore_(nullptr) {
+    Eigen::initializeDeviceProp();
+  }
   ~EigenCudaStreamDevice() {
-    if (scratch_) {
-      deallocate(scratch_);
-    }
   }
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
-                    int gpu_id, ::tensorflow::Allocator* alloc) {
+                    int gpu_id, ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
       operation_ = context->op_kernel().name() + "/EigenAllocator";
       step_id_ = context->step_id();
     }
-    assert(!scratch_);
+    scratch_ = scratch;
+    semaphore_ =
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
     device_prop_ = &Eigen::m_deviceProperties[gpu_id];
@@ -172,11 +173,14 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
   // in global memory.
   void* scratchpad() const {
-    if (scratch_ == nullptr) {
-      scratch_ = allocate(1024);
-    }
     return scratch_;
   }
+
+  // Return a semaphore. The semaphore is initially initialized to 0, and
+  // each kernel using it is responsible for resetting to 0 upon completion
+  // to maintain the invariant that the semaphore is always equal to 0 upon
+  // each kernel start.
+  unsigned int* semaphore() const { return semaphore_; }
 
  private:
   struct AsyncFreeData {
@@ -205,7 +209,8 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   const cudaStream_t* stream_;          // Not owned.
   const cudaDeviceProp* device_prop_;   // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
-  mutable void* scratch_;
+  mutable char* scratch_;
+  mutable unsigned int* semaphore_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
 };
@@ -262,6 +267,16 @@ BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
     streams_.push_back({stream, host_to_device_stream, device_to_host_stream,
                         device_to_device_stream});
 
+    perftools::gputools::DeviceMemory<char> mem =
+        executor_->AllocateArray<char>(Eigen::kCudaScratchSize +
+                                       sizeof(unsigned int));
+    scratch_.push_back(static_cast<char*>(mem.opaque()));
+    bool ok = executor_->SynchronousMemZero(
+        &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+    if (!ok) {
+      LOG(FATAL) << "Failed to initialize device " << gpu_id;
+    }
+
     device_contexts_.push_back(
         new GPUDeviceContext(i, stream, host_to_device_stream,
                              device_to_host_stream, device_to_device_stream));
@@ -311,6 +326,7 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
 
   // Fill in the context map.  It is OK for this map to contain
   // duplicate DeviceContexts so long as we increment the refcount.
+  device_context_map->resize(graph->num_node_ids());
   for (Node* n : graph->nodes()) {
     auto mapped_stream = node_to_stream_id[n->id()];
     CHECK_LE(mapped_stream, num_streams);
@@ -319,7 +335,7 @@ Status BaseGPUDevice::FillContextMap(const Graph* graph,
             << " ==> stream[" << ctx->stream_id() << "] for node id " << n->id()
             << " " << n->type_string() << " " << n->name();
     ctx->Ref();
-    device_context_map->insert(std::make_pair(n->id(), ctx));
+    (*device_context_map)[n->id()] = ctx;
   }
 
   return Status::OK();
@@ -399,7 +415,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
       }
     }
     gpu::cuda::ScopedActivateExecutorContext scoped_activation{
-        stream->parent(), gpu::cuda::MultiOpActivation::kYes};
+        stream->parent()};
     op_kernel->Compute(context);
     if (context->status().ok()) {
       if (sync_every_op_) {
@@ -486,9 +502,10 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice() : device_(nullptr) {}
   void Reinitialize(OpKernelContext* context, gpu::Stream* stream,
-                    Allocator* base_allocator, ::tensorflow::EventMgr* em) {
+                    Allocator* base_allocator, ::tensorflow::EventMgr* em,
+                    char* scratch) {
     allocator_.Reinitialize(context, stream, base_allocator, em);
-    device_.Reinitialize(stream, &allocator_);
+    device_.Reinitialize(stream, &allocator_, scratch);
   }
 
   const Eigen::GpuDevice& device() const override { return device_; }
@@ -503,8 +520,9 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   ConcretePerOpGpuDevice() : device_(&stream_device_) {}
 
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
-                    int gpu_id, Allocator* base_allocator) {
-    stream_device_.Reinitialize(context, cuda_stream, gpu_id, base_allocator);
+                    int gpu_id, Allocator* base_allocator, char* scratch) {
+    stream_device_.Reinitialize(context, cuda_stream, gpu_id, base_allocator,
+                                scratch);
   }
 
   const Eigen::GpuDevice& device() const override { return device_; }
@@ -524,11 +542,12 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
   DCHECK(concrete_device);
 #if defined(__GCUDACC__) || defined(__GCUDACC_HOST__)
   concrete_device->Reinitialize(context, streams_[stream_id].compute, allocator,
-                                em_.get());
+                                em_.get(), scratch_[stream_id]);
 #else
   const cudaStream_t* cuda_stream = reinterpret_cast<const cudaStream_t*>(
       streams_[stream_id].compute->implementation()->CudaStreamMemberHack());
-  concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator);
+  concrete_device->Reinitialize(context, cuda_stream, gpu_id_, allocator,
+                                scratch_[stream_id]);
 #endif
 }
 
@@ -615,7 +634,8 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
     // trouble may manifest as slower than expected performance, or
     // outright failures.
     LOG(ERROR) << "Could not identify NUMA node of " << name
-               << ", defaulting to 0.";
+               << ", defaulting to 0.  Your kernel may not have been built "
+                  "with NUMA support.";
     numa_node = 0;
   }
 
@@ -663,14 +683,35 @@ LocalDevice* BaseGPUDeviceFactory::CreateGPUDevice(
       process_state->GetCPUAllocator(numa_node));
 }
 
-static int GetMinGPUMultiprocessorCount() {
+static int GetDefaultMinGPUMultiprocessorCount(gpu::Platform* gpu_manager) {
   static const int kDefaultMinGPUMultiprocessorCount = 8;
 
+  // Find the highest multi-processor count across all visible GPUs.
+  int max_count = -1;
+  for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
+    auto exec_status = gpu_manager->ExecutorForDevice(i);
+    if (!exec_status.ok()) {
+      continue;
+    }
+
+    gpu::StreamExecutor* se = exec_status.ValueOrDie();
+    const gpu::DeviceDescription& desc = se->GetDeviceDescription();
+    max_count = std::max(max_count, desc.core_count());
+  }
+
+  if (max_count < 0 || kDefaultMinGPUMultiprocessorCount < max_count) {
+    return kDefaultMinGPUMultiprocessorCount;
+  } else {
+    return max_count;
+  }
+}
+
+static int GetMinGPUMultiprocessorCount(gpu::Platform* gpu_manager) {
   const char* tf_min_gpu_core_count = getenv("TF_MIN_GPU_MULTIPROCESSOR_COUNT");
 
   if (tf_min_gpu_core_count == nullptr ||
       strcmp(tf_min_gpu_core_count, "") == 0) {
-    return kDefaultMinGPUMultiprocessorCount;
+    return GetDefaultMinGPUMultiprocessorCount(gpu_manager);
   }
 
   int min_gpu_core_count = -1;
@@ -680,11 +721,11 @@ static int GetMinGPUMultiprocessorCount() {
     }
   }
 
+  int count = GetDefaultMinGPUMultiprocessorCount(gpu_manager);
   LOG(ERROR) << "Invalid minimum GPU multiprocessor count: ["
              << tf_min_gpu_core_count << "]. "
-             << "Using the default value: "
-             << kDefaultMinGPUMultiprocessorCount;
-  return kDefaultMinGPUMultiprocessorCount;
+             << "Using the default value: " << count;
+  return count;
 }
 
 namespace {
@@ -747,14 +788,14 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 
 void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
   auto gpu_manager = GPUMachineManager();
-  int min_gpu_core_count = GetMinGPUMultiprocessorCount();
   if (gpu_manager) {
     auto cuda_supported_capabilities = GetSupportedCudaComputeCapabilities();
     CHECK(!cuda_supported_capabilities.empty());
     CudaVersion min_supported_capability = *std::min_element(
         cuda_supported_capabilities.begin(), cuda_supported_capabilities.end());
 
-    auto visible_device_count = gpu_manager->VisibleDeviceCount();
+    int min_gpu_core_count = GetMinGPUMultiprocessorCount(gpu_manager);
+
     for (int i = 0; i < gpu_manager->VisibleDeviceCount(); ++i) {
       auto exec_status = gpu_manager->ExecutorForDevice(i);
       if (!exec_status.ok()) {
@@ -778,26 +819,18 @@ void BaseGPUDeviceFactory::GetValidDeviceIds(std::vector<int>* ids) {
         continue;
       }
 
-      // TensorFlow currently places computation on devices assuming
-      // they have similar capability.
-      //
-      // If there are multiple GPUs available on the machine, only
-      // consider GPUs with 8 or more multiprocessors.
-      //
-      // TODO(vrv): In the medium term: we should only filter out GPUs
-      // that are slow relative to the fastest GPU. In the long term,
-      // TensorFlow should support automatic placement based on
-      // capability.
-      if (visible_device_count > 1) {
-        if (desc.core_count() < min_gpu_core_count) {
-          LOG(INFO) << "Ignoring gpu device "
-                    << "(" << GetShortDeviceDescription(i, desc) << ") "
-                    << "with Cuda multiprocessor count: " << desc.core_count()
-                    << ". The minimum required count is " << min_gpu_core_count
-                    << ". You can adjust this requirement with the env var "
-                       "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
-          continue;
-        }
+      // Filter out slow GPUs. By default, GPUs with a lower multiprocessor
+      // count than the fastest GPU are filtered out, unless they have 8 or more
+      // multiprocessors. If the TF_MIN_GPU_MULTIPROCESSOR_COUNT environment
+      // variable is set, its value will be used to filter out GPUs.
+      if (desc.core_count() < min_gpu_core_count) {
+        LOG(INFO) << "Ignoring gpu device "
+                  << "(" << GetShortDeviceDescription(i, desc) << ") "
+                  << "with Cuda multiprocessor count: " << desc.core_count()
+                  << ". The minimum required count is " << min_gpu_core_count
+                  << ". You can adjust this requirement with the env var "
+                     "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
+        continue;
       }
 
       int new_id = ids->size();

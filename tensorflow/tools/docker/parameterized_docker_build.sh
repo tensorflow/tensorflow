@@ -193,14 +193,15 @@ if [[ "${DO_PIP_BUILD}" == "1" ]]; then
     die "FAIL: Failed to build pip file locally"
   fi
 
-  PIP_WHL=$(ls pip_test/whl/*.whl)
+  PIP_WHL=$(ls pip_test/whl/*.whl | head -1)
   if [[ -z "${PIP_WHL}" ]]; then
     die "ERROR: Cannot locate the locally-built pip whl file"
   fi
   echo "Locally-built PIP whl file is at: ${PIP_WHL}"
 
   # Copy the pip file to tmp directory
-  cp "${PIP_WHL}" "${TMP_DIR}/"
+  cp "${PIP_WHL}" "${TMP_DIR}/" || \
+      die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
 
   # Use string replacement to put the correct file name into the Dockerfile
   PIP_WHL=$(basename "${PIP_WHL}")
@@ -232,7 +233,7 @@ fi
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
 
-docker build -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+docker build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
   echo "docker build of ${IMG} succeeded"
 else

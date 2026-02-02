@@ -34,9 +34,13 @@ class HingeLossUpdater : public DualLossUpdater {
   // (difference between updated and previous dual value) using the update rule
   // within SDCA procedure (see http://arxiv.org/pdf/1209.1873v2.pdf, page 5)
   // and the particular form of conjugate function for hinge loss.
+  //
   // TODO(sibyl-vie3Poto): Write up a doc with concrete derivation and point to it from
   // here.
-  double ComputeUpdatedDual(const double label, const double example_weight,
+  // TODO(vgodet): Changes to support unused_num_paritions and the derivation
+  // for hinge loss.
+  double ComputeUpdatedDual(const int unused_num_paritions, const double label,
+                            const double example_weight,
                             const double current_dual, const double wx,
                             const double weighted_example_norm,
                             const double unused_primal_loss,

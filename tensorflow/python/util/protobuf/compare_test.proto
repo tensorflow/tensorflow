@@ -2,7 +2,7 @@
 syntax = "proto2";
 
 package compare_test;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 
 enum Enum {
   A = 0;

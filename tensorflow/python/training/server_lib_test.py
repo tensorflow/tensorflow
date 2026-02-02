@@ -52,6 +52,154 @@ class GrpcServerTest(tf.test.TestCase):
     sess_2.close()
     # TODO(mrry): Add `server.stop()` and `server.join()` when these work.
 
+  # Verifies behavior of multiple variables with multiple sessions connecting to
+  # the same server.
+  def testSameVariablesNoClear(self):
+    server = tf.train.Server.create_local_server()
+
+    with tf.Session(server.target) as sess_1:
+      v0 = tf.Variable([[2, 1]], name="v0")
+      v1 = tf.Variable([[1], [2]], name="v1")
+      v2 = tf.matmul(v0, v1)
+      sess_1.run([v0.initializer, v1.initializer])
+      self.assertAllEqual([[4]], sess_1.run(v2))
+
+    with tf.Session(server.target) as sess_2:
+      new_v0 = tf.get_default_graph().get_tensor_by_name("v0:0")
+      new_v1 = tf.get_default_graph().get_tensor_by_name("v1:0")
+      new_v2 = tf.matmul(new_v0, new_v1)
+      self.assertAllEqual([[4]], sess_2.run(new_v2))
+
+  # Verifies behavior of tf.Session.reset().
+  def testSameVariablesClear(self):
+    server = tf.train.Server.create_local_server()
+
+    # Creates a graph with 2 variables.
+    v0 = tf.Variable([[2, 1]], name="v0")
+    v1 = tf.Variable([[1], [2]], name="v1")
+    v2 = tf.matmul(v0, v1)
+
+    # Verifies that both sessions connecting to the same target return
+    # the same results.
+    sess_1 = tf.Session(server.target)
+    sess_2 = tf.Session(server.target)
+    sess_1.run(tf.initialize_all_variables())
+    self.assertAllEqual([[4]], sess_1.run(v2))
+    self.assertAllEqual([[4]], sess_2.run(v2))
+
+    # Resets target. sessions abort. Use sess_2 to verify.
+    tf.Session.reset(server.target)
+    with self.assertRaises(tf.errors.AbortedError):
+      self.assertAllEqual([[4]], sess_2.run(v2))
+
+    # Connects to the same target. Device memory for the variables would have
+    # been released, so they will be unitialized.
+    sess_2 = tf.Session(server.target)
+    with self.assertRaises(tf.errors.FailedPreconditionError):
+      sess_2.run(v2)
+    # Reinitialzes the variables.
+    sess_2.run(tf.initialize_all_variables())
+    self.assertAllEqual([[4]], sess_2.run(v2))
+    sess_2.close()
+
+  # Verifies behavior of tf.Session.reset() with multiple containers using
+  # default container names as defined by the target name.
+  def testSameVariablesClearContainer(self):
+    # Starts two servers with different names so they map to different
+    # resource "containers".
+    server0 = tf.train.Server({"local0": ["localhost:0"]}, protocol="grpc",
+                              start=True)
+    server1 = tf.train.Server({"local1": ["localhost:0"]}, protocol="grpc",
+                              start=True)
+
+    # Creates a graph with 2 variables.
+    v0 = tf.Variable(1.0, name="v0")
+    v1 = tf.Variable(2.0, name="v0")
+
+    # Initializes the variables. Verifies that the values are correct.
+    sess_0 = tf.Session(server0.target)
+    sess_1 = tf.Session(server1.target)
+    sess_0.run(v0.initializer)
+    sess_1.run(v1.initializer)
+    self.assertAllEqual(1.0, sess_0.run(v0))
+    self.assertAllEqual(2.0, sess_1.run(v1))
+
+    # Resets container "local0". Verifies that v0 is no longer initialized.
+    tf.Session.reset(server0.target, ["local0"])
+    sess = tf.Session(server0.target)
+    with self.assertRaises(tf.errors.FailedPreconditionError):
+      sess.run(v0)
+    # Reinitializes v0 for the following test.
+    sess.run(v0.initializer)
+
+    # Verifies that v1 is still valid.
+    self.assertAllEqual(2.0, sess_1.run(v1))
+
+    # Resets container "local1". Verifies that v1 is no longer initialized.
+    tf.Session.reset(server1.target, ["local1"])
+    sess = tf.Session(server1.target)
+    with self.assertRaises(tf.errors.FailedPreconditionError):
+      sess.run(v1)
+    # Verifies that v0 is still valid.
+    sess = tf.Session(server0.target)
+    self.assertAllEqual(1.0, sess.run(v0))
+
+  # Verifies behavior of tf.Session.reset() with multiple containers using
+  # tf.container.
+  def testMultipleContainers(self):
+    with tf.container("test0"):
+      v0 = tf.Variable(1.0, name="v0")
+    with tf.container("test1"):
+      v1 = tf.Variable(2.0, name="v0")
+    server = tf.train.Server.create_local_server()
+    sess = tf.Session(server.target)
+    sess.run(tf.initialize_all_variables())
+    self.assertAllEqual(1.0, sess.run(v0))
+    self.assertAllEqual(2.0, sess.run(v1))
+
+    # Resets container. Session aborts.
+    tf.Session.reset(server.target, ["test0"])
+    with self.assertRaises(tf.errors.AbortedError):
+      sess.run(v1)
+
+    # Connects to the same target. Device memory for the v0 would have
+    # been released, so it will be unitialized. But v1 should still
+    # be valid.
+    sess = tf.Session(server.target)
+    with self.assertRaises(tf.errors.FailedPreconditionError):
+      sess.run(v0)
+    self.assertAllEqual(2.0, sess.run(v1))
+
+  # Verifies various reset failures.
+  def testResetFails(self):
+    # Creates variable with container name.
+    with tf.container("test0"):
+      v0 = tf.Variable(1.0, name="v0")
+    # Creates variable with default container.
+    v1 = tf.Variable(2.0, name="v1")
+    # Verifies resetting the non-existent target returns error.
+    with self.assertRaises(tf.errors.NotFoundError):
+      tf.Session.reset("nonexistent", ["test0"])
+
+    # Verifies resetting with config.
+    # Verifies that resetting target with no server times out.
+    with self.assertRaises(tf.errors.DeadlineExceededError):
+      tf.Session.reset("grpc://localhost:0", ["test0"],
+                       config=tf.ConfigProto(operation_timeout_in_ms=5))
+
+    # Verifies no containers are reset with non-existent container.
+    server = tf.train.Server.create_local_server()
+    sess = tf.Session(server.target)
+    sess.run(tf.initialize_all_variables())
+    self.assertAllEqual(1.0, sess.run(v0))
+    self.assertAllEqual(2.0, sess.run(v1))
+    # No container is reset, but the server is reset.
+    tf.Session.reset(server.target, ["test1"])
+    # Verifies that both variables are still valid.
+    sess = tf.Session(server.target)
+    self.assertAllEqual(1.0, sess.run(v0))
+    self.assertAllEqual(2.0, sess.run(v1))
+
   def testLargeConstant(self):
     server = tf.train.Server.create_local_server()
     with tf.Session(server.target) as sess:
@@ -102,11 +250,50 @@ class GrpcServerTest(tf.test.TestCase):
     sess.close()
     blocking_thread.join()
 
+  def testSetConfiguration(self):
+    config = tf.ConfigProto(
+        gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.1))
+
+    # Configure a server using the default local server options.
+    server = tf.train.Server.create_local_server(config=config, start=False)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config
+        .gpu_options.per_process_gpu_memory_fraction)
+
+    # Configure a server using an explicit ServerDefd with an
+    # overridden config.
+    cluster_def = tf.train.ClusterSpec(
+        {"localhost": ["localhost:0"]}).as_cluster_def()
+    server_def = tf.train.ServerDef(
+        cluster=cluster_def, job_name="localhost", task_index=0,
+        protocol="grpc")
+    server = tf.train.Server(server_def, config=config, start=False)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config
+        .gpu_options.per_process_gpu_memory_fraction)
+
   def testInvalidHostname(self):
     with self.assertRaisesRegexp(tf.errors.InvalidArgumentError, "port"):
       _ = tf.train.Server({"local": ["localhost"]},
                           job_name="local",
                           task_index=0)
+
+  def testInteractiveSession(self):
+    server = tf.train.Server.create_local_server()
+    # TODO(b/29900832): Remove this assertion when the bug is fixed.
+    a = tf.constant(1.0)
+    with self.assertRaisesRegexp(tf.errors.UnimplementedError, "pruned"):
+      sess = tf.InteractiveSession(target=server.target)
+      sess.run(a)
+
+    # TODO(b/29900832): The following code fails (without the unimplemented
+    # check in `tensorflow::MasterSession`):
+    # a = tf.constant(1.0)
+    # b = tf.constant(2.0)
+    # self.assertEqual(1.0, sess.run(a))
+    # self.assertEqual(2.0, sess.run(b))
 
 
 class ServerDefTest(tf.test.TestCase):

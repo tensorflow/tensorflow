@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy
 import tensorflow as tf
 
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 
 
-class VariableStoreTest(tf.test.TestCase):
+class VariableScopeTest(tf.test.TestCase):
 
   def testGetVar(self):
     vs = variable_scope._get_default_variable_store()
@@ -67,6 +68,21 @@ class VariableStoreTest(tf.test.TestCase):
           w = tf.get_variable("w", [])
           sess.run(tf.initialize_variables([w]))
           self.assertAllClose(w.eval(), 0.3)
+
+  def testInitFromNonTensorValue(self):
+    with self.test_session() as sess:
+      v = tf.get_variable("v", initializer=4, dtype=tf.int32)
+      sess.run(tf.initialize_variables([v]))
+      self.assertAllClose(v.eval(), 4)
+
+      w = tf.get_variable("w",
+                          initializer=numpy.array([1, 2, 3]),
+                          dtype=tf.int32)
+      sess.run(tf.initialize_variables([w]))
+      self.assertAllClose(w.eval(), [1, 2, 3])
+
+      with self.assertRaises(TypeError):
+        tf.get_variable("x", initializer={})
 
   def testVarScopeCachingDevice(self):
     with self.test_session():
@@ -254,9 +270,12 @@ class VariableStoreTest(tf.test.TestCase):
         with tf.variable_scope("tower") as tower:
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower/scope2/")
-        with tf.variable_scope("tower"):  # Re-enter adds suffix.
+        with tf.variable_scope(tower):  # Re-entering acts like another "tower".
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope1/tower_1/scope2/")
+        with tf.variable_scope("tower"):  # Re-entering by string acts the same.
+          with tf.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "scope1/tower_2/scope2/")
 
       with tf.name_scope("scope3"):
         with tf.variable_scope("tower"):
@@ -271,6 +290,29 @@ class VariableStoreTest(tf.test.TestCase):
         with tf.variable_scope(root_var_scope):
           with tf.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "scope4/scope2/")
+
+  def testVarScopeOriginalNameScope(self):
+    with self.test_session():
+      with tf.name_scope("scope1"):
+        with tf.variable_scope("tower") as tower:
+          self.assertEqual(tower.original_name_scope, "scope1/tower/")
+          with tf.name_scope("scope2") as sc2:
+            self.assertEqual(sc2, "scope1/tower/scope2/")
+      with tf.name_scope("scope2"):
+        with tf.variable_scope(tower) as tower1:
+          # Re-entering preserves original name scope.
+          self.assertEqual(tower1.original_name_scope, "scope1/tower/")
+          with tf.name_scope("foo") as sc2:
+            self.assertEqual(sc2, "scope2/tower/foo/")
+        # Test re-entering original name scope.
+        with tf.name_scope(tower.original_name_scope):
+          with tf.name_scope("bar") as sc3:
+            self.assertEqual(sc3, "scope1/tower/bar/")
+      with tf.name_scope("scope2"):
+        with tf.variable_scope(tower):
+          with tf.name_scope(tower.original_name_scope):
+            with tf.name_scope("bar") as sc3:
+              self.assertEqual(sc3, "scope1/tower/bar_1/")
 
   def testVarScopeObjectReuse(self):
     with self.test_session():
@@ -599,8 +641,13 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
       v = tf.get_variable("name0", shape=(3, 1, 1))
     with tf.variable_scope("scope0", reuse=True):
       v_reused = tf.get_variable("name0")
-
     self.assertEqual(v, v_reused)
+
+  def testPropagatePartitionerOnReopening(self):
+    with tf.variable_scope("scope0", partitioner=axis0_into2_partitioner) as vs:
+      self.assertEqual(axis0_into2_partitioner, vs.partitioner)
+      with tf.variable_scope(vs) as vs1:
+        self.assertEqual(axis0_into2_partitioner, vs1.partitioner)
 
   def testPartitionConcatenatesAlongCorrectAxis(self):
     def _part_axis_0(**unused_kwargs):
@@ -625,6 +672,55 @@ class VariableScopeWithPartitioningTest(tf.test.TestCase):
     n1_1 = tf.get_default_graph().get_tensor_by_name("root/n1/part_1:0")
     self.assertEqual(n1_0.get_shape(), (2, 1, 2))
     self.assertEqual(n1_1.get_shape(), (2, 1, 2))
+
+
+class VariableScopeWithCustomGetterTest(tf.test.TestCase):
+
+  def testNonCallableGetterFails(self):
+    with self.assertRaisesRegexp(ValueError, r"custom_getter .* not callable:"):
+      with tf.variable_scope("scope0", custom_getter=3):
+        tf.get_variable("name0")
+    with self.assertRaisesRegexp(ValueError, r"custom_getter .* not callable:"):
+      tf.get_variable("name0", custom_getter=3)
+
+  def testNoSideEffectsWithIdentityCustomGetter(self):
+    called = [0]
+    def custom_getter(getter, *args, **kwargs):
+      called[0] += 1
+      return getter(*args, **kwargs)
+    with tf.variable_scope("scope", custom_getter=custom_getter) as scope:
+      v = tf.get_variable("v", [1])
+    with tf.variable_scope(scope, reuse=True):
+      v2 = tf.get_variable("v", [1])
+    with tf.variable_scope("new_scope") as new_scope:
+      v3 = tf.get_variable("v3", [1])
+    with tf.variable_scope(new_scope, reuse=True, custom_getter=custom_getter):
+      v4 = tf.get_variable("v3", [1])
+
+    self.assertEqual(v, v2)
+    self.assertEqual(v3, v4)
+    self.assertEqual(3, called[0])  # skipped one in the first new_scope
+
+  def testGetterThatCreatesTwoVariablesAndSumsThem(self):
+    def custom_getter(getter, name, *args, **kwargs):
+      g_0 = getter("%s/0" % name, *args, **kwargs)
+      g_1 = getter("%s/1" % name, *args, **kwargs)
+      with tf.name_scope("custom_getter"):
+        return g_0 + g_1
+
+    with tf.variable_scope("scope", custom_getter=custom_getter):
+      v = tf.get_variable("v", [1, 2, 3])
+
+    self.assertEqual([1, 2, 3], v.get_shape())
+    true_vars = tf.trainable_variables()
+    self.assertEqual(2, len(true_vars))
+    self.assertEqual("scope/v/0:0", true_vars[0].name)
+    self.assertEqual("scope/v/1:0", true_vars[1].name)
+    self.assertEqual("custom_getter/add:0", v.name)
+    with self.test_session() as sess:
+      tf.initialize_all_variables().run()
+      np_vars, np_v = sess.run([true_vars, v])
+      self.assertAllClose(np_v, sum(np_vars))
 
 if __name__ == "__main__":
   tf.test.main()

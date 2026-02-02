@@ -67,6 +67,9 @@ def load_variable(checkpoint_dir, name):
   Returns:
     `Tensor` object.
   """
+  # TODO(b/29227106): Fix this in the right place and remove this.
+  if name.endswith(":0"):
+    name = name[:-2]
   reader = load_checkpoint(checkpoint_dir)
   return reader.get_tensor(name)
 

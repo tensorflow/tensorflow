@@ -16,6 +16,9 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/io_ops.h"
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,12 +27,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
@@ -44,7 +50,7 @@ class SaveOpTest : public OpsTestBase {
             .Input(FakeInput())
             .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8,
                               DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_INT64,
-                              DT_STRING, DT_COMPLEX64, DT_COMPLEX128}))
+                              DT_STRING, DT_COMPLEX64, DT_COMPLEX128, DT_HALF}))
             .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
   }
@@ -53,10 +59,10 @@ class SaveOpTest : public OpsTestBase {
 TEST_F(SaveOpTest, Simple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
   const string tensornames[] = {
-      "tensor_bool",      "tensor_int",    "tensor_float",  "tensor_double",
-      "tensor_qint8",     "tensor_qint32", "tensor_uint8",  "tensor_int8",
-      "tensor_int16",     "tensor_int64",  "tensor_string", "tensor_complex64",
-      "tensor_complex128"};
+      "tensor_bool",       "tensor_int",    "tensor_float",  "tensor_double",
+      "tensor_qint8",      "tensor_qint32", "tensor_uint8",  "tensor_int8",
+      "tensor_int16",      "tensor_int64",  "tensor_string", "tensor_complex64",
+      "tensor_complex128", "tensor_half"};
 
   MakeOp();
   // Add a file name
@@ -64,7 +70,7 @@ TEST_F(SaveOpTest, Simple) {
                    [&filename](int x) -> string { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({13}),
+  AddInput<string>(TensorShape({14}),
                    [&tensornames](int x) -> string { return tensornames[x]; });
 
   // Add a 1-d bool tensor
@@ -116,6 +122,10 @@ TEST_F(SaveOpTest, Simple) {
     return complex128(100 + x, 200 + x);
   });
 
+  // Add a 2-d half tensor
+  AddInput<Eigen::half>(TensorShape({2, 4}), [](int x) -> Eigen::half {
+    return static_cast<Eigen::half>(x) / Eigen::half(2);
+  });
   TF_ASSERT_OK(RunOpKernel());
 
   // Check that the checkpoint file is properly written
@@ -362,7 +372,24 @@ TEST_F(SaveOpTest, Simple) {
       EXPECT_EQ(200 + i, data[i].imag());
     }
   }
+  {
+    // The 2-d half tensor
+    TensorShape shape;
+    DataType type;
+    EXPECT_TRUE(reader.HasTensor("tensor_half", &shape, &type));
+    TensorShape expected({2, 4});
+    EXPECT_TRUE(shape.IsSameSize(expected));
+    EXPECT_EQ(DT_HALF, type);
 
+    // We expect the tensor value to be correct.
+    TensorSlice s = TensorSlice::ParseOrDie("-:-");
+    Eigen::half data[8];
+    std::fill_n(data, 8, Eigen::half(0));
+    EXPECT_TRUE(reader.CopySliceData("tensor_half", s, data));
+    for (int i = 0; i < 8; ++i) {
+      EXPECT_EQ(static_cast<Eigen::half>(i) / Eigen::half(2), data[i]);
+    }
+  }
 }
 
 class SaveSlicesOpTest : public OpsTestBase {
@@ -629,6 +656,39 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
     }
   }
 }
+
+// Benchmark-related code below.
+
+static void BM_LargeTensorWrite(int iters, int num_elements) {
+  testing::StopTiming();
+
+  // 4 * num_elements bytes total , since sizeof(float) == 4.
+  Tensor tensor(DT_FLOAT, TensorShape({num_elements}));
+  tensor.flat<float>().setZero();
+
+  // Builds the graph.
+  const string temp_filename =
+      io::JoinPath(testing::TmpDir(), "benchmark_checkpoint");
+  auto root = Scope::NewRootScope().ExitOnError();
+  const string tensor_name = "my_tensor";
+  ops::Save(root, temp_filename, {tensor_name}, {{tensor}});
+
+  // Disables optimizations.
+  SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(tensorflow::OptimizerOptions_Level_L0);
+
+  TF_CHECK_OK(root.status());
+  Graph g(OpRegistry::Global());
+  root.ToGraph(&g);
+  VLOG(1) << "Save op's output path: " << temp_filename;
+  VLOG(1) << "# nodes in Graph: " << g.num_nodes();
+
+  testing::StartTiming();
+  test::Benchmark("cpu", &g, &session_options).Run(iters);
+}
+BENCHMARK(BM_LargeTensorWrite)->Arg((1 << 30) / 4 /* 1GB float tensor */);
 
 }  // namespace
 }  // namespace tensorflow

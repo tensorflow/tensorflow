@@ -61,6 +61,7 @@ inline const char* GetVarint32Ptr(const char* p, const char* limit,
   return GetVarint32PtrFallback(p, limit, value);
 }
 
+extern char* EncodeVarint32(char* dst, uint32 v);
 extern char* EncodeVarint64(char* dst, uint64 v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"

@@ -20,7 +20,7 @@ on `logits` internally for efficiency.  Do not call this op with the
 output of `softmax`, as it will produce incorrect results.
 
 `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-and the same dtype (either `float32` or `float64`).
+and the same dtype (either `float16`, `float32`, or `float64`).
 
 ##### Args:
 
