@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_schedule.h"
@@ -248,6 +249,17 @@ class SymbolicTileAnalysis {
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
       std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
+
+  static std::variant<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>,
+                      FusionDecision>
+  AnalyzeFromInstruction(
+      std::unique_ptr<SymbolicTiledHloInstruction> start_instruction,
+      const HloFusionAdaptor& fusion,
+      const TilingSpecification::ParameterMapping& parameter_mapping,
+      mlir::MLIRContext* mlir_context,
+      IndexingMap::SimplifyPointDimensions simplification_mode,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+      ConstraintExpression& constraints);
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
