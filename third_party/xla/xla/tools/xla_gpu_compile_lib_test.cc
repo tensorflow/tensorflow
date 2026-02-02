@@ -51,7 +51,7 @@ class XlaCompileLibTest : public HloPjRtTestBase {
  protected:
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                                   "../external/local_xla/xla",
+                                                   "../external/xla/xla",
 						   "tools", "data", "add.hlo");
     std::string hlo;
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
@@ -73,7 +73,7 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   auto path = tsl::testing::XlaSrcRoot();
   path = path.erase(path.length() - 4);
   const std::string target_config_path =
-      tsl::io::JoinPath(path, "external/local_xla/xla",
+      tsl::io::JoinPath(path, "external/xla/xla",
                         "backends/gpu/target_config/specs", "h100_sxm.txtpb");
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
@@ -123,7 +123,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "../external/local_xla/xla",
+                        "../external/xla/xla",
 	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));
@@ -150,7 +150,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "../external/local_xla/xla",
+                        "../external/xla/xla",
 	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));

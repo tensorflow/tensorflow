@@ -644,7 +644,7 @@ class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
     auto tmp_path = tsl::testing::XlaSrcRoot();
     tmp_path = tmp_path.erase(tmp_path.length() - 4);
     std::string path =
-        tsl::io::JoinPath(tmp_path, "external/local_xla/xla/",
+        tsl::io::JoinPath(tmp_path, "external/xla/xla/",
                           "service", "gpu",
                           "gpu_compiler_test_autotune_db.textproto");
 

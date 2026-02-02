@@ -120,7 +120,7 @@ absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin(
   }
 
   std::string file_path =
-      tsl::io::JoinPath("external", "local_xla", "xla", "stream_executor",
+      tsl::io::JoinPath("external", "xla", "xla", "stream_executor",
                          archive_filename);
 
   return GetFatbinFromArchive(file_path, fatbin_prefix);

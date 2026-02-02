@@ -46,7 +46,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
     path = path.erase(path.length() - 4);
     TF_ASSERT_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(path, "external/local_xla/xla",
+        tsl::io::JoinPath(path, "external/xla/xla",
                           "backends/gpu/target_config/specs",
                           absl::StrCat(file_name, ".txtpb")),
         &spec_string));

@@ -53,7 +53,7 @@ class AMDGPURegisterSpillingTest
     auto path = tsl::testing::XlaSrcRoot();
     path = path.erase(path.length() - 4);                                            
     return LoadIRModule(
-        tsl::io::JoinPath(path, "external/local_xla/xla", "service", "gpu",
+        tsl::io::JoinPath(path, "external/xla/xla", "service", "gpu",
                           "llvm_gpu_backend", "tests_data", filename),
         context);
   }
