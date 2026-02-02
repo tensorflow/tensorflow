@@ -196,6 +196,14 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   Returns:
     A `Tensor`. Has the same type as `tensor`.
   """
+  # Reject scalar (rank-0) shape tensors for consistency between eager and
+  # tf.function modes. Use shape=[value] instead.
+  if isinstance(shape, ops.Tensor) and shape.shape.ndims == 0:
+    raise ValueError(
+        "tf.reshape `shape` argument must be a 1-D tensor or a Python "
+        "list/tuple, but got a scalar (rank-0) tensor. If you intended to "
+        "reshape to a 1-D tensor with a single dimension, use "
+        "`shape=[value]` instead.")
   result = gen_array_ops.reshape(tensor, shape, name)
   shape_util.maybe_set_static_shape(result, shape)
   return result

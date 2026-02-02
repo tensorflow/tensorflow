@@ -163,6 +163,12 @@ class ReshapeTest(test.TestCase):
                                 "Cannot reshape a tensor with 4096 elements"):
       array_ops.reshape(z, [4095])
 
+  def testRejectsScalarShape(self):
+    t = constant_op.constant([1, 2, 3, 4, 5, 6])
+    scalar_shape = constant_op.constant(6)  # rank-0 tensor
+    with self.assertRaisesRegex(ValueError, "scalar.*rank-0"):
+      array_ops.reshape(t, scalar_shape)
+
   def testPartialShapes(self):
 
     # Testing unknown shapes in graph building.
