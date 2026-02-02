@@ -70,8 +70,7 @@ class CommonAsyncHostToDeviceTransferManager
           device_layouts->size(), shape_specs.size());
     }
 
-    auto* client =
-        tensorflow::down_cast<CommonPjRtClient*>(memory_space->client());
+    auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
     std::optional<std::string> debug_info = std::nullopt;
     const auto& current_anno =
         tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();

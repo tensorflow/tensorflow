@@ -327,7 +327,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   bool IsDmaMapped(const void* data_start, int64_t transfer_size);
 
   LocalDeviceState& device_state(int device_ordinal) const {
-    return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+    return *absl::down_cast<PjRtStreamExecutorDevice*>(
                 LookupAddressableDevice(xla::PjRtLocalDeviceId(device_ordinal))
                     .value())
                 ->local_device_state();

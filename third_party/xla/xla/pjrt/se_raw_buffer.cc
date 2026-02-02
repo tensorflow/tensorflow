@@ -95,8 +95,7 @@ PjRtStreamExecutorDeviceEventPromise::PjRtStreamExecutorDeviceEventPromise(
 void PjRtStreamExecutorDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
   SetFromSEEvent(
-      tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
-          ->event());
+      absl::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())->event());
 }
 
 void PjRtStreamExecutorDeviceEventPromise::SetFromSEEvent(
@@ -113,7 +112,7 @@ void PjRtStreamExecutorDeviceEventPromise::SetFromSEEvent(
 
 void PjRtStreamExecutorDeviceEventPromise::SetReady() {
   auto* client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
+      absl::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
   auto result = BufferSequencingEvent::Create(client->async_work_runner());
   auto stream = local_device_->BorrowStreamFromPool();
   auto status =
@@ -399,7 +398,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
 PjRtStreamExecutorRawBuffer::MakeAllocationReadyEvent() {
   auto* client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
+      absl::down_cast<PjRtStreamExecutorClient*>(memory_space_->client());
   TF_ASSIGN_OR_RETURN(
       auto result, device_buffer_->GetDefinitionEvent(
                        client->async_work_runner(), /*nullptr_if_past=*/false));
@@ -440,10 +439,9 @@ void PjRtStreamExecutorRawBuffer::CopyTo(
             return;
           }
 
-          auto dst_buffer =
-              tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(
-                  dst_raw_buffer.get())
-                  ->device_buffer();
+          auto dst_buffer = absl::down_cast<const PjRtStreamExecutorRawBuffer*>(
+                                dst_raw_buffer.get())
+                                ->device_buffer();
           auto dst_buffer_mem = dst_buffer->mem();
           client->WaitForAllocation(stream, *src_raw_buffer);
           client->WaitForAllocation(stream, *dst_raw_buffer);
