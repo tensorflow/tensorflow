@@ -88,6 +88,10 @@ struct TFE_TensorHandleCache {
 
   void Clear();
 
+  // Maximum number of entries before the cache is cleared. Prevents unbounded
+  // growth when many distinct scalar values are created in a loop.
+  static constexpr size_t kMaxCacheSize = 1024;
+
  private:
   // TODO(kkb): Instead of `TFE_Context*` key, ideally Python's context object
   // should have TFE_TensorHandleCache instance. Migrate once we Python context

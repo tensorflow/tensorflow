@@ -65,6 +65,12 @@ void TFE_TensorHandleCache::Insert(PyObject* value, tensorflow::DataType dtype,
 #ifdef Py_GIL_DISABLED
   absl::MutexLock lock(&mu_);
 #endif  // Py_GIL_DISABLED
+  // Prevent unbounded cache growth when many distinct scalar values are
+  // created (e.g. tf.constant(i) in a loop with varying i).
+  if (cache.size() >= kMaxCacheSize) {
+    DecrefUnrefAll();
+    cache.clear();
+  }
   cache.emplace(Key{PyObjectPtr{value}, dtype, ctx, device_name}, h);
 }
 
