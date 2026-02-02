@@ -1297,7 +1297,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClientInternal(
 #if TENSORFLOW_USE_ROCM
   const auto* pjrt_platform_name = xla::RocmName();
 #elif TENSORFLOW_USE_SYCL
-  const auto* pjrt_platform_name = xla::SyclName();
+  const auto* pjrt_platform_name = xla::OneapiName();
 #else   // TENSORFLOW_USE_ROCM
   const auto* pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
