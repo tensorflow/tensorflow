@@ -78,14 +78,79 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
 
 if (TFLITE_C_BUILD_SHARED_LIBS)
   if (WIN32)
-    target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
-    target_compile_definitions(tensorflow-lite PRIVATE TFL_COMPILE_LIBRARY)
+    target_compile_definitions(
+      tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
+    target_compile_definitions(
+      tensorflow-lite PRIVATE TFL_COMPILE_LIBRARY)
+
   elseif (APPLE)
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
+    target_link_options(
+      tensorflowlite_c PRIVATE
+      "-Wl,-exported_symbols_list,${TFLITE_SOURCE_DIR}/c/exported_symbols.lds")
+
   else ()
-    target_link_options(tensorflowlite_c PRIVATE "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds")
-  endif()
-endif()
+    target_link_options(
+      tensorflowlite_c PRIVATE
+      "-Wl,--version-script,${TFLITE_SOURCE_DIR}/c/version_script.lds")
+  endif ()
+
+  # Force delegate create/delete APIs to be pulled from static libraries
+  # into tensorflowlite_c and exported from the resulting shared library.
+
+  set(TFLITE_DELEGATE_SYMBOLS)
+
+  if (TFLITE_ENABLE_XNNPACK)
+    list(APPEND TFLITE_DELEGATE_SYMBOLS
+      TfLiteXNNPackDelegateCreate
+      TfLiteXNNPackDelegateOptionsDefault
+      TfLiteXNNPackDelegateDelete)
+  endif ()
+
+  if (TFLITE_ENABLE_EXTERNAL_DELEGATE)
+    list(APPEND TFLITE_DELEGATE_SYMBOLS
+      TfLiteExternalDelegateCreate
+      TfLiteExternalDelegateOptionsDefault
+      TfLiteExternalDelegateOptionsInsert
+      TfLiteExternalDelegateDelete)
+  endif ()
+
+  if (TFLITE_ENABLE_GPU)
+    list(APPEND TFLITE_DELEGATE_SYMBOLS
+      TfLiteGpuDelegateV2Create
+      TfLiteGpuDelegateOptionsV2Default
+      TfLiteGpuDelegateV2Delete)
+  endif ()
+
+  foreach(symbol ${TFLITE_DELEGATE_SYMBOLS})
+
+    if (MSVC)
+
+      set(inc_symbol "${symbol}")
+      if (CMAKE_SIZEOF_VOID_P EQUAL 4)
+        set(inc_symbol "_${symbol}")
+      endif ()
+
+      target_link_options(
+        tensorflowlite_c PRIVATE
+        "/INCLUDE:${inc_symbol}"
+        "/EXPORT:${symbol}")
+
+    elseif (APPLE)
+
+      target_link_options(
+        tensorflowlite_c PRIVATE
+        "-Wl,-u,_${symbol}")
+
+    else ()
+
+      target_link_options(
+        tensorflowlite_c PRIVATE
+        "-Wl,-u,${symbol}")
+
+    endif ()
+
+  endforeach ()
+endif ()
 
 target_link_libraries(tensorflowlite_c
   tensorflow-lite
