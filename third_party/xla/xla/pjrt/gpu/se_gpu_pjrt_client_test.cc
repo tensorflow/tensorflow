@@ -1179,6 +1179,63 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
             literal->Relayout(src_literal.shape().layout()).data<float>());
 }
 
+TEST(StreamExecutorGpuClientTest, CopyErrorBufferToDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  auto* src_device = client->addressable_devices()[0];
+  auto* dst_device = client->addressable_devices()[1];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* src_memory_space,
+                          src_device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(auto* dst_memory_space,
+                          dst_device->default_memory_space());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto send_buffer,
+      client->CreateErrorBuffer(Internal("some error"),
+                                ShapeUtil::MakeShape(U32, {3, 2}),
+                                src_memory_space));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto recv_buffer,
+                          send_buffer->CopyToMemorySpace(dst_memory_space));
+
+  EXPECT_THAT(
+      recv_buffer->ToLiteral().Await(),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("some error")));
+}
+
+TEST(StreamExecutorGpuClientTest, CopyDelayedErrorBufferToDevice) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  auto* src_device = client->addressable_devices()[0];
+  auto* dst_device = client->addressable_devices()[1];
+
+  TF_ASSERT_OK_AND_ASSIGN(auto* src_memory_space,
+                          src_device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(auto* dst_memory_space,
+                          dst_device->default_memory_space());
+
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_pair,
+                          client->CreateAliasBuffer(shape, src_memory_space));
+  auto& send_buffer = alias_pair.first;
+  auto& fulfill_cb = alias_pair.second;
+
+  TF_ASSERT_OK_AND_ASSIGN(auto recv_buffer,
+                          send_buffer->CopyToMemorySpace(dst_memory_space));
+
+  absl::SleepFor(absl::Seconds(3));
+
+  fulfill_cb(absl::InternalError("delayed error"));
+
+  EXPECT_THAT(
+      recv_buffer->ToLiteral().Await(),
+      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("delayed error")));
+}
+
 TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
