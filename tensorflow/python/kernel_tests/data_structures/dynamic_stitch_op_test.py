@@ -175,6 +175,53 @@ class DynamicStitchTestBase(object):
       self.assertAllEqual(7. * self.evaluate(datum), grad)
 
   @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesSingleGroup(self):
+    # When duplicate indices exist, only the last writer should get gradient.
+    with test_util.use_gpu():
+      indices = [constant_op.constant([0, 0, 2])]
+      data = [constant_op.constant([1.0, 2.0, 3.0])]
+      stitched = self.stitch_op(indices, data)
+      # Forward: output[0] = 2.0 (last write wins), output[2] = 3.0
+      grads = gradients_impl.gradients(stitched, data)
+      grad_val = self.evaluate(grads[0])
+      # data[0] wrote to index 0 but was overwritten => gradient 0
+      # data[1] wrote to index 0, last writer => gets gradient
+      # data[2] wrote to index 2, sole writer => gets gradient
+      self.assertAllEqual([0.0, 1.0, 1.0], grad_val)
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesMultiGroup(self):
+    # Second group overwrites first group's entry at index 0.
+    with test_util.use_gpu():
+      indices = [constant_op.constant([0, 1]), constant_op.constant([0])]
+      data = [
+          constant_op.constant([10.0, 20.0]),
+          constant_op.constant([30.0]),
+      ]
+      stitched = self.stitch_op(indices, data)
+      # Forward: output[0] = 30.0 (group 2 overwrites), output[1] = 20.0
+      grads = gradients_impl.gradients(stitched, data)
+      grad_vals = self.evaluate(grads)
+      # First group: index 0 overwritten -> grad 0; index 1 sole writer -> grad 1
+      self.assertAllEqual([0.0, 1.0], grad_vals[0])
+      # Second group: index 0 is last writer -> grad 1
+      self.assertAllEqual([1.0], grad_vals[1])
+
+  @test_util.run_deprecated_v1
+  def testGradientWithDuplicateIndicesHigherRank(self):
+    # Test duplicate indices with higher-rank (2D) data values.
+    with test_util.use_gpu():
+      indices = [constant_op.constant([0, 0])]
+      data = [constant_op.constant([[1.0, 2.0], [3.0, 4.0]])]
+      stitched = self.stitch_op(indices, data)
+      # Forward: output[0] = [3.0, 4.0] (last write wins)
+      grads = gradients_impl.gradients(stitched, data)
+      grad_val = self.evaluate(grads[0])
+      # First element overwritten => zero gradient row
+      # Second element is last writer => gets gradient
+      self.assertAllEqual([[0.0, 0.0], [1.0, 1.0]], grad_val)
+
+  @test_util.run_deprecated_v1
   def testErrorIndicesMultiDimensional(self):
     indices = [
         constant_op.constant([0, 4, 7]),
