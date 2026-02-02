@@ -160,7 +160,10 @@ class AffineExprSimplifier {
 
   // Attempts to simplify the expression, but doesn't attempt to simplify the
   // result further.
-  mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
+  mlir::AffineExpr SimplifyOnce(
+      mlir::AffineExpr expr,
+      IndexingMap::SimplifyPointDimensions simplify_point_dimensions =
+          IndexingMap::SimplifyPointDimensions::kReplace);
 
   // Simplifies the expression using MLIR's simplifier, except for mods.
   mlir::AffineExpr SimplifyWithMlir(mlir::AffineExpr expr, int num_dims,
@@ -575,12 +578,14 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
   return result;
 }
 
-AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
+AffineExpr AffineExprSimplifier::SimplifyOnce(
+    AffineExpr expr,
+    IndexingMap::SimplifyPointDimensions simplify_point_dimensions) {
   if (expr.getKind() == AffineExprKind::Constant) {
     return expr;
   }
 
-  if (simplify_point_dimensions_ ==
+  if (simplify_point_dimensions ==
       IndexingMap::SimplifyPointDimensions::kReplace) {
     auto bounds = range_evaluator_->ComputeExpressionRange(expr);
     if (bounds.IsPoint()) {
@@ -605,7 +610,7 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
 
 AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
   while (true) {
-    auto simplified = SimplifyOnce(expr);
+    auto simplified = SimplifyOnce(expr, simplify_point_dimensions_);
     if (simplified == expr) {
       return expr;
     }

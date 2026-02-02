@@ -812,6 +812,21 @@ TEST_F(IndexingMapTest, AffineMapSimplification_ConstantDims) {
                                                 )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_PreserveAppliesNotRecursively) {
+  auto indexing_map = Parse(R"(
+    (d0) -> ((d0 floordiv 16) * 16 + d0),
+    domain:
+    d0 in [0, 15]
+  )");
+  EXPECT_TRUE(
+      indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve));
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                                                  (d0) -> (d0),
+                                                  domain:
+                                                  d0 in [0, 15]
+                                                )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_SumOrderRegression) {
   // This is a regression test for a bug where we didn't canonicalize the order
   // of summands correctly, leading to `Simplify` not being idempotent.
