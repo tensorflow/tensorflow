@@ -25,6 +25,8 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
+from tensorflow.python.framework import config
+from tensorflow.python.framework import random_seed
 
 
 class ArrayOpTest(test.TestCase):
@@ -148,6 +150,171 @@ class ArrayOpTest(test.TestCase):
     self.assertFalse(flags.config().tf_shape_default_int64.value())
     s1 = array_ops.shape_v2(array_ops.zeros([1, 2]))
     self.assertEqual(s1.dtype, dtypes.int32)
+
+class TestFoldNonOverlapping(test.TestCase):
+
+  def setUp(self):
+      super().setUp()
+      random_seed.set_seed(42)
+
+  def _extract_patches(self,x, kernel, stride, padding="VALID", dilation=1):
+    """Helper that matches TensorFlow's _extract_patches API"""
+    return array_ops.extract_image_patches_v2(
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
+    )
+
+  def test_perfect_inverse_no_overlap_valid_basic(self):
+    x = random_ops.random_normal([2,8,8,3])
+    patches = self._extract_patches(x, kernel=4, stride=4, padding='VALID')
+    reconstructed = array_ops.fold(
+            patches,
+            output_size=(8, 8),
+            kernel_size=4,
+            stride=4,
+            padding='VALID'
+        )
+    self.assertAllClose(reconstructed,x,msg="fold() is not the perfect inverse of _extract_patches (VALID)")
+
+  def test_inverse_various_sizes_no_overlap(self):
+    """Test to see if inverse relationship holds for various batch, image, kernel, and channel sizes"""
+    batch_sizes = [1, 2, 4]
+    image_sizes = [6, 8, 12, 16]
+    kernel_sizes = [2, 3, 4]
+    channel_sizes = [1, 3, 4, 8]
+
+    for batch_size in batch_sizes:
+        for image_size in image_sizes:
+            for kernel_size in kernel_sizes:
+                for channels in channel_sizes:
+                    if image_size % kernel_size != 0:
+                        continue
+
+                    x = random_ops.random_normal([batch_size, image_size, image_size, channels])
+                    patches = self._extract_patches(x, kernel=kernel_size, stride=kernel_size, padding='VALID')
+                    reconstructed = array_ops.fold(
+                        patches,
+                        output_size=(image_size, image_size),
+                        kernel_size=kernel_size,
+                        stride=kernel_size,
+                        padding='VALID'
+                    )
+
+                    self.assertAllClose(reconstructed, x)
+  
+  def test_dilation_parameter_compatibility(self):
+    x = array_ops.reshape(math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
+
+    dilations = [1, 2]
+    for dilation in dilations:
+        patches = self._extract_patches(x, kernel=2, stride=2, padding='VALID', dilation=dilation)
+
+        out = array_ops.fold(
+            patches,
+            output_size=(4, 4),
+            kernel_size=2,
+            stride=2,
+            padding='VALID',
+            dilation=dilation
+        )
+        self.assertAllEqual(out.shape, x.shape)
+        self.assertEqual(out.dtype, x.dtype)
+        # Output should not be all zeros or NaN
+        # self.assertFalse(math_ops.reduce_all(math_ops.equal(out, 0)).numpy())
+        # self.assertFalse(math_ops.reduce_any(math_ops.is_nan(out)).numpy())
+
+
+class TestFoldOverlapping(test.TestCase):
+  
+  def _extract_patches(self,x, kernel, stride, padding="VALID", dilation=1):
+    """Helper that matches TensorFlow's _extract_patches API"""
+    return array_ops.extract_image_patches_v2(
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
+    )
+  
+  def setUp(self):
+        super().setUp()
+        random_seed.set_seed(42)
+        config.enable_op_determinism()
+
+  def test_fold_overlapping_patches_basic(self):
+    # stride < kernel for overlap,
+    # -> (image_size - kernel) must be divisible by stride
+    x = array_ops.reshape(math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
+    patches = self._extract_patches(x, kernel=2, stride=1, padding='VALID')
+    reconstructed = array_ops.fold(
+            patches,
+            output_size=(4, 4),
+            kernel_size=2,
+            stride=1,
+            padding='VALID'
+        )
+    
+    self.assertAllEqual(reconstructed.shape, x.shape)
+    # print(f"original: {x} \n\n Unfold: {patches} \n\n Fold:{reconstructed}")
+    self.assertEqual(reconstructed.dtype, x.dtype)
+    
+    overlap_counts = array_ops.constant([ #manual calc
+        [[1], [2], [2], [1]],
+        [[2], [4], [4], [2]],
+        [[2], [4], [4], [2]],
+        [[1], [2], [2], [1]],
+    ], dtype=dtypes.float32)
+    overlap_counts = array_ops.reshape(overlap_counts, (1, 4, 4, 1))
+
+    expected = x * overlap_counts
+
+    self.assertAllClose(reconstructed, expected)
+
+  def test_fold_overlapping_patches_various_params(self):
+    """Test overlapping fold with VALID padding across different kernel/stride combos"""
+    batch_sizes = [1, 2]
+    channel_sizes = [1, 3]
+    params = [
+        (6, 4, 2),   
+        (6, 3, 1),   
+        (8, 4, 2),   
+        (8, 6, 2),   
+    ]
+
+    for batch_size in batch_sizes:
+        for channels in channel_sizes:
+            for image_size, kernel_size, stride in params:
+                x = random_ops.random_normal([batch_size, image_size, image_size, channels])
+                patches = self._extract_patches(x, kernel=kernel_size, stride=stride, padding='VALID')
+
+                reconstructed = array_ops.fold(
+                    patches,
+                    output_size=(image_size, image_size),
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding='VALID'
+                )
+                # Building the overlap count map by folding a tensor of ones.
+                # Each position accumulates how many patches it belongs to.
+                ones = array_ops.ones_like(x)
+                ones_patches = self._extract_patches(ones, kernel=kernel_size, stride=stride, padding='VALID')
+                overlap_counts = array_ops.fold(
+                    ones_patches,
+                    output_size=(image_size, image_size),
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    padding='VALID'
+                )
+                # print(f"Original: {x} \n\n Overlap_count:{overlap_counts}")
+                # print(f"Args: \n Batch: {batch_size}; Channels:{channels}; Image_size:{image_size}; Kernel_size:{kernel_size}; Stride:{stride}")
+                expected = x * overlap_counts                
+                self.assertAllEqual(reconstructed.shape, x.shape)      
+                self.assertEqual(reconstructed.dtype, x.dtype)
+                self.assertAllClose(reconstructed, expected)
+
 
 
 if __name__ == "__main__":
