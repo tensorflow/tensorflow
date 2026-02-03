@@ -378,16 +378,26 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
       if functions_run_eagerly is not None:
         eager_function_run.run_functions_eagerly(functions_run_eagerly)
   else:
-    # For conditions which are eager tensors with a constant value (most of
-    # them), we only call the relevant branch function and execute it eagerly.
-    with ops.name_scope(name, "cond", [pred]):
-      if pred_constant_value:
-        result = true_fn()
-      else:
-        result = false_fn()
+    # For conditions which are eager tensors with a constant value,
+    # we still need to trace both branches for error detection to ensure
+    # consistency with XLA compilation mode.
+    from tensorflow.python.eager.polymorphic_function import polymorphic_function
+
+    if not isinstance(true_fn, core.PolymorphicFunction):
+      true_fn = polymorphic_function.function(true_fn)
+    if not isinstance(false_fn, core.PolymorphicFunction):
+      false_fn = polymorphic_function.function(false_fn)
+
+    functions_run_eagerly = eager_function_run.functions_run_eagerly()
+    eager_function_run.run_functions_eagerly(False)
+    try:
+      result = cond_v2.cond_v2(pred, true_fn, false_fn, name)
       if not strict:
         result = _UnpackIfSingleton(result)
       return result
+    finally:
+      if functions_run_eagerly is not None:
+        eager_function_run.run_functions_eagerly(functions_run_eagerly)
 
 
 def _cast_indexed_slice_indices(a, b):
