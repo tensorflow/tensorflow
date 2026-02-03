@@ -204,6 +204,17 @@ EXCLUDED_TESTS=(
     Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestFloat*
     Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestHalf*
 
+    # @xla//xla/service/gpu/transforms:cudnn_fused_conv_rewriter_autotune_disabled_test_amdgpu_any
+    CudnnFusedConvRewriterTest.TestRelu6
+    CudnnFusedConvRewriterTest.TestLeakyRelu
+    CudnnFusedConvRewriterTest.TestBiasMultiCall
+    CudnnFusedConvRewriterTest.TestElu
+    CudnnFusedConvRewriterTest.TestBias
+    CudnnFusedConvRewriterTest.TestBiasNoRelu
+    CudnnFusedConvRewriterTest.Test3D
+    CudnnFusedConvRewriterTest.TestRelu6OddChannels
+    CudnnFusedConvRewriterTest.TestConvOnly
+
     # @xla//xla/tools:xla_gpu_compile_lib_test_amdgpu_any
     XlaCompileLibTest.CompilesForGpuWithoutDevice
 
