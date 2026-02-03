@@ -740,6 +740,25 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
               : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
   TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
 
+  std::vector<xla::Shape>* xla_input_shapes = nullptr;
+  if (executable_bundle->xla_input_shapes.has_value()) {
+    xla_input_shapes = &(*executable_bundle->xla_input_shapes);
+  }
+  {
+    // Sanity check that the number of XLA input shapes and arguments matches
+    // the number of inputs.
+    if (xla_input_shapes != nullptr &&
+        xla_input_shapes->size() != inputs.size()) {
+      return absl::InternalError(absl::StrCat("Expected ", inputs.size(),
+                                              " XLA input shapes but got ",
+                                              xla_input_shapes->size()));
+    }
+    if (inputs.size() != executable_bundle->compile_metadata.args().size()) {
+      return absl::InternalError(absl::StrCat(
+          "Expected ", inputs.size(), " arguments but got ",
+          executable_bundle->compile_metadata.args().size(), " args"));
+    }
+  }
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
@@ -771,11 +790,14 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         return absl::InternalError("Failed to reshape tensor");
       }
       // TODO(b/477700609): Support custom layout
+      const xla::Shape* xla_input_shape =
+          xla_input_shapes != nullptr ? &(*xla_input_shapes)[i] : nullptr;
+
       TF_ASSIGN_OR_RETURN(
           tsl::Future<xla::ifrt::ArrayRef> array_ref,
           (*user_inputs_h2d_transfer_executor)
               ->ScheduledH2DTransfer(
-                  reshaped, device_list,
+                  reshaped, xla_input_shape, device_list,
                   executable_bundle->compile_metadata.args()[i].sharding(),
                   thread_pool_, /*xla_input_layout=*/nullptr));
       args.push_back(std::move(array_ref));

@@ -249,7 +249,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/service/gpu/transforms/gemm_fusion_swap_operands.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/gpu/transforms/gemm_workspace_rewriter.h"
 #include "xla/service/gpu/transforms/gemv_rewriter.h"
 #include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/service/gpu/transforms/layout_assignment.h"
@@ -1909,9 +1908,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       stream_exec, &gpu_target_config, options.key_value_store,
       gpu_target_config.device_description.runtime_version(), alias_info,
       debug_options, &mlir_context_, ShapeSizeBytesFunction()));
-  // After autotuning, update GEMM workspace sizes to match the exact
-  // requirements of the selected algorithms, potentially reducing memory usage.
-  pipeline.AddPass<GemmWorkspaceRewriter>(gpu_version, stream_exec);
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();

@@ -668,7 +668,7 @@ filegroup(
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    deps = tf_windows_aware_platform_deps("net"),
+    deps = tf_windows_aware_platform_deps("net") + ["@com_google_absl//absl/base:core_headers"],
 )
 
 cc_library(

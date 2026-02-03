@@ -29,7 +29,7 @@ limitations under the License.
 #undef ERROR
 
 namespace tsl {
-namespace internal {
+namespace net {
 
 namespace {
 
@@ -197,5 +197,5 @@ void RecycleUnusedPort(int port) {
   }
 }
 
-}  // namespace internal
+}  // namespace net
 }  // namespace tsl

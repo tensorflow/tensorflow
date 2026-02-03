@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/sort_json.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <memory>
 #include <string>

@@ -1095,9 +1095,13 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
 
   // CublasLt formula: D = alpha*(A*B) + beta*(C),
 
+  Shape a_shape = ShapeUtil::MakeShape(F32, {2, 4});
   int64_t a_length = sizeof(float) * 2 * 4;
+  Shape b_shape = ShapeUtil::MakeShape(F32, {4, 3});
   int64_t b_length = sizeof(float) * 4 * 3;
+  Shape c_shape = ShapeUtil::MakeShape(F32, {2, 3});
   int64_t c_length = sizeof(float) * 2 * 3;
+  Shape d_shape = ShapeUtil::MakeShape(F32, {2, 3});
   int64_t d_length = sizeof(float) * 2 * 3;
 
   // Prepare buffer allocations for recording command buffer.
@@ -1107,11 +1111,13 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   BufferAllocation alloc_d(/*index=*/3, d_length, /*color=*/0);
   BufferAllocation alloc_workspace(/*index=*/4, 1024 * 1024, /*color=*/0);
 
-  BufferAllocation::Slice slice_a(&alloc_a, 0, a_length);
-  BufferAllocation::Slice slice_b(&alloc_b, 0, b_length);
-  BufferAllocation::Slice slice_c(&alloc_c, 0, c_length);
-  BufferAllocation::Slice slice_d(&alloc_d, 0, d_length);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  ShapedSlice slice_a{BufferAllocation::Slice{&alloc_a, 0, a_length}, a_shape};
+  ShapedSlice slice_b{BufferAllocation::Slice(&alloc_b, 0, b_length), b_shape};
+  ShapedSlice slice_c{BufferAllocation::Slice(&alloc_c, 0, c_length), c_shape};
+  ShapedSlice slice_d{BufferAllocation::Slice(&alloc_d, 0, d_length), d_shape};
+  ShapedSlice slice_workspace{
+      BufferAllocation::Slice(&alloc_workspace, 0, 1024 * 1024),
+      ShapeUtil::MakeShape(U8, {1024, 1024})};
 
   auto config = GemmConfig::For(
       /*lhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
@@ -1136,10 +1142,8 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
       se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
       /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c, slice_d,
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), slice_workspace));
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, slice_workspace));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

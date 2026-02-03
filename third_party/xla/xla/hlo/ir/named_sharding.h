@@ -23,7 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -77,6 +77,13 @@ class NamedSharding {
     // or other slices with sub-axis, we cannot slice it to {a, c} + {b}.
     std::optional<DimensionSharding> Slice(const Mesh& mesh,
                                            int64_t slice_size);
+
+    // Returns true if this dimension sharding is a prefix of `other`.
+    //
+    // This means that the sequence of axes in this sharding matches the
+    // beginning of the sequence of axes in `other` sharding.
+    bool IsPrefixOf(const DimensionSharding& other, const Mesh& mesh,
+                    const Mesh& other_mesh) const;
 
    private:
     std::vector<AxisRef> axes_;
@@ -155,6 +162,12 @@ class NamedSharding {
            mesh_.ContainsAllMeshAxesInOrder(unreduced_axes_);
   }
 
+  // Returns true if the tile size is the same as the input size.
+  //
+  // This checks for both replicated and maximal sharding, as in both cases tile
+  // size is same as input size.
+  bool IsTileMaximal() const { return IsReplicated() || IsMaximal(); }
+
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
   static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
@@ -197,12 +210,6 @@ class NamedSharding {
     return std::vector<DimensionSharding>(dim_shardings.begin(),
                                           dim_shardings.end());
   }
-
-  // Returns true if the tile size is the same as the input size.
-  //
-  // This checks for both replicated and maximal sharding, as in both cases tile
-  // size is same as input size.
-  bool IsTileMaximal() const { return IsReplicated() || IsMaximal(); }
 
   const TileAssignment& device_assignment() const {
     return mesh_.device_assignment();

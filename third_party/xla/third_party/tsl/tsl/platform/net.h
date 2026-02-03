@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NET_H_
 #define TENSORFLOW_TSL_PLATFORM_NET_H_
 
+#include "absl/base/macros.h"
 namespace tsl {
-namespace internal {
+namespace net {
 
 // Return a port number that is not currently bound to any TCP or UDP port.
 // On success returns the assigned port number. Otherwise returns -1.
@@ -36,7 +37,17 @@ int PickUnusedPortOrDie();
 // returned by PickUnusedPort[OrDie](), and not yet recycled, otherwise an
 // abort may occur.
 void RecycleUnusedPort(int port);
+}  // namespace net
 
+namespace internal {
+ABSL_DEPRECATE_AND_INLINE()
+inline int PickUnusedPort() { return tsl::net::PickUnusedPort(); }
+
+ABSL_DEPRECATE_AND_INLINE()
+inline int PickUnusedPortOrDie() { return tsl::net::PickUnusedPortOrDie(); }
+
+ABSL_DEPRECATE_AND_INLINE()
+inline void RecycleUnusedPort(int port) { tsl::net::RecycleUnusedPort(port); }
 }  // namespace internal
 }  // namespace tsl
 

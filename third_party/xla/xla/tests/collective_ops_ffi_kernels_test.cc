@@ -92,6 +92,9 @@ TEST(CollectiveOpsFfiKernelsTest, CollectiveKernelLaunch) {
                        platform->ExecutorForDevice(0));
   ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
                        platform->ExecutorForDevice(1));
+  if (!executor0->CanEnablePeerAccessTo(executor1)) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
 
   // We need peer access between devices to test LSA collective kernel.
   ASSERT_OK(executor0->EnablePeerAccessTo(executor1));

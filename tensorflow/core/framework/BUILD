@@ -44,11 +44,13 @@ default_visibility = [
     #internal headless cuj tests library,
     #internal nexus library tests,
     "//tensorflow/compiler/jit:__subpackages__",
-    #internal library,
+    #internal library 0,
     # TODO(matthurd): to be removed when summary.proto.h deps moves to TSL
     "@org_xprof//xprof:__subpackages__",
     "//tensorflow/cc/experimental/tfa:__subpackages__",
     "//tensorflow/compiler/mlir/utils:__subpackages__",
+    #internal library 2,
+    #internal library 1,
 ]
 
 package(
@@ -1702,7 +1704,7 @@ tf_proto_library(
     srcs = ["attr_value.proto"],
     make_default_target_header_only = True,
     visibility = [
-        #internal library,
+        #internal library 0,
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",

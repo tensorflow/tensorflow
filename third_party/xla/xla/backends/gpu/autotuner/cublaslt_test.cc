@@ -185,6 +185,7 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
                           ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
   CublasLtBackendConfig config;
   config.set_algorithm(2);
+  config.set_autotune_workspace_size(42);
   google::protobuf::Any any;
   any.PackFrom(config);
   TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
@@ -193,7 +194,8 @@ TEST_F(CublasLtBackendTest, ApplyConfig) {
                                          .at(0),
                                     any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
-                           "CHECK: \"selected_algorithm\":\"2\""),
+                           R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
+                              CHECK: "selected_algorithm":"2")"),
               absl_testing::IsOkAndHolds(true));
 }
 

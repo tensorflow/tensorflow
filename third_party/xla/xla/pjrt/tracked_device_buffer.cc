@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
@@ -144,11 +145,39 @@ class ForeignRawSEDeviceMemory : public RawSEDeviceMemory {
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
+class SlicedRawSEDeviceMemory : public RawSEDeviceMemory {
+ public:
+  SlicedRawSEDeviceMemory(se::DeviceAddressBase value,
+                          tsl::AsyncValueRef<RawSEDeviceMemory> base)
+      : RawSEDeviceMemory(value), base_(base) {}
+
+  void UnsafeReleaseMemory() override {
+    LOG(FATAL) << "SlicedRawSEDeviceMemory cannot be donated.";
+  }
+
+ private:
+  tsl::AsyncValueRef<RawSEDeviceMemory> base_;
+};
+
 tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateForeign(
     se::DeviceAddressBase value,
     absl::AnyInvocable<void() &&> on_delete_callback) {
   return tsl::MakeAvailableAsyncValueRef<ForeignRawSEDeviceMemory>(
       value, std::move(on_delete_callback));
+}
+
+tsl::AsyncValueRef<RawSEDeviceMemory> RawSEDeviceMemory::CreateSlice(
+    tsl::AsyncValueRef<RawSEDeviceMemory> base, size_t offset, size_t size) {
+  size_t src_size = base->mem().size();
+  if (offset <= src_size && size <= src_size - offset) {
+    return tsl::MakeAvailableAsyncValueRef<SlicedRawSEDeviceMemory>(
+        se::DeviceAddressBase(
+            reinterpret_cast<char*>(base->mem().opaque()) + offset, size),
+        base);
+  }
+  return tsl::MakeErrorAsyncValueRef(absl::InvalidArgumentError(
+      absl::StrFormat("Error when slicing: [%d,%d) in array of size %d", offset,
+                      offset + size, src_size)));
 }
 
 TrackedDeviceBuffer::TrackedDeviceBuffer(

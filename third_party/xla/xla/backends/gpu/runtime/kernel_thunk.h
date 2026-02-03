@@ -68,7 +68,8 @@ class KernelThunk : public Thunk {
               const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-              stream_executor::gpu::TmaMetadata tma_metadata);
+              stream_executor::gpu::TmaMetadata tma_metadata,
+              std::vector<int64_t> zeroed_output_buffer_indices = {});
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -110,6 +111,9 @@ class KernelThunk : public Thunk {
   std::vector<Shape> args_shape_;
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
+
+  // Buffer indices that should be zeroed before the kernel is launched.
+  std::vector<int64_t> zeroed_output_buffer_indices_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;

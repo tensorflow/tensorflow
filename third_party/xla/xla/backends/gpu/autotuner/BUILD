@@ -216,6 +216,7 @@ cc_library(
     deps = [
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -647,6 +648,8 @@ cc_library(
     deps = [
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
+        "//xla:shape_layout",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
@@ -682,6 +685,7 @@ cc_library(
     deps = [
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",

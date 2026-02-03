@@ -380,6 +380,54 @@ TEST_F(DimensionShardingSliceTest, SliceMajorAndSubAxis) {
   EXPECT_THAT(ds.axes(), ElementsAre(d2_));
 }
 
+TEST(NamedShardingTest, IsPrefixOf) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+  AxisRef a(0);
+  AxisRef b(1);
+  AxisRef c(2);
+  AxisRef d(3);
+  AxisRef b1(1, {1, 2});
+  AxisRef b2(1, {2, 2});
+  DimensionSharding ds_a({a}, /*is_closed=*/true);
+  DimensionSharding ds_b({b}, /*is_closed=*/true);
+  DimensionSharding ds_ab({a, b}, /*is_closed=*/true);
+  DimensionSharding ds_ba({b, a}, /*is_closed=*/true);
+  DimensionSharding ds_empty;
+  DimensionSharding ds_b1({b1}, /*is_closed=*/true);
+  DimensionSharding ds_b1_c({b1, c}, /*is_closed=*/true);
+
+  // Identity
+  EXPECT_TRUE(ds_a.IsPrefixOf(ds_a, mesh, mesh));
+  // Empty is prefix of anything
+  EXPECT_TRUE(ds_empty.IsPrefixOf(ds_a, mesh, mesh));
+  EXPECT_TRUE(ds_empty.IsPrefixOf(ds_empty, mesh, mesh));
+  // Proper prefix
+  EXPECT_TRUE(ds_a.IsPrefixOf(ds_ab, mesh, mesh));
+  // Not a prefix (order)
+  EXPECT_FALSE(ds_a.IsPrefixOf(ds_ba, mesh, mesh));
+  // Not a prefix (length)
+  EXPECT_FALSE(ds_ab.IsPrefixOf(ds_a, mesh, mesh));
+  // Not a prefix (mismatch)
+  EXPECT_FALSE(ds_a.IsPrefixOf(ds_b, mesh, mesh));
+  // b1 (2) is prefix of b (4)
+  EXPECT_TRUE(ds_b1.IsPrefixOf(ds_b, mesh, mesh));
+  // b (4) is NOT prefix of b1 (2)
+  EXPECT_FALSE(ds_b.IsPrefixOf(ds_b1, mesh, mesh));
+  // b (4) is NOT prefix of b1, c (because b is larger than b1)
+  EXPECT_FALSE(ds_b.IsPrefixOf(ds_b1_c, mesh, mesh));
+}
+
+TEST(NamedShardingTest, IsPrefixOfDifferentMeshes) {
+  Mesh mesh_a({2, 2, 4}, {"x", "y", "z"});
+  Mesh mesh_b({4, 2, 2}, {"x", "y", "z"});
+  AxisRef axis_1(1);
+  DimensionSharding sharding_a({axis_1}, /*is_closed=*/true);
+  DimensionSharding sharding_b({axis_1}, /*is_closed=*/true);
+
+  EXPECT_FALSE(sharding_a.IsPrefixOf(sharding_b, mesh_a, mesh_b));
+  EXPECT_FALSE(sharding_b.IsPrefixOf(sharding_a, mesh_b, mesh_a));
+}
+
 TEST(NamedShardingTest, GetShardedSize) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 

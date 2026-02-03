@@ -44,6 +44,8 @@ namespace xla {
 namespace hlo_sharding_util {
 namespace {
 
+using DimensionSharding = xla::NamedSharding::DimensionSharding;
+
 TEST(HloShardingUtilTest, MergeShardingIfCompatible1) {
   HloSharding to_merge =
       HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
@@ -1184,35 +1186,91 @@ TEST(HloShardingUtilTest, IsSubShardingTiledReplicated) {
   HloSharding rhs_sharding = HloSharding::Replicate();
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({4}, {"x"});
+    HloSharding rhs_sharding =
+        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingReplicatedTiled) {
   HloSharding rhs_sharding = HloSharding::IotaTile({4, 1});
   HloSharding lhs_sharding = HloSharding::Replicate();
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({4}, {"x"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingTiledPartialReplicated) {
   HloSharding rhs_sharding = HloSharding::Replicate();
   HloSharding lhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        // Replicated sharding.
+        HloSharding(test_utils::FromAxisNames(mesh, {}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingReplicatedTiledPartial) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::Replicate();
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding::Replicate({}, /*use_named_sharding=*/true);
+
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingPartialTiledTiled) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingIncompatibleTiled) {
@@ -1220,13 +1278,35 @@ TEST(HloShardingUtilTest, IsSubShardingIncompatibleTiled) {
   HloSharding lhs_sharding = HloSharding::IotaTile({1, 4});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({4}, {"x"});
+    // A 4 x 1 and a 1 x 4 device assignment are identical for named sharding.
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingIncompatibleShapeTiledPartialTiled) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {129, 253});
+
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
@@ -1234,14 +1314,33 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
       HloSharding::PartialTile(TileAssignment({2, 1, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4, 1});
   Shape shape = ShapeUtil::MakeShape(F32, {128, 253});
+
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}, {}},
+                                              /*replicated_axes=*/{"y"}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}, {}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
+// We check if a 4-way split (lhs) is compatible with a 2-way split (rhs).
+// When n > 1, this requires the first 2 tiles of the 4-way split to fit
+// exactly within the 1st tile of the 2-way split: 2 * ceil(n/4) == ceil(n/2).
+// This equality holds only when n % 4 is 0 or 3.
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
+  // n modulo 4 = 0 or 3
   std::vector<int64_t> success = {1, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20};
+  // n modulo 4 = 1 or 2
   std::vector<int64_t> fail = {2, 5, 6, 9, 10, 13, 14, 17, 18};
+
   for (int64_t i : success) {
     Shape shape = ShapeUtil::MakeShape(F32, {i});
     EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
@@ -1250,13 +1349,43 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
     Shape shape = ShapeUtil::MakeShape(F32, {i});
     EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
   }
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    for (int64_t i : success) {
+      Shape shape = ShapeUtil::MakeShape(F32, {i});
+      EXPECT_TRUE(
+          IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+    }
+    for (int64_t i : fail) {
+      Shape shape = ShapeUtil::MakeShape(F32, {i});
+      EXPECT_FALSE(
+          IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+    }
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut1) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
+
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
@@ -1266,13 +1395,37 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
   HloSharding lhs_sharding = HloSharding::Tile(lhs_array);
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  // We cannot use a single mesh to represent the two shardings here.
+  // Therefore we don't check for named sharding.
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut3) {
   HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
+
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    // Custom mesh to generate mismatch.
+    // Devices: {0, 2, 1, 3}
+    Array<int64_t> device_array({2, 2});
+    device_array.SetValues({0, 2, 1, 3});
+    Mesh mesh(device_array, {"x", "y"});
+    // RHS: 2 shards (y), 2 replicas (x).
+    // Shard 0 (y=0): {0, 1}.
+    // Shard 1 (y=1): {2, 3}.
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"y"}}));
+    // LHS: 4 shards (x, y) -> {0, 2, 1, 3}.
+    // T0 (0) -> S0 ({0, 1})? Yes.
+    // T1 (2) -> S0 ({0, 1})? No.
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+
+    EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut4) {
@@ -1280,9 +1433,26 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut4) {
       HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
+
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+
+  {
+    Mesh mesh({2, 2}, {"x", "y"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"y"}}));
+    HloSharding lhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"y", "x"}}));
+
+    EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+  }
 }
 
+// We verify if a refined sharding (LHS) is compatible with a coarser one (RHS).
+// RHS splits dim 1 into 3 parts, leaving a size-7 axis replicated.
+// LHS 1 splits dim 1 into 21 parts (3*7) by merging the size-3 axis with the
+// size-7 axis, preserving the 3-part boundaries.
+// LHS 2 is incompatible because it reorders the axes: the size-3 axis varies
+// within the blocks RHS expects to be constant, causing a device mismatch.
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut5) {
   HloSharding rhs_sharding =
       HloSharding::PartialTile(TileAssignment({2, 3, 5, 7}));
@@ -1293,6 +1463,7 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut5) {
   HloSharding lhs_sharding_3 = HloSharding::IotaTile({2, 21, 5});
   std::vector<Shape> shapes = {ShapeUtil::MakeShape(F32, {10, 42, 10}),
                                ShapeUtil::MakeShape(F32, {11, 41, 11})};
+
   for (const auto& shape : shapes) {
     EXPECT_TRUE(
         IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
@@ -1301,11 +1472,33 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut5) {
     EXPECT_FALSE(
         IsSubTilingOrEqualSharding(shape, lhs_sharding_3, rhs_sharding));
   }
+
+  {
+    Mesh mesh({2, 3, 5, 7}, {"a", "b", "c", "d"});
+    // d is replicated.
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}}));
+    HloSharding lhs_sharding_1 = HloSharding(
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b", "d"}, {"c"}}));
+    HloSharding lhs_sharding_2 = HloSharding(
+        test_utils::FromAxisNames(mesh, {{"a"}, {"d", "b"}, {"c"}}));
+    // lhs_sharding_3 cannot be represented here.
+    // The tiling dimensions {2, 21, 5} do not align with the mesh axis sizes
+    // {2, 3, 5, 7} in a way that preserves whole axes.
+
+    for (const auto& shape : shapes) {
+      EXPECT_TRUE(
+          IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
+      EXPECT_FALSE(
+          IsSubTilingOrEqualSharding(shape, lhs_sharding_2, rhs_sharding));
+    }
+  }
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut6) {
   HloSharding rhs_sharding =
       HloSharding::PartialTile(TileAssignment({2, 3, 5, 7 * 11 * 13}));
+  // These four are equivalent in terms of device mapping for the tiles
   HloSharding lhs_sharding_1 = HloSharding::PartialTile(TileAssignment(
       {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 11, 13}, {0, 3, 1, 2, 4, 5}));
   HloSharding lhs_sharding_2 = HloSharding::PartialTile(TileAssignment(
@@ -1314,11 +1507,13 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut6) {
       {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 13, 7, 11}, {0, 4, 1, 2, 5, 3}));
   HloSharding lhs_sharding_4 = HloSharding::PartialTile(TileAssignment(
       {2 * 7, 3, 5 * 11, 13}, {2, 3, 5, 7, 13, 11}, {0, 3, 1, 2, 5, 4}));
+  // This one has a different device order (standard iota)
   HloSharding lhs_sharding_5 =
       HloSharding::PartialTile(TileAssignment({2 * 7, 3, 5 * 11, 13}));
   std::vector<Shape> shapes = {
       ShapeUtil::MakeShape(F32, {2 * 7, 9, 5 * 11}),
       ShapeUtil::MakeShape(F32, {2 * 7 - 1, 4, 5 * 11 - 1})};
+
   for (const auto& shape : shapes) {
     EXPECT_TRUE(
         IsSubTilingOrEqualSharding(shape, lhs_sharding_1, rhs_sharding));
@@ -1330,6 +1525,27 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut6) {
         IsSubTilingOrEqualSharding(shape, lhs_sharding_4, rhs_sharding));
     EXPECT_FALSE(
         IsSubTilingOrEqualSharding(shape, lhs_sharding_5, rhs_sharding));
+  }
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11, 13}, {"a", "b", "c", "d", "e", "f"});
+    HloSharding rhs =
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}, {"c"}}));
+    // This NamedSharding is equivalent to lhs_sharding_1 through lhs_sharding_4
+    // Dim 0: sharded by "a" (2) and "d" (7)
+    // Dim 1: sharded by "b" (3)
+    // Dim 2: sharded by "c" (5) and "e" (11)
+    // Remaining axis "f" (13) is for replication.
+    HloSharding lhs = HloSharding(
+        test_utils::FromAxisNames(mesh, {{"a", "d"}, {"b"}, {"c", "e"}}));
+
+    for (const auto& shape : shapes) {
+      EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs, rhs));
+    }
+    // lhs_sharding_5 cannot be tested here because its implicit device order
+    // differs from the one generated by the current `mesh`. We cannot create a
+    // separate mesh for it because comparing shardings across different meshes
+    // is not supported.
   }
 }
 
@@ -1343,6 +1559,124 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut7) {
   for (const auto& shape : shapes) {
     EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
   }
+
+  {
+    Mesh mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+    HloSharding rhs_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{}, {"a"}, {}, {"b"}}));
+    HloSharding lhs_sharding = HloSharding(
+        test_utils::FromAxisNames(mesh, {{"c"}, {"a"}, {"d"}, {"b"}}));
+
+    for (const auto& shape : shapes) {
+      EXPECT_TRUE(
+          IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
+    }
+  }
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingBasics) {
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_y(test_utils::FromAxisNames(mesh, {{"y"}}));
+  HloSharding s_xy(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  HloSharding s_empty(test_utils::FromAxisNames(mesh, {{}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_x, s_x));
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_xy, s_x));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_y, s_x));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_empty, s_x));
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_x, s_empty));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_x, s_xy));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingDifferentMeshes) {
+  Mesh mesh1({2, 2}, {"x", "y"});
+  Mesh mesh2({2, 2}, {"a", "b"});
+  HloSharding s1(test_utils::FromAxisNames(mesh1, {{"x"}}));
+  HloSharding s2(test_utils::FromAxisNames(mesh2, {{"a"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s1, s2));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingOrderMismatch) {
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_xy(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  HloSharding s_yx(test_utils::FromAxisNames(mesh, {{"y", "x"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_yx, s_x));
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_xy, s_x));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingSubAxes) {
+  Mesh mesh({4, 2}, {"x", "y"});
+  HloSharding s_x_full(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_x_part1(test_utils::FromAxisNames(mesh, {{"x:(1)2"}}));
+  HloSharding s_x_part2(test_utils::FromAxisNames(mesh, {{"x:(2)2"}}));
+  HloSharding s_x_part1_y(test_utils::FromAxisNames(mesh, {{"x:(1)2", "y"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_x_part1, s_x_part1));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_x_part1, s_x_part2));
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_x_full, s_x_part1));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_x_part1, s_x_full));
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_x_part1_y, s_x_part1));
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_x_part1_y, s_x_part2));
+}
+
+TEST(HloShardingUtilTest,
+     IsSubTilingOrEqualNamedShardingAxisProductSameButStructureDifferent) {
+  Mesh mesh({2, 3}, {"x", "y"});
+  HloSharding sharding(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  HloSharding sub_sharding(test_utils::FromAxisNames(mesh, {{"y", "x"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, sub_sharding, sharding));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingAxesMismatch) {
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_y(test_utils::FromAxisNames(mesh, {{"y"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_y, s_x));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingDataContainmentFail) {
+  // Axes align but shape is too small (2 elements) for the sub-tiling (4
+  // shards), causing boundary misalignment.
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_xy(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
+
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_xy, s_x));
+}
+
+TEST(HloShardingUtilTest,
+     IsSubTilingOrEqualNamedShardingDataContainmentFailWithPadding) {
+  // Padding in the larger shape (5 elements) causes sub-tiles to cross parent
+  // tile boundaries.
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_xy(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {5});
+
+  EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, s_xy, s_x));
+}
+
+TEST(HloShardingUtilTest, IsSubTilingOrEqualNamedShardingAligned) {
+  // Compatible case: shape (4 elements) allows perfect sub-tiling alignment.
+  Mesh mesh({2, 2}, {"x", "y"});
+  HloSharding s_x(test_utils::FromAxisNames(mesh, {{"x"}}));
+  HloSharding s_xy(test_utils::FromAxisNames(mesh, {{"x", "y"}}));
+  Shape shape = ShapeUtil::MakeShape(F32, {4});
+
+  EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, s_xy, s_x));
 }
 
 TEST(HloShardingUtilTest, GetFirstTargetDimToMoveShardingTiles1) {

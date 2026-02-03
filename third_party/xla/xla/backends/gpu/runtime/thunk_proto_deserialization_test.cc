@@ -688,10 +688,46 @@ TEST(ThunkProtoDeserializationTest, CublasLtMatmulThunk) {
           }
           epilogue: EPILOGUE_DEFAULT
           canonical_hlo: "(f32[101,400]{1,0}, s8[33554432]{0}) custom-call(f32[101,407]{1,0}, f32[407,400]{1,0}), custom_call_target=\"__cublas$lt$matmul\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"41107\",\"rhs_stride\":\"162800\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false,\"reification_cost\":[]}"
-          a { size: 164428 buffer_allocation_index: 3 }
-          b { size: 651200 buffer_allocation_index: 4 }
-          c { size: 161600 buffer_allocation_index: 5 }
-          d { size: 161600 buffer_allocation_index: 5 }
+          a {
+            slice { size: 164428 buffer_allocation_index: 3 }
+            shape {
+              element_type: F32
+              dimensions: 101
+              dimensions: 407
+              is_dynamic_dimension: false
+              is_dynamic_dimension: false
+            }
+          }
+          b {
+            slice { size: 651200 buffer_allocation_index: 4 }
+            shape {
+              element_type: F32
+              dimensions: 407
+              dimensions: 400
+              is_dynamic_dimension: false
+              is_dynamic_dimension: false
+            }
+          }
+          c {
+            slice { size: 161600 buffer_allocation_index: 5 }
+            shape {
+              element_type: F32
+              dimensions: 101
+              dimensions: 400
+              is_dynamic_dimension: false
+              is_dynamic_dimension: false
+            }
+          }
+          d {
+            slice { size: 161600 buffer_allocation_index: 5 }
+            shape {
+              element_type: F32
+              dimensions: 101
+              dimensions: 400
+              is_dynamic_dimension: false
+              is_dynamic_dimension: false
+            }
+          }
         }
       )pb");
 

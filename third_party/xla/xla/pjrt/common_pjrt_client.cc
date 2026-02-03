@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/error/error_codes.h"
+#include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout.h"
@@ -852,12 +853,13 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
 
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     ExecuteLaunchArgs& launch_args,
-    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const ExecuteOptions& options, size_t host_callback_idx,
-    PjRtDevice* device) const {
+    absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
+    int replica, int partition, const ExecuteOptions& options,
+    size_t host_callback_idx, PjRtDevice* device) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
-  TF_ASSIGN_OR_RETURN(auto executable,
-                      StartRawExecutable(options, replica, partition, device));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      StartRawExecutable(options, run_id, replica, partition, device));
   // Fill in device to launch_args so it will be present even if ExecutePrepare
   // fails with OOM.
   device = executable->device();
@@ -972,16 +974,16 @@ PjRtLoadedExecutable::Result CommonPjRtLoadedExecutable::ExecuteLaunch(
 
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
     std::optional<ExecuteLaunchArgs>& launch_args,
-    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const ExecuteOptions& options, size_t host_callback_idx,
-    PjRtDevice* device) const {
+    absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
+    int replica, int partition, const ExecuteOptions& options,
+    size_t host_callback_idx, PjRtDevice* device) const {
   absl::Status prepare_status;
   int attempts = 0;
   while (true) {
     launch_args.emplace();
     prepare_status =
-        ExecutePrepare(*launch_args, argument_handles, replica, partition,
-                       options, host_callback_idx, device);
+        ExecutePrepare(*launch_args, argument_handles, run_id, replica,
+                       partition, options, host_callback_idx, device);
     ++attempts;
     if (!absl::IsResourceExhausted(prepare_status)) {
       break;
@@ -1012,13 +1014,14 @@ static absl::Status ValidateHostTransferCallbacks(
 
 absl::StatusOr<PjRtLoadedExecutable::Result>
 CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice(
-    absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const ExecuteOptions& options, bool fill_future, PjRtDevice* device) const {
+    absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
+    int replica, int partition, const ExecuteOptions& options, bool fill_future,
+    PjRtDevice* device) const {
   tsl::profiler::TraceMe traceme(
       "CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice");
   std::optional<ExecuteLaunchArgs> launch_args;
   TF_RETURN_IF_ERROR(ExecutePrepareWithOomRetries(
-      launch_args, argument_handles, replica, partition, options,
+      launch_args, argument_handles, run_id, replica, partition, options,
       /*host_callback_idx=*/0, device));
   return ExecuteLaunch(*launch_args, fill_future);
 }
@@ -1033,12 +1036,12 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     if (addressable_devices_[i] == device) {
       TF_RETURN_IF_ERROR(ValidateHostTransferCallbacks(
           options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
-      TF_ASSIGN_OR_RETURN(
-          auto result,
-          ExecuteHelperOnSingleDevice(
-              argument_handles, addressable_device_logical_ids_[i].replica,
-              addressable_device_logical_ids_[i].partition, options,
-              fill_future));
+      TF_ASSIGN_OR_RETURN(auto result,
+                          ExecuteHelperOnSingleDevice(
+                              argument_handles, RunId(options.launch_id),
+                              addressable_device_logical_ids_[i].replica,
+                              addressable_device_logical_ids_[i].partition,
+                              options, fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -1069,10 +1072,11 @@ CommonPjRtLoadedExecutable::ExecutePortable(
       options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  TF_ASSIGN_OR_RETURN(
-      auto result, ExecuteHelperOnSingleDevice(argument_handles, /*replica=*/0,
-                                               /*partition=*/0, options,
-                                               fill_future, device));
+  TF_ASSIGN_OR_RETURN(auto result,
+                      ExecuteHelperOnSingleDevice(
+                          argument_handles, RunId(options.launch_id),
+                          /*replica=*/0,
+                          /*partition=*/0, options, fill_future, device));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }
@@ -1113,15 +1117,16 @@ CommonPjRtLoadedExecutable::Execute(
       options.send_callbacks, options.recv_callbacks,
       addressable_devices_.size()));
 
+  xla::RunId run_id(options.launch_id);
   std::vector<absl::StatusOr<Result>> results(num_addressable_devices);
   if (num_addressable_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;
     const int partition = addressable_device_logical_ids_[0].partition;
-    results[0] =
-        ExecuteHelperOnSingleDevice(argument_handles[0], replica, partition,
-                                    options, returned_futures.has_value());
+    results[0] = ExecuteHelperOnSingleDevice(argument_handles[0], run_id,
+                                             replica, partition, options,
+                                             returned_futures.has_value());
   } else {
     absl::Mutex mu;
     int preparing = num_addressable_devices;
@@ -1148,9 +1153,10 @@ CommonPjRtLoadedExecutable::Execute(
           // Two phase launch. Phase 1: Prepare on all cores. Abort
           // launch on prepare failure.
           std::optional<ExecuteLaunchArgs> launch_args;
-          absl::Status launch_status = ExecutePrepareWithOomRetries(
-              launch_args, argument_handles[i], replica, partition, options,
-              /*host_callback_idx=*/i);
+          absl::Status launch_status =
+              ExecutePrepareWithOomRetries(launch_args, argument_handles[i],
+                                           run_id, replica, partition, options,
+                                           /*host_callback_idx=*/i);
           // Wait for prepare to finish on all cores.
           {
             absl::MutexLock lock(mu);

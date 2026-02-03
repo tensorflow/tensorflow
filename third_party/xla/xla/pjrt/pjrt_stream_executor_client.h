@@ -318,6 +318,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
 
+  std::unique_ptr<PjRtDeviceEventSet> CreateDeviceEventSet(
+      size_t preallocated_size) const override;
+
   // Caller is responsible to ensure that `data` has allocated enough memory
   // for `buffer_size` to do DMA mapping.
   absl::Status DmaMap(void* data, size_t buffer_size) override;
@@ -628,10 +631,8 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> StartRawExecutable(
-      const ExecuteOptions& options, int replica, int partition,
-      PjRtDevice* device) const override {
-    return std::unique_ptr<PjRtRawLoadedExecutable>();
-  }
+      const ExecuteOptions& options, xla::RunId run_id, int replica,
+      int partition, PjRtDevice* device) const override;
 
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override {
@@ -720,11 +721,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   // donated due to aliases that were specified by the computation.
   absl::Status SetUpDonation(bool tuple_inputs);
 
-  absl::StatusOr<Result> ExecuteHelper(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      bool fill_future, PjRtDevice* device = nullptr) const;
-
   absl::Status VerifyCompatibleDevices() const;
 
   // Create shared pointers so we can free them after the execution: with
@@ -735,9 +731,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   std::shared_ptr<LocalExecutable> executable_;
   // On device shapes of the executable parameters.
   std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  // Per-executable sorted vector of parameters that have any aliased buffers
-  // and thus must be donated when executing the computation.
-  std::vector<int> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
   CompileOptions compile_options_;
 

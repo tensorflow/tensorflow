@@ -34,6 +34,10 @@ struct HsacoPath {
 struct CompilationResult {
   std::variant<AsmText, HsacoPath> compiled_output;
   int64_t smem_bytes;
+  int32_t global_scratch_size;
+  int cluster_dim_x;
+  int cluster_dim_y;
+  int cluster_dim_z;
 };
 
 absl::StatusOr<CompilationResult> Compile(absl::string_view module,

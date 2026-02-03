@@ -153,6 +153,7 @@ message KernelThunkProto {
   optional stream_executor.ClusterDimProto cluster_dim = 5;
   int64 shmem_bytes = 6;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;
+  repeated int64 zeroed_output_buffer_indices = 9;
 }
 
 message GemmThunkProto {
@@ -274,18 +275,18 @@ message CublasLtMatmulThunkProto {
   xla.BlasLtEpilogueProto epilogue = 2;
   int64 algorithm_idx = 3;
   string canonical_hlo = 4;
-  xla.buffer_assignment.BufferAllocationSliceProto a = 5;
-  xla.buffer_assignment.BufferAllocationSliceProto b = 6;
-  xla.buffer_assignment.BufferAllocationSliceProto c = 7;
-  xla.buffer_assignment.BufferAllocationSliceProto d = 8;
-  optional xla.buffer_assignment.BufferAllocationSliceProto bias = 9;
-  optional xla.buffer_assignment.BufferAllocationSliceProto aux = 10;
-  optional xla.buffer_assignment.BufferAllocationSliceProto a_scale = 11;
-  optional xla.buffer_assignment.BufferAllocationSliceProto b_scale = 12;
-  optional xla.buffer_assignment.BufferAllocationSliceProto c_scale = 13;
-  optional xla.buffer_assignment.BufferAllocationSliceProto d_scale = 14;
-  optional xla.buffer_assignment.BufferAllocationSliceProto d_amax = 15;
-  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 16;
+  ShapedSliceProto a = 5;
+  ShapedSliceProto b = 6;
+  ShapedSliceProto c = 7;
+  ShapedSliceProto d = 8;
+  optional ShapedSliceProto bias = 9;
+  optional ShapedSliceProto aux = 10;
+  optional ShapedSliceProto a_scale = 11;
+  optional ShapedSliceProto b_scale = 12;
+  optional ShapedSliceProto c_scale = 13;
+  optional ShapedSliceProto d_scale = 14;
+  optional ShapedSliceProto d_amax = 15;
+  optional ShapedSliceProto workspace = 16;
   int64 autotune_workspace_size = 17;
 }
 
@@ -340,7 +341,7 @@ message CustomCallThunkProto {
   bytes opaque = 4;
   CustomCallApiVersion api_version = 5;
   xla.ffi.AttributesMapProto attributes = 6;
-  // The name of the called computation. It needs to match the HloCompuation in
+  // The name of the called computation. It needs to match the HloComputation in
   // the HloModule that is used to deserialize the thunk.
   optional string called_computation = 7;
   optional xla.ffi.ExecutionStateProto execution_state = 8;

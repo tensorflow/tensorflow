@@ -127,6 +127,44 @@ std::optional<DimensionSharding> DimensionSharding::Slice(const Mesh& mesh,
   return DimensionSharding(sliced_axes, is_closed_);
 }
 
+bool DimensionSharding::IsPrefixOf(const DimensionSharding& other,
+                                   const Mesh& mesh,
+                                   const Mesh& other_mesh) const {
+  if (!mesh.DeviceAssignmentEquals(other_mesh) ||
+      axes().size() > other.axes().size()) {
+    return false;
+  }
+  if (axes().empty()) {
+    return true;
+  }
+
+  for (size_t i = 0; i < axes().size() - 1; ++i) {
+    if (axes()[i] != other.axes()[i]) {
+      return false;
+    }
+  }
+
+  const AxisRef& last = axes().back();
+  const AxisRef& other_last = other.axes()[axes().size() - 1];
+
+  if (last.mesh_axis_index() != other_last.mesh_axis_index()) {
+    return false;
+  }
+
+  int64_t last_pre = last.sub_axis_info() ? last.sub_axis_info()->pre_size : 1;
+  int64_t other_last_pre =
+      other_last.sub_axis_info() ? other_last.sub_axis_info()->pre_size : 1;
+  if (last_pre != other_last_pre) {
+    return false;
+  }
+
+  if (other_last.size(other_mesh) % last.size(mesh) != 0) {
+    return false;
+  }
+
+  return true;
+}
+
 int64_t DimensionSharding::getShardedSize(const Mesh& mesh) const {
   return std::accumulate(axes_.begin(), axes_.end(), 1,
                          [&mesh](int64_t cur, const AxisRef& axis) {

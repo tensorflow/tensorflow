@@ -123,13 +123,20 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
   }
   auto [loaded_variable_promise, loaded_variable_future] =
       tsl::MakePromise<xla::ifrt::ArrayRef>();
-  TF_RETURN_IF_ERROR(loaded_variable_registry.TryRegisterLoadedVariable(
+  absl::Status status = loaded_variable_registry.TryRegisterLoadedVariable(
       key,
       [&]() -> absl::StatusOr<
                 ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable> {
         return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
             {.array = loaded_variable_future});
-      }));
+      });
+
+  if (absl::IsAlreadyExists(status)) {
+    // Variable is already registered, so we don't need to load it again. This
+    // can happen in parallel warmup.
+    return absl::OkStatus();
+  }
+  TF_RETURN_IF_ERROR(status);
 
   tensorflow::Context bg_context(tensorflow::ContextKind::kThread);
   restored_tensor_future.OnReady(

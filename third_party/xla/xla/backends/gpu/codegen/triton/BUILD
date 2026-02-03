@@ -27,7 +27,6 @@ cc_library(
     deps = [
         ":xtile_compiler",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/runtime:kernel_thunk",
@@ -144,6 +143,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
@@ -227,6 +227,7 @@ cc_library(
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "//xla/service:dump",
         "//xla/service:hlo_module_config",
+        "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",

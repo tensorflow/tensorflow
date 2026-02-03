@@ -82,6 +82,8 @@ class RawSEDeviceMemory {
       se::DeviceAddressBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
 
+  static tsl::AsyncValueRef<RawSEDeviceMemory> CreateSlice(
+      tsl::AsyncValueRef<RawSEDeviceMemory> base, size_t offset, size_t size);
   // Returns a definition event (or nullptr if the definition is known to be in
   // the past).
   virtual absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(

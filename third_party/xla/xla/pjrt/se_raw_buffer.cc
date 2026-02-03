@@ -271,9 +271,12 @@ void PjRtStreamExecutorRawBuffer::ReadDynamicShape(
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 PjRtStreamExecutorRawBuffer::RemoveDynamicShapeMetadataIfPresent(
     const xla::Shape& logical_shape) {
-  // TODO(parkers): This is to match the existing logic, but we probably want to
-  // handle this properly.
-  return tsl::FormRef(this);
+  TransferManager* transfer_manager =
+      client_->client()->backend().transfer_manager();
+  size_t size = transfer_manager->GetByteSizeRequirement(logical_shape);
+  return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
+      client_, memory_space_, local_device_,
+      RawSEDeviceMemory::CreateSlice(device_buffer_, 0, size));
 }
 
 void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(

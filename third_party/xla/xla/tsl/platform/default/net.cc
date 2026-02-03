@@ -36,7 +36,7 @@ limitations under the License.
 #define MIN_EPHEMERAL_PORT 32768
 
 namespace tsl {
-namespace internal {
+namespace net {
 
 namespace {
 bool IsPortAvailable(int* port, bool is_tcp) {
@@ -198,5 +198,5 @@ void RecycleUnusedPort(int port) {
            "and not yet recycled.";
   }
 }
-}  // namespace internal
+}  // namespace net
 }  // namespace tsl

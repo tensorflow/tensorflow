@@ -58,6 +58,8 @@ class H2DTransferExecutor {
   // started in this call or in a later call of `RunH2DTransfers`.
   virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
       const tensorflow::Tensor& tensor,
+      // `input_xla_shape` is not used in this implementation.
+      const xla::Shape* /*input_xla_shape*/,
       const xla::ifrt::DeviceListRef& device_list,
       const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool,
       const xla::ifrt::LayoutRef& xla_input_layout);

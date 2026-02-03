@@ -44,6 +44,8 @@ HANDLE_CUSTOM_TF_TYPE(Variant, VARIANT, "variant")
 #endif
 HANDLE_TF_REF_TYPE(FloatRef, FLOAT_REF, "f32ref")
 HANDLE_TF_REF_TYPE(DoubleRef, DOUBLE_REF, "f64ref")
+HANDLE_TF_REF_TYPE(Uint2Ref, UINT2_REF, "uint2ref")
+HANDLE_TF_REF_TYPE(Int2Ref, INT2_REF, "int2ref")
 HANDLE_TF_REF_TYPE(Uint4Ref, UINT4_REF, "uint4ref")
 HANDLE_TF_REF_TYPE(Int4Ref, INT4_REF, "int4ref")
 HANDLE_TF_REF_TYPE(Uint8Ref, UINT8_REF, "uint8ref")

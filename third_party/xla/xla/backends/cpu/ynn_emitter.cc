@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/dot_dims.h"
 #include "xla/backends/cpu/runtime/ynnpack/ynn_interop.h"
@@ -102,9 +103,39 @@ static absl::StatusOr<uint32_t> DefineTensorValue(ynn_subgraph_t subgraph,
   return tensor_id;
 }
 
-static absl::StatusOr<uint32_t> DefineConstant(
-    ynn_subgraph_t subgraph, std::vector<std::unique_ptr<Literal>>& literals,
-    const HloInstruction* instr) {
+namespace {
+
+class Literals {
+  absl::Mutex mutex_;
+  std::vector<std::unique_ptr<Literal>> literals_;
+
+ public:
+  Literals() = default;
+
+  Literals(const Literals&) = delete;
+  Literals& operator=(const Literals&) = delete;
+
+  Literals(Literals&& rhs) : literals_(std::move(rhs.literals_)) {}
+
+  Literals& operator=(Literals&& rhs) {
+    if (this != &rhs) {
+      literals_ = std::move(rhs.literals_);
+    }
+    return *this;
+  }
+
+  const void* Add(std::unique_ptr<Literal> literal) {
+    absl::MutexLock lock(mutex_);
+    literals_.push_back(std::move(literal));
+    return literals_.back()->untyped_data();
+  }
+};
+
+}  // anonymous namespace
+
+static absl::StatusOr<uint32_t> DefineConstant(ynn_subgraph_t subgraph,
+                                               Literals& literals,
+                                               const HloInstruction* instr) {
   // We do not support instructions with multiple results (tuples).
   if (!instr->shape().IsArray()) {
     return Internal("Unsupported YNNPACK instruction shape: %s",
@@ -116,8 +147,7 @@ static absl::StatusOr<uint32_t> DefineConstant(
 
   uint32_t tensor_id = YNN_INVALID_VALUE_ID;
 
-  literals.push_back(instr->literal().CloneToUnique());
-  const void* value = literals.back()->untyped_data();
+  const void* value = literals.Add(instr->literal().CloneToUnique());
 
   YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
       subgraph, type, dims.size(), dims.data(), /*data=*/value,
@@ -302,8 +332,7 @@ static absl::StatusOr<uint32_t> DefineDotOp(ynn_subgraph_t subgraph,
 //===----------------------------------------------------------------------===//
 
 static absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(
-    const HloComputation* computation,
-    std::vector<std::unique_ptr<Literal>>& literals) {
+    const HloComputation* computation, Literals& literals) {
   VLOG(3) << "Emit YNNPACK subgraph for computation: " << computation->name();
 
   TF_ASSIGN_OR_RETURN(
@@ -576,8 +605,7 @@ static ynn_status DefineConvolution(
 }
 
 static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
-    const HloDotInstruction* dot,
-    std::vector<std::unique_ptr<Literal>>& literals,
+    const HloDotInstruction* dot, Literals& literals,
     absl::Span<const se::DeviceAddressBase> arguments_buffers,
     bool capture_rhs) {
   // TODO(b/468895209): Use the fusion emitter above instead of replicating the
@@ -652,8 +680,7 @@ static absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
 }
 
 static absl::StatusOr<YnnSubgraph> EmitYnnConvolutionSubgraph(
-    const HloConvolutionInstruction* conv,
-    std::vector<std::unique_ptr<Literal>>& literals,
+    const HloConvolutionInstruction* conv, Literals& literals,
     absl::Span<const se::DeviceAddressBase> arguments_buffers) {
   TF_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
@@ -764,7 +791,7 @@ EmitYnnFusionBuilder(const HloComputation* computation) {
   }
 
   return
-      [computation, literals = std::vector<std::unique_ptr<Literal>>()](
+      [computation, literals = Literals()](
           absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
         return EmitYnnSubgraph(computation, literals);
       };
@@ -774,7 +801,7 @@ absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
     absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnDotBuilder(const HloDotInstruction* dot, bool capture_rhs) {
   return
-      [dot, capture_rhs, literals = std::vector<std::unique_ptr<Literal>>()](
+      [dot, capture_rhs, literals = Literals()](
           absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
         return EmitYnnDotSubgraph(dot, literals, arguments_buffers,
                                   capture_rhs);
@@ -785,7 +812,7 @@ absl::StatusOr<absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
     absl::Span<const se::DeviceAddressBase> arguments_buffers)>>
 EmitYnnConvolutionBuilder(const HloConvolutionInstruction* conv) {
   return
-      [conv, literals = std::vector<std::unique_ptr<Literal>>()](
+      [conv, literals = Literals()](
           absl::Span<const se::DeviceAddressBase> arguments_buffers) mutable {
         return EmitYnnConvolutionSubgraph(conv, literals, arguments_buffers);
       };

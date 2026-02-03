@@ -731,7 +731,7 @@ Build(
 Build(
     type_=BuildType.JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_windows_amd64_new",),
+    configs=("rbe_windows_amd64",),
     target_patterns=(
         "//tests:cpu_tests",
         "//tests:backend_independent_tests",

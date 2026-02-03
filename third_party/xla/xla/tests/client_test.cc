@@ -14,63 +14,55 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
-#include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class ClientTest : public ClientLibraryTestBase {};
+class ClientTest : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 TEST_F(ClientTest, ExecuteWithLayout) {
   XlaBuilder b(TestName());
 
   std::vector<std::vector<int64_t>> layouts = {{0, 1}, {1, 0}};
-  for (const std::vector<int64_t>& execute_layout : layouts) {
-    for (const std::vector<int64_t>& transfer_layout : layouts) {
-      Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
-          ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}}));
-      TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
-      ExecutionOptions execution_options = execution_options_;
-      *execution_options.mutable_shape_with_output_layout() =
-          ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
-                                              execute_layout)
-              .ToProto();
-      TF_ASSERT_OK_AND_ASSIGN(
-          std::unique_ptr<GlobalData> data,
-          client_->Execute(computation, {}, &execution_options));
+  for (const std::vector<int64_t>& layout : layouts) {
+    Add(ConstantR2<int32_t>(&b, {{1, 2}, {3, 4}}),
+        ConstantR2<int32_t>(&b, {{10, 20}, {30, 40}}));
+    TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
-      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
-          {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
+    Shape shape_with_layout =
+        ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2}, layout);
 
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto computed, client_->Transfer(*data, &expected_literal.shape()));
+    Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32_t>(
+        {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(layout));
 
-      ASSERT_THAT(
-          computed.shape().ToProto(),
-          tsl::proto_testing::EqualsProto(expected_literal.shape().ToProto()));
-      EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
-    }
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal computed,
+        ExecuteAndTransfer(computation, {}, &shape_with_layout));
+
+    ASSERT_THAT(
+        computed.shape().ToProto(),
+        tsl::proto_testing::EqualsProto(expected_literal.shape().ToProto()));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
 }
 
@@ -82,20 +74,16 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
 
-  ExecutionOptions execution_options = execution_options_;
   // Create a result shape with one element column major and the other row
   // major.
-  *execution_options.mutable_shape_with_output_layout() =
-      ShapeUtil::MakeTupleShape(
-          {ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
-                                               /*minor_to_major=*/{0, 1}),
-           ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
-                                               /*minor_to_major=*/{1, 0})})
-          .ToProto();
+  Shape shape_with_layout = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{0, 1}),
+       ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{1, 0})});
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
-      client_->ExecuteAndTransfer(computation, {}, &execution_options));
+      Literal result, ExecuteAndTransfer(computation, {}, &shape_with_layout));
   LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2}, {3, 4}},
                                           LiteralSlice(result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32_t>({{10, 20}, {30, 40}},

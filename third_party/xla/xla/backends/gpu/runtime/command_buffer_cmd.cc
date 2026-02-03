@@ -1087,19 +1087,33 @@ absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
   TF_RETURN_IF_ERROR(GetCachedMatmulPlan(execute_params).status());
 
   VLOG(5) << "CublasLtCmd:";
-  VLOG(5) << "  a_buffer: " << a_.ToString();
-  VLOG(5) << "  b_buffer: " << b_.ToString();
-  VLOG(5) << "  c_buffer: " << c_.ToString();
-  VLOG(5) << "  d_buffer: " << d_.ToString();
-  VLOG(5) << "  bias_buffer: " << bias_.ToString();
-  VLOG(5) << "  aux_buffer: " << aux_.ToString();
-  VLOG(5) << "  a_scale_buffer: " << a_scale_.ToString();
-  VLOG(5) << "  b_scale_buffer: " << b_scale_.ToString();
-  VLOG(5) << "  c_scale_buffer: " << c_scale_.ToString();
-  VLOG(5) << "  d_scale_buffer: " << d_scale_.ToString();
-  VLOG(5) << "  d_amax_buffer: " << d_amax_.ToString();
+  VLOG(5) << "  a_buffer: " << a_.slice.ToString();
+  VLOG(5) << "  b_buffer: " << b_.slice.ToString();
+  VLOG(5) << "  c_buffer: " << c_.slice.ToString();
+  VLOG(5) << "  d_buffer: " << d_.slice.ToString();
+  if (bias_.has_value()) {
+    VLOG(5) << "  bias_buffer: " << bias_->slice.ToString();
+  }
+  if (aux_.has_value()) {
+    VLOG(5) << "  aux_buffer: " << aux_->slice.ToString();
+  }
+  if (a_scale_.has_value()) {
+    VLOG(5) << "  a_scale_buffer: " << a_scale_->slice.ToString();
+  }
+  if (b_scale_.has_value()) {
+    VLOG(5) << "  b_scale_buffer: " << b_scale_->slice.ToString();
+  }
+  if (c_scale_.has_value()) {
+    VLOG(5) << "  c_scale_buffer: " << c_scale_->slice.ToString();
+  }
+  if (d_scale_.has_value()) {
+    VLOG(5) << "  d_scale_buffer: " << d_scale_->slice.ToString();
+  }
+  if (d_amax_.has_value()) {
+    VLOG(5) << "  d_amax_buffer: " << d_amax_->slice.ToString();
+  }
   // workspace buffer is guaranteed to be non-null here.
-  VLOG(5) << "  workspace_buffer: " << workspace_->ToString();
+  VLOG(5) << "  workspace_buffer: " << workspace_->slice.ToString();
 
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
@@ -1111,32 +1125,33 @@ absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
 Command::BufferUseVector CublasLtCmd::buffers() const {
   BufferUseVector buffer_usage;
   buffer_usage.reserve(13);
-  buffer_usage.push_back(BufferUse::Read(a_));
-  buffer_usage.push_back(BufferUse::Read(b_));
-  buffer_usage.push_back(BufferUse::Read(c_));
-  buffer_usage.push_back(BufferUse::Write(d_));
-  buffer_usage.push_back(BufferUse::Write(*workspace_));
+  buffer_usage.push_back(BufferUse::Read(a_.slice, a_.shape));
+  buffer_usage.push_back(BufferUse::Read(b_.slice, b_.shape));
+  buffer_usage.push_back(BufferUse::Read(c_.slice, c_.shape));
+  buffer_usage.push_back(BufferUse::Write(d_.slice, d_.shape));
+  buffer_usage.push_back(
+      BufferUse::Write(workspace_->slice, workspace_->shape));
 
-  if (bias_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(bias_));
+  if (bias_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(bias_->slice, bias_->shape));
   }
-  if (a_scale_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(a_scale_));
+  if (a_scale_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(a_scale_->slice, a_scale_->shape));
   }
-  if (b_scale_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(b_scale_));
+  if (b_scale_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(b_scale_->slice, b_scale_->shape));
   }
-  if (c_scale_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(c_scale_));
+  if (c_scale_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(c_scale_->slice, c_scale_->shape));
   }
-  if (d_scale_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(d_scale_));
+  if (d_scale_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(d_scale_->slice, d_scale_->shape));
   }
-  if (aux_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Write(aux_));
+  if (aux_.has_value()) {
+    buffer_usage.push_back(BufferUse::Write(aux_->slice, aux_->shape));
   }
-  if (d_amax_.allocation() != nullptr) {
-    buffer_usage.push_back(BufferUse::Read(d_amax_));
+  if (d_amax_.has_value()) {
+    buffer_usage.push_back(BufferUse::Read(d_amax_->slice, d_amax_->shape));
   }
   return buffer_usage;
 }

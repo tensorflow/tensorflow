@@ -164,12 +164,13 @@ TEST(CommandBufferCmdStateManageTest, GetOrCreateState) {
 TEST(CommandBufferCmdTest, SerializeExecution) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(U8, {100});
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers by default.
-  auto use0 = BufferUse::Read(slice0);
-  auto use1 = BufferUse::Read(slice1);
+  auto use0 = BufferUse::Read(slice0, shape);
+  auto use1 = BufferUse::Read(slice1, shape);
 
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUseVector{use0});
@@ -184,12 +185,13 @@ TEST(CommandBufferCmdTest, SerializeExecution) {
 TEST(CommandBufferCmdTest, NoReadBarrier) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(U8, {100});
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices do not require barriers.
-  auto use0 = BufferUse::Read(slice0);
-  auto use1 = BufferUse::Read(slice1);
+  auto use0 = BufferUse::Read(slice0, shape);
+  auto use1 = BufferUse::Read(slice1, shape);
 
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUseVector{use0});
@@ -205,11 +207,12 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
   // Writes to non-overlapping slices do not require barriers.
+  Shape shape = ShapeUtil::MakeShape(U8, {100});
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 200, 100);
 
-  auto use0 = BufferUse::Write(slice0);
-  auto use1 = BufferUse::Write(slice1);
+  auto use0 = BufferUse::Write(slice0, shape);
+  auto use1 = BufferUse::Write(slice1, shape);
 
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUseVector{use0});
@@ -224,14 +227,15 @@ TEST(CommandBufferCmdTest, NoWriteBarrier) {
 TEST(CommandBufferCmdTest, WriteConflictBarrier) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(U8, {100});
   auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
   auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
 
   // Reads from overlapping slices can be done in parallel, and before a write
   // into overlapping slice we need to insert a barrier.
-  auto use0 = BufferUse::Read(slice0);
-  auto use1 = BufferUse::Read(slice0);
-  auto use2 = BufferUse::Write(slice1);
+  auto use0 = BufferUse::Read(slice0, shape);
+  auto use1 = BufferUse::Read(slice0, shape);
+  auto use2 = BufferUse::Write(slice1, shape);
 
   CommandSequence commands;
   commands.Emplace<TestOnlyCommandBufferCmd>(Command::BufferUseVector{use0});
@@ -516,9 +520,10 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
     BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
     BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
+    Shape shape = ShapeUtil::MakeShape(U8, {1024});
     Command::BufferUseVector buffers = {
-        BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
-        BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
+        BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024), shape),
+        BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024), shape)};
 
     TracedCommandBuffer traced_cmd_buffer(&traced_cmd, buffers,
                                           /*capacity=*/trace_cache_size);
@@ -860,9 +865,10 @@ static void BM_GetOrTraceCommandBuffer(benchmark::State& state) {
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
 
+  Shape shape = ShapeUtil::MakeShape(U8, {1024});
   Command::BufferUseVector buffers = {
-      BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024)),
-      BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024))};
+      BufferUse::Read(BufferAllocation::Slice(&alloc0, 0, 1024), shape),
+      BufferUse::Write(BufferAllocation::Slice(&alloc1, 0, 1024), shape)};
 
   se::DeviceAddressBase mem0(reinterpret_cast<void*>(0x01234567));
   se::DeviceAddressBase mem1(reinterpret_cast<void*>(0x12345670));

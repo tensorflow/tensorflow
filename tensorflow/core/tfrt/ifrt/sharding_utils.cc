@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#include "xla/python/ifrt/layout.h"
-#include "xla/xla_data.pb.h"
 #define EIGEN_USE_THREADS
+
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -53,13 +54,13 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
-#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tpu/kernels/sharding_utils.h"
 
 namespace tensorflow {
@@ -663,7 +664,7 @@ H2DTransferExecutor::H2DTransferExecutor(xla::ifrt::Client& ifrt_client)
 
 absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
 H2DTransferExecutor::ScheduledH2DTransfer(
-    const tensorflow::Tensor& tensor,
+    const tensorflow::Tensor& tensor, const xla::Shape* /*input_xla_shape*/,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool,
     const xla::ifrt::LayoutRef& xla_input_layout) {

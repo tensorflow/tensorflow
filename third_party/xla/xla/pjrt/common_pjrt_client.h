@@ -377,8 +377,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   };
 
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-  StartRawExecutable(const ExecuteOptions& options, int replica, int partition,
-                     PjRtDevice* device) const = 0;
+  StartRawExecutable(const ExecuteOptions& options, xla::RunId run_id,
+                     int replica, int partition, PjRtDevice* device) const = 0;
 
   // Returns a sorted list of the parameters that must be donated as a
   // side-effect of the execution. Derived classes may use custom logic.
@@ -396,22 +396,22 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::Status ExecutePrepare(ExecuteLaunchArgs& launch_args,
                               absl::Span<PjRtBuffer* const> argument_handles,
-                              int replica, int partition,
+                              xla::RunId run_id, int replica, int partition,
                               const ExecuteOptions& options,
                               size_t host_callback_idx,
                               PjRtDevice* device) const;
 
   // Run Prepare and Launch phases on a single device.
   absl::StatusOr<Result> ExecuteHelperOnSingleDevice(
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const ExecuteOptions& options, bool fill_future,
-      PjRtDevice* device = nullptr) const;
+      absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
+      int replica, int partition, const ExecuteOptions& options,
+      bool fill_future, PjRtDevice* device = nullptr) const;
 
   absl::Status ExecutePrepareWithOomRetries(
       std::optional<ExecuteLaunchArgs>& launch_args,
-      absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const ExecuteOptions& options, size_t host_callback_idx,
-      PjRtDevice* device = nullptr) const;
+      absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
+      int replica, int partition, const ExecuteOptions& options,
+      size_t host_callback_idx, PjRtDevice* device = nullptr) const;
 
   virtual void LaunchOnDevice(PjRtDevice* device,
                               absl::AnyInvocable<void()> execute_fn) const = 0;

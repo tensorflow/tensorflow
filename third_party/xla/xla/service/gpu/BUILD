@@ -1819,7 +1819,6 @@ cc_library(
         "//xla/service/gpu/transforms:gemm_fusion",
         "//xla/service/gpu/transforms:gemm_fusion_swap_operands",
         "//xla/service/gpu/transforms:gemm_rewriter",
-        "//xla/service/gpu/transforms:gemm_workspace_rewriter",
         "//xla/service/gpu/transforms:gemv_rewriter",
         "//xla/service/gpu/transforms:hoist_fused_bitcasts",
         "//xla/service/gpu/transforms:layout_assignment",

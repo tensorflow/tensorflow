@@ -512,6 +512,7 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
 struct IsUntiledLayoutTestCase {
   std::vector<int64_t> shape;
   std::vector<Tile> tiles;
+  bool allow_trailing_padding;
   bool expected_result;
 };
 
@@ -519,15 +520,52 @@ using IsUntiledLayoutTest = ::testing::TestWithParam<IsUntiledLayoutTestCase>;
 
 TEST_P(IsUntiledLayoutTest, IsUntiledLayout) {
   IsUntiledLayoutTestCase params = GetParam();
-  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape),
+  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape,
+                                        params.allow_trailing_padding),
             params.expected_result);
 }
 
-INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
-                         ::testing::ValuesIn<IsUntiledLayoutTestCase>(
-                             {{{24, 128}, {Tile({8, 128})}, true},
-                              {{4, 256}, {Tile({1, 128})}, true},
-                              {{2, 3, 4}, {Tile({8, 128})}, false}}));
+INSTANTIATE_TEST_SUITE_P(
+    IsUntiledLayoutTests, IsUntiledLayoutTest,
+    ::testing::ValuesIn<IsUntiledLayoutTestCase>({
+        // Exact tile match.
+        {{8, 128}, {Tile({8, 128})}, /*allow_trailing_padding=*/false, true},
+        // Multiple tiles in major dimension.
+        {{24, 128}, {Tile({8, 128})}, /*allow_trailing_padding=*/false, true},
+        // Multiple tiles in minor dimension (256 = 2 * 128) with trivial major
+        // tile dim (1). This is effectively just tiling the minor dimension.
+        {{4, 256}, {Tile({1, 128})}, /*allow_trailing_padding=*/false, true},
+        // Multiple tiles in minor dimension (256 = 2 * 128) with non-trivial
+        // major tile dim (8). This causes non-contiguous layout: (8, 2, 8, 128)
+        // physical vs (8, 256) logical.
+        {{8, 256}, {Tile({8, 128})}, /*allow_trailing_padding=*/false, false},
+        // Padding required but not allowed.
+        {{1, 8}, {Tile({1, 128})}, /*allow_trailing_padding=*/false, false},
+        // Padding required and allowed.
+        {{1, 8}, {Tile({1, 128})}, /*allow_trailing_padding=*/true, true},
+        // Padding required, but not trailing (repeated 4 times).
+        {{4, 8}, {Tile({1, 128})}, /*allow_trailing_padding=*/false, false},
+        // Padding required and allowed, but still not trailing.
+        {{4, 8}, {Tile({1, 128})}, /*allow_trailing_padding=*/true, false},
+        // Multiple tiles in both dimensions. Non-contiguous.
+        {{16, 256}, {Tile({8, 128})}, /*allow_trailing_padding=*/false, false},
+        // 1D exact match with multiple tiles.
+        {{16}, {Tile({8})}, /*allow_trailing_padding=*/false, true},
+        // 1D padding required but not allowed.
+        {{12}, {Tile({8})}, /*allow_trailing_padding=*/false, false},
+        // 1D padding required and allowed.
+        {{12}, {Tile({8})}, /*allow_trailing_padding=*/true, true},
+        // Untiled prefix dimensions must also be singletons for trailing
+        // padding. 2x8x100 with T(8, 128) expands to 2x1x1x8x128; the leading
+        // 2 means there's internal padding between the two rows.
+        {{2, 8, 100}, {Tile({8, 128})}, /*allow_trailing_padding=*/true, false},
+        // Padding in minor dimension (100 -> 128) is repeated by the
+        // non-trivial major dimension (8), creating internal gaps.
+        {{1, 8, 100}, {Tile({8, 128})}, /*allow_trailing_padding=*/true, false},
+        // Padding in major dimension (3 -> 8) is followed by a dense minor
+        // dimension, so it remains trailing.
+        {{1, 3, 128}, {Tile({8, 128})}, /*allow_trailing_padding=*/true, true},
+    }));
 
 }  // namespace
 }  // namespace xla
