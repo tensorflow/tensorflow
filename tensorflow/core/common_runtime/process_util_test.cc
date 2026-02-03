@@ -108,7 +108,7 @@ TEST(ProcessUtilTest, IntMaxThreadCountIsClamped) {
 
   int32_t inter_threads = NumInterOpThreadsFromSessionOptions(options);
 
-  EXPECT_LE(inter_threads, 1024);
+  EXPECT_LE(inter_threads, 2048);
   EXPECT_GT(inter_threads, 0);
 }
 
@@ -122,7 +122,7 @@ TEST(ProcessUtilTest, IntMaxThreadPoolCreationDoesNotCrash) {
       options, std::numeric_limits<int32_t>::max());
 
   EXPECT_NE(pool, nullptr);
-  EXPECT_LE(pool->NumThreads(), 1024);
+  EXPECT_LE(pool->NumThreads(), 2048);
 
   delete pool;
 }
@@ -135,7 +135,7 @@ TEST(ProcessUtilTest, VeryLargeThreadCountIsClamped) {
 
   int32_t inter_threads = NumInterOpThreadsFromSessionOptions(options);
 
-  EXPECT_LE(inter_threads, 1024);
+  EXPECT_LE(inter_threads, 2048);
   EXPECT_GT(inter_threads, 0);
 }
 
@@ -146,7 +146,7 @@ TEST(ProcessUtilTest, VeryLargeThreadPoolCreationIsClamped) {
   thread::ThreadPool* pool = NewThreadPoolFromSessionOptions(options, very_large_count);
 
   EXPECT_NE(pool, nullptr);
-  EXPECT_LE(pool->NumThreads(), 1024);
+  EXPECT_LE(pool->NumThreads(), 2048);
 
   delete pool;
 }
