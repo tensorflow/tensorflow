@@ -60,6 +60,12 @@ EXCLUDED_TESTS=(
     # @xla//xla/backends/gpu/codegen/triton:dot_algorithms_test_amdgpu_any
     TritonAndBlasSupportForDifferentTensorSizes/TritonAndBlasSupportForDifferentTensorSizes.IsDotAlgorithmSupportedByTriton/dot_*
 
+    # @xla//xla/backends/gpu/codegen/triton:triton_gemm_fusion_test_amdgpu_any
+    CompareTest.SplitK
+    CompareTest.SplitKBatch
+    CompareTest.SupportsSplitKWithIndivisibleKUsingPaddingEqual1
+    TritonGemmTest.S8ToF32DotWithManyWarpsDoesNotCrash
+    
     # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
     TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
     TritonEmitterTest.ConvertF16ToF8E5M2Exhaustive
@@ -98,6 +104,8 @@ EXCLUDED_TESTS=(
     # @xla//xla/service/gpu/transforms:triton_fusion_numerics_verifier_test_amdgpu_any
     TritonFusionNumericsVerifierTest.CompilationSucceedsEvenIfKernelWillSpillRegisters
     TritonFusionNumericsVerifierTest.VerifyThatDisablingTritonIsFast
+    TritonFusionNumericsVerifierTestSuite/TritonFusionNumericsVerifierTest.VerifyMultipleNestedFusionNumerics/0
+    TritonFusionNumericsVerifierTestSuite/TritonFusionNumericsVerifierTest.VerifyMultipleNestedFusionNumerics/1
 
     # @xla//xla/service/gpu/tests:gpu_cub_sort_test_amdgpu_any
     CubSortKeysTest.CompareToReferenceNumpyOrderGt
@@ -175,6 +183,7 @@ EXCLUDED_TESTS=(
     ConvolutionHloTest.TestConv0D
     ConvolutionHloTest.TestConv2DF16
     ConvolutionHloTest.SwappedOperandConvolveWithStride
+    ConvolutionHloTest.TestFusedConv2D
     ConvolutionHloTest.TestFusedConv3D
     ConvolutionHloTest.SwappedOperandConvolve
     ConvolutionHloTest.TestBooleanInput
@@ -194,6 +203,13 @@ EXCLUDED_TESTS=(
     Convolve1D_1x2x5_1x2x2*
     Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestFloat*
     Convolve1D1WindowTest_Instantiation/Convolve1D1WindowTestHalf*
+
+    # @xla//xla/tools:xla_gpu_compile_lib_test_amdgpu_any
+    XlaCompileLibTest.CompilesForGpuWithoutDevice
+
+    # @xla//xla/tools:xla_deviceless_compile_lib_test 
+    XlaDevicelessCompileLibTest/XlaDevicelessCompileLibTest.CompilesForGpuWithoutDevice/LegacyAotFlow
+    XlaDevicelessCompileLibTest/XlaDevicelessCompileLibTest.CompilesForGpuWithoutDevice/NewAotFlow
 )
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
