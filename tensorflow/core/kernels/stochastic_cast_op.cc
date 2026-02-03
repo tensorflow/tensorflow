@@ -46,8 +46,8 @@ class StochasticCastToIntOp : public internal::StochasticCastOpBase {
   void RoundOff(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
                 const Tensor& counter, Tensor* output) override {
     if (alg == RNG_ALG_PHILOX) {
-      random::PhiloxRandom gen(*counter.flat<uint64>().data(),
-                               *key.flat<uint64>().data());
+      random::PhiloxRandom gen(*counter.flat<uint64_t>().data(),
+                               *key.flat<uint64_t>().data());
       output->flat<ToType>() =
           ctx->input(0)
               .flat<FromType>()
@@ -74,38 +74,38 @@ class StochasticCastToIntOp : public internal::StochasticCastOpBase {
   REGISTER_CAST_TO_INT_KERNEL(CPU, FROM_TYPE, TO_TYPE)
 #define REGISTER_CAST_TO_INT_GPU_KERNEL(FROM_TYPE, TO_TYPE) \
   REGISTER_CAST_TO_INT_KERNEL(GPU, FROM_TYPE, TO_TYPE)
-REGISTER_CAST_TO_INT_CPU_KERNEL(half, int8);
-REGISTER_CAST_TO_INT_CPU_KERNEL(half, int16);
-REGISTER_CAST_TO_INT_CPU_KERNEL(half, int32);
+REGISTER_CAST_TO_INT_CPU_KERNEL(half, int8_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(half, int16_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(half, int32_t);
 
-REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int8);
-REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int16);
-REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int32);
+REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int8_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int16_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(bfloat16, int32_t);
 
-REGISTER_CAST_TO_INT_CPU_KERNEL(float, int8);
-REGISTER_CAST_TO_INT_CPU_KERNEL(float, int16);
-REGISTER_CAST_TO_INT_CPU_KERNEL(float, int32);
+REGISTER_CAST_TO_INT_CPU_KERNEL(float, int8_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(float, int16_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(float, int32_t);
 
-REGISTER_CAST_TO_INT_CPU_KERNEL(double, int8);
-REGISTER_CAST_TO_INT_CPU_KERNEL(double, int16);
-REGISTER_CAST_TO_INT_CPU_KERNEL(double, int32);
+REGISTER_CAST_TO_INT_CPU_KERNEL(double, int8_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(double, int16_t);
+REGISTER_CAST_TO_INT_CPU_KERNEL(double, int32_t);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER_CAST_TO_INT_GPU_KERNEL(half, int8);
-REGISTER_CAST_TO_INT_GPU_KERNEL(half, int16);
-REGISTER_CAST_TO_INT_GPU_KERNEL(half, int32);
+REGISTER_CAST_TO_INT_GPU_KERNEL(half, int8_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(half, int16_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(half, int32_t);
 
-REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int8);
-REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int16);
-REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int32);
+REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int8_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int16_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(bfloat16, int32_t);
 
-REGISTER_CAST_TO_INT_GPU_KERNEL(float, int8);
-REGISTER_CAST_TO_INT_GPU_KERNEL(float, int16);
-REGISTER_CAST_TO_INT_GPU_KERNEL(float, int32);
+REGISTER_CAST_TO_INT_GPU_KERNEL(float, int8_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(float, int16_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(float, int32_t);
 
-REGISTER_CAST_TO_INT_GPU_KERNEL(double, int8);
-REGISTER_CAST_TO_INT_GPU_KERNEL(double, int16);
-REGISTER_CAST_TO_INT_GPU_KERNEL(double, int32);
+REGISTER_CAST_TO_INT_GPU_KERNEL(double, int8_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(double, int16_t);
+REGISTER_CAST_TO_INT_GPU_KERNEL(double, int32_t);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
