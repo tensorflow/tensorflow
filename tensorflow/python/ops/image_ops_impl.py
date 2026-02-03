@@ -3809,12 +3809,10 @@ def sample_distorted_bounding_box(image_size,
 
 @tf_export('image.non_max_suppression')
 @dispatch.add_dispatch_support
-def non_max_suppression(boxes,
-                        scores,
-                        max_output_size,
-                        iou_threshold=0.5,
-                        score_threshold=float('-inf'),
-                        name=None):
+def non_max_suppression(
+       boxes, scores, max_output_size, iou_threshold=0.5, score_threshold=float('-inf'), name=None):
+       if max_output_size < 0:
+           raise ValueError(f"max_output_size cannot be negative, got {max_output_size}")
   """Greedily selects a subset of bounding boxes in descending order of score.
 
   Prunes away boxes that have high intersection-over-union (IOU) overlap
