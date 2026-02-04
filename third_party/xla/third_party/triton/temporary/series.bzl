@@ -14,5 +14,6 @@ those to this list.
 """
 
 temporary_patch_list = [
+    "//third_party/triton:temporary/include_functional.patch",
     # Add new patches just above this line. Format is "//third_party/triton:temporary/example.patch"
 ]

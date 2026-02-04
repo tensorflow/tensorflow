@@ -35,10 +35,9 @@ namespace {
 
 struct ExtractTmaInfoPass
     : public impl::ExtractTmaInfoPassBase<ExtractTmaInfoPass> {
-  std::optional<SwizzleMode> GetSwizzleMode(TensorDescType type) {
-    auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(
-        /*op=*/nullptr, type);
-    if (!swizzle_mode.has_value()) {
+  std::optional<SwizzleMode> GetSwizzleMode(Location loc, TensorDescType type) {
+    auto swizzle_mode = nvidia_gpu::getTMASwizzleMode(loc, type);
+    if (failed(swizzle_mode)) {
       return std::nullopt;
     }
     SwizzleMode swizzle_mode_enum;
@@ -79,8 +78,8 @@ struct ExtractTmaInfoPass
           return;
         }
 
-        auto swizzle_mode =
-            GetSwizzleMode(mlir::cast<TensorDescType>(arg.getType()));
+        auto swizzle_mode = GetSwizzleMode(
+            arg.getLoc(), mlir::cast<TensorDescType>(arg.getType()));
         if (!swizzle_mode.has_value()) {
           emitError(arg.getLoc(),
                     "Unable to determine swizzle mode from TensorDescType");
