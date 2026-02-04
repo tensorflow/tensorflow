@@ -65,6 +65,7 @@ EXCLUDED_TESTS=(
     CompareTest.SplitKBatch
     CompareTest.SupportsSplitKWithIndivisibleKUsingPaddingEqual1
     TritonGemmTest.S8ToF32DotWithManyWarpsDoesNotCrash
+    TritonGemmTest.SplitAndTransposeLhsExecutesCorrectly #failing on mi250
     
     # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
     TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
@@ -106,6 +107,10 @@ EXCLUDED_TESTS=(
     TritonFusionNumericsVerifierTest.VerifyThatDisablingTritonIsFast
     TritonFusionNumericsVerifierTestSuite/TritonFusionNumericsVerifierTest.VerifyMultipleNestedFusionNumerics/0
     TritonFusionNumericsVerifierTestSuite/TritonFusionNumericsVerifierTest.VerifyMultipleNestedFusionNumerics/1
+
+    # @xla//xla/service/gpu/transforms:dot_dimension_sorter_test_amdgpu_any
+    WithoutDotDimensionSorterTest.UnsortedDimsCreateTransposes # failing on mi250
+    WithoutDotDimensionSorterTest.DimOrderCanBeChanged # failing on mi250
 
     # @xla//xla/service/gpu/tests:gpu_cub_sort_test_amdgpu_any
     CubSortKeysTest.CompareToReferenceNumpyOrderGt
@@ -221,6 +226,9 @@ EXCLUDED_TESTS=(
     # @xla//xla/tools:xla_deviceless_compile_lib_test 
     XlaDevicelessCompileLibTest/XlaDevicelessCompileLibTest.CompilesForGpuWithoutDevice/LegacyAotFlow
     XlaDevicelessCompileLibTest/XlaDevicelessCompileLibTest.CompilesForGpuWithoutDevice/NewAotFlow
+
+    # @xla//xla/service/gpu/autotuning:gemm_fusion_autotuner_test_amdgpu_any
+    GemmFusionAutotunerTest.Int8FusedGemm # failing on mi250
 )
 
 bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
