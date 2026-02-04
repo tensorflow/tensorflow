@@ -6326,7 +6326,7 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         
         padding: 'VALID' or 'SAME' or int or tuple (pad_h, pad_w)
                  - 'VALID': no padding (default)
-                 - 'SAME': automatic padding to match input size
+                 - 'SAME': is not supported yet
                  - int: same padding on all sides
                  - tuple: (pad_h, pad_w) padding for height and width
                  
@@ -6393,12 +6393,9 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         if padding == 'VALID':
             pad_h = pad_w = 0
         elif padding == 'SAME':
-            effective_kernel_h = (kernel_h - 1) * dilation_h + 1
-            effective_kernel_w = (kernel_w - 1) * dilation_w + 1
-            pad_h = max(0, ((out_h - 1) * stride_h + effective_kernel_h - height) // 2)
-            pad_w = max(0, ((out_w - 1) * stride_w + effective_kernel_w - width) // 2)
+            raise NotImplementedError("SAME padding is not yet supported. Only 'VALID' or Symmetric is currently available.")
         else:
-            raise ValueError(f"padding must be 'VALID', 'SAME', int, or tuple, got {padding}")
+            raise ValueError(f"padding must be 'VALID', int, or tuple, got {padding}")
     elif isinstance(padding, int):
         pad_h = pad_w = padding
     

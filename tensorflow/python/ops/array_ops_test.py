@@ -222,9 +222,6 @@ class TestFoldNonOverlapping(test.TestCase):
         )
         self.assertAllEqual(out.shape, x.shape)
         self.assertEqual(out.dtype, x.dtype)
-        # Output should not be all zeros or NaN
-        # self.assertFalse(math_ops.reduce_all(math_ops.equal(out, 0)).numpy())
-        # self.assertFalse(math_ops.reduce_any(math_ops.is_nan(out)).numpy())
 
 
 class TestFoldOverlapping(test.TestCase):
@@ -258,7 +255,6 @@ class TestFoldOverlapping(test.TestCase):
         )
     
     self.assertAllEqual(reconstructed.shape, x.shape)
-    # print(f"original: {x} \n\n Unfold: {patches} \n\n Fold:{reconstructed}")
     self.assertEqual(reconstructed.dtype, x.dtype)
     
     overlap_counts = array_ops.constant([ #manual calc
@@ -307,9 +303,7 @@ class TestFoldOverlapping(test.TestCase):
                     kernel_size=kernel_size,
                     stride=stride,
                     padding='VALID'
-                )
-                # print(f"Original: {x} \n\n Overlap_count:{overlap_counts}")
-                # print(f"Args: \n Batch: {batch_size}; Channels:{channels}; Image_size:{image_size}; Kernel_size:{kernel_size}; Stride:{stride}")
+                )              
                 expected = x * overlap_counts                
                 self.assertAllEqual(reconstructed.shape, x.shape)      
                 self.assertEqual(reconstructed.dtype, x.dtype)
