@@ -6324,11 +6324,10 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
         
         stride: Int or tuple (stride_h, stride_w) - step between patches
         
-        padding: 'VALID' or 'SAME' or int or tuple (pad_h, pad_w)
+        padding: 'VALID' or int
                  - 'VALID': no padding (default)
                  - 'SAME': is not supported yet
-                 - int: same padding on all sides
-                 - tuple: (pad_h, pad_w) padding for height and width
+                 - int: symmetric padding on all sides
                  
         dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
                  kernel elements (called 'rates' in tf.image.extract_patches)
@@ -6388,16 +6387,18 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     
     height, width = output_size
     
-    # Calculate padding
+    # Handling inputs for padding argument
     if isinstance(padding, str):
         if padding == 'VALID':
             pad_h = pad_w = 0
         elif padding == 'SAME':
-            raise NotImplementedError("SAME padding is not yet supported. Only 'VALID' or Symmetric is currently available.")
+            raise NotImplementedError("SAME padding is not yet supported. Only 'VALID' or Symmetric padding is available by passing an integer")
         else:
-            raise ValueError(f"padding must be 'VALID', int, or tuple, got {padding}")
+          raise ValueError(f"padding must be 'VALID' or int got {padding}")
     elif isinstance(padding, int):
         pad_h = pad_w = padding
+    else:
+      raise ValueError(f"padding must be 'VALID' or int got {padding}")
     
     # Padded output size
     padded_height = height + 2 * pad_h
