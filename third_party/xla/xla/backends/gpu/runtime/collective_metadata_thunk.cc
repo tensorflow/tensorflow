@@ -186,9 +186,9 @@ absl::Status CollectiveMetadataThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
+      GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*include_participant_groups=*/false));
+                                /*is_p2p=*/false));
   params.multimem_registry->Request({clique_key, /*map_to=*/memory_range});
   return absl::OkStatus();
 }
@@ -196,9 +196,9 @@ absl::Status CollectiveMetadataThunk::Prepare(const PrepareParams& params) {
 absl::Status CollectiveMetadataThunk::Initialize(
     const InitializeParams& params) {
   TF_ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
+      GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*include_participant_groups=*/false));
+                                /*is_p2p=*/false));
   const int64_t num_ranks = clique_key.num_devices();
   TF_RET_CHECK(result_.size() ==
                sizeof(CollectiveKernelMetadata) +

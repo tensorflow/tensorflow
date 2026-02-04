@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/runtime/execution_graph.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
@@ -1411,13 +1412,21 @@ CollectiveCmd::CollectiveCmd(
       async_events_(std::move(async_events)) {}
 
 absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
-  TF_RET_CHECK(params.collective_params != nullptr);
+  TF_RET_CHECK(params.collective_params &&
+               params.collective_params->device_assn);
+
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
-  return params.collective_clique_requests->RequestClique(clique_key);
+                      config().group_mode, /*is_p2p=*/false));
+
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                      GetParticipatingDevicesGroups(
+                          *params.collective_params->device_assn,
+                          config().replica_groups, config().group_mode));
+
+  return params.collective_clique_requests->RequestClique(
+      clique_key, std::move(device_groups));
 }
 
 absl::StatusOr<const se::CommandBuffer::Command*>

@@ -20,22 +20,17 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 // Returns a clique key for a collective operation executed for a given set of
 // replica groups, group mode and stream kind, based on the `params` argument
 // that identifies device that participates in the collective operation.
-//
-// The `include_participant_groups` argument controls whether the participant
-// groups are included in the clique key. Including participant groups is needed
-// for safe communicator splitting, as it defines a total order between all
-// cliques in the XLA program.
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, bool is_p2p,
-    bool include_participant_groups = true);
+    CollectiveOpGroupMode group_mode, bool is_p2p);
 
 }  // namespace xla::gpu
 

@@ -175,7 +175,6 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -189,6 +188,40 @@ cc_library(
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:hash",
         "@tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_cliques_test",
+    srcs = ["gpu_cliques_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":gpu_clique",
+        ":gpu_clique_key",
+        ":gpu_cliques",
+        ":gpu_collectives",
+        ":nccl_or_rccl_collectives",
+        "//xla:executable_run_options",
+        "//xla:future",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:rank_id",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

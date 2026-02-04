@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/rendezvous.h"
@@ -216,10 +218,9 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool include_participant_groups) {
+    bool is_p2p) {
   return GetGpuCliqueKey(params, collective_config.replica_groups,
-                         collective_config.group_mode,
-                         include_participant_groups);
+                         collective_config.group_mode, is_p2p);
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -338,12 +339,23 @@ absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
 }
 
 absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
-  TF_RET_CHECK(params.collective_params != nullptr);
+  TF_RET_CHECK(params.collective_params &&
+               params.collective_params->device_assn)
+      << "Collective parameters and device assignment are required for "
+         "collective thunk execution";
+
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
                       config().group_mode, is_p2p_));
-  return params.collective_clique_requests->RequestClique(clique_key);
+
+  ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                   GetParticipatingDevicesGroups(
+                       *params.collective_params->device_assn,
+                       config().replica_groups, config().group_mode));
+
+  return params.collective_clique_requests->RequestClique(
+      clique_key, std::move(device_groups));
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {

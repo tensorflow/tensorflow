@@ -298,9 +298,9 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     }
   }
 
-  ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
-      GetCollectiveGpuCliqueKey(*params.collective_params, config_.config));
+  ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
+                   GetCollectiveGpuCliqueKey(*params.collective_params,
+                                             config_.config, /*is_p2p=*/false));
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);
 

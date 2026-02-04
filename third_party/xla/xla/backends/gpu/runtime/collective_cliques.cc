@@ -106,12 +106,12 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
   }
 
   VLOG(2) << absl::StreamFormat(
-      "[%d] Acquire %d collective cliques for global device id %v; "
-      "run_id=%d; max number of channels for collectives %d; max number of "
+      "[%d] [run=%v] Acquire %d collective cliques for global device id %v; "
+      "max number of channels for collectives %d; max number of "
       "channels for p2p %d",
-      params.executor->device_ordinal(), ordered_cliques.size(),
-      params.global_device_id, params.run_id.ToInt(),
-      params.collective_max_nchannels, params.p2p_max_nchannels);
+      params.executor->device_ordinal(), params.run_id, ordered_cliques.size(),
+      params.global_device_id, params.collective_max_nchannels,
+      params.p2p_max_nchannels);
 
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
     const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
@@ -166,7 +166,7 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
-                         r.key,
+                         r.key, r.device_groups,
                          params.clique_id_callback ? *params.clique_id_callback
                                                    : default_clique_id_callback,
                          *rank, cliques_map, max_channels));
@@ -176,12 +176,10 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
 
   auto end_micros = tsl::Env::Default()->NowMicros();
   VLOG(2) << absl::StreamFormat(
-      "[%d] Acquired %d collective cliques for global device id %v in "
-      "%s; run_id=%d",
-      params.executor->device_ordinal(), cliques_map.size(),
-      params.global_device_id,
-      absl::FormatDuration(absl::Microseconds(end_micros - start_micros)),
-      params.run_id.ToInt());
+      "[%d] [global_device=%v] [run=%v] Acquired %d collective cliques in %s; ",
+      params.executor->device_ordinal(), params.global_device_id, params.run_id,
+      cliques_map.size(),
+      absl::FormatDuration(absl::Microseconds(end_micros - start_micros)));
 
   // After we acquired all GPU cliques, check if they already have required
   // device communicators, and create them if needed. Creating device

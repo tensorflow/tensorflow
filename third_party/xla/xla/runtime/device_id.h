@@ -55,7 +55,7 @@ void AbslStringify(Sink& sink, LocalDeviceId id) {
 // of devices for logging and debugging.
 inline std::string HumanReadableDevices(
     absl::Span<const GlobalDeviceId> devices, absl::string_view separator = ",",
-    size_t first = 10, size_t last = 4) {
+    size_t first = 8, size_t last = 2) {
   if (devices.size() > first + last) {
     return absl::StrCat(absl::StrJoin(devices.first(first), separator), "...",
                         absl::StrJoin(devices.last(last), separator));

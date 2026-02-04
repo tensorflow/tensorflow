@@ -426,9 +426,9 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
   EXPECT_THAT(
       runner.Execute(std::move(module), {std::move(input)}),
       absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr("Device assignment is null, but must be specified when "
-                    "running a collective thunk.")));
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Collective parameters and device assignment are required")));
 }
 
 }  // namespace

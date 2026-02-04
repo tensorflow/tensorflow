@@ -44,7 +44,8 @@ class GpuClique : public Clique {
   GpuClique(
       GpuCliqueKey key, std::optional<CliqueIds> ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
 
   const GpuCliqueKey& key() const { return key_; }
   const std::optional<CliqueIds>& ids() const { return ids_; }
@@ -78,6 +79,9 @@ class GpuClique : public Clique {
   // Returns true if the clique was cancelled.
   bool IsCancelled() const;
 
+  // Returns a parent clique iff *this one was created by clique splitting.
+  const GpuClique* parent() const { return parent_; }
+
  private:
   friend LockableGpuClique;
 
@@ -96,6 +100,9 @@ class GpuClique : public Clique {
   // Cancellation token shared with all communicators in the clique.
   std::shared_ptr<CancellationToken> cancel_;
 
+  // A parent GPU clique iff *this clique was constructed by split operation.
+  const GpuClique* parent_;
+
   // We keep device communicators in a sorted container to guarantee that they
   // are destroyed in determenistic order.
   mutable absl::Mutex mu_;
@@ -111,7 +118,11 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
   LockableGpuClique(
       GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
       absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel);
+      bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+      const GpuClique* parent = nullptr);
+
+  // Returns if *this lockable clique has a given parent.
+  bool HasParent(const GpuClique* parent) const;
 
   std::string DebugString() const;
 

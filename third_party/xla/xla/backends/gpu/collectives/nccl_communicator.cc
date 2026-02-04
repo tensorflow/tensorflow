@@ -417,8 +417,7 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
     return ExecuteAwait<Handle>(
         [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
           VLOG(3) << absl::StreamFormat(
-              "[%d] Register buffer for NCCL communicator; buffer=%p; "
-              "size=%d; "
+              "[%d] Register buffer for NCCL communicator; buffer=%p; size=%d; "
               "comm=%p",
               device_ordinal, buffer.opaque(), buffer.size(), comm_);
           if (cancel_->IsCancelled()) {

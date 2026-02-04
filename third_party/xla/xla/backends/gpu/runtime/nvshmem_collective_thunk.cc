@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
@@ -33,6 +34,8 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/event.h"
@@ -91,13 +94,21 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
 }
 
 absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
-  TF_RET_CHECK(params.collective_params != nullptr);
+  TF_RET_CHECK(params.collective_params &&
+               params.collective_params->device_assn);
+
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, GetAsyncStreamKind(),
-                      /*include_participant_groups=*/false));
-  return params.collective_clique_requests->RequestClique(clique_key);
+                      config().group_mode, /*is_p2p=*/false));
+
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                      GetParticipatingDevicesGroups(
+                          *params.collective_params->device_assn,
+                          config().replica_groups, config().group_mode));
+
+  return params.collective_clique_requests->RequestClique(
+      clique_key, std::move(device_groups));
 }
 
 absl::Status NvshmemCollectiveThunk::Initialize(

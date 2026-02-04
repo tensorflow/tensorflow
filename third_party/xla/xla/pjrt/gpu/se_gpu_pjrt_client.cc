@@ -490,6 +490,7 @@ class PreparedReceive {
 absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
     StreamExecutorGpuClient* client, gpu::GpuCollectives* gpu_collectives,
     const gpu::GpuCliqueKey& clique_key,
+    absl::Span<const std::vector<GlobalDeviceId>> device_groups,
     gpu::AcquiredCliquesMap& acquired_cliques_map, RankId rank_id,
     se::Stream* stream) {
   // Get the clique ID callback.
@@ -505,7 +506,8 @@ absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
         acquired_cliques_map[clique_key],
         AcquireGpuClique(gpu_collectives,
                          /*device=*/stream->parent(), RunId(0), clique_key,
-                         clique_id_callback, rank_id, acquired_cliques_map,
+                         device_groups, clique_id_callback, rank_id,
+                         acquired_cliques_map,
                          /*max_nchannels=*/0));
   }
   std::shared_ptr<gpu::LockableGpuClique::Lock> clique =
@@ -533,18 +535,21 @@ absl::StatusOr<PreparedSend> PrepareSend(
     gpu::AcquiredCliquesMap& acquired_cliques_map,
     std::shared_ptr<Promise<>> promise,
     tsl::RCReference<PjRtStreamExecutorDeviceEvent> usage_event) {
+  GlobalDeviceId src_device(buffer->device()->global_device_id().value());
+  GlobalDeviceId dst_device(dst_global_device_id.value());
+
   // Form the GPU clique key.
   // TODO(asrao, mwhittaker): Supply correct incarnations when creating the
   // clique key.
   gpu::GpuCliqueKey clique_key = gpu::GpuCliqueKey(
-      /*devices=*/{GlobalDeviceId(buffer->device()->global_device_id().value()),
-                   GlobalDeviceId(dst_global_device_id.value())},
+      /*devices=*/{src_device, dst_device},
       /*num_local_participants=*/1);
 
   // Get the clique and communicator for the send.
   TF_ASSIGN_OR_RETURN(
       AcquiredCliqueAndCommunicator clique_and_communicator,
       AcquireCliqueAndCommunicator(client, gpu_collectives, clique_key,
+                                   /*device_groups=*/{{src_device, dst_device}},
                                    acquired_cliques_map, RankId(0), stream));
 
   // Acquire a hold on this buffer. The hold is held as long as usage_event is
@@ -582,18 +587,21 @@ absl::StatusOr<PreparedReceive> PrepareReceive(
     PjRtGlobalDeviceId src_global_device_id, CrossHostTransferKey transfer_key,
     Shape shape, gpu::AcquiredCliquesMap& acquired_cliques_map,
     tsl::RCReference<PjRtStreamExecutorDeviceEvent> definition_event) {
+  GlobalDeviceId src_device(src_global_device_id.value());
+  GlobalDeviceId dst_device(device->global_device_id().value());
+
   // Form the GPU clique key.
   // TODO(asrao, mwhittaker): Supply correct incarnations when creating the
   // clique key.
   gpu::GpuCliqueKey clique_key = gpu::GpuCliqueKey(
-      /*devices=*/{GlobalDeviceId(src_global_device_id.value()),
-                   GlobalDeviceId(device->global_device_id().value())},
+      /*devices=*/{src_device, dst_device},
       /*num_local_participants=*/1);
 
   // Get the clique and communicator for the receive.
   TF_ASSIGN_OR_RETURN(
       AcquiredCliqueAndCommunicator clique_and_communicator,
       AcquireCliqueAndCommunicator(client, gpu_collectives, clique_key,
+                                   /*device_groups=*/{{src_device, dst_device}},
                                    acquired_cliques_map, RankId(1), stream));
 
   // Allocate an uninitialized buffer. The buffer will be populated with data

@@ -205,9 +205,9 @@ absl::Status AllReduceStartThunk::Prepare(const PrepareParams& params) {
 
 absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  TF_ASSIGN_OR_RETURN(
-      GpuCliqueKey clique_key,
-      GetCollectiveGpuCliqueKey(*params.collective_params, config()));
+  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
+                      GetCollectiveGpuCliqueKey(*params.collective_params,
+                                                config(), /*is_p2p=*/false));
   TF_ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       collective_kernel_thunk_->IsSupported(clique_key, *params.executor,

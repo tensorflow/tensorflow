@@ -274,7 +274,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 // Helper over GetGpuCliqueKey that builds clique key.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool include_participant_groups = true);
+    bool is_p2p);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;

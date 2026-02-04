@@ -39,6 +39,7 @@ limitations under the License.*/
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -157,18 +158,30 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
 }
 
 absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params &&
+               params.collective_params->device_assn);
+
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*include_participant_groups=*/false));
+                                /*is_p2p=*/false));
+
   TF_ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       IsSupported(clique_key, *params.executor, *params.collective_params));
+
   if (!use_collective_kernel) {
     return absl::OkStatus();
   }
-  TF_RETURN_IF_ERROR(
-      params.collective_clique_requests->RequestClique(clique_key));
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<GlobalDeviceId>> device_groups,
+      GetParticipatingDevicesGroups(*params.collective_params->device_assn,
+                                    collective_config_.replica_groups,
+                                    collective_config_.group_mode));
+
+  TF_RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
+      clique_key, std::move(device_groups)));
 
   absl::MutexLock lock(mutex_);
   if (!per_stream_memory_.contains(params.executor)) {
@@ -217,9 +230,9 @@ int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
 
 absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   TF_ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
+      GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*include_participant_groups=*/false));
+                                /*is_p2p=*/false));
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);
   TF_RET_CHECK(rank.has_value())
@@ -333,9 +346,9 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   const int device_ordinal = stream->parent()->device_ordinal();
 
   TF_ASSIGN_OR_RETURN(
-      const GpuCliqueKey clique_key,
+      GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_,
-                                /*include_participant_groups=*/false));
+                                /*is_p2p=*/false));
   const int32_t num_devices = clique_key.num_devices();
 
   // TODO(b/407736956): Support variadic all-reduce.

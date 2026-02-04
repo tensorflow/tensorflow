@@ -19,20 +19,47 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/runtime/device_id.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
 absl::Status CollectiveCliqueRequests::RequestClique(
-    const GpuCliqueKey& clique_key, const CliqueRequirements& requirements) {
-  VLOG(5) << "Add collective clique request: " << clique_key.ToString()
-          << "; requirements=" << requirements;
+    const GpuCliqueKey& clique_key,
+    std::vector<std::vector<GlobalDeviceId>> device_groups,
+    const CliqueRequirements& requirements) {
+  // Sort each device group in ascending order, and all device groups using
+  // the first device. We need this for determenistic check below.
+  absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
+  absl::c_sort(device_groups, [](const auto& a, const auto& b) {
+    CHECK(!a.empty() && !b.empty()) << "Replica groups must not be empty";
+    return a[0] < b[0];
+  });
 
-  // If the clique already exist, update it with new requirementes.
+  VLOG(5) << absl::StreamFormat(
+      "Add collective clique request: %v; device_groups=[%s]; "
+      "requirements=%v",
+      clique_key, HumanReadableDeviceGroups(device_groups), requirements);
+
+  // If the clique already exist, update it with new requirements.
   if (auto it = cliques_.find(clique_key); it != cliques_.end()) {
     CliqueRequest& req = it->second;
+
+    // It is illegal to request the same GPU clique with different device
+    // groups. This must never happen under SPMD programing model.
+    if (req.device_groups != device_groups) {
+      return InvalidArgument(
+          "GPU clique %v requested from different device groups: [%s] vs [%s]",
+          clique_key, HumanReadableDeviceGroups(req.device_groups),
+          HumanReadableDeviceGroups(device_groups));
+    }
+
     if (requirements.dev_comm) {
       req.dev_comms.insert(*requirements.dev_comm);
     }
@@ -41,7 +68,8 @@ absl::Status CollectiveCliqueRequests::RequestClique(
   // XLA compiler guarantees that all collective operations have the same
   // order on all replicas. We rely on this property to assign unique id to
   // clique requests simply based on the number of already recorded requests.
-  CliqueRequest req{/*id=*/cliques_.size(), clique_key};
+  CliqueRequest req{/*id=*/cliques_.size(), clique_key,
+                    std::move(device_groups)};
   if (requirements.dev_comm) {
     req.dev_comms.insert(*requirements.dev_comm);
   }
