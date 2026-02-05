@@ -388,7 +388,7 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Reverse")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("tensor")
                             .HostMemory("dims")
                             .HostMemory("output"),
