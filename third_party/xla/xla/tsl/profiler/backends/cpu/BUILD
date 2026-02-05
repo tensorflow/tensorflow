@@ -14,6 +14,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
+        "//platforms/xla/megascale/runtime/common:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:macros",
