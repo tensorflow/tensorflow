@@ -415,7 +415,8 @@ absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
     absl::Span<const GraphNodeHandle> dependencies,
     const CommandBuffer& nested) {
-  auto& child_command_buffer = tsl::down_cast<const CudaCommandBuffer&>(nested);
+  auto& child_command_buffer =
+      absl::down_cast<const CudaCommandBuffer&>(nested);
   CHECK_EQ(child_command_buffer.parent_, nullptr)
       << "Nested command buffer's parent is not null";
 
@@ -436,7 +437,7 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateClonedChildNode(
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
     absl::Span<const GraphNodeHandle> dependencies, CommandBuffer* nested) {
-  auto* child_command_buffer = tsl::down_cast<CudaCommandBuffer*>(nested);
+  auto* child_command_buffer = absl::down_cast<CudaCommandBuffer*>(nested);
   CHECK_EQ(child_command_buffer->parent_, nullptr)
       << "Nested command buffer's parent is not null";
 
@@ -473,7 +474,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
 
 absl::Status CudaCommandBuffer::UpdateClonedChildNode(
     GraphNodeHandle node_handle, const CommandBuffer& nested) {
-  CUgraph child_graph = tsl::down_cast<const CudaCommandBuffer&>(nested).graph_;
+  CUgraph child_graph =
+      absl::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << graph_exec() << " to params contained in " << child_graph;
 
