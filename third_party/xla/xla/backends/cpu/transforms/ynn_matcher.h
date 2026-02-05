@@ -58,24 +58,29 @@ class YnnMatcher : public LibraryMatcher {
 
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
+    if (instr->opcode() == HloOpcode::kReduce) {
+      return IsReduceOpOffloadedToYnn(instr);
+    }
+    if (instr->IsConstant()) {
+      return IsConstantSupportedByYnn(instr);
+    }
+
+    // TODO(b/441837668): Need to get the reduction performance right before
+    // enabling fusions. Fusions make performance analysis quite challenging.
+    if (fuse_reduce_) {
+      return false;
+    }
     if (instr->opcode() == HloOpcode::kDot) {
       return IsDotSupportedByYnn(instr->dot_dimension_numbers(),
                                  instr->operand(0)->shape(),
                                  instr->operand(1)->shape(), instr->shape());
     }
-    if (instr->opcode() == HloOpcode::kReduce) {
-      return IsReduceOpOffloadedToYnn(instr);
-    }
+
+    // We do not want to fuse reductions, with the following exception:
+    // init instruction (constant). So the checks below should go after the
+    // reduce check.
     if (instr->opcode() == HloOpcode::kConvolution) {
       return IsConvolutionOpSupportedByYnn(instr);
-    }
-    if (instr->IsConstant()) {
-      return IsConstantSupportedByYnn(instr);
-    }
-    // TODO(b/441837668): Need to get the reduction performance right before
-    // enabling fusions. Fusions make performance analysis quite challenging.
-    if (fuse_reduce_) {
-      return false;
     }
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByYnn(instr);
