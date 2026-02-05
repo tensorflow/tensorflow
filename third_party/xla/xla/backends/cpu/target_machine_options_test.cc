@@ -141,6 +141,14 @@ TEST(TargetMachineOptionsTest, GetTargetMachineFeaturesVector) {
               testing::ElementsAre("+avx2", "-avx512"));
 }
 
+TEST(TargetMachineOptionsTest, TestTargetMachineOptionsEquality) {
+  TargetMachineOptions options1("test_triple", "test_cpu", "+avx2,-avx512");
+  TargetMachineOptions options2("test_triple", "test_cpu", "+avx2,-avx512");
+  EXPECT_EQ(options1, options2);
+  TargetMachineOptions options3("test_triple", "test_cpu", "+avx2");
+  EXPECT_NE(options1, options3);
+}
+
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
