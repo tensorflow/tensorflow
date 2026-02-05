@@ -289,11 +289,11 @@ REGISTER_GPU_KERNEL(Eigen::half);
 REGISTER_GPU_KERNEL(bfloat16);
 REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
-REGISTER_GPU_KERNEL(int8);
-REGISTER_GPU_KERNEL(int16);
+REGISTER_GPU_KERNEL(int8_t);
+REGISTER_GPU_KERNEL(int16_t);
 REGISTER_GPU_KERNEL(int64_t);
-REGISTER_GPU_KERNEL(uint8);
-REGISTER_GPU_KERNEL(uint16);
+REGISTER_GPU_KERNEL(uint8_t);
+REGISTER_GPU_KERNEL(uint16_t);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -304,8 +304,8 @@ REGISTER_KERNEL_BUILDER(Name("ClipByValue")
                             .HostMemory("clip_value_min")
                             .HostMemory("clip_value_max")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        ClipOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("T"),
+                        ClipOp<CPUDevice, int32_t>);
 
 #undef REGISTER_GPU_KERNEL
 #endif
