@@ -60,10 +60,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
-#ifdef XLA_ONEDNN
-#include "xla/service/cpu/onednn_memory_util.h"
-#endif  // XLA_ONEDNN
-
 namespace xla {
 namespace cpu {
 
@@ -336,15 +332,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
-#ifdef XLA_ONEDNN
-  std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
-                                                    llvm::Value*& args_val,
-                                                    int& arg_indx);
-  std::pair<llvm::Value*, StackAlloca> GetPtrAndAllocaFromBufferSlice(
-      const BufferAllocation::Slice& slice, const Shape& shape);
-  absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
-                                       std::string runtime_symbol_name);
-#endif  // XLA_ONEDNN
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
 

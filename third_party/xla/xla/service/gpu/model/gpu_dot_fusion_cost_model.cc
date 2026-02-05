@@ -119,14 +119,15 @@ int64_t CalculateTileFlops(int64_t tile_m, int64_t tile_n, int64_t problem_k) {
 // compute bound. GEMM performance is sensitive to the tensor core
 // instruction throughputs that the programming model exposes.
 double GetEffectiveFlopsPerNsForTileSize(
-    const int64_t tile_m, const se::DeviceDescription& device_info) {
+    const int64_t tile_m, const se::DeviceDescription& device_info,
+    xla::PrimitiveType element_type) {
   se::CudaComputeCapability cuda_compute_capability =
       device_info.cuda_compute_capability();
 
   // Peak flops per ns for device.
   int64_t peak_flops_per_ns =
-      GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
-          device_info, device_info.fpus_per_core(), device_info.core_count());
+      GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(device_info,
+                                                           element_type);
 
   // Final flops derate factor.
   double flops_derate = 1.0;
@@ -209,8 +210,9 @@ absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
   int64_t cta_count_with_wave_quant = wave_count * device_info.core_count();
   int64_t total_flops_with_wave_quant =
       flops_per_tile * cta_count_with_wave_quant;
+  xla::PrimitiveType lhs_element_type = dot->operand(0)->shape().element_type();
   double effective_flops =
-      GetEffectiveFlopsPerNsForTileSize(tile_m, device_info);
+      GetEffectiveFlopsPerNsForTileSize(tile_m, device_info, lhs_element_type);
   // TODO(maniananth): Add a cap for power throttling here.
   return absl::Nanoseconds(1.0f * total_flops_with_wave_quant /
                            effective_flops);

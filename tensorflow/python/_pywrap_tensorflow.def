@@ -421,6 +421,7 @@ EXPORTS
   ?HasAtomicMove@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_N@Z
   ?HasTensor@CheckpointReader@checkpoint@tensorflow@@QEBA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?Hash64@tsl@@YA_KPEBD_K1@Z
+  ?HumanReadableNumBytes@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_J@Z
   ?ImportFunction@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NPEAUTFE_Context@@PEAUTSL_Status@@@Z
   ?ImportGraphDef@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NPEAUTSL_Status@@@Z
   ?ImportGraphDef@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NV?$basic_string_view@DU?$char_traits@D@std@@@3@222PEAUTSL_Status@@@Z

@@ -46,7 +46,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecutableMetadata_GetExecutableMetadata_Args,
                           metadata);
 
 // Extracts the metadata from the executable, stored it in the
-// CompiledExecutableMetadata proto, and returns the serialized proto string.
+// PjRtExecutableMetadata proto, and returns the serialized proto string.
 typedef PJRT_Error* (*PJRT_ExecutableMetadata_GetExecutableMetadata)(
     PJRT_ExecutableMetadata_GetExecutableMetadata_Args* args);
 

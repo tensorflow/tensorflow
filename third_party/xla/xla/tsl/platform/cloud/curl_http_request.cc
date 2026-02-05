@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
@@ -142,7 +141,7 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //   It can be customized with the CURL_CA_BUNDLE environment variable.
   //   See also: https://curl.haxx.se/libcurl/c/CURLOPT_CAINFO.html.
   std::string value = "";
-  TF_CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
+  CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
   if (!value.empty()) {
     CHECK_CURL_OK(
         libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));

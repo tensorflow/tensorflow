@@ -22,6 +22,7 @@ import "xla/python/ifrt/array_spec.proto";
 import "xla/python/ifrt/attribute_map.proto";
 import "xla/python/ifrt/dtype.proto";
 import "xla/python/ifrt/execute_options.proto";
+import "xla/python/ifrt/layout.proto";
 import "xla/python/ifrt/remap_plan.proto";
 import "xla/python/ifrt/serdes.proto";
 import "xla/python/ifrt/shape.proto";
@@ -37,7 +38,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 33.
+// Next ID: 34.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -58,6 +59,7 @@ message IfrtRequest {
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
+    ReshardArraysRequest reshard_arrays_request = 33;
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
         disassemble_into_single_device_arrays_request = 7;
@@ -104,7 +106,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 33.
+// Next ID: 34.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -125,6 +127,7 @@ message IfrtResponse {
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
+    ReshardArraysResponse reshard_arrays_response = 33;
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
         disassemble_into_single_device_arrays_response = 7;
@@ -254,9 +257,9 @@ message InitResponse {
     repeated int32 memory_ids = 8;
     string debug_string = 4;
     string to_string = 5;
-    map<string, proto.Variant> deprecated_attributes = 6
-        [deprecated = true];            // Deprecated since Version 4.
-    AttributeMapProto attributes = 10;  // New in Version 4.
+    AttributeMapProto attributes = 10;
+
+    reserved 6;
   }
 
   repeated Device all_devices = 6;  // == ifrt::Client::GetAllDevices()
@@ -309,6 +312,7 @@ message MakeArrayFromHostBufferRequest {
   DTypeProto dtype = 1;
   ShapeProto shape = 2;
   ShardingProto sharding = 3;
+  LayoutProto layout = 7;
   fixed64 host_buffer_handle = 4;
   optional proto.ByteStrides byte_strides = 5;
   // If array_handle is provided, the server will either respond with the same
@@ -389,6 +393,18 @@ message RemapArraysResponse {
   repeated fixed64 array_handles = 1;
 }
 
+// Reshards the given IFRT arrays to new IFRT arrays.
+// Equivalent to ifrt::Client::ReshardArrays.
+message ReshardArraysRequest {
+  repeated fixed64 array_handles = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message ReshardArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
 // Reads the contents of a given IFRT Array.
 // Equivalent to ifrt::Array::CopyToHostBuffer.
 message CopyToHostBufferRequest {
@@ -433,10 +449,9 @@ message FullyReplicatedShardResponse {
 // Deletes the given Array. Response contains the handle for a Future that
 // becomes ready when the deletion completes.
 message DeleteArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DeleteArrayResponse {
   fixed64 deletion_future_handle = 1;
@@ -450,10 +465,9 @@ message IsArrayDeletedResponse {
 }
 
 message DestructArrayRequest {
-  // TODO(b/296144873): Remove after compatibility window.
-  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
-
   repeated fixed64 array_handle = 2;
+
+  reserved 1;
 }
 message DestructArrayResponse {}
 

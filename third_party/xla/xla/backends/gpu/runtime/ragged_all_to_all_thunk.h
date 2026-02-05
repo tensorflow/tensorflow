@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
@@ -49,6 +50,41 @@ struct RaggedAllToAllConfig {
   int64_t num_total_updates = 1;
   int64_t num_input_rows = 1;
   int64_t num_row_elements = 1;
+};
+
+// Contains the values that are passed between host threads with rendezvous.
+struct RaggedAllToAllRendezvousValue {
+  RankId rank;
+  se::DeviceAddressBase output_buffer;
+  se::Event* start_event = nullptr;
+  se::Event* end_event = nullptr;
+
+  bool operator<(const RaggedAllToAllRendezvousValue& other) const {
+    return rank < other.rank;
+  }
+};
+
+struct RaggedAllToAllStreamState {
+  int device_ordinal;
+  RankId rank;
+
+  // Host memory allocations for ragged metadata.
+  absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
+      host_buffer_allocs;
+
+  // Device memory buffer for output offsets.
+  se::DeviceAddressHandle output_offsets_device_buffer;
+
+  // Event to synchronize streams on different devices at the start of the
+  // kernel.
+  std::unique_ptr<se::Event> start_event;
+
+  // Event to synchronize streams on different devices at the end of the
+  // kernel.
+  std::unique_ptr<se::Event> end_event;
+
+  RaggedAllToAllStreamState(int device_ordinal, RankId rank)
+      : device_ordinal(device_ordinal), rank(rank) {}
 };
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
@@ -79,6 +115,11 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
       const HloRaggedAllToAllInstruction* instr);
 
   const CollectiveConfig& config() const override { return config_.config; }
+
+  const RaggedAllToAllConfig& ragged_all_to_all_config() const {
+    return config_;
+  }
+
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static absl::StatusOr<std::unique_ptr<RaggedAllToAllStartThunk>> FromProto(
@@ -88,6 +129,18 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
+
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      const GpuCliqueKey& clique_key,
@@ -95,60 +148,6 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                                      Communicator& comm) override;
 
  private:
-  // Contains the values that are passed between host threads with rendezvous.
-  struct RendezvousValue {
-    RankId rank;
-    se::DeviceAddressBase output_buffer;
-    se::Event* start_event = nullptr;
-    se::Event* end_event = nullptr;
-
-    bool operator<(const RendezvousValue& other) const {
-      return rank < other.rank;
-    }
-  };
-
-  struct StreamState {
-    int device_ordinal;
-    RankId rank;
-
-    // Host memory allocations for ragged metadata.
-    absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
-        host_buffer_allocs;
-
-    // Device memory buffer for output offsets.
-    se::DeviceAddressHandle output_offsets_device_buffer;
-
-    // Event to synchronize streams on different devices at the start of the
-    // kernel.
-    std::unique_ptr<se::Event> start_event;
-
-    // Event to synchronize streams on different devices at the end of the
-    // kernel.
-    std::unique_ptr<se::Event> end_event;
-
-    StreamState(int device_ordinal, RankId rank)
-        : device_ordinal(device_ordinal), rank(rank) {}
-  };
-
-  // Executes the rendezvous before the kernel start.
-  // Inserts CUDA events into the stream to ensure that all devices have reached
-  // the start event before the kernel starts.
-  absl::StatusOr<std::shared_ptr<std::vector<RendezvousValue>>>
-  RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key,
-                              se::Stream& stream, const StreamState& state,
-                              const se::DeviceAddressBase& output_buffer);
-
-  // Executes the rendezvous after the kernel finish. Waits for all devices to
-  // reach the end event.
-  absl::Status RendezvousAfterKernelFinish(
-      const GpuCliqueKey& clique_key, se::Stream& stream,
-      const StreamState& state,
-      const std::vector<RendezvousValue>& rendezvous_values);
-
-  absl::Status RunOneShotRaggedAllToAll(
-      const GpuCliqueKey& clique_key, se::Stream& stream,
-      const StreamState& state, absl::Span<DeviceBufferPair const> buffers);
-
   bool is_local() const;
 
   const RaggedAllToAllConfig config_;
@@ -156,10 +155,50 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   int64_t device_count_ = -1;
   const bool one_shot_kernel_enabled_;
 
-  absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
+  mutable absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*,
+                      std::unique_ptr<RaggedAllToAllStreamState>>
       per_stream_states_ ABSL_GUARDED_BY(mutex_);
 };
+
+// Executes a generic Ragged All-to-All collective operation using the provided
+// communicator (e.g., NCCL).
+//
+// This function handles the "multi-step" coordination required for ragged
+// data:
+// 1. Exchanges metadata (data sizes) between ranks using the provided host
+//    buffers (`ragged_metadata_allocs`).
+// 2. Calculates the necessary output offsets based on the exchanged sizes.
+// 3. Populates `output_offsets_device_buffer` on the device.
+// 4. Performs the actual data transfer into the destination buffers.
+//
+// Arguments:
+//  - ragged_metadata_allocs: Host-side pointers used to exchange row sizes
+//    between ranks before the main data transfer.
+//  - output_offsets_device_buffer: Device buffer where the calculated
+//    destination offsets will be written.
+absl::Status RunRaggedAllToAll(
+    int64_t ragged_row_element_size, int64_t num_total_updates,
+    const std::vector<DeviceBufferPair>& original_buffers, se::Stream& stream,
+    Communicator& comm, absl::Span<int64_t* const> ragged_metadata_allocs,
+    const se::DeviceAddressBase& output_offsets_device_buffer,
+    bool use_symmetric_buffer);
+
+// Executes an optimized "One-Shot" Ragged All-to-All collective.
+//
+// Unlike the standard implementation, this approach consolidates the
+// coordination and data movement into a single execution path (typically a
+// custom kernel or specialized P2P sequence) to reduce host-device
+// synchronization overhead.
+//
+// It explicitly utilizes `start_event` and `end_event` to manage
+// synchronization dependencies between the compute stream and the
+// communication/copy mechanism without stalling the host.
+absl::Status RunOneShotRaggedAllToAll(
+    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
+    se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
+    int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers);
 
 }  // namespace gpu
 }  // namespace xla

@@ -4803,7 +4803,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
                        .set_data_type(ioDataType));
   std::shared_ptr<Tensor_attributes> d_bias_tensor;
   if (use_bias) {
-    DCHECK(bias_descriptor != std::nullopt);
+    DCHECK(bias_descriptor.has_value());
     cudnn_frontend::DataType_t dataType =
         ToCudnnFrontendDataType(bias_descriptor->type());
     auto bias_dims = bias_descriptor->dimensions();
@@ -4819,7 +4819,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     // shapes [1, 1, s, s], [1, h, s, s], [b, 1, s, s], [b, h, s, s] are
     // supported for dbias calculation.
     // Set UID later: this is the last output tuple element.
-    if (dbias_descriptor != std::nullopt) {
+    if (dbias_descriptor.has_value()) {
       d_bias_tensor =
           graph.tensor(Tensor_attributes()
                            .set_name("dBias")
@@ -4890,7 +4890,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
   std::shared_ptr<Tensor_attributes> seed_tensor;
   std::shared_ptr<Tensor_attributes> offset_tensor;
   if (use_dropout) {
-    DCHECK(dropout_rate != std::nullopt);
+    DCHECK(dropout_rate.has_value());
     // Skip setting UIDs: pass by value tensors go at the end.
     seed_tensor =
         graph.tensor(Tensor_attributes()

@@ -32,8 +32,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/analysis/hlo_replication_analysis.h"
 #include "xla/hlo/analysis/while_loop_analysis.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,11 +45,18 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/while_loop_all_reduce_code_motion_setup.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/dynamic_slicing_utils.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -400,14 +409,15 @@ MovableAllReduceContext IsAllReduceMovable(
     return MovableAllReduceContext{};
   }
 
-  // TODO(b/433921585): Re-enable dynamic update slice context matching after
-  // the bug is fixed.
-  // // Try matching dynamic update slice context.
-  // if (auto update_slice_context = MatchDynamicUpdateSliceContext(
-  //         all_reduce, while_instructions, call_graph);
-  //     update_slice_context.has_value()) {
-  //   return std::move(*update_slice_context);
-  // }
+  // Try matching dynamic update slice context. Only applies to all-reduce,
+  // not reduce-scatter.
+  if (all_reduce->opcode() == HloOpcode::kAllReduce) {
+    if (auto update_slice_context = MatchDynamicUpdateSliceContext(
+            all_reduce, while_instructions, call_graph);
+        update_slice_context.has_value()) {
+      return std::move(*update_slice_context);
+    }
+  }
 
   // We only support numerical types for accumulation.
   const absl::InlinedVector<PrimitiveType, 12> kSupportedTypes{
@@ -1319,9 +1329,8 @@ absl::StatusOr<bool> WhileLoopAllReduceCodeMotion::RunImpl(
           Cast<HloAllReduceInstructionBase>(while_body_instruction);
       if (all_reduce_instruction->constrain_layout()) {
         return false;
-      } else {
-        while_body_all_reduces.push_back(all_reduce_instruction);
       }
+      while_body_all_reduces.push_back(all_reduce_instruction);
     }
     HloInstructionMap<std::vector<AccumulationContext>>
         all_reduce_to_accumulations;

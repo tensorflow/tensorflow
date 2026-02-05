@@ -18,16 +18,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -61,6 +65,13 @@ absl::StatusOr<DType> ToIfrtDType(mlir::Type type);
 // Prints the MLIR operation as a string.
 std::string OperationToString(mlir::Operation* op,
                               const mlir::OpPrintingFlags& flags);
+
+// Clones a given mlir::ModuleOp into the given MLIR context.
+// Note: This function is loading dialects into the context, and thus it is
+// not thread-safe w.r.t. calling it with the same context from multiple
+// threads.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
+    mlir::ModuleOp module, mlir::MLIRContext& context);
 
 // Clones a given mlir::ModuleOp using a mlir::OpBuilder. This function is used
 // to clone a module into a new MLIR context, which was used to construct the

@@ -5001,6 +5001,74 @@ ENTRY entry {
               sync_ag_index < async_ag_done_index);
 }
 
+TEST_F(LatencyHidingSchedulerTest, HostOffloadComputationsWithoutSchedule) {
+  // Test that the scheduler handles host computations that don't have
+  // schedules. This can happen with compute offload where host computations
+  // execute separately on the host CPU and don't need device scheduling.
+  absl::string_view hlo_string = R"(
+HloModule test_module, is_scheduled=true, entry_computation_layout={(f32[61,163]{1,0})->f32[61,163]{1,0}}
+
+%host_computation (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  %c2 = f32[] constant(2)
+  %broadcast = f32[61,163]{1,0} broadcast(%c2), dimensions={}
+  ROOT %mul = f32[61,163]{1,0} multiply(%param, %broadcast)
+}, execution_thread="host"
+
+%host_async (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  ROOT %host_execute = f32[61,163]{1,0} custom-call(%param), custom_call_target="HostExecute", called_computations={%host_computation}
+}, execution_thread="host"
+
+%device_mul (param: f32[61,163]) -> f32[61,163] {
+  %param = f32[61,163]{1,0} parameter(0)
+  %c3 = f32[] constant(3)
+  %broadcast = f32[61,163]{1,0} broadcast(%c3), dimensions={}
+  ROOT %mul = f32[61,163]{1,0} multiply(%param, %broadcast)
+}
+
+ENTRY %main (x: f32[61,163]) -> f32[61,163] {
+  %x = f32[61,163]{1,0} parameter(0)
+  %async_start = ((f32[61,163]{1,0}), f32[61,163]{1,0}, u32[]) async-start(%x), async_execution_thread="host", calls=%host_async
+  %async_done = f32[61,163]{1,0} async-done(%async_start)
+  ROOT %mul_fusion = f32[61,163]{1,0} fusion(%async_done), kind=kLoop, calls=%device_mul
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+
+  // Verify the entry computation has a schedule (precondition).
+  EXPECT_TRUE(hlo_module->has_schedule());
+  EXPECT_TRUE(hlo_module->schedule().is_computation_scheduled(
+      hlo_module->entry_computation()));
+
+  // Remove schedules from host computations to simulate compute offload
+  // scenario. When parsing HLO with is_scheduled=true, all computations get
+  // schedules, but host computations execute separately and don't have device
+  // schedules.
+  for (HloComputation* computation : hlo_module->computations()) {
+    if (computation->execution_thread() == "host" &&
+        computation != hlo_module->entry_computation()) {
+      if (hlo_module->schedule().is_computation_scheduled(computation)) {
+        hlo_module->schedule().remove_computation(computation);
+      }
+      EXPECT_FALSE(
+          hlo_module->schedule().is_computation_scheduled(computation));
+    }
+  }
+
+  // Run the scheduler - it should not crash when encountering unscheduled host
+  // computations. This tests the fix for BufferInfoTracker and
+  // ModulePressureState accessing schedules for unscheduled host computations.
+  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+
+  // Verify the module still has a valid schedule after scheduling
+  // (postcondition).
+  EXPECT_TRUE(hlo_module->has_schedule());
+  EXPECT_TRUE(hlo_module->schedule().is_computation_scheduled(
+      hlo_module->entry_computation()));
+}
+
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
  public:
   void TestBody() override {}

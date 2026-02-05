@@ -126,8 +126,8 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
     llvm::SmallVector<StringRef, 1> mode_string_value;
     mode_string_value.emplace_back(is_training ? "train" : "inference");
     builder->setInsertionPoint(embedding_op);
-    auto enqueue_mode = builder->create<TF::ConstOp>(
-        embedding_op->getLoc(),
+    auto enqueue_mode = TF::ConstOp::create(
+        *builder, embedding_op->getLoc(),
         DenseStringElementsAttr::get(
             RankedTensorType::get({}, builder->getType<TF::StringType>()),
             mode_string_value));

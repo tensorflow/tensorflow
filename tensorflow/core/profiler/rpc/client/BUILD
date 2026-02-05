@@ -19,9 +19,9 @@ cc_library(
     deps = [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_xla//xla/tsl/profiler/rpc/client:save_profile",
+        "@tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@xla//xla/tsl/profiler/rpc/client:save_profile",
     ],
 )
 
@@ -38,8 +38,8 @@ cc_library(
         ":profiler_client_impl",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
+        "@xla//xla/tsl/profiler/rpc/client:profiler_client",
+        "@xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ],
 )
 
@@ -62,10 +62,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client",
-        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
+        "@tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
+        "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@xla//xla/tsl/profiler/rpc/client:profiler_client",
+        "@xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

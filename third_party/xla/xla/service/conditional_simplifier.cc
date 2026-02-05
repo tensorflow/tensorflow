@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/conditional_simplifier.h"
 
+#include <cstdint>
 #include <iterator>
 #include <set>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/call_inliner.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/types.h"
@@ -108,6 +110,16 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
   param = new_computation->parameter_instruction(0);
   // Reset the parameter shape of the computation.
   *param->mutable_shape() = tuple_shape;
+  // Update original value if present.
+  if (computation->parameter_instruction(0)->original_value() != nullptr) {
+    absl::flat_hash_map<int64_t, int64_t> old_to_new_mapping;
+    for (int64_t i : tuple_indices_to_keep) {
+      old_to_new_mapping[i] = map[i];
+    }
+    CopyOriginalValue(computation->parameter_instruction(0),
+                      new_computation->parameter_instruction(0),
+                      old_to_new_mapping);
+  }
 
   // Reroute the GTE instructions to new tuple indices.
   for (HloInstruction* user : param->users()) {

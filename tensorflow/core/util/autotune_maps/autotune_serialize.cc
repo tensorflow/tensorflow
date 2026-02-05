@@ -163,9 +163,8 @@ Status PopulateConvMap(
 
   if (!unmatched_device_descs.empty()) {
     LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
-                 << str_util::Join(unmatched_device_descs, ", ")
-                 << "; existing devices: "
-                 << str_util::Join(device_descs, ", ");
+                 << absl::StrJoin(unmatched_device_descs, ", ")
+                 << "; existing devices: " << absl::StrJoin(device_descs, ", ");
   }
 
   return OkStatus();

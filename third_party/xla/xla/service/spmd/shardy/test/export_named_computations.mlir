@@ -108,36 +108,36 @@ func.func @multiple_same_named_computations_same_shardings_named_computations_ha
   // CHECK-NEXT: %2 = call @baz(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   // CHECK-NEXT: return %2 : tensor<8x2xi32>
   %0 = sdy.named_computation<"baz">(%arg0) in_shardings=[<@mesh, [{}, {}]>] out_shardings=[<@mesh, [{}, {}]>] (%arg1: tensor<8x2xi32>) {
-    %3 = func.call @local_xla.sdy.inlinable_manual_computation_body(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+    %3 = func.call @xla.sdy.inlinable_manual_computation_body(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
     sdy.return %3 : tensor<8x2xi32>
   } : (tensor<8x2xi32>) -> tensor<8x2xi32>
   %1 = sdy.named_computation<"baz">(%arg0) in_shardings=[<@mesh, [{}, {}]>] out_shardings=[<@mesh, [{}, {}]>] (%arg1: tensor<8x2xi32>) {
-    %3 = func.call @local_xla.sdy.inlinable_manual_computation_body_0(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+    %3 = func.call @xla.sdy.inlinable_manual_computation_body_0(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
     sdy.return %3 : tensor<8x2xi32>
   } : (tensor<8x2xi32>) -> tensor<8x2xi32>
   %2 = sdy.named_computation<"baz">(%arg0) in_shardings=[<@mesh, [{}, {}]>] out_shardings=[<@mesh, [{}, {}]>] (%arg1: tensor<8x2xi32>) {
-    %3 = func.call @local_xla.sdy.inlinable_manual_computation_body_1(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
+    %3 = func.call @xla.sdy.inlinable_manual_computation_body_1(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
     sdy.return %3 : tensor<8x2xi32>
   } : (tensor<8x2xi32>) -> tensor<8x2xi32>
   return %2 : tensor<8x2xi32>
 }
 
-// CHECK-LABEL: func @local_xla.sdy.inlinable_manual_computation_body(
-func.func @local_xla.sdy.inlinable_manual_computation_body(
+// CHECK-LABEL: func @xla.sdy.inlinable_manual_computation_body(
+func.func @xla.sdy.inlinable_manual_computation_body(
   %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
  -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {
   return %arg0 : tensor<8x2xi32>
 }
 
-// CHECK-NOT:   func @local_xla.sdy.inlinable_manual_computation_body_0(
-func.func @local_xla.sdy.inlinable_manual_computation_body_0(
+// CHECK-NOT:   func @xla.sdy.inlinable_manual_computation_body_0(
+func.func @xla.sdy.inlinable_manual_computation_body_0(
   %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
  -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {
   return %arg0 : tensor<8x2xi32>
 }
 
-// CHECK-NOT:   func @local_xla.sdy.inlinable_manual_computation_body_1(
-func.func @local_xla.sdy.inlinable_manual_computation_body_1(
+// CHECK-NOT:   func @xla.sdy.inlinable_manual_computation_body_1(
+func.func @xla.sdy.inlinable_manual_computation_body_1(
   %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
  -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {
   return %arg0 : tensor<8x2xi32>

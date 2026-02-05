@@ -23,6 +23,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
@@ -51,6 +53,29 @@ namespace xla::gpu {
 
 namespace se = stream_executor;
 
+BuffersDebugFloatCheckThunk::BuffersDebugFloatCheckThunk(
+    ThunkInfo info, const ThunkInfo& checked_thunk_info,
+    BufferAllocation::Slice log_slice, BufferAllocation::Slice tmp_slice,
+    absl::flat_hash_map<size_t, BufferAllocation::Slice> checked_thunk_buffers,
+    std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
+    : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
+      log_slice_(log_slice),
+      tmp_slice_(tmp_slice),
+      checked_thunk_info_(checked_thunk_info),
+      checked_thunk_buffers_(std::move(checked_thunk_buffers)),
+      metadata_store_(std::move(metadata_store)) {
+  absl::erase_if(
+      checked_thunk_buffers_,
+      [this](const std::pair<size_t, BufferAllocation::Slice>& pair) {
+        if (pair.second.size() == 0) {
+          VLOG(1) << "Buffer " << pair.first << " in thunk "
+                  << checked_thunk_info_.thunk_id
+                  << " has zero size, skipping float check";
+          return true;
+        }
+        return false;
+      });
+}
 absl::Status BuffersDebugFloatCheckThunk::Initialize(
     const InitializeParams& params) {
   if (params.executor->GetPlatform()->id() != se::cuda::kCudaPlatformId) {
@@ -165,9 +190,9 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       se::DeviceAddress<float> f32_buffer(device_buffer);
       const se::BlockDim block_dim = GetBlockDimForBuffer<float>(
           params.stream, f32_buffer, tmp_size_elements);
-      TF_RETURN_IF_ERROR(
-          kernels->f32.Launch(thread_dim, block_dim, params.stream, f32_buffer,
-                              f32_buffer.size(), tmp_ptr, tmp_size_elements));
+      TF_RETURN_IF_ERROR(kernels->f32.Launch(
+          thread_dim, block_dim, params.stream, f32_buffer,
+          f32_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
     } else if (buffer_type == PrimitiveType::BF16) {
       VLOG(1) << "BF16 buffer detected with id: " << entry_id
               << " and size: " << device_buffer.size();
@@ -175,8 +200,8 @@ absl::Status BuffersDebugFloatCheckThunk::ExecuteOnStream(
       const se::BlockDim block_dim = GetBlockDimForBuffer<Eigen::bfloat16>(
           params.stream, bf16_buffer, tmp_size_elements);
       TF_RETURN_IF_ERROR(kernels->bf16.Launch(
-          thread_dim, block_dim, params.stream, bf16_buffer, bf16_buffer.size(),
-          tmp_ptr, tmp_size_elements));
+          thread_dim, block_dim, params.stream, bf16_buffer,
+          bf16_buffer.ElementCount(), tmp_ptr, tmp_size_elements));
     } else {
       VLOG(1) << "Unsupported primitive type for float checking: "
               << PrimitiveType_Name(buffer_type);

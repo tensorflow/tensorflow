@@ -61,7 +61,7 @@ func.func @func_result_sharding_returning_func_arg(
   // CHECK: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {mhlo.sharding =
   %arg0: tensor<8x16xf32>
   ) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{"x", ?}, {"y"}p4]>}) {
-  // CHECK:      %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK:      %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
   // CHECK-NEXT: return %[[CUSTOM_CALL]] : tensor<8x16xf32>
   return %arg0 : tensor<8x16xf32>
 }
@@ -78,10 +78,10 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
       tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>}) {
   // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   // CHECK-NEXT: %[[TEST_ONLY:.*]]:2 = stablehlo.custom_call @sdy_testonly(%arg0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, \22axis_2\22}, {}]>, <@mesh, [{\22axis_2\22, \22axis_0\22, \22axis_1\22}, {}]>]>"}, mhlo.sharding =
-  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_0:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
-  // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_0:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
-  // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_1:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22}, {\22axis_2\22}p1]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
-  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_1:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{}, {}]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_0:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22, ?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_0:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{?}, {\22axis_2\22}p4]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: %[[TEST_ONLY_RES_SHARDING_1:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[TEST_ONLY]]#1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{\22axis_0\22, \22axis_1\22}, {\22axis_2\22}p1]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK-NEXT: %[[ADD_RESULT_SHARDING_1:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[ADD]]) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh, [{}, {}]>]>"}} : (tensor<8x16xf32>) -> tensor<8x16xf32>
   // CHECK-NEXT: return %[[ADD_RESULT_SHARDING_0]], %[[TEST_ONLY_RES_SHARDING_0]], %[[TEST_ONLY_RES_SHARDING_1]], %[[ADD_RESULT_SHARDING_1]]
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   %1:2 = stablehlo.custom_call @sdy_testonly(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{"x","y"}, {}]>, <@mesh_1, [{"y","x"}, {}]>]>} : (tensor<8x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>)
@@ -99,7 +99,7 @@ func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // CHECK-LABEL: func @export_sharding_group
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @export_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  // CHECK: stablehlo.custom_call @local_xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "12 : i64"}}
+  // CHECK: stablehlo.custom_call @xla.sdy.ShardingGroup(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding_group_id = "12 : i64"}}
   sdy.sharding_group %arg0 group_id = 12:  tensor<8x8xf32>
   return %arg0 : tensor<8x8xf32>
 }
@@ -107,7 +107,7 @@ func.func @export_sharding_group(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // CHECK-LABEL: func @export_propagation_barrier
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @export_propagation_barrier(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  // CHECK: %0 = stablehlo.custom_call @local_xla.sdy.PropagationBarrier(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.allowed_direction = "2 : i32"}} : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK: %0 = stablehlo.custom_call @xla.sdy.PropagationBarrier(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.allowed_direction = "2 : i32"}} : (tensor<8x8xf32>) -> tensor<8x8xf32>
   %0 = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD :  tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
@@ -130,7 +130,7 @@ func.func @inlined_mesh(
 ) -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, []>}) {
   // CHECK-NEXT: %[[SHARDING:.*]] = stablehlo.custom_call @Sharding(%arg0)
   // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_0, [{\22a\22, \22b\22}]>]>"}, mhlo.sharding = "{devices=[4]<=[4]}"}
-  // CHECK-NEXT: %[[RESULT_SHARDING:.*]] = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%[[SHARDING]])
+  // CHECK-NEXT: %[[RESULT_SHARDING:.*]] = stablehlo.custom_call @xla.sdy.FuncResultSharding(%[[SHARDING]])
   // CHECK-SAME:   mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@maximal_mesh_5, []>]>"}
   // CHECK-NEXT: return %[[RESULT_SHARDING]]
   %0 = sdy.sharding_constraint %arg0 <mesh<["c"=4]>, [{"c"}]> : tensor<32xi32>

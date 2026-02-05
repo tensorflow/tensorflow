@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace ops {
@@ -147,32 +148,31 @@ TfLiteStatus SelectEval(TfLiteContext* context, TfLiteNode* node) {
                     GetTensorShape(input_y), GetTensorData<type>(input_y), \
                     GetTensorShape(output), GetTensorData<type>(output));
 
+  // Select is basically just a conditional copy, so we don't care what the type
+  // of the values as long as the type is the correct size.
 #define TF_LITE_SWITCH(type, op)                                             \
   switch (type) {                                                            \
-    break;                                                                   \
     case kTfLiteBool:                                                        \
       TF_LITE_SELECT(bool, op);                                              \
       break;                                                                 \
-    case kTfLiteFloat32:                                                     \
-      TF_LITE_SELECT(float, op);                                             \
-      break;                                                                 \
-    case kTfLiteUInt8:                                                       \
-      TF_LITE_SELECT(uint8_t, op);                                           \
-      break;                                                                 \
-    case kTfLiteInt8:                                                        \
-      TF_LITE_SELECT(int8_t, op);                                            \
-      break;                                                                 \
     case kTfLiteUInt32:                                                      \
+    case kTfLiteInt32:                                                       \
+    case kTfLiteFloat32:                                                     \
       TF_LITE_SELECT(uint32_t, op);                                          \
       break;                                                                 \
+    case kTfLiteUInt16:                                                      \
     case kTfLiteInt16:                                                       \
-      TF_LITE_SELECT(int16_t, op);                                           \
+    case kTfLiteFloat16:                                                     \
+    case kTfLiteBFloat16:                                                    \
+      TF_LITE_SELECT(uint16_t, op);                                          \
       break;                                                                 \
-    case kTfLiteInt32:                                                       \
-      TF_LITE_SELECT(int32_t, op);                                           \
+    case kTfLiteUInt8:                                                       \
+    case kTfLiteInt8:                                                        \
+      TF_LITE_SELECT(uint8_t, op);                                           \
       break;                                                                 \
+    case kTfLiteUInt64:                                                      \
     case kTfLiteInt64:                                                       \
-      TF_LITE_SELECT(int64_t, op);                                           \
+      TF_LITE_SELECT(uint64_t, op);                                          \
       break;                                                                 \
     default:                                                                 \
       TF_LITE_KERNEL_LOG(context,                                            \

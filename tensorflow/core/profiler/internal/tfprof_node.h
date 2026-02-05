@@ -49,24 +49,23 @@ class CallStack {
   class Trace {
    public:
     Trace(const CodeDef::Trace* trace,
-          const std::map<int64_t, string>* id_to_string)
+          const std::map<int64_t, std::string>* id_to_string)
         : trace_(trace), id_to_string_(id_to_string) {}
 
-    int32 lineno() const { return trace_->lineno(); }
-    string file() const {
-      return id_to_string_->at(trace_->file_id());
-    }
-    string function() const {
+    int32_t lineno() const { return trace_->lineno(); }
+    std::string file() const { return id_to_string_->at(trace_->file_id()); }
+    std::string function() const {
       return id_to_string_->at(trace_->function_id());
     }
-    int32 func_start_line() const { return trace_->func_start_line(); }
+    int32_t func_start_line() const { return trace_->func_start_line(); }
 
    private:
     const CodeDef::Trace* trace_;
-    const std::map<int64_t, string>* id_to_string_;
+    const std::map<int64_t, std::string>* id_to_string_;
   };
 
-  CallStack(const CodeDef& def, const std::map<int64_t, string>* id_to_string)
+  CallStack(const CodeDef& def,
+            const std::map<int64_t, std::string>* id_to_string)
       : def_(def) {
     traces_.reserve(def.traces_size());
     for (const auto& t : def_.traces()) {
@@ -86,9 +85,9 @@ class ExecStep {
  public:
   ExecStep() = default;
 
-  void AddTimeStats(const string& dev, const NodeExecStats& step_stat);
+  void AddTimeStats(const std::string& dev, const NodeExecStats& step_stat);
 
-  void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
+  void AddMemoryStats(const std::string& dev, const NodeExecStats& step_stat);
 
   int64_t run_count() const { return exec_.run_count(); }
   // The execution time of an op. If it runs on accelerator, then it's
@@ -99,12 +98,12 @@ class ExecStep {
   // The cpu execution time of an op.
   int64_t cpu_exec_micros() const;
 
-  const std::map<string, std::vector<std::pair<int64_t, int64_t>>>& op_execs()
-      const {
+  const std::map<std::string, std::vector<std::pair<int64_t, int64_t>>>&
+  op_execs() const {
     return op_execs_;
   }
-  const std::map<string, std::vector<std::pair<int64_t, int64_t>>>& cpu_execs()
-      const {
+  const std::map<std::string, std::vector<std::pair<int64_t, int64_t>>>&
+  cpu_execs() const {
     return cpu_execs_;
   }
   int64_t all_start_micros() const { return exec_.all_start_micros(); }
@@ -209,7 +208,7 @@ class ExecStep {
 
     exec_.mutable_devices()->Clear();
     exec_.mutable_devices()->Reserve(devices_.size());
-    for (const string& d : devices_) {
+    for (const std::string& d : devices_) {
       exec_.add_devices(d);
     }
     exec_.mutable_allocations()->Clear();
@@ -268,18 +267,19 @@ class ExecStep {
   // accelerator_execs: gpu:id/stream:all -> {op_start_micros, op_exec_micros}
   // For accelerator, vector size can be larger than 1, multiple kernel fires
   // or in tf.while_loop.
-  std::map<string, std::vector<std::pair<int64_t, int64_t>>> accelerator_execs_;
+  std::map<std::string, std::vector<std::pair<int64_t, int64_t>>>
+      accelerator_execs_;
   // cpu_execs: cpu/gpu:id -> {op_start_micros, op_exec_micros}
   // For cpu, vector size can be larger than 1 if in tf.while_loop.
-  std::map<string, std::vector<std::pair<int64_t, int64_t>>> cpu_execs_;
+  std::map<std::string, std::vector<std::pair<int64_t, int64_t>>> cpu_execs_;
   // combines accelerator_execs_ and cpu_execs_.
-  std::map<string, std::vector<std::pair<int64_t, int64_t>>> op_execs_;
+  std::map<std::string, std::vector<std::pair<int64_t, int64_t>>> op_execs_;
   // Each ExecMemory corresponds to one scheduling of the op. Normally,
   // there are multiple schedulings in while_loop.
   std::vector<ExecMemory> memory_execs_;
   // All devices the op is associated with (e.g. gpu:0 (scheduling),
   // gpu:0:stream:xx (kernel exec), cpu:0 host)
-  std::set<string> devices_;
+  std::set<std::string> devices_;
 
   // The history of accelerator allocations and deallocations of this step.
   std::vector<AllocationRecord> allocations_;
@@ -305,15 +305,17 @@ class ExecStep {
 
 class TFGraphNode {
  public:
-  TFGraphNode(const ProfileNode& node, const ProfileProto& profile,
-              const std::map<int64_t, string>* id_to_string,
-              const std::map<string, std::unique_ptr<TFGraphNode>>* nodes_map) {
+  TFGraphNode(
+      const ProfileNode& node, const ProfileProto& profile,
+      const std::map<int64_t, std::string>* id_to_string,
+      const std::map<std::string, std::unique_ptr<TFGraphNode>>* nodes_map) {
     nodes_map_ = nodes_map;
     FromProto(node, profile, id_to_string);
   }
 
-  TFGraphNode(const NodeDef* node, int64_t id,
-              const std::map<string, std::unique_ptr<TFGraphNode>>* nodes_map) {
+  TFGraphNode(
+      const NodeDef* node, int64_t id,
+      const std::map<std::string, std::unique_ptr<TFGraphNode>>* nodes_map) {
     nodes_map_ = nodes_map;
     node_.set_id(id);
     node_.set_name(node->name());
@@ -341,29 +343,29 @@ class TFGraphNode {
     op_types_.insert(node->op());
   }
 
-  void AddInput(const string& input, int64_t output_index, int input_idx) {
+  void AddInput(const std::string& input, int64_t output_index, int input_idx) {
     inputs_[input_idx] = input;
     src_output_idx_[input] = output_index;
   }
 
-  void AddOpType(const string& op_type) { op_types_.insert(op_type); }
+  void AddOpType(const std::string& op_type) { op_types_.insert(op_type); }
 
-  void AddStepStat(int64_t step, const string& device,
+  void AddStepStat(int64_t step, const std::string& device,
                    const NodeExecStats& step_stat);
 
   void AddFloatOps(int64_t float_ops) { node_.set_float_ops(float_ops); }
 
   // TODO(xpan): This could take a lot of memory.
   void AddCode(const CodeDef& code,
-               const std::map<int64_t, string>* id_to_string) {
+               const std::map<int64_t, std::string>* id_to_string) {
     if (!call_stack_) {
       call_stack_ = std::make_unique<CallStack>(code, id_to_string);
     }
   }
 
-  const string& name() const { return node_.name(); }
+  const std::string& name() const { return node_.name(); }
   int64_t id() const { return node_.id(); }
-  const string& op() const { return node_.op(); }
+  const std::string& op() const { return node_.op(); }
   const ProfileNode& node() { return node_; }
 
   bool trackable(int64_t step) const {
@@ -378,7 +380,7 @@ class TFGraphNode {
   }
 
   const ProfileNode& ToProto(
-      const std::map<string, std::unique_ptr<TFGraphNode>>& nodes_map) {
+      const std::map<std::string, std::unique_ptr<TFGraphNode>>& nodes_map) {
     node_.clear_shape();
     node_.mutable_shape()->Reserve(shape().size());
     for (int64_t s : shape()) {
@@ -387,7 +389,7 @@ class TFGraphNode {
 
     node_.clear_op_types();
     node_.mutable_op_types()->Reserve(op_types().size());
-    for (const string& t : op_types()) {
+    for (const std::string& t : op_types()) {
       node_.add_op_types(t);
     }
 
@@ -432,7 +434,7 @@ class TFGraphNode {
   }
 
   void FromProto(const ProfileNode& node, const ProfileProto& profile,
-                 const std::map<int64_t, string>* id_to_string) {
+                 const std::map<int64_t, std::string>* id_to_string) {
     node_.Clear();
     node_.MergeFrom(node);
 
@@ -479,7 +481,7 @@ class TFGraphNode {
     }
   }
 
-  const std::map<int32, string>& inputs() const { return inputs_; }
+  const std::map<int32_t, std::string>& inputs() const { return inputs_; }
 
   // Number of times the graph node is executed. When step < 0, the
   // average number of times executed across all steps.
@@ -595,16 +597,16 @@ class TFGraphNode {
     return exec->second.lastest_schedule_end_micros();
   }
 
-  const std::map<string, std::vector<std::pair<int64_t, int64_t>>>& op_execs(
-      int64_t step) const {
+  const std::map<std::string, std::vector<std::pair<int64_t, int64_t>>>&
+  op_execs(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_execs_;
     }
     return exec->second.op_execs();
   }
-  const std::map<string, std::vector<std::pair<int64_t, int64_t>>>& cpu_execs(
-      int64_t step) const {
+  const std::map<std::string, std::vector<std::pair<int64_t, int64_t>>>&
+  cpu_execs(int64_t step) const {
     auto exec = execs_.find(step);
     if (exec == execs_.end()) {
       return empty_execs_;
@@ -682,11 +684,11 @@ class TFGraphNode {
     return node_.float_ops() * run_count(step);
   }
   const CallStack* call_stack() { return call_stack_.get(); }
-  string canonical_device() const { return node_.canonical_device(); }
-  string host_device() const { return node_.host_device(); }
-  const std::set<string>& op_types() const { return op_types_; }
+  std::string canonical_device() const { return node_.canonical_device(); }
+  std::string host_device() const { return node_.host_device(); }
+  const std::set<std::string>& op_types() const { return op_types_; }
 
-  const AttrValue* op_attrs(const string& name) const {
+  const AttrValue* op_attrs(const std::string& name) const {
     const auto it = node_.attrs().find(name);
     if (it == node_.attrs().end()) {
       return nullptr;
@@ -727,11 +729,11 @@ class TFGraphNode {
 
  private:
   // maps graph node name to TFGraphNode. Not owned.
-  const std::map<string, std::unique_ptr<TFGraphNode>>* nodes_map_;
+  const std::map<std::string, std::unique_ptr<TFGraphNode>>* nodes_map_;
   // inputs to the node. input index -> input node name.
-  std::map<int, string> inputs_;
+  std::map<int, std::string> inputs_;
   // The output index of the source node.
-  std::map<string, int32> src_output_idx_;
+  std::map<std::string, int32_t> src_output_idx_;
   // proto for serialize/deserialized representation of the node.
   ProfileNode node_;
   // Python call stack that creates the name.
@@ -744,19 +746,19 @@ class TFGraphNode {
   // be empty.
   std::map<int, std::vector<int64_t>> output_shapes_;
 
-  std::set<string> op_types_;
+  std::set<std::string> op_types_;
 
   std::map<int64_t, ExecStep> execs_;
 
   // Placeholder for empty cases.
   std::map<int64_t, int64_t> empty_bytes_in_use_;
-  std::map<string, std::vector<std::pair<int64_t, int64_t>>> empty_execs_;
+  std::map<std::string, std::vector<std::pair<int64_t, int64_t>>> empty_execs_;
   std::vector<AllocationRecord> empty_allocations_;
 };
 
 class TFMultiGraphNode {
  public:
-  TFMultiGraphNode(const string& name)
+  TFMultiGraphNode(const std::string& name)
       : name_(name),
         step_(-1),
         run_count_(0),
@@ -770,7 +772,8 @@ class TFMultiGraphNode {
         float_ops_(0),
         parameters_(0) {}
 
-  bool SnapshotNodes(int64_t step, const std::vector<string>& type_regexes) {
+  bool SnapshotNodes(int64_t step,
+                     const std::vector<std::string>& type_regexes) {
     run_count_ = 0;
     exec_micros_ = 0;
     accelerator_exec_micros_ = 0;
@@ -828,11 +831,11 @@ class TFMultiGraphNode {
     nodes_[node->name()] = node;
   }
 
-  const std::map<string, const TFGraphNode*>& graph_nodes() const {
+  const std::map<std::string, const TFGraphNode*>& graph_nodes() const {
     return snapshot_nodes_;
   }
 
-  const string& name() const { return name_; }
+  const std::string& name() const { return name_; }
 
   int64_t run_count() const { return run_count_; }
   int64_t exec_micros() const { return exec_micros_; }
@@ -848,15 +851,15 @@ class TFMultiGraphNode {
 
   int64_t parameters() const { return parameters_; }
 
-  const std::set<string>& devices() const { return devices_; }
+  const std::set<std::string>& devices() const { return devices_; }
 
-  const std::set<string>& op_types() const { return op_types_; }
+  const std::set<std::string>& op_types() const { return op_types_; }
 
   const std::vector<std::vector<int64_t>>& shapes() const { return shapes_; }
 
  private:
   std::vector<const TFGraphNode*> pick_nodes(
-      const std::vector<string>& type_regexes) {
+      const std::vector<std::string>& type_regexes) {
     if (type_regexes.empty()) {
       return {};
     }
@@ -868,9 +871,9 @@ class TFMultiGraphNode {
       return ret;
     }
 
-    for (const string& regex : type_regexes) {
+    for (const std::string& regex : type_regexes) {
       for (const auto& n : nodes_) {
-        for (const string& type : n.second->op_types()) {
+        for (const std::string& type : n.second->op_types()) {
           if (RE2::FullMatch(type, regex)) {
             ret.push_back(n.second);
             break;
@@ -881,10 +884,10 @@ class TFMultiGraphNode {
     return ret;
   }
 
-  const string name_;
+  const std::string name_;
   int64_t step_;
   // Snapshot based on type_regexes
-  std::set<string> op_types_;
+  std::set<std::string> op_types_;
   int64_t run_count_;
   int64_t exec_micros_;
   int64_t accelerator_exec_micros_;
@@ -896,19 +899,19 @@ class TFMultiGraphNode {
   int64_t output_bytes_;
   int64_t float_ops_;
   int64_t parameters_;
-  std::set<string> devices_;
+  std::set<std::string> devices_;
   std::vector<std::vector<int64_t>> shapes_;
-  std::map<string, const TFGraphNode*> snapshot_nodes_;
+  std::map<std::string, const TFGraphNode*> snapshot_nodes_;
 
   // Overall data held by the TFMultiGraphNode.
-  std::map<string, const TFGraphNode*> nodes_;
+  std::map<std::string, const TFGraphNode*> nodes_;
 };
 
-bool IsPlacedOnCPU(const string& device);
-bool IsPlacedOnAccelerator(const string& device);
-bool CountAsAcceleratorTime(const string& device);
-bool CountAsCPUTime(const string& device);
-bool IsCanonicalDevice(const string& device);
+bool IsPlacedOnCPU(const std::string& device);
+bool IsPlacedOnAccelerator(const std::string& device);
+bool CountAsAcceleratorTime(const std::string& device);
+bool CountAsCPUTime(const std::string& device);
+bool IsCanonicalDevice(const std::string& device);
 
 }  // namespace tfprof
 }  // namespace tensorflow

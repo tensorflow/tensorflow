@@ -71,7 +71,7 @@ def transform_function(
   If both are provided, `mlir_pipeline` is applied followed by `transform_fn`.
 
   Optionally, `transform_fn` could be a list of transformation functions and
-  `mlir_pipeline` could be a a list of MLIR transformations. The transformations
+  `mlir_pipeline` could be a list of MLIR transformations. The transformations
   will be applied in order of the list. For each nested `FunctionDef`, MLIR
   transformations will be applied before Python function based transformations.
 
@@ -120,6 +120,7 @@ def transform_function(
   Returns:
     The transformed function.
   """
+
   # Early exit if no transformations need to be applied.
   if transform_fn is None and mlir_pipeline is None:
     return f

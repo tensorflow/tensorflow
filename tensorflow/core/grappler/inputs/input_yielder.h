@@ -24,7 +24,7 @@ struct GrapplerItem;
 // Abstract interface for yielding graphs that we want to optimize.
 class InputYielder {
  public:
-  virtual ~InputYielder() {}
+  virtual ~InputYielder() = default;
 
   virtual bool NextItem(GrapplerItem* item) = 0;
 };

@@ -135,7 +135,10 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
   TF_ASSIGN_OR_RETURN(
       ShardingRef sharding,
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
-  TF_ASSIGN_OR_RETURN(auto per_shard, sharding->Disassemble(shape));
+  TF_ASSIGN_OR_RETURN(
+      auto per_shard,
+      sharding->Disassemble(shape,
+                            xla::ifrt::SingleDeviceShardSemantics::kAllShards));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
   std::vector<ArrayRef> per_shard_arrays;
@@ -153,8 +156,9 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
     per_shard_arrays.push_back(per_shard_array);
   }
   return client_->AssembleArrayFromSingleDeviceArrays(
-      shape, sharding, absl::MakeSpan(per_shard_arrays),
-      ArrayCopySemantics::kAlwaysCopy);
+      dtype, shape, sharding, absl::MakeSpan(per_shard_arrays),
+      ArrayCopySemantics::kAlwaysCopy,
+      xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
 }
 
 absl::StatusOr<DeviceListRef> IfrtIrExecutableImplTestBase::PickDevices(

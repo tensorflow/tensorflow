@@ -511,7 +511,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
     return;
   }
 
-  const string& key = request->rendezvous_key();
+  const std::string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key);
   Rendezvous::ParsedKey parsed;
   s = Rendezvous::ParseKey(key, &parsed);

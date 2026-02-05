@@ -25,7 +25,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
@@ -44,7 +47,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -227,13 +229,161 @@ class FissionTest : public HloHardwareIndependentTestBase,
             &mlir_context_, stream_executor_)) {}
 };
 
+class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
+ protected:
+  DebugOptions debug_options_;
+  NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::GpuTargetConfig target_config_;
+  se::DeviceDescription device_description_;
+  std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
+  std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
+  std::unique_ptr<FissionBackend> fission_backend_;
+  mlir::MLIRContext mlir_context_;
+
+  CublasFissionBackendTest()
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
+                             .value()
+                             ->ExecutorForDevice(0)
+                             .value()),
+        target_config_(stream_executor_),
+        device_description_(stream_executor_->GetDeviceDescription()),
+        rewriter_pipeline_(
+            FissionTest::GetCublasRewriterPipeline(device_description_)),
+        base_codegen_backend_(FissionTest::CreateCublasBackend(
+            stream_executor_, &debug_options_, &compiler_, &target_config_)),
+        fission_backend_(std::make_unique<FissionBackend>(
+            &debug_options_, &compiler_, &target_config_,
+            std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
+            &mlir_context_, stream_executor_)) {}
+};
+
+TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  EXPECT_EQ(module->computation_count(), 2);
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       fission_backend_->GetDefaultConfig(*fusion));
+  EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
+  EXPECT_EQ(module->computation_count(), 1);
+}
+
+TEST_F(CublasFissionBackendTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
+  constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=$0,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )";
+
+  std::string hlo_string =
+      absl::Substitute(kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3");
+  auto module_statusor = ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_statusor.ok());
+  auto module = std::move(module_statusor).value();
+
+  auto configs_statusor = fission_backend_->GetSupportedConfigs(
+      *module->entry_computation()->root_instruction());
+  ASSERT_TRUE(configs_statusor.ok());
+  auto configs = std::move(configs_statusor).value();
+
+  auto hasCublasConfig = [&](const auto& configs) {
+    for (const auto& config : configs) {
+      AutotuneResult::GemmKey gemm_key;
+      if (config->UnpackTo(&gemm_key)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  EXPECT_TRUE(hasCublasConfig(configs))
+      << "There is dot_algorithm_rewrite that supports fallback to cublas "
+         "implementation for dot_tf32_tf32_f32_x3.";
+}
+
+TEST_F(CublasFissionBackendTest, CublasFallbackForBf16Bf16F32Algorithm) {
+  constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
+    HloModule module
+
+    computation {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT r = f32[1024,1024] dot(p0, p1),
+        algorithm=$0,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[1024,1024] parameter(0)
+      p1 = f32[1024,1024] parameter(1)
+      ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
+        kind=kCustom,
+        calls=computation
+    }
+  )";
+
+  std::string hlo_string =
+      absl::Substitute(kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32");
+  auto module_statusor = ParseAndReturnVerifiedModule(hlo_string);
+  ASSERT_TRUE(module_statusor.ok());
+  auto module = std::move(module_statusor).value();
+
+  auto configs_statusor = fission_backend_->GetSupportedConfigs(
+      *module->entry_computation()->root_instruction());
+  ASSERT_TRUE(configs_statusor.ok());
+  auto configs = std::move(configs_statusor).value();
+
+  auto hasCublasConfig = [&](const auto& configs) {
+    for (const auto& config : configs) {
+      AutotuneResult::GemmKey gemm_key;
+      if (config->UnpackTo(&gemm_key)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const auto& comp = device_description_.gpu_compute_capability();
+
+  if (!comp.IsRocm()) {
+    auto cc = comp.cuda_compute_capability();
+    // Ampere (8.0) and newer should have fallback.
+    if (cc->IsAtLeastAmpere()) {
+      EXPECT_TRUE(hasCublasConfig(configs))
+          << "There should be a cublas fallback for dot_bf16_bf16_f32";
+    } else {
+      EXPECT_FALSE(hasCublasConfig(configs));
+    }
+  } else {
+    // ROCm
+    EXPECT_TRUE(hasCublasConfig(configs));
+  }
+}
+
 TEST_P(FissionTest, CanCreateFissionBackend) {
   EXPECT_EQ(fission_backend_->name(), GetParam().expected_backend_name);
 }
 
 TEST_P(FissionTest, GetSupportedConfigs) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       fission_backend_->GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
@@ -241,8 +391,8 @@ TEST_P(FissionTest, GetSupportedConfigs) {
 }
 
 TEST_P(FissionTest, GetSupportedConfigsUnsupportedFusion) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kUnsupportedFusionHlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(kUnsupportedFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       fission_backend_->GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
@@ -250,30 +400,30 @@ TEST_P(FissionTest, GetSupportedConfigsUnsupportedFusion) {
 }
 
 TEST_P(FissionTest, GetDefaultConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   EXPECT_THAT(fission_backend_->GetDefaultConfig(*fusion), IsOk());
 }
 
 TEST_P(FissionTest, Compile) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          fission_backend_->GetDefaultConfig(*fusion));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       fission_backend_->GetDefaultConfig(*fusion));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          fission_backend_->Compile(*fusion, *config));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                       fission_backend_->Compile(*fusion, *config));
   EXPECT_NE(executable, nullptr);
 }
 
 TEST_P(FissionTest, ApplyConfig) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(GetParam().hlo_string));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(GetParam().hlo_string));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
-                          fission_backend_->GetDefaultConfig(*fusion));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                       fission_backend_->GetDefaultConfig(*fusion));
   EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
   std::string module_str = module->ToString();
   for (const std::string& expected_substr :

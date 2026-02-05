@@ -50,6 +50,6 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )

@@ -119,17 +119,16 @@ ValueRange EmitUpdateIf(
     ImplicitLocOpBuilder& b, Value condition, ValueRange values,
     llvm::function_ref<SmallVector<Value>(ImplicitLocOpBuilder&)>
         updated_values_fn) {
-  return b
-      .create<scf::IfOp>(
-          condition,
-          [&](OpBuilder& then_b, Location then_loc) -> void {
-            ImplicitLocOpBuilder implicit_then_b(then_loc, then_b);
-            scf::YieldOp::create(then_b, then_loc,
-                                 updated_values_fn(implicit_then_b));
-          },
-          [&](OpBuilder& else_b, Location else_loc) -> void {
-            scf::YieldOp::create(else_b, else_loc, values);
-          })
+  return scf::IfOp::create(
+             b, condition,
+             [&](OpBuilder& then_b, Location then_loc) -> void {
+               ImplicitLocOpBuilder implicit_then_b(then_loc, then_b);
+               scf::YieldOp::create(then_b, then_loc,
+                                    updated_values_fn(implicit_then_b));
+             },
+             [&](OpBuilder& else_b, Location else_loc) -> void {
+               scf::YieldOp::create(else_b, else_loc, values);
+             })
       .getResults();
 }
 
@@ -769,9 +768,9 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
             auto update_elem =
                 helper.GetUpdateElement(update_loop_b, slice_indices);
             auto acc_ind_opfold = mlir::getAsOpFoldResult(accumulator_indices);
-            return update_loop_b
-                .create<vector::InsertOp>(then_loc, update_elem, acc_arg,
-                                          acc_ind_opfold)
+            return vector::InsertOp::create(update_loop_b, then_loc,
+                                            update_elem, acc_arg,
+                                            acc_ind_opfold)
                 ->getResults();
           });
       scf::YieldOp::create(implicit_then_b, then_loc, then_results);
@@ -796,8 +795,8 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
             auto reduced_val = emitters::InlineBlock(
                 update_loop_b, helper.GetReducer().getBody().front(),
                 {accumulator_elem, update_elem})[0];
-            return update_loop_b
-                .create<vector::InsertOp>(reduced_val, acc_arg, acc_ind_opfold)
+            return vector::InsertOp::create(update_loop_b, reduced_val, acc_arg,
+                                            acc_ind_opfold)
                 ->getResults();
           });
       scf::YieldOp::create(implicit_else_b, else_results);
@@ -805,10 +804,9 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
     auto updated_accumulator =
         EmitUpdateIf(nested_b, new_is_inbounds, {iter_acc},
                      [&](ImplicitLocOpBuilder& if_b) {
-                       return nested_b
-                           .create<scf::IfOp>(offsets_changed,
-                                              emit_overwrite_accumulator_fn,
-                                              emit_combine_accumulator_fn)
+                       return scf::IfOp::create(nested_b, offsets_changed,
+                                                emit_overwrite_accumulator_fn,
+                                                emit_combine_accumulator_fn)
                            .getResults();
                      })
             .front();

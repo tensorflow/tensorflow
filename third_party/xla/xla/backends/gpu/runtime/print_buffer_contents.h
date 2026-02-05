@@ -25,7 +25,7 @@ namespace xla::gpu {
 // Prints the contents of the buffer arguments in `kernel_args` to LOG(INFO).
 void PrintBufferContents(
     stream_executor::Stream* stream,
-    absl::Span<const stream_executor::KernelArgument> kernel_args);
+    absl::Span<const stream_executor::KernelArg> kernel_args);
 
 }  // namespace xla::gpu
 

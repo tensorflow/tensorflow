@@ -35,9 +35,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #else
+#include "rocm/include/hip/hip_bf16.h"
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_fp16.h"
-#include "rocm/include/hip/hip_bf16.h"
 #endif
 
 #include "tensorflow/core/platform/types.h"
@@ -577,16 +577,19 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
 #endif
   uintptr_t intptr = reinterpret_cast<uintptr_t>(ptr);
   uint32_t shift = (intptr & 0x2) * 8U;
-  uint32_t mask =  0xFFFF0000U >> shift;
+  uint32_t mask = 0xFFFF0000U >> shift;
 
   assert(!(intptr & 0x1));  // should be 2-aligned.
   uint32* address = reinterpret_cast<uint32*>(intptr & ~0x3);
-  uint32 result = GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32 arg) {
-    uint16_t high = static_cast<uint16_t>(arg >> shift);
-    Eigen::half acc = accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
-    return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc)) << shift) |
-           (arg & mask);
-  });
+  uint32 result =
+      GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32 arg) {
+        uint16_t high = static_cast<uint16_t>(arg >> shift);
+        Eigen::half acc =
+            accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
+        return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc))
+                << shift) |
+               (arg & mask);
+      });
   return Eigen::numext::bit_cast<Eigen::half>(
       static_cast<uint16_t>(result >> shift));
 }
@@ -660,7 +663,7 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicAdd(T* ptr, U value) {
                    value);
 }
 
-#if !defined(TENSORFLOW_USE_ROCM)
+#if GOOGLE_CUDA
 __device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
   return detail::GpuAtomicCasHelper(
@@ -674,7 +677,7 @@ __device__ inline Eigen::half GpuAtomicAdd(Eigen::half* ptr,
 }
 #endif
 
-#if (__CUDA_ARCH__ < 600)
+#if (__CUDA_ARCH__ < 600) || TENSORFLOW_USE_ROCM
 __device__ inline double GpuAtomicAdd(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(ptr,
                                     [value](double a) { return a + value; });
@@ -716,10 +719,9 @@ __device__ inline T GpuAtomicAddHalfHelper(T* ptr, T value, F add) {
 __device__ inline Eigen::bfloat16 GpuAtomicAdd(Eigen::bfloat16* ptr,
                                                Eigen::bfloat16 value) {
 #if __has_builtin(__builtin_amdgcn_global_atomic_fadd_v2bf16)
-  return detail::GpuAtomicAddHalfHelper<short>(
-      ptr, value, [](auto p, auto v) {
-        return __builtin_amdgcn_global_atomic_fadd_v2bf16(p, v);
-      });
+  return detail::GpuAtomicAddHalfHelper<short>(ptr, value, [](auto p, auto v) {
+    return __builtin_amdgcn_global_atomic_fadd_v2bf16(p, v);
+  });
 #else
   return detail::GpuAtomicCasHelper(
       ptr, [value](Eigen::bfloat16 a) { return a + value; });

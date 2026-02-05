@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/inputs/utils.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"

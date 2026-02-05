@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_GPU_BUFFER_ALLOCATIONS_H_
 
 #include <cstddef>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -67,6 +69,11 @@ class BufferAllocations {
   se::DeviceAddressBase GetDeviceAddress(
       const BufferAllocation::Slice& buffer_slice) const;
 
+  // Returns a buffer allocation index for the given device address if it
+  // belongs to one of the buffer allocations. Returns nullptr otherwise.
+  std::optional<BufferAllocation::Index> FindAllocationIndex(
+      const se::DeviceAddressBase& addr) const;
+
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
   absl::Status TearDown(const std::set<se::DeviceAddressBase>& live_addresses,
@@ -76,11 +83,16 @@ class BufferAllocations {
     std::string out;
     for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
       const auto& buf = buffers_[i];
+      if (i > 0) {
+        absl::StrAppend(&out, "; ");
+      }
       absl::StrAppendFormat(&out, "Buffer %d -> %p (%d B)", i, buf.opaque(),
                             buf.size());
     }
     return out;
   }
+
+  absl::Span<const se::DeviceAddressBase> buffers() const { return buffers_; }
 
   size_t size() const { return buffers_.size(); }
 

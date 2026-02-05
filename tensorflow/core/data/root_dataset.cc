@@ -114,24 +114,24 @@ void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
         kAlgorithm, model::AutotuneAlgorithm_Name(params.autotune_algorithm)));
     trace_metadata->push_back(std::make_pair(
         kCpuBudget,
-        strings::Printf("%lld", static_cast<long long>(
+        absl::StrFormat("%lld", static_cast<long long>(
                                     params.autotune_cpu_budget_func()))));
     int64_t ram_budget = params.ComputeInitialAutotuneRamBudget();
     trace_metadata->push_back(std::make_pair(
         kRamBudget,
-        strings::Printf("%lld", static_cast<long long>(ram_budget / 1.0e6))));
+        absl::StrFormat("%lld", static_cast<long long>(ram_budget / 1.0e6))));
   }
   if (params.max_intra_op_parallelism >= 0) {
     trace_metadata->push_back(std::make_pair(
         kIntraOpParallelism,
-        strings::Printf("%lld", static_cast<long long>(value_or_default(
+        absl::StrFormat("%lld", static_cast<long long>(value_or_default(
                                     params.max_intra_op_parallelism, 0,
                                     port::MaxParallelism())))));
   }
   if (params.private_threadpool_size >= 0) {
     trace_metadata->push_back(std::make_pair(
         kPrivateThreadpoolSize,
-        strings::Printf("%lld", static_cast<long long>(value_or_default(
+        absl::StrFormat("%lld", static_cast<long long>(value_or_default(
                                     params.private_threadpool_size, 0,
                                     port::MaxParallelism())))));
   }
@@ -210,7 +210,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
         ctx->SetModel(model_);
       }
 
-      absl::flat_hash_set<string> experiments = GetExperiments();
+      absl::flat_hash_set<std::string> experiments = GetExperiments();
       if (experiments.contains("stage_based_autotune_v2")) {
         model_->AddExperiment("stage_based_autotune_v2");
       }
@@ -281,13 +281,13 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     if (mem_bw != INT64_MAX) {
       traceme_metadata.push_back(std::make_pair(
           kMemBandwidth,
-          strings::Printf("%lld", static_cast<long long>(mem_bw))));
+          absl::StrFormat("%lld", static_cast<long long>(mem_bw))));
     }
     const auto memory_info = port::GetMemoryInfo();
     const auto memory_usage = memory_info.total - memory_info.free;
     traceme_metadata.push_back(std::make_pair(
         kRamUsage,
-        strings::Printf("%lld out of %lld (%.2f%%)",
+        absl::StrFormat("%lld out of %lld (%.2f%%)",
                         static_cast<long long>(memory_usage / 1.0e6),
                         static_cast<long long>(memory_info.total / 1.0e6),
                         static_cast<double>(100 * memory_usage) /
@@ -296,7 +296,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     if (io_statistics.roundtrip_latency_usec.count > 0) {
       traceme_metadata.push_back(std::make_pair(
           kReadRoundtripLatency,
-          strings::Printf(
+          absl::StrFormat(
               "(count: %lld, mean: %lld, std dev: %lld)",
               static_cast<long long>(
                   io_statistics.roundtrip_latency_usec.count),
@@ -307,7 +307,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
     if (io_statistics.response_bytes.count > 0) {
       traceme_metadata.push_back(std::make_pair(
           kReadResponseBytes,
-          strings::Printf(
+          absl::StrFormat(
               "(count: %lld, mean: %lld, std dev: %lld)",
               static_cast<long long>(io_statistics.response_bytes.count),
               static_cast<long long>(io_statistics.response_bytes.mean),
@@ -413,7 +413,7 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
 RootDataset::~RootDataset() = default;
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
-    const string& prefix) const {
+    const std::string& prefix) const {
   return std::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
@@ -426,7 +426,7 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
   return input_->output_shapes();
 }
 
-string RootDataset::DebugString() const {
+std::string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
 }
 
@@ -434,7 +434,7 @@ int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
   return input_->Cardinality(options);
 }
 
-absl::Status RootDataset::Get(OpKernelContext* ctx, int64 index,
+absl::Status RootDataset::Get(OpKernelContext* ctx, int64_t index,
                               std::vector<Tensor>* out_tensors) const {
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(this->InputDatasets(&inputs));

@@ -77,11 +77,11 @@ void NodeExecStatsWrapper::Done(const std::string& device) {
       if (peak > 0) {
         memory =
             absl::StrCat(memory, "[", all.allocator_name(),
-                         strings::Printf(" %.1fMB %.1fMB] ", tot / 1048576.0,
+                         absl::StrFormat(" %.1fMB %.1fMB] ", tot / 1048576.0,
                                          peak / 1048576.0));
       } else {
         memory = absl::StrCat(memory, "[", all.allocator_name(),
-                              strings::Printf(" %.1fMB] ", tot / 1048576.0));
+                              absl::StrFormat(" %.1fMB] ", tot / 1048576.0));
       }
     }
   }

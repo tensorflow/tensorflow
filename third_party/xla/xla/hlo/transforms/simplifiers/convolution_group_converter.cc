@@ -440,7 +440,6 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     return absl::OkStatus();
   }
 
-  changed_ = true;
   ConvolutionDimensionNumbers dim_numbers =
       convolution->convolution_dimension_numbers();
   auto filter = convolution->mutable_operand(1);
@@ -462,7 +461,6 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     // If the code generator handles depthwise separable convolutions
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
-      changed_ = false;
       return absl::OkStatus();
     }
     VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
@@ -495,6 +493,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           convolution->shape(), convolution->mutable_operand(0), new_filter,
           /*feature_group_count=*/1, /*batch_group_count=*/1,
           convolution->window(), dim_numbers, convolution->precision_config());
+      changed_ = true;
       return computation_->ReplaceWithNewInstruction(
           convolution, std::move(new_convolution));
     }
@@ -583,6 +582,7 @@ absl::Status ConvolutionVisitor::HandleConvolution(
             new_convolution_output_shape, new_activation, new_filter,
             /*feature_group_count=*/group_count, /*batch_group_count=*/1,
             new_window, dim_numbers, convolution->precision_config()));
+    changed_ = true;
     return computation_->ReplaceWithNewInstruction(
         convolution,
         HloInstruction::CreateReshape(convolution->shape(), new_convolution));

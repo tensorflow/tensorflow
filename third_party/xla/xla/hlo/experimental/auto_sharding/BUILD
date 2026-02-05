@@ -88,9 +88,9 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf_lite",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:statusor",
     ] + xla_internal(
         ["experimental/auto_sharding:auto_sharding_impl_internal"],
         otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"],
@@ -146,10 +146,10 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
         "@com_google_protobuf//:protobuf_lite",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:types",
     ] + xla_internal(
         ["experimental/auto_sharding:auto_sharding_solver_impl_internal"],
         otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"],
@@ -265,7 +265,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -333,7 +333,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -360,7 +360,7 @@ xla_cc_binary(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -465,8 +465,8 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf_lite",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:statusor",
     ] + if_google(["@com_google_ortools//ortools/linear_solver:linear_solver_scip"]),
 )
 

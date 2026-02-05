@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <limits>
+#include <string>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

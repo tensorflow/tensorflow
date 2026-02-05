@@ -79,7 +79,7 @@ void CpuTrackedDeviceEventPromise::SetReady() {
 }
 
 Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   event_.AndThen([promise = std::move(promise), event = event_]() mutable {
     if (auto* error = event.GetErrorIfPresent()) {
       promise.Set(*error);

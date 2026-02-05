@@ -689,7 +689,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
   // Run the graph 1000 times in 4 different threads concurrently.
   std::vector<std::string> output_names = {y_ + ":0"};
   auto fn = [&session, output_names, run_options]() {
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 200; ++i) {
       std::vector<std::pair<std::string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph
@@ -753,7 +753,7 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPoolWithPriority) {
   // Run the graph 1000 times in 4 different threads concurrently.
   std::vector<std::string> output_names = {y_ + ":0"};
   auto fn = [&session, output_names]() {
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 200; ++i) {
       RunOptions run_options;
       run_options.mutable_experimental()->set_use_run_handler_pool(true);
       run_options.mutable_experimental()

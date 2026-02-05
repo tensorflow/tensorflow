@@ -125,3 +125,24 @@ def UnpackSubByteVectorWritePass : Pass<"xtile-cpu-unpack-sub-byte-vector-write"
     "::mlir::scf::SCFDialect",
   ];
 }
+
+def InitializeAllocsPass : Pass<"xtile-cpu-initialize-allocs"> {
+  let summary = "Initializes allocations.";
+
+  let description = [{
+    We don't currently have the infrastructure to instrument JIT kernels fully
+    with msan, therefore to avoid false positives we initialize all allocated
+    memory to set values.
+
+    Integer values will be initialized with all high bits and floats with NaNs.
+
+    This pass will also add a call to __msan_unpoison for each allocation as
+    optimizations can remove the set values.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "::mlir::scf::SCFDialect",
+    "::mlir::LLVM::LLVMDialect",
+  ];
+}

@@ -17,7 +17,18 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/errors.h"
 
 #ifdef XLA_ONEDNN
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
@@ -65,16 +76,6 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
         continue;
       }
 
-#ifdef XLA_ONEDNN
-      // TODO(penporn): Move this logic outside of this pass.
-      const DebugOptions& debug_options = module->config().debug_options();
-      if ((debug_options.xla_cpu_use_onednn() ||
-           debug_options.xla_cpu_experimental_onednn_custom_call()) &&
-          cpu::OneDnnContractionRewriter::ShouldRewriteInstr(instr, true)) {
-        continue;
-      }
-#endif  // XLA_ONEDNN
-
       const PrimitiveType to_type = it->second;
       absl::InlinedVector<HloInstruction*, 8> new_operands;
       for (HloInstruction* operand : instr->mutable_operands()) {
@@ -86,8 +87,10 @@ absl::StatusOr<bool> ChangeOpDataType::RunImpl(
 
       HloInstruction* new_instr =
           comp->AddInstruction(cloner(instr, new_shape, new_operands));
-      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(
-          instr, MakeConvertToHlo(new_instr, from_type)));
+      if (new_instr->shape().element_type() != instr->shape().element_type()) {
+        new_instr = MakeConvertToHlo(new_instr, instr->shape().element_type());
+      }
+      TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
       changed = true;
     }
   }

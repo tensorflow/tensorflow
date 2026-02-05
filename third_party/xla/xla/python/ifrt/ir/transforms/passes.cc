@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "tsl/platform/path.h"
 
 namespace xla {
@@ -221,7 +221,7 @@ void registerIfrtPassesAndPipelines(
           mlir::OpPassManager& pm,
           const OutlinedAtomProgramsToCompiledPipelineOptions&
               options) mutable {
-        TF_CHECK_OK(createOutlinedAtomProgramsToCompiledPipeline(
+        CHECK_OK(createOutlinedAtomProgramsToCompiledPipeline(
             pm, compiler, options, compile_options, atom_executable_map,
             bound_executable_map));
       });

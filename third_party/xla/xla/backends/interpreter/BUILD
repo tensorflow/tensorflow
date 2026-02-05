@@ -57,7 +57,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
+        "@tsl//tsl/platform:status",
     ],
     alwayslink = True,  # Contains compiler registration
 )
@@ -145,7 +145,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:statusor",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )

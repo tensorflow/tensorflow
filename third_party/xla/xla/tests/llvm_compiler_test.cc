@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"

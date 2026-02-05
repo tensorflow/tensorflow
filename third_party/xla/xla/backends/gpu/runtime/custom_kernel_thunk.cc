@@ -95,7 +95,7 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   if (VLOG_IS_ON(100)) {
-    absl::InlinedVector<se::KernelArgument, 4> kernel_args;
+    absl::InlinedVector<se::KernelArg, 4> kernel_args;
     for (const se::DeviceAddressBase& arg : buffer_args) {
       kernel_args.push_back(arg);
     }

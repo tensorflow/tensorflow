@@ -41,7 +41,7 @@ TEST(IfrtBackendUserContextTest, CreateWithNonZeroId) {
 }
 
 TEST(IfrtBackendUserContextTest, DestroyUserContext) {
-  auto [promise, future] = tsl::Future<UserContextId>::MakePromise();
+  auto [promise, future] = tsl::MakePromise<UserContextId>();
   {
     UserContextRef user_context = IfrtBackendUserContext::Create(
         UserContextId(100), [promise = std::move(promise)](

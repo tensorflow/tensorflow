@@ -1067,6 +1067,8 @@ message NamedShardingProto {
   // A sharding can have unreduced axes, meaning the tensor is unreduced
   // along these axes.
   repeated AxisRefProto unreduced_axes = 5;
+  // A list of axes that is controlled by the users.
+  repeated AxisRefProto manual_axes = 7;
 
   // This field is used to track the source of this sharding, usually derived
   // from instructions. Multple metadata may be populated if sharding is

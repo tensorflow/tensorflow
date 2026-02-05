@@ -40,7 +40,7 @@ void MayAddDisplayName(XEventMetadata* xevent_metadata) {
 
 }  // namespace
 
-void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
+void ConvertCompleteEventsToXPlane(uint64_t start_timestamp_ns,
                                    TraceMeRecorder::Events&& events,
                                    XPlane* raw_plane) {
   XPlaneBuilder xplane(raw_plane);

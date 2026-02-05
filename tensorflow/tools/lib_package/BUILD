@@ -2,8 +2,8 @@
 # This includes the C API, Java API, and protocol buffer files.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("@rules_pkg//:pkg.bzl", "pkg_tar", "pkg_zip")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
 
@@ -12,24 +12,7 @@ package(default_visibility = ["//visibility:private"])
 pkg_zip(
     name = "libtensorflow_proto",
     srcs = ["//tensorflow/core:protos_all_proto_srcs"],
-    strip_prefix = "/external/local_tsl",
-)
-
-pkg_tar(
-    name = "libtensorflow_jni",
-    srcs = [
-        ":THIRD_PARTY_TF_JNI_LICENSES",
-        "//:LICENSE",
-        "//tensorflow/java:libtensorflow_jni",
-    ],
-    extension = "tar.gz",
-    # Mark as "manual" till
-    # https://github.com/bazelbuild/bazel/issues/2352
-    # and https://github.com/bazelbuild/bazel/issues/1580
-    # are resolved, otherwise these rules break when built
-    # with Python 3.
-    tags = ["manual"],
-    deps = [":common_deps"],
+    strip_prefix = "/external/tsl",
 )
 
 # Shared objects that all TensorFlow libraries depend on.
@@ -55,10 +38,10 @@ pkg_tar(
         "//tensorflow/c:headers",
     ],
     package_dir = "include/",
-    # TODO(ddunleavy): Remove `local_tsl` after TSL move is completed.
+    # TODO(ddunleavy): Remove `tsl` after TSL move is completed.
     remap_paths = {
-        "external/local_xla/xla": "xla",
-        "external/local_tsl/tsl": "tsl",
+        "external/xla/xla": "xla",
+        "external/tsl/tsl": "tsl",
     },
     strip_prefix = ".",
     # Mark as "manual" till
@@ -136,8 +119,8 @@ genrule(
         "@snappy//:COPYING",
         "@stablehlo//:LICENSE",
         "@tf_runtime//:LICENSE",
-        "@local_tsl//:LICENSE",
-        "@local_xla//:LICENSE",
+        "@tsl//:LICENSE",
+        "@xla//:LICENSE",
         "@XNNPACK//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
@@ -151,47 +134,9 @@ genrule(
     }) + if_cuda([
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "@local_xla//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
+        "@xla//third_party/mkl_dnn:LICENSE",
+    ]) + if_enable_mkl(["@xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
     outs = ["THIRD_PARTY_TF_C_LICENSES"],
-    cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
-    tools = [":concat_licenses.sh"],
-)
-
-genrule(
-    name = "jnilicenses_generate",
-    srcs = [
-        "//third_party/icu/data:LICENSE",
-        "@curl//:COPYING",
-        "@ducc//:LICENSE",
-        "@gemmlowp//:LICENSE",
-        "@libjpeg_turbo//:LICENSE.md",
-        "@llvm-project//llvm:LICENSE.TXT",
-        "@llvm-project//mlir:LICENSE.TXT",
-        "@local_config_tensorrt//:LICENSE",
-        "@org_brotli//:LICENSE",
-        "@png//:LICENSE",
-        "@snappy//:COPYING",
-        "@stablehlo//:LICENSE",
-        "@tf_runtime//:LICENSE",
-        "@local_tsl//:LICENSE",
-        "@local_xla//:LICENSE",
-        "@XNNPACK//:LICENSE",
-    ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//tensorflow:no_gcp_support": [],
-        "//conditions:default": [
-            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-        ],
-    }) + if_cuda([
-        "@local_config_nccl//:LICENSE",
-    ]) + if_mkl([
-        "@local_xla//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + tf_additional_license_deps(),
-    outs = ["THIRD_PARTY_TF_JNI_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )
@@ -203,25 +148,6 @@ sh_test(
     data = [
         "libtensorflow_test.c",
         ":libtensorflow.tar.gz",
-    ],
-    # Mark as "manual" till
-    # https://github.com/bazelbuild/bazel/issues/2352
-    # and https://github.com/bazelbuild/bazel/issues/1580
-    # are resolved, otherwise these rules break when built
-    # with Python 3.
-    # Till then, this test is explicitly executed when building
-    # the release by tensorflow/tools/ci_build/builds/libtensorflow.sh
-    tags = ["manual"],
-)
-
-sh_test(
-    name = "libtensorflow_java_test",
-    size = "small",
-    srcs = ["libtensorflow_java_test.sh"],
-    data = [
-        ":LibTensorFlowTest.java",
-        ":libtensorflow_jni.tar.gz",
-        "//tensorflow/java:libtensorflow.jar",
     ],
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352

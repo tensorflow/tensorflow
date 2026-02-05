@@ -153,7 +153,7 @@ absl::Status TpuCompilationCacheInterface::MarkEntryForEviction(
       /*level=*/2);
   CompiledSubgraph* deleted_entry = nullptr;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = entries_by_uid_.find(subgraph_uid);
     if (iter == entries_by_uid_.end()) {
       // If already evicted, return ok.
@@ -201,7 +201,7 @@ absl::Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
 
   CompiledSubgraph* deleted_entry = nullptr;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = entries_by_uid_.find(subgraph_uid);
 
     if (iter == entries_by_uid_.end()) {
@@ -244,8 +244,8 @@ size_t TpuCompilationCacheInterface::RemoveEntry(const std::string& key) {
     return erased;
   }
   session_key_map_.erase(
-      strings::StrCat(parsed_key.prefix, parsed_key.session_handle));
-  fingerprint_key_map_.erase(strings::StrCat(
+      absl::StrCat(parsed_key.prefix, parsed_key.session_handle));
+  fingerprint_key_map_.erase(absl::StrCat(
       parsed_key.prefix, parsed_key.guaranteed_const_fingerprint()));
   return erased;
 }
@@ -291,7 +291,7 @@ void TpuCompilationCacheInterface::DiscardEntryRefs(
     absl::Span<CompiledSubgraph* const> entries) {
   std::vector<CompiledSubgraph*> removed_entries;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
 
     for (auto entry : entries) {
       removed_entries.push_back(DiscardEntryRef(entry));
@@ -360,10 +360,10 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
     return;
   }
   session_key_map_.insert(std::make_pair(
-      strings::StrCat(parsed_key.prefix, parsed_key.session_handle), key));
+      absl::StrCat(parsed_key.prefix, parsed_key.session_handle), key));
   fingerprint_key_map_.insert(
-      std::make_pair(strings::StrCat(parsed_key.prefix,
-                                     parsed_key.guaranteed_const_fingerprint()),
+      std::make_pair(absl::StrCat(parsed_key.prefix,
+                                  parsed_key.guaranteed_const_fingerprint()),
                      key));
 }
 
@@ -393,11 +393,11 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
     return subgraph_key.prefix;
   }
   auto iter = session_key_map_.find(
-      strings::StrCat(subgraph_key.prefix, subgraph_key.session_handle));
+      absl::StrCat(subgraph_key.prefix, subgraph_key.session_handle));
   if (iter != session_key_map_.end()) {
     return iter->second;
   }
-  iter = fingerprint_key_map_.find(strings::StrCat(
+  iter = fingerprint_key_map_.find(absl::StrCat(
       subgraph_key.prefix, subgraph_key.guaranteed_const_fingerprint()));
   if (iter != fingerprint_key_map_.end()) {
     return iter->second;
@@ -424,7 +424,7 @@ absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
   // NOTE: In spite of the fact that we use MutexLock, we do not hold the lock
   // for the lifetime of the object, see InitializeEntry() call below.
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   std::string cache_key = FindCacheKey(subgraph_key);
   auto iter = cache_.find(cache_key);
@@ -447,7 +447,7 @@ absl::Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
     // internal::ScopedTpuCompileDisabler.
     if (!stream_executor::tpu::OpsApiFn()
              ->TpuCompile_IsTpuCompilationEnabledFn()) {
-      const std::string error_msg = strings::StrCat(
+      const std::string error_msg = absl::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",
           session_name, ") Debug String: ", subgraph_key.debug_string);
@@ -556,7 +556,7 @@ absl::Status TpuCompilationCacheInterface::GetKeysFromUid(
     int64_t uid, std::vector<std::string>* keys) {
   keys->clear();
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const auto iter = entries_by_uid_.find(uid);
   if (iter == entries_by_uid_.end()) {
     return errors::NotFound("No subgraph found for uid ", uid);
@@ -574,7 +574,7 @@ absl::Status TpuCompilationCacheInterface::Lookup(
       "TPU compilation cache proto lookup by uid",
       /*level=*/2);
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const auto iter = entries_by_uid_.find(uid);
   if (iter == entries_by_uid_.end()) {
     return errors::NotFound("No subgraph found for uid ", uid);
@@ -599,7 +599,7 @@ absl::Status TpuCompilationCacheInterface::Lookup(
       "TPU compilation cache proto lookup",
       /*level=*/2);
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   const auto iter = entries_by_proto_key_.find(proto_key);
   if (iter == entries_by_proto_key_.end()) {
     return errors::NotFound("No proto found for key ", proto_key);

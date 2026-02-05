@@ -1,6 +1,6 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load(
-    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "@xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
     "mkl_deps",
 )
@@ -90,8 +90,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -126,7 +126,7 @@ tf_cuda_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_xla//xla/tsl/util:env_var",
+        "@xla//xla/tsl/util:env_var",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -250,12 +250,12 @@ tf_cuda_library(
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/synchronization",
             "@com_google_absl//absl/time",
-            "@local_tsl//tsl/platform:mutex",
-            "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
-            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service",
-            "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-            "@local_xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
-            "@local_xla//xla/tsl/platform:statusor",
+            "@tsl//tsl/platform:mutex",
+            "@xla//xla/pjrt/gpu:se_gpu_pjrt_client",
+            "@xla//xla/tsl/distributed_runtime/coordination:coordination_service",
+            "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+            "@xla//xla/tsl/distributed_runtime/preemption:preemption_notifier",
+            "@xla//xla/tsl/platform:statusor",
         ],
     }) + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
@@ -270,12 +270,12 @@ tf_cuda_library(
             ): [
                 "//tensorflow/core",
                 "//tensorflow/core/framework:resource_base",
-                "@local_xla//xla/pjrt/distributed:key_value_store_interface",
-                "@local_xla//xla/pjrt:local_device_state",
-                "@local_xla//xla/service:gpu_topology",
-                "@local_xla//xla/pjrt:pjrt_client",
-                "@local_xla//xla/pjrt:pjrt_compiler",
-                "@local_xla//xla/service/gpu:gpu_executable_run_options",
+                "@xla//xla/pjrt/distributed:key_value_store_interface",
+                "@xla//xla/pjrt:local_device_state",
+                "@xla//xla/service:gpu_topology",
+                "@xla//xla/pjrt:pjrt_client",
+                "@xla//xla/pjrt:pjrt_compiler",
+                "@xla//xla/service/gpu:gpu_executable_run_options",
                 "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
             ],
             "//conditions:default": [],
@@ -310,7 +310,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -657,7 +657,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/util:env_var",
+        "@xla//xla/tsl/util:env_var",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -827,7 +827,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_xla//xla/tsl/util:env_var",
+        "@xla//xla/tsl/util:env_var",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -905,10 +905,10 @@ cc_library(
     hdrs = ["rendezvous_cache.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:refcount",
+        "@tsl//tsl/platform:thread_annotations",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 

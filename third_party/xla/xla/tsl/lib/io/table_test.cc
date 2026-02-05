@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/tsl/lib/random/simple_philox.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
 
@@ -238,10 +237,10 @@ class TableConstructor : public Constructor {
 
     for (KVMap::const_iterator it = data.begin(); it != data.end(); ++it) {
       builder.Add(it->first, it->second);
-      TF_CHECK_OK(builder.status());
+      CHECK_OK(builder.status());
     }
     absl::Status s = builder.Finish();
-    TF_CHECK_OK(s) << s;
+    CHECK_OK(s) << s;
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());
 

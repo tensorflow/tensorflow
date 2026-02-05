@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-GraphNode* TFGraph::CreateParentNode(const string& name) {
+GraphNode* TFGraph::CreateParentNode(const std::string& name) {
   node_defs_.push_back(std::make_unique<NodeDef>());
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFGraphParent);
@@ -41,18 +41,18 @@ GraphNode* TFGraph::CreateParentNode(const string& name) {
 }
 
 void TFGraph::AddNode(TFGraphNode* node) {
-  string name = node->name();
+  std::string name = node->name();
   nodes_map_[name] = std::make_unique<GraphNode>(node);
 }
 
 void TFGraph::Build() {
   if (root_) return;
 
-  std::set<string> nonroots;
+  std::set<std::string> nonroots;
   // Filter out the root nodes (node not input of any other node).
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     GraphNode* node = it->second.get();
-    const std::map<int, string>& inputs = node->node->inputs();
+    const std::map<int, std::string>& inputs = node->node->inputs();
     for (auto inputs_it = inputs.cbegin(); inputs_it != inputs.cend();
          inputs_it++) {
       nonroots.insert(inputs_it->second);
@@ -89,7 +89,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   }
   // 1. Account and aggregate the stats based on the graph structure.
   // Returns a graph consists of accounted nodes.
-  std::set<string> visits;
+  std::set<std::string> visits;
   std::vector<GraphNode*> roots = Account(root_->children, opts, &visits);
   for (GraphNode* n : roots) {
     root_->AggregateTotalStats(n);
@@ -119,8 +119,8 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
 }
 
 std::vector<GraphNode*> TFGraph::SearchRoot(
-    const std::vector<GraphNode*>& roots, const std::vector<string>& regexes,
-    std::set<string>* visited) {
+    const std::vector<GraphNode*>& roots,
+    const std::vector<std::string>& regexes, std::set<std::string>* visited) {
   std::vector<GraphNode*> res;
   if (roots.empty()) {
     return res;
@@ -132,7 +132,7 @@ std::vector<GraphNode*> TFGraph::SearchRoot(
     // Note that its children can still be added as start node through
     // another route.
     bool match_start_node = false;
-    for (const string& regex : regexes) {
+    for (const std::string& regex : regexes) {
       if (RE2::FullMatch(root->name(), regex)) {
         res.push_back(root);
         match_start_node = true;
@@ -149,8 +149,8 @@ std::vector<GraphNode*> TFGraph::SearchRoot(
   return res;
 }
 
-void TFGraph::Format(const std::vector<GraphNode*> roots, string* display_str,
-                     GraphNodeProto* proto) {
+void TFGraph::Format(const std::vector<GraphNode*> roots,
+                     std::string* display_str, GraphNodeProto* proto) {
   for (GraphNode* node : roots) {
     display_str->append(node->formatted_str);
     GraphNodeProto* child = proto->add_children();
@@ -162,7 +162,7 @@ void TFGraph::Format(const std::vector<GraphNode*> roots, string* display_str,
 std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
                                             const Options& opts, int depth,
                                             int last_ident,
-                                            std::set<string>* visits) {
+                                            std::set<std::string>* visits) {
   std::vector<GraphNode*> show_nodes;
 
   for (GraphNode* node : roots) {
@@ -198,7 +198,7 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
       if (opts.select.find(kShown[4]) != opts.select.end()) {
         std::unique_ptr<TFProfTensor> tfprof_tensor;
         if (LookUpCheckPoint(node->name(), &tfprof_tensor)) {
-          string value_str;
+          std::string value_str;
           tfprof_tensor->Display(&value_str,
                                  node->mutable_proto()->mutable_tensor_value());
           node->formatted_str += value_str;
@@ -215,7 +215,7 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
 
 std::vector<GraphNode*> TFGraph::Account(const std::vector<GraphNode*>& roots,
                                          const Options& opts,
-                                         std::set<string>* visits) {
+                                         std::set<std::string>* visits) {
   std::vector<GraphNode*> act_nodes;
   for (GraphNode* node : roots) {
     if (visits->find(node->name()) != visits->end()) continue;

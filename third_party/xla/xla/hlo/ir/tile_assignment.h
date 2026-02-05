@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -285,6 +286,11 @@ class TileAssignment {
   // Pointer to the storage of the fully materialized array format.
   mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
 };
+
+inline std::ostream& operator<<(std::ostream& out,
+                                const TileAssignment& tile_assignment) {
+  return out << tile_assignment.ToString();
+}
 
 }  // namespace xla
 

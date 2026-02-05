@@ -209,30 +209,6 @@ class HloComputation {
 
   ~HloComputation();
 
-  enum class InstructionType : uint8_t {
-    kUnset,
-    // This computation is a fusion computation. A fusion computation ordinarily
-    // also has a non-null instruction. However, if a fusion instruction
-    // is removed during compilation, the fusion computation becomes
-    // unreachable, and its instruction is set to null. We still need to regard
-    // such computations as fusion computations for HLO scheduling purposes.
-    kFusion,
-    // Last Value for range checking.
-    kLast = kFusion,
-  };
-  static_assert(static_cast<int>(InstructionType::kUnset) == 0,
-                "kUnset must be 0.");
-
-  InstructionType instruction_type() const {
-    return static_cast<InstructionType>(instruction_and_type_ &
-                                        kInstructionTypeMask);
-  }
-
-  HloInstruction* instruction() const {
-    DCHECK(instruction_type() <= InstructionType::kLast);
-    return reinterpret_cast<HloInstruction*>(instruction_and_type_ &
-                                             ~kInstructionTypeMask);
-  }
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
@@ -423,8 +399,8 @@ class HloComputation {
       const HloPrintOptions& options,
       absl::Span<const HloInstruction* const> instruction_order) const;
 
-  // Returns a serialized representation of this computation.
-  HloComputationProto ToProto() const;
+  // Serializes this computation to a proto.
+  void ToProto(HloComputationProto* proto) const;
 
   // Creates a computation from the given proto. Arguments:
   //
@@ -512,10 +488,6 @@ class HloComputation {
             HloInstructionConstIterator(&instructions_, end, end)};
   }
 
-  using ChannelDependencies =
-      absl::flat_hash_map<const HloInstruction*,
-                          absl::InlinedVector<HloInstruction*, 1>>;
-
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::vector<HloInstruction*> MakeInstructionPostOrder() const;
@@ -523,8 +495,6 @@ class HloComputation {
   // computation, not just the root. Describes the corresponding subgraph.
   std::vector<HloInstruction*> MakeInstructionPostOrderFrom(
       HloInstruction&) const;
-  std::vector<HloInstruction*> MakeInstructionPostOrder(
-      const ChannelDependencies& channel_dependencies) const;
   // Same as MakeInstructionPostOrder but with special tie-breaking behavior.
   // Specifically, when ties (in ordering) between instructions occur, Reshapes
   // will be sorted before other operations.
@@ -823,36 +793,35 @@ class HloComputation {
           computation_callers = std::nullopt,
       bool remove_dead_parameters_from_entry_computation = false) const;
 
-  // Returns a map from an instruction to the group of instructions associated
-  // with the same channel. These instructions will be considered as a single
-  // node for dependency purposes.
-  // RecvDone ops will map to the corresponding Send op.
-  // Cross-partition collectives will map to every other instruction with the
-  // same channel ID (it doesn't map to itself).
-  ChannelDependencies ComputeChannelDependencies() const;
-
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
   bool HasSideEffect() const;
 
   // Returns if this computation is a fusion computation.
-  // Do not use this method to determine if fusion_instruction_ != nullptr.
-  // Instead, directly do: FusionInstruction() != nullptr
   bool IsFusionComputation() const {
-    return instruction_type() == InstructionType::kFusion;
+    // TODO(b/418034360): There should be at most one fusion instruction calling
+    // a fusion computation. Assert this and fix all related tests.
+    return !caller_instructions(HloOpcode::kFusion).empty();
   }
 
   // Returns if this computation is the entry computation of the module.
   bool IsEntryComputation() const;
 
-  // Returns the owning fusion instruction, or nullptr if this is not a fusion
-  // computation.
-  HloInstruction* FusionInstruction() const {
-    return instruction_type() == InstructionType::kFusion ? instruction()
-                                                          : nullptr;
+  // Returns if this computation is dead. A computation is dead if it is not
+  // the entry computation and it is not called by any other computation.
+  bool IsDeadComputation() const {
+    return !IsEntryComputation() && caller_computations().empty();
   }
-  void SetFusionInstruction(HloInstruction* fusion_instruction) {
-    SetInstruction(fusion_instruction, InstructionType::kFusion);
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation. Note that this is just one of the fusion instructions that
+  // calls this computation, there may be more than one callers.
+  //
+  // TODO(b/418034360): There should be at most one fusion instruction calling
+  // a fusion computation. Assert this and fix all related tests.
+  HloInstruction* FusionInstruction() const {
+    auto callers = caller_instructions(HloOpcode::kFusion);
+    return callers.empty() ? nullptr : callers.front();
   }
 
   // Returns if this computation is an async computation.
@@ -1035,21 +1004,18 @@ class HloComputation {
 
   class VisitMap;
   void ComputeInstructionPostOrder(
-      HloInstruction* root, const ChannelDependencies& channel_dependencies,
-      VisitMap& visited, std::vector<HloInstruction*>& post_order,
+      HloInstruction* root, VisitMap& visited,
+      std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-      const ChannelDependencies& channel_dependencies, VisitMap& visited,
-      std::vector<HloInstruction*>* dfs_stack_scratch) const;
+      VisitMap& visited, std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   absl::Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
   absl::Status RemoveInstructionImpl(HloInstruction* instruction,
                                      bool ignore_safety_check);
-
-  void SetInstruction(HloInstruction* instruction, InstructionType type);
 
   // Private, because only HloModule should be able to set the parent.
   // We maintain the invariant that a computation has a parent() if and only if
@@ -1084,10 +1050,6 @@ class HloComputation {
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;
-
-  // Contains HloInstruction* and its type.
-  // The respective type in the least significant three bits.
-  uintptr_t instruction_and_type_ = 0;
 
   // Contains an HloInstruction* or an absl::flat_hash_map<HloInstruction*,
   // /*count=*/int> in the high bits and a CallersType in the least significant

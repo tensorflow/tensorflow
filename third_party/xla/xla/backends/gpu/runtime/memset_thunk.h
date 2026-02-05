@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 
 // This file contains thunks that set a buffer's elements to a particular value.
 // This can be faster than emitting a kernel to set the elements.
@@ -76,7 +77,7 @@ class Memset32BitValueThunk : public Thunk {
 
   BufferUses buffer_uses() const override {
     return {
-        BufferUse::Write(dest_),
+        BufferUse::Write(dest_, ShapeUtil::MakeShape(U32, {})),
     };
   }
 

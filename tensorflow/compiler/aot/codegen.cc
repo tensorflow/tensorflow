@@ -1217,9 +1217,9 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
 
   int constant_identifier = 0;
   for (const auto& constant : cpu_executable->constants()) {
-    const uint8_t* constant_data_bytes_ptr = reinterpret_cast<const uint8_t*>(
-        constant.AsDeviceMemoryBase().opaque());
-    const size_t constant_size = constant.AsDeviceMemoryBase().size();
+    const uint8_t* constant_data_bytes_ptr =
+        reinterpret_cast<const uint8_t*>(constant.AsDeviceAddress().opaque());
+    const size_t constant_size = constant.AsDeviceAddress().size();
 
     // NOTE(basioli): Some constants are empty, we don't need to embed them
     if (constant_size == 0) {

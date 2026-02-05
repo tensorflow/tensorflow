@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/utils.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -342,8 +341,7 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
       continue;
     }
     llvm::sort(preSizes);
-    preSizes.erase(std::unique(preSizes.begin(), preSizes.end()),
-                   preSizes.end());
+    preSizes.erase(llvm::unique(preSizes), preSizes.end());
     for (int64_t i = 0; i < preSizes.size() - 1; ++i) {
       int64_t preSize = preSizes[i];
       int64_t size = preSizes[i + 1] / preSize;

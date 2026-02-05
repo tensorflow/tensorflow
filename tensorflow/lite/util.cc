@@ -127,6 +127,7 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat64:
       *bytes = sizeof(double);
       break;
+    case kTfLiteUInt4:
     case kTfLiteInt4:
       // TODO(b/246647008): Multiplying this value by the number of elements
       // does not yield the size of a tensor when 4-bit values are packed
@@ -226,7 +227,7 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
   // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
   // Thus the required bytes must be divided by half after everything for int4.
-  if (type == kTfLiteInt4) {
+  if (type == kTfLiteInt4 || type == kTfLiteUInt4) {
     *bytes = (*bytes + 1) / 2;
   } else if (type == kTfLiteInt2) {
     // For kTfLiteInt2, 4 elements are packed into a single byte.

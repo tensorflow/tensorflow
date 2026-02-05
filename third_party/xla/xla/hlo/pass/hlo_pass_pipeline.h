@@ -139,7 +139,7 @@ class HloPassPipeline : public HloPassInterface {
   // computations with specified `execution_threads` are considered by the pass,
   // empty thread list means all `execution_threads` are considered. These
   // helpers enable templating of the core of the pipeline logic by providing
-  // HloModule and HloModuleGroup specific methods with the same name.
+  // HloModule specific methods with the same name.
   template <typename HloT>
   static absl::StatusOr<bool> RunHelper(
       HloPassInterface* pass, HloT module,

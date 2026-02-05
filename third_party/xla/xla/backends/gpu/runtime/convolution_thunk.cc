@@ -107,35 +107,6 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   RunConvOptions opts;
   opts.runner_cache = &GetOrCreateRunner(params.stream, &runner_created);
 
-  if (runner_created && params.stream->parent()
-                            ->GetDeviceDescription()
-                            .gpu_compute_capability()
-                            .IsRocm()) {
-    TF_ASSIGN_OR_RETURN(
-        GpuConvParams conv_params,
-        GetGpuConvParams(config_, operand_se_buffers, result_se_buffers));
-
-    TF_ASSIGN_OR_RETURN(se::dnn::DataType input_type,
-                        GetDNNDataTypeFromPrimitiveType(config_.input_type));
-
-    TF_ASSIGN_OR_RETURN(se::dnn::DataType output_type,
-                        GetDNNDataTypeFromPrimitiveType(config_.output_type));
-
-    TF_ASSIGN_OR_RETURN(auto dnn,
-                        se::dnn::internal::GetDnnFromStream(params.stream));
-    se::OwningScratchAllocator<> scratch_allocator(
-        buffer_allocations.device_ordinal(),
-        buffer_allocations.memory_allocator());
-
-    std::vector<se::dnn::ProfileResult> profile_results;
-    dnn->GetMIOpenConvolveAlgorithms(
-        CudnnConvKindToProto(config_.kind), input_type, output_type,
-        params.stream, config_.input_descriptor, conv_params.input_buf,
-        config_.filter_descriptor, conv_params.filter_buf,
-        config_.output_descriptor, conv_params.output_buf, config_.conv_desc,
-        &scratch_allocator, &profile_results);
-  }
-
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
                                 absl::MakeSpan(result_se_buffers), scratch,
                                 params.stream, opts));

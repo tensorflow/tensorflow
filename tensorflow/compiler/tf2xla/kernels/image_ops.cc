@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>

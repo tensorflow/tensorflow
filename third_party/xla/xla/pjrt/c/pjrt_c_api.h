@@ -70,6 +70,7 @@ typedef enum {
   PJRT_Extension_Type_Callback,
   PJRT_Extension_Type_HostAllocator,  // Experimental.
   PJRT_Extension_Type_TpuTopology,
+  PJRT_Extension_Type_TpuExecutable,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -104,7 +105,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 88
+#define PJRT_API_MINOR 90
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -247,9 +248,11 @@ typedef PJRT_Error* PJRT_Plugin_Attributes(PJRT_Plugin_Attributes_Args* args);
 
 // ---------------------------------- Events -----------------------------------
 
-// Represents a notifying event that is returned by PJRT APIs that enqueue
+// Represents a notifying event that may be returned by PJRT APIs that enqueue
 // asynchronous work, informing callers when the work is complete and reporting
-// a value of type `PJRT_Error*` or `nullptr` as error status.
+// a value of type `PJRT_Error*` or `nullptr` as error status. When passed to
+// PJRT APIs that wait for asynchronous work, setting the event indicates that
+// the work is complete.
 //
 // Callers are always responsible for freeing `PJRT_Event`s by calling
 // `PJRT_Event_Destroy`.
@@ -327,6 +330,29 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_OnReady_Args, user_arg);
 // Registers `callback` to be called once `event` is ready, with `event`'s
 // error status and a pointer to an object of the caller's choice as arguments.
 typedef PJRT_Error* PJRT_Event_OnReady(PJRT_Event_OnReady_Args* args);
+
+struct PJRT_Event_Create_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Event* event;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_Create_Args, event);
+
+// Creates a new PJRT_Event.
+typedef PJRT_Error* PJRT_Event_Create(PJRT_Event_Create_Args* args);
+
+struct PJRT_Event_Set_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Event* event;           // An event created by `PJRT_Event_Create`.
+  PJRT_Error_Code error_code;  // The error code with which to set the event.
+  const char* error_message;   // Can be freed after the function returns.
+  size_t error_message_size;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Event_Set_Args, error_message_size);
+
+// Sets the PJRT_Event as completed with the given error code and message.
+typedef PJRT_Error* PJRT_Event_Set(PJRT_Event_Set_Args* args);
 
 // ---------------------------------- Client -----------------------------------
 
@@ -1044,6 +1070,9 @@ struct PJRT_Client_CreateErrorBuffer_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, buffer);
 
+// Creates a buffer in the given memory space that carries an error future
+// without allocating memory. If this buffer is passed to an Execute call, the
+// execution will fail with the given error code and message.
 typedef PJRT_Error* PJRT_Client_CreateErrorBuffer(
     PJRT_Client_CreateErrorBuffer_Args* args);
 
@@ -1970,9 +1999,11 @@ struct PJRT_Executable_GetCompiledMemoryStats_Args {
 
   // Device memory stats, from xla::CompiledMemoryStats.
   int64_t peak_memory_in_bytes;  // out
+  // Total Device default memory (e.g., HBM for GPU/TPU) usage.
+  int64_t total_size_in_bytes;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompiledMemoryStats_Args,
-                          peak_memory_in_bytes);
+                          total_size_in_bytes);
 
 // Return memory stats that allow callers to estimate memory usage when running
 // this executable. The memory stats could contain usage info from different
@@ -2880,12 +2911,11 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncTrackingEvent_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_GetCompileOptions);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DonateWithControlDependency);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
+  _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
 } PJRT_Api;
 
-enum {
-  PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_DonateWithControlDependency)
-};
+enum { PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Event_Set) };
 
 #undef _PJRT_API_STRUCT_FIELD
 

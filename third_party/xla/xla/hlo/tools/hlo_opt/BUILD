@@ -25,8 +25,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -77,7 +77,6 @@ cc_library(
         "//xla/hlo/transforms/expanders:logistic_expander",
         "//xla/hlo/transforms/expanders:optimization_barrier_expander",
         "//xla/hlo/transforms/expanders:qr_expander",
-        "//xla/hlo/transforms/expanders:real_imag_expander",
         "//xla/hlo/transforms/expanders:reduce_decomposer",
         "//xla/hlo/transforms/expanders:reshape_decomposer",
         "//xla/hlo/transforms/expanders:rng_bit_generator_expander",

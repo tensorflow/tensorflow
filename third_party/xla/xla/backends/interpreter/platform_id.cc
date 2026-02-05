@@ -19,7 +19,7 @@ limitations under the License.
 namespace stream_executor {
 namespace interpreter {
 
-PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId);
+PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId, Interpreter);
 
 }  // namespace interpreter
 }  // namespace stream_executor

@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -98,9 +99,14 @@ namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
 constexpr int kTileSize = 32;
+// Default values (CUDA and other backends).
 constexpr int kNumRows = 4;
-constexpr int kNumThreadsPerBlock = 128;
+constexpr int64_t kNumThreadsPerBlock = kNumRows * kTileSize;  // 128
 constexpr int kMaxVectorizedBytes = 4;
+// ROCm-specific configuration.
+constexpr int kNumRowsRocm = 8;
+constexpr int64_t kNumThreadsPerBlockRocm = kNumRowsRocm * kTileSize;  // 256
+constexpr int kMaxVectorizedBytesRocm = 16;
 
 // Reads the 2D vector tile <vector_size x vector_size> from the shared memory
 // at the given indices.
@@ -141,6 +147,15 @@ AffineExpr Swizzle(AffineExpr shmem_row, AffineExpr shmem_col,
 }
 
 }  // namespace
+
+TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis,
+                                         mlir::MLIRContext* mlir_context)
+    : analysis_(analysis),
+      mlir_context_(mlir_context),
+      num_threads_per_block_(
+          analysis.device_info().gpu_compute_capability().IsRocm()
+              ? kNumThreadsPerBlockRocm
+              : kNumThreadsPerBlock) {}
 
 absl::Status TransposeFusionBase::EmitEntryFunction(
     const emitters::PartitionedComputations& computations,
@@ -184,7 +199,10 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
       permutation_(transpose_.permutation),
       input_shape_(
           Permute(transpose_.dimensions, InversePermutation(permutation_))),
-      base_block_size_(kTileSize) {
+      base_block_size_(kTileSize),
+      num_rows_(analysis.device_info().gpu_compute_capability().IsRocm()
+                    ? kNumRowsRocm
+                    : kNumRows) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -242,10 +260,13 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
     // the input dimensions are divisible by the vector size. Vectorizing loads
     // for large data types does not help (there's already enough parallelism).
     const auto& device = analysis_.device_info();
-    for (int vec_size = kMaxVectorizedBytes / max_element_bytes; vec_size > 1;
+    int max_vectorized_bytes = device.gpu_compute_capability().IsRocm()
+                                   ? kMaxVectorizedBytesRocm
+                                   : kMaxVectorizedBytes;
+    for (int vec_size = max_vectorized_bytes / max_element_bytes; vec_size > 1;
          vec_size /= 2) {
       int elems_per_thread = vec_size * vec_size;
-      bool enough_work = Product(block_counts_) * kNumThreadsPerBlock >=
+      bool enough_work = Product(block_counts_) * num_threads_per_block_ >=
                          elems_per_thread * device.core_count() *
                              device.threads_per_core_limit();
       bool enough_shmem =
@@ -303,7 +324,7 @@ TransposeFusion::ComputeThreadIdToInputIndexing(
 }
 
 LaunchDimensions TransposeFusion::launch_dimensions() const {
-  return LaunchDimensions(Product(block_counts_), kNumThreadsPerBlock);
+  return LaunchDimensions(Product(block_counts_), num_threads_per_block_);
 }
 
 IndexingMap TransposeFusion::GetSharedMemoryIndexing(
@@ -321,12 +342,12 @@ IndexingMap TransposeFusion::GetSharedMemoryIndexing(
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
   dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
-      kNumThreadsPerBlock;
+      num_threads_per_block_;
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   return {mlir::AffineMap::get(6, 2, thread_offsets, mlir_context),
           DimVarsFromGPUGrid(dim_var_sizes),
-          RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
+          RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
           {}};
 }
 
@@ -482,7 +503,7 @@ llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   auto loop = getAffineSymbolExpr(0, mlir_context);
   auto vector = getAffineSymbolExpr(1, mlir_context);
-  int loop_stride = block_size_ * kNumRows;
+  int loop_stride = block_size_ * num_rows_;
   if (MostMinorDimensionUnchanged()) {
     loop_stride *= vector_size_;
   }
@@ -508,13 +529,13 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
   dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
-      kNumThreadsPerBlock;
+      num_threads_per_block_;
   dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   IndexingMap result{
       mlir::AffineMap::get(6, 2, offsets, mlir_context),
       DimVarsFromTensorSizes(dim_var_sizes),
-      RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
+      RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
       {}};
   auto normalized_shape =
       input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
@@ -545,14 +566,13 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const PackedTransposeDescription& spec,
                                  absl::Span<const int64_t> output_block_tile,
-                                 int64_t num_shmem_groups,
                                  MLIRContext* mlir_context)
     : TransposeFusionBase(analysis, mlir_context),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
       block_counts_(GetBlockCounts(spec_.canonical_output_shape, output_tile_)),
-      num_shmem_groups_per_block_(num_shmem_groups),
+      num_shmem_groups_per_block_(num_threads_per_block_ / kNumShmemBanks),
       tile_size_t1_(input_tile_[spec_.dim_T1_input_id()]),
       tile_size_a_(input_tile_[spec_.dim_A_id()]),
       tile_size_t2_(input_tile_[spec_.dim_T2_input_id()]),
@@ -560,7 +580,8 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
       populated_shmem_rows_(tile_size_t2_) {
   VLOG(5) << "Transpose spec: " << spec.ToString()
           << "Output block tile: " << absl::StrJoin(output_block_tile, ", ")
-          << "\nNumber of shmem groups: " << num_shmem_groups << "\n";
+          << "\nNumber of shmem groups: " << num_shmem_groups_per_block_
+          << "\n";
   auto bits_per_element = GetBitwidth(spec_.elem_type());
   vector_size_ = kBankBitwidth / bits_per_element;
   CHECK_GE(vector_size_, 1);
@@ -585,7 +606,16 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
 
 std::optional<IndexingMap> PackedTranspose::ComputeThreadIdToOutputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
-  return GetOutputIndexing(mlir_context);
+  auto map = GetOutputIndexing(mlir_context);
+  auto hero_shape = analysis_.fusion_hero(root_index).shape();
+  if (!ShapeUtil::SameDimensions(hero_shape, spec_.original_output_shape())) {
+    auto bitcast =
+        GetBitcastMap(spec_.original_output_shape(), hero_shape, mlir_context);
+    map = ComposeIndexingMaps(map, bitcast);
+    map.Simplify();
+    map.RemoveUnusedSymbols();
+  }
+  return map;
 }
 
 std::optional<std::vector<IndexingMap>>
@@ -593,7 +623,17 @@ PackedTranspose::ComputeThreadIdToInputIndexing(
     int64_t root_index, MLIRContext* mlir_context) const {
   const auto& hero = analysis_.fusion_hero(root_index).instruction();
   if (GetDescriptionForTiledTransposeEmitter(hero)) {
-    return std::vector<IndexingMap>{GetInputIndexing(mlir_context)};
+    auto map = GetInputIndexing(mlir_context);
+    auto operand_shape = hero.operand(0)->shape();
+    if (!ShapeUtil::SameDimensions(operand_shape,
+                                   spec_.original_input_shape())) {
+      auto bitcast = GetBitcastMap(spec_.original_input_shape(), operand_shape,
+                                   mlir_context);
+      map = ComposeIndexingMaps(map, bitcast);
+      map.Simplify();
+      map.RemoveUnusedSymbols();
+    }
+    return std::vector<IndexingMap>{map};
   }
   std::vector<IndexingMap> result;
   result.reserve(hero.operand_count());
@@ -618,7 +658,7 @@ PackedTranspose::ComputeThreadIdToInputIndexing(
 }
 
 LaunchDimensions PackedTranspose::launch_dimensions() const {
-  return LaunchDimensions(Product(block_counts_), kNumThreadsPerBlock);
+  return LaunchDimensions(Product(block_counts_), num_threads_per_block_);
 }
 
 PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
@@ -631,36 +671,55 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
   IndexingMap shmem_write_indexing = GetShmemWriteIndexing(mlir_context_);
 
   int64_t shmem_dim = kNumShmemBanks * vector_size_;
-  SmallVector<Value> shmem_tensors;
+
+  // Allocate all shared memory tensors upfront (one per transpose).
+  SmallVector<Value> shmem_inits;
   for (auto* transpose : shmem_transposes_) {
     Type elem_type = emitters::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
     Value shmem = AllocateSharedOp::create(
         builder, RankedTensorType::get({shmem_dim, shmem_dim}, elem_type));
-
-    auto tids_and_bids = EmitThreadAndBlockIds(builder);
-    Value updated_shmem =
-        emitters::EmitXlaLoopOp(
-            builder, tids_and_bids, shmem, input_indexing,
-            [&](ImplicitLocOpBuilder& nested_b, ValueRange ivs,
-                ValueRange input_indices,
-                ValueRange iter_arg) -> SmallVector<Value> {
-              Value input_element =
-                  emitters::ProvideParameter(root_computation, transpose,
-                                             /*operand_index=*/0, input_indices,
-                                             call_target_provider,
-                                             entry_function, nested_b)
-                      .front();
-              auto shmem_indices = emitters::ApplyIndexing(
-                  shmem_write_indexing, tids_and_bids, ivs, nested_b);
-              return nested_b
-                  .create<mt::InsertOp>(input_element, iter_arg.front(),
-                                        shmem_indices)
-                  ->getResults();
-            })
-            .front();
-    shmem_tensors.push_back(updated_shmem);
+    shmem_inits.push_back(shmem);
   }
+
+  // Create a single loop that writes to all shared memory tensors.
+  auto tids_and_bids = EmitThreadAndBlockIds(builder);
+  SmallVector<Value> shmem_tensors = emitters::EmitXlaLoopOp(
+      builder, tids_and_bids, shmem_inits, input_indexing,
+      [&](ImplicitLocOpBuilder& nested_b, ValueRange ivs,
+          ValueRange input_indices,
+          ValueRange iter_args) -> SmallVector<Value> {
+        SmallVector<Value> updated_shmems;
+        auto shmem_indices = emitters::ApplyIndexing(
+            shmem_write_indexing, tids_and_bids, ivs, nested_b);
+
+        // Process all transposes in a single loop iteration.
+        for (auto [transpose, shmem_tensor] :
+             llvm::zip(shmem_transposes_, iter_args)) {
+          // Compute bitcasted indices for this specific transpose if needed.
+          ValueRange indices = input_indices;
+          SmallVector<Value> indices_storage;
+          if (!ShapeUtil::SameDimensions(transpose->operand(0)->shape(),
+                                         spec_.original_input_shape())) {
+            auto map =
+                GetBitcastMap(spec_.original_input_shape(),
+                              transpose->operand(0)->shape(), mlir_context_);
+            indices_storage =
+                emitters::ApplyIndexing(map, input_indices, {}, nested_b);
+            indices = indices_storage;
+          }
+
+          Value input_element =
+              emitters::ProvideParameter(root_computation, transpose,
+                                         /*operand_index=*/0, indices,
+                                         call_target_provider, entry_function,
+                                         nested_b)
+                  .front();
+          updated_shmems.push_back(nested_b.create<mt::InsertOp>(
+              input_element, shmem_tensor, shmem_indices));
+        }
+        return updated_shmems;
+      });
 
   // Produce all side outputs and then write them.
   int num_inputs = fusion.fused_instructions_computation()->num_parameters();
@@ -1017,8 +1076,7 @@ std::unique_ptr<EmitterBase> CreateTransposeFusion(
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
     return std::make_unique<PackedTranspose>(
-        analysis, spec, *packed_transpose_tile,
-        kNumThreadsPerBlock / kNumShmemBanks, mlir_context);
+        analysis, spec, *packed_transpose_tile, mlir_context);
   }
   return std::make_unique<TransposeFusion>(analysis, mlir_context);
 }

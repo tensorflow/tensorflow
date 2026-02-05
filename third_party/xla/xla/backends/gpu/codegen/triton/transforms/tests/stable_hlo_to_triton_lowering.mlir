@@ -1,6 +1,9 @@
 // RUN: xla-opt %s -split-input-file \
-// RUN: -stablehlo-lower-to-triton \
+// RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=false" \
 // RUN: | FileCheck %s
+// RUN: xla-opt %s -split-input-file \
+// RUN: -stablehlo-lower-to-triton="warp_specialization_allowed=true" \
+// RUN: | FileCheck %s --check-prefix=WARP
 
 // CHECK: func @lower_transpose(%[[ARG:.*]]: tensor<2x4x8xf32>) -> tensor<8x2x4xf32>
 func.func @lower_transpose(%arg0: tensor<2x4x8xf32>) -> tensor<8x2x4xf32> {
@@ -179,4 +182,262 @@ func.func @lower_dot_f8_no_ieee_has_max_num_imprecise_acc_set_to_max(%arg0: tens
   %1 = arith.addf %0, %arg2 : tensor<2x8xf8E4M3FN>
   // CHECK: return %[[RES]] : tensor<2x8xf8E4M3FN>
   return %1 : tensor<2x8xf8E4M3FN>
+}
+
+func.func @all_reduce_without_xtile_entry_func_doesnt_lower(%input: tensor<10xf32>, %output: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: stablehlo.all_reduce
+  %all_reduce = "stablehlo.all_reduce"(%input) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<10xf32>) -> tensor<10xf32>
+  return %all_reduce : tensor<10xf32>
+}
+
+xtile.entry_func @all_reduce_with_multiple_inputs_doesnt_lower(%input: memref<1024xf32>, %output: memref<1024xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<i64>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = xtile.extract %input[%tile_id][10][1] : memref<1024xf32> -> tensor<10xf32>
+  %c_1 = arith.constant 1 : index
+  %tile_id_2 = arith.addi %tile_id, %c_1 : index
+  %tile2 = xtile.extract %input[%tile_id_2][10][1] : memref<1024xf32> -> tensor<10xf32>
+  // CHECK: stablehlo.all_reduce
+  %all_reduce:2 = "stablehlo.all_reduce"(%tile, %tile2) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4: tensor<f32>
+    }) : (tensor<10xf32>, tensor<10xf32>) -> (tensor<10xf32>, tensor<10xf32>)
+  xtile.return
+}
+
+xtile.entry_func @all_reduce_with_multiple_operations_in_reducer_doesnt_lower(%input: memref<1024xf32>, %output: memref<1024xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<i64>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = xtile.extract %input[%tile_id][10][1] : memref<1024xf32> -> tensor<10xf32>
+  // CHECK: stablehlo.all_reduce
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      %5 = arith.addf %4, %arg8 : tensor<f32>
+      stablehlo.return %5 : tensor<f32>
+    }) : (tensor<10xf32>) -> tensor<10xf32>
+  xtile.return
+}
+
+xtile.entry_func @all_reduce_input_not_from_extract_doesnt_lower(%input: memref<1024xf32>, %output: memref<1024xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<i64>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = stablehlo.constant dense<1.000000e+00> : tensor<10xf32>
+  // CHECK: stablehlo.all_reduce
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<10xf32>) -> tensor<10xf32>
+  xtile.return
+}
+
+xtile.entry_func @all_reduce_with_incorrect_num_args_doesnt_lower(%input: memref<1024xf32>, %output: memref<1024xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<i64>>, %dummy_arg: i32, %tile_id: index) attributes {num_opaque_args = 5 : i32} {
+  %tile = xtile.extract %input[%tile_id][10][1] : memref<1024xf32> -> tensor<10xf32>
+  // CHECK: stablehlo.all_reduce
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<10xf32>) -> tensor<10xf32>
+  xtile.return
+}
+
+func.func @lower_add_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.addi
+  %0 = stablehlo.add %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_add_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.addi
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.add %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_add_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.addf
+  %0 = stablehlo.add %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_sub_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.subi
+  %0 = stablehlo.subtract %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_sub_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.subi
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.subtract %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_sub_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.subf
+  %0 = stablehlo.subtract %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_divide_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.divsi
+  %0 = stablehlo.divide %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_divide_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: arith.divui
+  %0 = stablehlo.divide %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_divide_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.divf
+  %0 = stablehlo.divide %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_rem_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.remsi
+  %0 = stablehlo.remainder %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_rem_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: arith.remui
+  %0 = stablehlo.remainder %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_rem_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.remf
+  %0 = stablehlo.remainder %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_multiply_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.muli
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_multiply_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.muli
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_multiply_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.mulf
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_xor_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.xori
+  %0 = stablehlo.xor %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_xor_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.xori
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.xor %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_or_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.ori
+  %0 = stablehlo.or %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_or_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.ori
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.or %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_and_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.andi
+  %0 = stablehlo.and %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_and_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xui32> to tensor<2x4xi32>
+  // CHECK: arith.andi
+  // CHECK: builtin.unrealized_conversion_cast %{{.*}} : tensor<2x4xi32> to tensor<2x4xui32>
+  %0 = stablehlo.and %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_maximum_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.maxsi
+  %0 = stablehlo.maximum %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_maximum_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: arith.maxui
+  %0 = stablehlo.maximum %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_maximum_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.maximumf
+  %0 = stablehlo.maximum %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+func.func @lower_minimum_with_signless_operands(%arg0 : tensor<2x4xi32>, %arg1 : tensor<2x4xi32>) -> tensor<2x4xi32> {
+  // CHECK: arith.minsi
+  %0 = stablehlo.minimum %arg0, %arg1 : tensor<2x4xi32>
+  return %0 : tensor<2x4xi32>
+}
+
+func.func @lower_minimum_with_unsigned_operands(%arg0 : tensor<2x4xui32>, %arg1 : tensor<2x4xui32>) -> tensor<2x4xui32> {
+  // CHECK: arith.minui
+  %0 = stablehlo.minimum %arg0, %arg1 : tensor<2x4xui32>
+  return %0 : tensor<2x4xui32>
+}
+
+func.func @lower_minimum_with_float_operands(%arg0 : tensor<2x4xf32>, %arg1 : tensor<2x4xf32>) -> tensor<2x4xf32> {
+  // CHECK: arith.minimumf
+  %0 = stablehlo.minimum %arg0, %arg1 : tensor<2x4xf32>
+  return %0 : tensor<2x4xf32>
+}
+
+
+// CHECK: func @lower_dot_with_warp_specialization_to_triton
+func.func @lower_dot_with_warp_specialization_to_triton(
+    %arg0: tensor<2x4xf32>,
+    %arg1: tensor<4x8xf32>,
+    %arg2: tensor<2x8xf32>) -> tensor<2x8xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %res = scf.for %iv = %c0 to %c4 step %c1 iter_args(%accum = %arg2) -> tensor<2x8xf32> {
+    %dot = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x4xf32>, tensor<4x8xf32>) -> tensor<2x8xf32>
+    %add = arith.addf %dot, %accum : tensor<2x8xf32>
+    // CHECK-NOT : tt.warp_specialize
+    // WARP: scf.yield
+    // WARP-NEXT: tt.warp_specialize = true
+    scf.yield %add : tensor<2x8xf32>
+  }
+  return %res : tensor<2x8xf32>
 }

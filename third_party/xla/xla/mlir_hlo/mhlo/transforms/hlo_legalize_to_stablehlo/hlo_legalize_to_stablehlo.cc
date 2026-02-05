@@ -689,8 +689,9 @@ class HloToStablehloOpConverter
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
           stablehloAttrs, hloOp.getBranches().size());
     } else {
-      stablehloOp = rewriter.create<HloToStablehloOp<HloOpTy>>(
-          hloOp.getLoc(), stablehloTypes, stablehloOperands, stablehloAttrs);
+      stablehloOp = HloToStablehloOp<HloOpTy>::create(
+          rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
+          stablehloAttrs);
     }
 
     // Finally, populate the regions while converting argument types

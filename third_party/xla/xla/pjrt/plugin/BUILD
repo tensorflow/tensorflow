@@ -105,7 +105,7 @@ xla_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -120,7 +120,7 @@ cc_library(
         ":dynamic_registration",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
     alwayslink = 1,
 )

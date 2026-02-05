@@ -322,6 +322,8 @@ MemorySpaceAssignment::Run(HloModule* module,
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "memory_space_assignment_options::Options:\n";
     XLA_LOG_LINES(INFO, options.ToString());
+  }
+  if (VLOG_IS_ON(10)) {
     LOG(INFO) << "Module before memory space assignment: ";
     XLA_LOG_LINES(INFO, module->ToString());
     LOG(INFO) << "Schedule: " << module->schedule().ToString();
@@ -698,6 +700,54 @@ void MemorySpaceAssignment::RemoveScopedMemoryAssignments(
   }
 }
 
+namespace {
+
+// Removes the given computation, and adds computations to the worklist that
+// will be orphaned as a result. Removed instructions are added to
+// removed_instructions.
+absl::Status ProcessDeadComputation(
+    HloModule* module, HloComputation* computation,
+    absl::flat_hash_set<const HloInstruction*>& removed_instructions,
+    std::vector<HloComputation*>& worklist) {
+  for (HloInstruction* instruction : computation->instructions()) {
+    removed_instructions.insert(instruction);
+    for (HloComputation* called_computation :
+         instruction->called_computations()) {
+      // If computation is cloned, the called computation might still have other
+      // callers, so not necessarily dead.
+      if (called_computation->caller_computations().size() == 1) {
+        worklist.push_back(called_computation);
+      }
+    }
+  }
+  VLOG(2) << "Removing dead computation: " << computation->name();
+  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
+  return absl::OkStatus();
+}
+
+// Removes dead fusion computations from the module and populates
+// removed_instructions with the instructions that were removed.
+absl::Status CleanupDeadFusionComputations(
+    HloModule* module,
+    absl::flat_hash_set<const HloInstruction*>& removed_instructions) {
+  std::vector<HloComputation*> worklist;
+  for (HloComputation* computation : module->computations()) {
+    if (!computation->IsEntryComputation() &&
+        computation->caller_computations().empty()) {
+      worklist.push_back(computation);
+    }
+  }
+  while (!worklist.empty()) {
+    HloComputation* computation = worklist.back();
+    worklist.pop_back();
+    TF_RETURN_IF_ERROR(ProcessDeadComputation(module, computation,
+                                              removed_instructions, worklist));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
 
@@ -805,6 +855,9 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
       }
     }
   }
+
+  TF_RETURN_IF_ERROR(
+      CleanupDeadFusionComputations(module_, removed_instructions));
 
   RemoveAlternateMemoryAssignments(removed_instructions);
   RemoveScopedMemoryAssignments(removed_instructions);
@@ -1273,8 +1326,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
-            value->ToString(), start_time, end_time, chunk.offset, chunk.size,
-            overlapping_chunk.offset, overlapping_chunk.size);
+            value->ToShortString(), start_time, end_time, chunk.offset,
+            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);

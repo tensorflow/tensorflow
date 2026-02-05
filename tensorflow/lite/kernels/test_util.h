@@ -802,6 +802,9 @@ class SingleOpModel {
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
+    if (!v && tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+      v = reinterpret_cast<const T*>(tensor->data.raw);
+    }
     ABSL_CHECK(v) << "Could not extract vector at index: " << index;
     int tensor_size;
     if (tensor->sparsity) {
@@ -813,6 +816,10 @@ class SingleOpModel {
                         .array_indices->size;
     } else {
       tensor_size = GetTensorSize(index);
+    }
+
+    if (tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+      tensor_size = (tensor_size + 1) / 2;
     }
 
     return std::vector<T>(v, v + tensor_size);
@@ -1099,11 +1106,15 @@ class SingleOpModel {
       ABSL_CHECK(t) << "No tensor with index " << index << ".";
       ABSL_CHECK(t->data.raw)
           << "Empty data for tensor with index " << index << ".";
-      ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())
-          << "Type mismatch for tensor with index " << index << ". Requested "
-          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
-          << TfLiteTypeGetName(t->type) << ".";
-      ABSL_LOG(FATAL) << "Unknown tensor error.";
+      if (t->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
+        v = reinterpret_cast<T*>(t->data.raw);
+      } else {
+        ABSL_CHECK_EQ(t->type, typeToTfLiteType<T>())
+            << "Type mismatch for tensor with index " << index << ". Requested "
+            << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+            << TfLiteTypeGetName(t->type) << ".";
+        ABSL_LOG(FATAL) << "Unknown tensor error.";
+      }
     }
     absl::c_copy(data, v + offset);
   }

@@ -73,8 +73,10 @@ absl::StatusOr<ArrayRef> MakeArrayFromLiteral(Client* absl_nonnull client,
                       ToDType(literal.shape().element_type()));
   const Shape shape(literal.shape().dimensions());
 
-  TF_ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
-                      sharding->IndexDomains(shape));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<IndexDomain> index_domains,
+      sharding->IndexDomains(shape,
+                             SingleDeviceShardSemantics::kAddressableShards));
 
   Client::MakeArraysFromHostBufferShardsSpec spec = {
       /*buffers=*/{},
@@ -119,8 +121,10 @@ absl::StatusOr<xla::Literal> CopyArrayToLiteral(ArrayRef array) {
   const auto xla_shape =
       xla::ShapeUtil::MakeShape(element_type, array->shape().dims());
 
-  TF_ASSIGN_OR_RETURN(const std::vector<IndexDomain> index_domains,
-                      array->sharding().IndexDomains(array->shape()));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<IndexDomain> index_domains,
+      array->sharding().IndexDomains(
+          array->shape(), SingleDeviceShardSemantics::kAddressableShards));
   TF_ASSIGN_OR_RETURN(std::vector<ArrayRef> shards,
                       array->DisassembleIntoSingleDeviceArrays(
                           ArrayCopySemantics::kReuseInput,

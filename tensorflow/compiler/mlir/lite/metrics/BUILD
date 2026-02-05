@@ -64,7 +64,7 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

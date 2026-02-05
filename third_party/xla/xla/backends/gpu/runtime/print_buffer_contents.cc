@@ -65,9 +65,9 @@ void PrintBufferContents(stream_executor::Stream*, int input_idx,
 
 void PrintBufferContents(
     stream_executor::Stream* stream,
-    absl::Span<const stream_executor::KernelArgument> kernel_args) {
+    absl::Span<const stream_executor::KernelArg> kernel_args) {
   for (int input_idx = 0; input_idx < kernel_args.size(); ++input_idx) {
-    const stream_executor::KernelArgument& arg = kernel_args[input_idx];
+    const stream_executor::KernelArg& arg = kernel_args[input_idx];
     std::visit(
         [&](auto const& arg) { PrintBufferContents(stream, input_idx, arg); },
         arg);

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -112,7 +113,7 @@ struct CompileOptions {
       std::vector<std::pair<std::string, OptionOverride>>;
   EnvironmentOptionOverrides env_option_overrides;
 
-  std::optional<xla::Compiler::GpuTargetConfig> gpu_target_config;
+  std::optional<xla::gpu::GpuTargetConfig> gpu_target_config;
 
   // Allow to modify the input MLIR / XLA program.
   // This is used to run passes on the MLIR parameter without having to clone it
@@ -133,6 +134,9 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
+  // Compiler variant to indicate which compiler is invoked.
+  std::optional<std::string> compiler_variant = std::nullopt;
+
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);
@@ -144,6 +148,9 @@ struct CompileOptions {
   static absl::StatusOr<CompileOptions> FromProto(
       const CompileOptionsProto& proto);
 };
+
+// Returns true if the compilation is an early exit compilation.
+bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options);
 
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
@@ -309,6 +316,7 @@ struct CompiledMemoryStats {
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
+  int64_t total_size_in_bytes = 0;
 
   // Host memory usage stats.
   int64_t host_generated_code_size_in_bytes = 0;

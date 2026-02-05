@@ -135,8 +135,8 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       "external/eigen_archive/": "",
       "external/jsoncpp_git/": "",
       "external/com_google_protobuf/src/": "",
-      "external/local_xla/": "tensorflow/compiler",
-      "external/local_tsl/": "tensorflow",
+      "external/xla/": "tensorflow/compiler",
+      "external/tsl/": "tensorflow",
   }
 
   for file in headers:
@@ -202,8 +202,8 @@ def prepare_srcs(
     srcs_dir: target directory where files are copied to.
   """
   path_to_replace = {
-      "external/local_xla/": "tensorflow/compiler",
-      "external/local_tsl/": "tensorflow",
+      "external/xla/": "tensorflow/compiler",
+      "external/tsl/": "tensorflow",
   }
 
   deps_mapping_dict = {}
@@ -235,10 +235,10 @@ def prepare_aot(aot: list[str], srcs_dir: str) -> None:
     srcs_dir: target directory where files are copied to.
   """
   for file in aot:
-    if "external/local_tsl/" in file:
-      copy_file(file, srcs_dir, "external/local_tsl/")
-    elif "external/local_xla/" in file:
-      copy_file(file, srcs_dir, "external/local_xla/")
+    if "external/tsl/" in file:
+      copy_file(file, srcs_dir, "external/tsl/")
+    elif "external/xla/" in file:
+      copy_file(file, srcs_dir, "external/xla/")
     else:
       copy_file(file, srcs_dir)
 
@@ -302,11 +302,6 @@ def prepare_wheel_srcs(
 def update_xla_tsl_imports(srcs_dir: str) -> None:
   """Workaround for TSL and XLA vendoring."""
   replace_inplace(srcs_dir, "from tsl", "from tensorflow.tsl")
-  replace_inplace(
-      srcs_dir,
-      "from local_xla.xla",
-      "from tensorflow.compiler.xla",
-  )
   replace_inplace(srcs_dir, "from xla", "from tensorflow.compiler.xla")
 
 

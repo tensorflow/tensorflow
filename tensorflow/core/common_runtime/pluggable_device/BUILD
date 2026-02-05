@@ -61,11 +61,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/stream_executor:device_memory",
-        "@local_xla//xla/stream_executor:stream_executor_h",
-        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
-        "@local_xla//xla/stream_executor/integrations:stream_executor_allocator",
-        "@local_xla//xla/tsl/framework:device_id_utils",
+        "@xla//xla/stream_executor:device_memory",
+        "@xla//xla/stream_executor:stream_executor_h",
+        "@xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@xla//xla/stream_executor/integrations:stream_executor_allocator",
+        "@xla//xla/tsl/framework:device_id_utils",
     ],
     alwayslink = 1,
 )
@@ -111,10 +111,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/pjrt:pjrt_api",
-        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
-        "@local_xla//xla/stream_executor:stream_executor_h",
-        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@xla//xla/pjrt:pjrt_api",
+        "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
+        "@xla//xla/stream_executor:stream_executor_h",
+        "@xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),
@@ -140,8 +140,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_xla//xla/stream_executor:stream_executor_h",
-        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@xla//xla/stream_executor:stream_executor_h",
+        "@xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",
@@ -167,8 +167,8 @@ cc_library(
         "//tensorflow/core/common_runtime/device:device_mem_allocator",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
-        "@local_xla//xla/tsl/framework:allocator",
-        "@local_xla//xla/tsl/framework:bfc_allocator",
+        "@xla//xla/tsl/framework:allocator",
+        "@xla//xla/tsl/framework:bfc_allocator",
     ],
 )
 
@@ -185,7 +185,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:allocator",
-        "@local_xla//xla/tsl/framework:allocator",
+        "@xla//xla/tsl/framework:allocator",
     ],
 )
 
@@ -224,7 +224,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/stream_executor:platform_manager",
+        "@xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
 )
@@ -245,6 +245,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+        "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )

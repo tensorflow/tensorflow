@@ -22,20 +22,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-class GpuHloCostAnalysisTest : public HloTestBase {
+class GpuHloCostAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   HloCostAnalysis::Options options_{.count_multiple_input_accesses = true};
   GpuHloCostAnalysis analysis_{options_};
-  GpuHloCostAnalysisTest() : HloTestBase() {}
 };
 
 TEST_F(GpuHloCostAnalysisTest, ConvCustomCall) {

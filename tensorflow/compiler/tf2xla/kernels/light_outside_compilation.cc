@@ -490,7 +490,7 @@ class TfCallbackDevice : public DeviceBase {
         tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch buffer.
         /*scratch=*/nullptr);
-    return OkStatus();
+    return absl::OkStatus();
 #else
     LOG(FATAL) << "CUDA-enabled build is required";  // Crash OK
 #endif

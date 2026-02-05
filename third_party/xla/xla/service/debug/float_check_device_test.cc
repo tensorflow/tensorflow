@@ -50,7 +50,7 @@ TEST_F(GpuCodegenTest, OnNanShouldLogHloInstruction) {
       log, Log(absl::LogSeverity::kError, _,
                ::testing::HasSubstr("Found entry with non zero nan count ")));
   EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
-                       ::testing::HasSubstr("HLO instruction with id ")));
+                       ::testing::HasSubstr("Found NaN in HLO instruction ")));
   EXPECT_CALL(log,
               Log(absl::LogSeverity::kError, _,
                   ::testing::HasSubstr("HLO fusion instruction computation")));
@@ -79,7 +79,7 @@ TEST_F(GpuCodegenTest, OnInfShouldLogHloInstruction) {
       log, Log(absl::LogSeverity::kError, _,
                ::testing::HasSubstr("Found entry with non zero inf count ")));
   EXPECT_CALL(log, Log(absl::LogSeverity::kError, _,
-                       ::testing::HasSubstr("HLO instruction with id ")));
+                       ::testing::HasSubstr("Found Inf in HLO instruction ")));
   EXPECT_CALL(log,
               Log(absl::LogSeverity::kError, _,
                   ::testing::HasSubstr("HLO fusion instruction computation")));

@@ -138,8 +138,9 @@ __device__ inline std::tuple<const T*, uint64_t> GetBlockInput(
   const uint64_t max_block_input_size = xla::RoundUpTo(
       xla::CeilOfRatio(input_size, grid_size), kElementsPerMemoryAccess<T>);
   const uint64_t block_input_offset = BlockIdx() * max_block_input_size;
-  const uint64_t block_input_size =
-      std::min(max_block_input_size, input_size - block_input_offset);
+  const uint64_t block_input_size = std::min(
+      max_block_input_size,
+      input_size >= block_input_offset ? input_size - block_input_offset : 0);
   return {input + block_input_offset, block_input_size};
 }
 

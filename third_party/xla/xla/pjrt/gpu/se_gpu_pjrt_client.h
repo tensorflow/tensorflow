@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 using DeviceTopologyPair =
@@ -80,7 +81,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           int shared_memory_per_block_optin,
                           int local_device_id, int process_index,
                           int process_index_in_partition = 0,
-                          int partition_index = 0);
+                          int partition_index = 0,
+                          int numa_node = tsl::port::kNUMANoAffinity);
 
   absl::string_view device_vendor() const;
 
@@ -190,8 +192,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
-      std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
-      ExecutableRunOptions run_options) override;
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
+      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+      ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
+      absl::Span<const Shape> executable_parameter_shapes) override;
 
   absl::Status UpdateCompileOptionsInternal(
       CompileOptions* options, ExecutableExtras* returned_extras,
@@ -213,7 +217,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       PjRtDevice* device, std::vector<PjRtBuffer*> buffers,
       std::vector<PjRtGlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys,
-      std::vector<std::shared_ptr<Future<>::Promise>> promises);
+      std::vector<std::shared_ptr<Promise<>>> promises);
 
   struct PrepareReceiveBufferResult {
     std::unique_ptr<PjRtBuffer> buffer;

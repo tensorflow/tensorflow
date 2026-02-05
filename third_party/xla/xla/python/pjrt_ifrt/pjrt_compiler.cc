@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/service/computation_placer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -85,9 +87,14 @@ absl::Status TranslateDeviceIds(PjRtClient* client,
   return absl::OkStatus();
 }
 
-absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
+tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
+  if (client_ == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtCompiler must be constructed with a Client to call "
+        "CompileAndLoad.");
+  }
   const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
   if (xla_program == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
@@ -103,7 +110,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
       std::move(xla_compile_options->devices));
 }
 
-absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
+tsl::Future<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
@@ -113,8 +120,12 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
-  TF_RETURN_IF_ERROR(
-      TranslateDeviceIds(client_, xla_compile_options->compile_options));
+  if (client_ != nullptr) {
+    // Device ID translation is unnecessary because it is a property of the
+    // client.
+    TF_RETURN_IF_ERROR(
+        TranslateDeviceIds(client_, xla_compile_options->compile_options));
+  }
   const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
@@ -124,10 +135,15 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
                                 *pjrt_topology->description());
 }
 
-absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
+tsl::Future<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
   DCHECK(this);
+  if (client_ == nullptr) {
+    return absl::InvalidArgumentError(
+        "PjRtCompiler must be constructed with a Client to call "
+        "DeserializeLoadedExecutable.");
+  }
   TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
                       GetXlaDeserializeExecutableOptions(std::move(options)));
   if (xla_deserialize_options->compile_options.has_value()) {
@@ -135,10 +151,17 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
         TranslateDeviceIds(client_, *xla_deserialize_options->compile_options));
   }
   TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executable,
-      client_->pjrt_client()->LoadSerializedExecutable(
-          serialized, std::move(xla_deserialize_options->compile_options),
-          xla::LoadOptions()));
+      auto common_metadata_and_serialized_pjrt_executable,
+      PjRtExecutable::CommonMetadata::Deserialize(
+          serialized,
+          absl::bind_front(&PjRtCompiler::IsExecutableVersionCompatible, this),
+          *xla_deserialize_options));
+
+  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executable,
+                      client_->pjrt_client()->LoadSerializedExecutable(
+                          common_metadata_and_serialized_pjrt_executable.second,
+                          std::move(xla_deserialize_options->compile_options),
+                          xla::LoadOptions()));
   // TODO(emilyaf): Remove the else branch once devices are plumbed through from
   // Australis and are always present in the DeserializeExecutableOptions.
   DeviceListRef device_list;
@@ -154,7 +177,8 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::DeserializeLoadedExecutable(
       std::shared_ptr<xla::PjRtLoadedExecutable>(
           std::move(pjrt_loaded_executable)),
       std::move(xla_deserialize_options->loaded_host_callbacks),
-      std::move(device_list));
+      std::move(device_list),
+      std::move(common_metadata_and_serialized_pjrt_executable.first));
 }
 
 }  // namespace ifrt

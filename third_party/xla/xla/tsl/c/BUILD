@@ -1,7 +1,7 @@
 # Description:
 # C API for TensorFlow, for use by client language bindings.
 
-load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts", "tsl_gpu_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 
 # buildifier: disable=same-origin-load
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -40,7 +40,7 @@ filegroup(
     ]),
 )
 
-tsl_gpu_library(
+cc_library(
     name = "c_api",
     hdrs = [
         "tsl_status.h",
@@ -52,7 +52,7 @@ tsl_gpu_library(
     ],
 )
 
-tsl_gpu_library(
+cc_library(
     name = "tsl_status_internal",
     hdrs = [
         "tsl_status.h",
@@ -96,7 +96,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-tsl_gpu_library(
+cc_library(
     name = "tsl_status_helper",
     srcs = ["tsl_status_helper.cc"],
     hdrs = ["tsl_status_helper.h"],

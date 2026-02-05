@@ -1,4 +1,4 @@
 numpy == 1.24.4
-sentencepiece == 0.1.99
+sentencepiece == 0.2.1
 torch
 gemma @ git+https://github.com/google/gemma_pytorch.git@80881c2e6e797ef1913a4a705d4b40394791cc58

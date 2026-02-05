@@ -2,7 +2,7 @@
 #    TF2XLA Bridge transforms
 
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -24,9 +24,9 @@ gentbl_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
-        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
         "@stablehlo//:chlo_ops_td_files",
         "@stablehlo//:stablehlo_ops_td_files",
+        "@xla//xla/mlir_hlo:hlo_ops_td_files",
     ],
 )
 
@@ -60,7 +60,7 @@ gentbl_cc_library(
         "@llvm-project//mlir:PassBaseTdFiles",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:TensorOpsTdFiles",
-        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@xla//xla/mlir_hlo:hlo_ops_td_files",
     ],
 )
 
@@ -84,7 +84,7 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -95,7 +95,7 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -113,7 +113,7 @@ cc_library(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -153,20 +153,20 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:padding",
-        "@local_xla//xla/hlo/builder:sharding_builder",
-        "@local_xla//xla/hlo/builder/lib:conv_grad_size_util",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:convert_op_folder",
-        "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_pass_utils",
-    ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
+        "@tsl//tsl/platform:bfloat16",
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:padding",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/hlo/builder/lib:conv_grad_size_util",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:convert_op_folder",
+        "@xla//xla/tsl/platform:status",
+    ] + if_static(["@tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
@@ -185,9 +185,9 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -224,7 +224,7 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -280,23 +280,23 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:side_effect_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:padding",
-        "@local_xla//xla/hlo/builder:sharding_builder",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:convert_op_folder",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:type_conversion",
-        "@local_xla//xla/stream_executor/tpu:c_api_conversions",
-        "@local_xla//xla/stream_executor/tpu:tpu_api",
         "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
+        "@xla//xla:shape_util",
+        "@xla//xla:side_effect_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:padding",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:convert_op_folder",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:type_conversion",
+        "@xla//xla/stream_executor/tpu:c_api_conversions",
+        "@xla//xla/stream_executor/tpu:tpu_api",
     ],
 )
 
@@ -342,21 +342,21 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla:xla_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla:xla_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
+        "@xla//xla/service:hlo_proto_cc",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -380,15 +380,15 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:xla_builder",
-        "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
+        "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:xla_builder",
+        "@xla//xla/hlo/builder:xla_computation",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -459,7 +459,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

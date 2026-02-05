@@ -28,10 +28,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/client:client_library",
-        "@local_xla//xla/stream_executor:platform",
-        "@local_xla//xla/stream_executor:platform_manager",
+        "@xla//xla:shape_util",
+        "@xla//xla/client:client_library",
+        "@xla//xla/stream_executor:platform",
+        "@xla//xla/stream_executor:platform_manager",
     ],
 )
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
@@ -70,21 +73,41 @@ std::string GetBinaryOpString(SymbolicExprType type) {
   }
 }
 
+bool IsVariableCharacter(char c) { return absl::ascii_isalnum(c) || c == '_'; }
+
 // Helper class to manage the state of the parser.
 class Parser {
  public:
-  Parser(absl::string_view str, mlir::MLIRContext* context)
-      : remaining_str_(str), context_(context) {}
+  Parser(absl::string_view str, mlir::MLIRContext* context,
+         std::optional<int64_t> num_dims = std::nullopt)
+      : remaining_str_(str), context_(context), num_dims_(num_dims) {}
+
+  Parser(absl::string_view str, mlir::MLIRContext* context,
+         const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map)
+      : remaining_str_(str), context_(context), variable_map_(variable_map) {}
 
   SymbolicExpr Parse() {
     SymbolicExpr expr = ParseExpression();
     SkipWhitespace();
-    CHECK(remaining_str_.empty()) << "Did not parse entire string";
+    if (expr && !remaining_str_.empty()) {
+      return ReportError("Did not parse entire string");
+    }
     return expr;
   }
 
+  SymbolicExpr ParsePartial() { return ParseExpression(); }
+
+  absl::string_view GetRemainingStr() const { return remaining_str_; }
+
  private:
-  int64_t ParseNumber(std::string& error_msg) {
+  // TODO: b/459357586 - Consider returning StatusOr instead of failing
+  // gracefully by returning an empty SymbolicExpr.
+  SymbolicExpr ReportError(absl::string_view msg) {
+    LOG(ERROR) << msg << " at: \"" << remaining_str_ << "\"";
+    return SymbolicExpr();
+  }
+
+  std::optional<int64_t> ParseNumber() {
     size_t num_len = 0;
     if (!remaining_str_.empty() &&
         (absl::ascii_isdigit(remaining_str_[0]) || remaining_str_[0] == '-')) {
@@ -94,9 +117,13 @@ class Parser {
            absl::ascii_isdigit(remaining_str_[num_len])) {
       num_len++;
     }
-    CHECK(num_len > 0) << error_msg;
+    if (num_len == 0) {
+      return std::nullopt;
+    }
     int64_t number;
-    CHECK(absl::SimpleAtoi(remaining_str_.substr(0, num_len), &number));
+    if (!absl::SimpleAtoi(remaining_str_.substr(0, num_len), &number)) {
+      return std::nullopt;
+    }
     remaining_str_.remove_prefix(num_len);
     return number;
   }
@@ -104,11 +131,24 @@ class Parser {
   // Handles lowest precedence operators: +
   SymbolicExpr ParseExpression() {
     SymbolicExpr lhs = ParseTerm();
+    if (!lhs) {
+      return lhs;
+    }
     while (true) {
       SkipWhitespace();
       if (absl::ConsumePrefix(&remaining_str_, "+")) {
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, ParseTerm(),
-                                     context_);
+        SymbolicExpr rhs = ParseTerm();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs =
+            CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs, context_);
+      } else if (absl::ConsumePrefix(&remaining_str_, "-")) {
+        SymbolicExpr rhs = ParseTerm();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs = lhs - rhs;
       } else {
         break;
       }
@@ -119,17 +159,39 @@ class Parser {
   // Handles higher precedence operators: *, floordiv, ceildiv
   SymbolicExpr ParseTerm() {
     SymbolicExpr lhs = ParseFactor();
+    if (!lhs) {
+      return lhs;
+    }
     while (true) {
       SkipWhitespace();
       if (absl::ConsumePrefix(&remaining_str_, "*")) {
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, ParseFactor(),
-                                     context_);
+        SymbolicExpr rhs = ParseFactor();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs =
+            CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, context_);
       } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs,
-                                     ParseFactor(), context_);
+        SymbolicExpr rhs = ParseFactor();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs,
+                                     context_);
       } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs,
-                                     ParseFactor(), context_);
+        SymbolicExpr rhs = ParseFactor();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs,
+                                     context_);
+      } else if (absl::ConsumePrefix(&remaining_str_, "mod")) {
+        SymbolicExpr rhs = ParseFactor();
+        if (!rhs) {
+          return SymbolicExpr();
+        }
+        lhs =
+            CreateSymbolicBinaryOp(SymbolicExprType::kMod, lhs, rhs, context_);
       } else {
         break;
       }
@@ -145,46 +207,110 @@ class Parser {
       return {};
     }
     SymbolicExpr lhs = ParseExpression();
+    if (!lhs) {
+      return SymbolicExpr();
+    }
     SkipWhitespace();
-    CHECK(absl::ConsumePrefix(&remaining_str_, ","))
-        << "Missing ',' in " << func_name << "()";
+    if (!absl::ConsumePrefix(&remaining_str_, ",")) {
+      return ReportError("Missing ',' in " + func_name + "()");
+    }
     SymbolicExpr rhs = ParseExpression();
+    if (!rhs) {
+      return SymbolicExpr();
+    }
     SkipWhitespace();
-    CHECK(absl::ConsumePrefix(&remaining_str_, ")"))
-        << "Missing ')' in " << func_name << "()";
+    if (!absl::ConsumePrefix(&remaining_str_, ")")) {
+      return ReportError("Missing ')' in " + func_name + "()");
+    }
     return CreateSymbolicBinaryOp(type, lhs, rhs, context_);
+  }
+
+  SymbolicExpr MaybeParseVariableFromMap() {
+    auto it = absl::c_find_if_not(remaining_str_, IsVariableCharacter);
+    size_t var_len = std::distance(remaining_str_.begin(), it);
+    if (var_len > 0) {
+      auto var_it =
+          variable_map_->find(llvm::StringRef(remaining_str_.data(), var_len));
+      if (var_it != variable_map_->end()) {
+        remaining_str_.remove_prefix(var_len);
+        return var_it->second;
+      }
+    }
+    return SymbolicExpr();
+  }
+
+  SymbolicExpr MaybeParseDimAndSymbolVariables() {
+    if (absl::ConsumePrefix(&remaining_str_, "v") ||
+        absl::ConsumePrefix(&remaining_str_, "d")) {
+      std::optional<int64_t> var_id = ParseNumber();
+      if (!var_id.has_value()) {
+        return ReportError("Cannot parse variable id");
+      }
+      return CreateSymbolicVariable(var_id.value(), context_);
+    }
+    if (absl::ConsumePrefix(&remaining_str_, "s")) {
+      if (!num_dims_.has_value()) {
+        return ReportError(
+            "Symbol cannot be parsed because number of dimensions is not set.");
+      }
+      std::optional<int64_t> sym_id = ParseNumber();
+      // We need to know the number of dimensions to determine a symbol id.
+      if (!sym_id.has_value()) {
+        return ReportError("Cannot parse symbol id after 's'");
+      }
+      return CreateSymbolicVariable(num_dims_.value() + sym_id.value(),
+                                    context_);
+    }
+    return SymbolicExpr();
   }
 
   // Handles highest precedence items: numbers, variables, and functions.
   SymbolicExpr ParseFactor() {
     SkipWhitespace();
-    CHECK(!remaining_str_.empty()) << "Unexpected end of expression.";
+    if (remaining_str_.empty()) {
+      return ReportError("Unexpected end of expression");
+    }
 
     // Case 1:Function call like max( ... ) or min( ... )
-    SymbolicExpr expr;
-    if ((expr = ParseBinaryFunction(SymbolicExprType::kMax)) ||
-        (expr = ParseBinaryFunction(SymbolicExprType::kMin))) {
-      return expr;
+    if (absl::StartsWith(remaining_str_, "max(")) {
+      return ParseBinaryFunction(SymbolicExprType::kMax);
+    }
+    if (absl::StartsWith(remaining_str_, "min(")) {
+      return ParseBinaryFunction(SymbolicExprType::kMin);
     }
     // Case 2: Parenthesized subexpression
     if (absl::ConsumePrefix(&remaining_str_, "(")) {
       SymbolicExpr expr = ParseExpression();
+      if (!expr) {
+        return SymbolicExpr();
+      }
       SkipWhitespace();
-      CHECK(absl::ConsumePrefix(&remaining_str_, ")")) << "Missing parenthesis";
+      if (!absl::ConsumePrefix(&remaining_str_, ")")) {
+        return ReportError("Missing parenthesis");
+      }
       return expr;
     }
-    // Case 3:Variable (e.g., "v123")
-    // TODO(karupayun): Add support for variables that do not start with "v".
-    if (absl::ConsumePrefix(&remaining_str_, "v")) {
-      std::string error_msg = "Invalid variable format";
-      int64_t var_id = ParseNumber(error_msg);
-      return CreateSymbolicVariable(var_id, context_);
+
+    // Case 3: Variables from map. If `variable_map_` is provided, variables in
+    // it are checked before standard variables ('d', 's', 'v').
+    if (variable_map_ != nullptr) {
+      if (SymbolicExpr expr = MaybeParseVariableFromMap()) {
+        return expr;
+      }
     }
-    // Case 4: Number
-    std::string error_msg =
-        absl::StrCat("Failed to parse expression: \"", remaining_str_, "\"");
-    int64_t val = ParseNumber(error_msg);
-    return CreateSymbolicConstant(val, context_);
+
+    // Case 4: Variable (e.g., "v123", "d0", "s0")
+    char c = remaining_str_[0];
+    if (c == 'v' || c == 'd' || c == 's') {
+      return MaybeParseDimAndSymbolVariables();
+    }
+
+    // Case 5: Number
+    std::optional<int64_t> val = ParseNumber();
+    if (val.has_value()) {
+      return CreateSymbolicConstant(val.value(), context_);
+    }
+    return ReportError("Failed to parse expression");
   }
 
   void SkipWhitespace() {
@@ -193,6 +319,8 @@ class Parser {
 
   absl::string_view remaining_str_;
   mlir::MLIRContext* context_;
+  std::optional<int64_t> num_dims_;
+  const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map_ = nullptr;
 };
 
 // Returns {BASE, COEFF}, where expr is equivalent to BASE * COEFF.
@@ -978,9 +1106,6 @@ void RegisterSymbolicExprStorage(mlir::MLIRContext* mlir_context) {
 SymbolicExpr GetOrCreateSymbolicExpr(SymbolicExprType type, int64_t value,
                                      SymbolicExpr lhs, SymbolicExpr rhs,
                                      mlir::MLIRContext* mlir_context) {
-  // TODO(b/433696544): This might be too expensive to call per expression.
-  // We should consider calling this once per MLIRContext creation.
-  RegisterSymbolicExprStorage(mlir_context);
   auto* uniquer = &mlir_context->getAffineUniquer();
   auto initContext = [&](SymbolicExprStorage* storage) {
     storage->mlir_context_ = mlir_context;
@@ -1026,8 +1151,27 @@ llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
   return exprs;
 }
 SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
-                               mlir::MLIRContext* mlir_context) {
-  return Parser(expr_str, mlir_context).Parse();
+                               mlir::MLIRContext* mlir_context,
+                               std::optional<int64_t> num_dims) {
+  return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
+}
+
+SymbolicExpr ParseSymbolicExprAndAdvance(absl::string_view* expr_str,
+                                         mlir::MLIRContext* mlir_context,
+                                         std::optional<int64_t> num_dims) {
+  Parser parser(*expr_str, mlir_context, num_dims);
+  SymbolicExpr expr = parser.ParsePartial();
+  *expr_str = parser.GetRemainingStr();
+  return expr;
+}
+
+SymbolicExpr ParseSymbolicExprAndAdvance(
+    absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
+    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map) {
+  Parser parser(*expr_str, mlir_context, &variable_map);
+  SymbolicExpr expr = parser.ParsePartial();
+  *expr_str = parser.GetRemainingStr();
+  return expr;
 }
 
 void SymbolicExpr::Walk(

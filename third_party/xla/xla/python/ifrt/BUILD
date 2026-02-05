@@ -40,6 +40,7 @@ cc_library(
         "executable_serdes.cc",
         "shape.cc",
         "sharding.cc",
+        "sharding_spec.cc",
         "topology.cc",
         "tuple.cc",
         "value.cc",
@@ -64,6 +65,7 @@ cc_library(
         "executable_serdes.h",
         "shape.h",
         "sharding.h",
+        "sharding_spec.h",
         "topology.h",
         "tuple.h",
         "value.h",
@@ -88,6 +90,7 @@ cc_library(
         ":serdes_version",
         ":shape_proto_cc",
         ":sharding_proto_cc",
+        ":sharding_spec_proto_cc",
         ":user_context",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -95,6 +98,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
@@ -115,6 +119,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -198,6 +203,7 @@ cc_library(
     deps = [
         ":ifrt",
         ":user_context",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -211,12 +217,12 @@ cc_library(
 tf_proto_library(
     name = "execute_options_proto",
     srcs = ["execute_options.proto"],
-    protodeps = [":attribute_map_proto"],
     visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
     ]),
+    deps = [":attribute_map_proto"],
 )
 
 xla_cc_test(
@@ -261,12 +267,12 @@ xla_cc_test(
 tf_proto_library(
     name = "layout_proto",
     srcs = ["layout.proto"],
-    protodeps = [":serdes_proto"],
     visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
     ]),
+    deps = [":serdes_proto"],
 )
 
 xla_cc_test(
@@ -297,6 +303,11 @@ cc_library(
     name = "layout_serdes",
     srcs = ["layout_serdes.cc"],
     compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
     deps = [
         ":ifrt",
         ":layout_serdes_proto_cc",
@@ -399,6 +410,21 @@ xla_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "sharding_spec_test",
+    size = "small",
+    srcs = ["sharding_spec_test.cc"],
+    deps = [
+        ":ifrt",
+        "//xla/python/ifrt/ir:sharding_param",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -764,6 +790,48 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "sharding_spec_serdes",
+    srcs = ["sharding_spec_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":ifrt",
+        ":serdes",
+        ":serdes_version",
+        ":sharding_spec_serdes_proto_cc",
+        "//xla/python/ifrt/ir:sharding_param",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = True,
+)
+
+xla_cc_test(
+    name = "sharding_spec_serdes_test",
+    srcs = ["sharding_spec_serdes_test.cc"],
+    deps = [
+        ":ifrt",
+        ":serdes",
+        ":serdes_proto_cc",
+        ":serdes_test_util",
+        ":serdes_version",
+        ":sharding_spec_serdes",
+        "//xla/python/ifrt/ir:sharding_param",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "sharding_serdes_test",
     srcs = ["sharding_serdes_test.cc"],
@@ -785,16 +853,16 @@ xla_cc_test(
 tf_proto_library(
     name = "array_spec_proto",
     srcs = ["array_spec.proto"],
-    protodeps = [
-        ":dtype_proto",
-        ":shape_proto",
-        ":sharding_proto",
-    ],
     visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
     ]),
+    deps = [
+        ":dtype_proto",
+        ":shape_proto",
+        ":sharding_proto",
+    ],
 )
 
 xla_cc_test(
@@ -842,7 +910,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -898,13 +966,15 @@ xla_cc_test(
 tf_proto_library(
     name = "remap_plan_proto",
     srcs = ["remap_plan.proto"],
-    protodeps = [":array_spec_proto"],
     visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
     ]),
-    deps = [":device_proto"],
+    deps = [
+        ":array_spec_proto",
+        ":device_proto",
+    ],
 )
 
 xla_cc_test(
@@ -971,6 +1041,32 @@ tf_proto_library(
 tf_proto_library(
     name = "sharding_proto",
     srcs = ["sharding.proto"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [":serdes_proto"],
+)
+
+tf_proto_library(
+    name = "sharding_serdes_proto",
+    srcs = ["sharding_serdes.proto"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":device_proto",
+        ":shape_proto",
+        "//xla/python/ifrt/ir:sharding_param_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "sharding_spec_proto",
+    srcs = ["sharding_spec.proto"],
     protodeps = [":serdes_proto"],
     visibility = internal_visibility([
         ":friends",
@@ -980,10 +1076,9 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "sharding_serdes_proto",
-    srcs = ["sharding_serdes.proto"],
+    name = "sharding_spec_serdes_proto",
+    srcs = ["sharding_spec_serdes.proto"],
     protodeps = [
-        ":device_proto",
         ":shape_proto",
         "//xla/python/ifrt/ir:sharding_param_proto",
     ],
@@ -1069,15 +1164,15 @@ cc_library(
 tf_proto_library(
     name = "custom_call_program_proto",
     srcs = ["custom_call_program.proto"],
-    protodeps = [
-        ":array_spec_proto",
-        ":device_proto",
-    ],
     visibility = internal_visibility([
         ":friends",
         ":internal",
         ":users",
     ]),
+    deps = [
+        ":array_spec_proto",
+        ":device_proto",
+    ],
 )
 
 cc_library(
@@ -1131,7 +1226,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 

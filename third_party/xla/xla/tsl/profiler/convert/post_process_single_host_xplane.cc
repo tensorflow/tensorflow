@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/timestamp_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -87,6 +91,9 @@ void MergeHostPlanesAndSortLines(tensorflow::profiler::XSpace* space) {
     RemovePlanes(space, {nvtx_plane});
   }
 
+  // Merge planes with identical names
+  MergePlanesWithSameNames(space);
+
   // Sort the lines by name.
   SortXLinesBy(host_plane, XLinesComparatorByName());
 }
@@ -108,6 +115,26 @@ void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
   SetSessionTimestamps(start_time_ns, stop_time_ns, *space);
   // 4. Sort each plane of the XSpace
   SortXSpace(space);
+}
+
+void MergePlanesWithSameNames(tensorflow::profiler::XSpace* space) {
+  absl::flat_hash_map<absl::string_view, std::vector<XPlane*>> planes_by_name;
+  for (XPlane& plane : *space->mutable_planes()) {
+    planes_by_name[plane.name()].push_back(&plane);
+  }
+
+  for (auto const& [name, planes] : planes_by_name) {
+    if (planes.size() > 1) {
+      XPlane* target_plane = planes[0];
+      std::vector<const XPlane*> planes_to_remove;
+      planes_to_remove.reserve(planes.size() - 1);
+      for (size_t i = 1; i < planes.size(); ++i) {
+        MergePlanes(*planes[i], target_plane);
+        planes_to_remove.push_back(planes[i]);
+      }
+      RemovePlanes(space, planes_to_remove);
+    }
+  }
 }
 
 }  // namespace profiler

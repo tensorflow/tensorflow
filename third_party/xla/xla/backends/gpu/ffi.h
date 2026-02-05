@@ -22,11 +22,13 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/ffi.h"  // IWYU pragma: export
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -37,12 +39,14 @@ namespace xla::ffi {
 //===----------------------------------------------------------------------===//
 
 // Type tag binds to one of the following types defined by XLA:GPU runtime:
-struct Stream {};                    //  `se::Stream*`
-struct Allocator {};                 //  `se::DeviceAddressAllocator*`
-struct ScratchAllocator {};          //  `se::OwningScratchAllocator`
-struct CollectiveParams {};          //  `const xla::gpu::CollectiveParams*`
-struct CollectiveCliqueRequests {};  //  `xla::gpu::CollectiveCliqueRequests*`
-struct CollectiveCliques {};         //  `const xla::gpu::CollectiveCliques*`
+struct Stream {};                      //  `se::Stream*`
+struct Allocator {};                   //  `se::DeviceAddressAllocator*`
+struct ScratchAllocator {};            //  `se::OwningScratchAllocator`
+struct CollectiveParams {};            //  `const xla::gpu::CollectiveParams*`
+struct CollectiveCliqueRequests {};    //  `xla::gpu::CollectiveCliqueRequests*`
+struct CollectiveMemoryRequests {};    //  `xla::gpu::CollectiveMemoryRequests*`
+struct CollectiveCliques {};           //  `const xla::gpu::CollectiveCliques*`
+struct TargetGpuComputeCapability {};  //  `const se::GpuComputeCapability*`
 
 // Parametrized type tag for platform stream, e.g. `cudaStream_t`
 template <typename T>
@@ -145,6 +149,20 @@ struct CtxDecoding<CollectiveCliqueRequests> {
 };
 
 template <>
+struct CtxDecoding<CollectiveMemoryRequests> {
+  using Type = xla::gpu::CollectiveMemoryRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
+        "collective memory requests");
+  }
+};
+
+template <>
 struct CtxDecoding<CollectiveCliques> {
   using Type = const xla::gpu::CollectiveCliques*;
 
@@ -155,6 +173,20 @@ struct CtxDecoding<CollectiveCliques> {
         api, ctx, diagnostic,
         api->internal_api->XLA_FFI_INTERNAL_CollectiveCliques_Get,
         "collective cliques");
+  }
+};
+
+template <>
+struct CtxDecoding<TargetGpuComputeCapability> {
+  using Type = const se::GpuComputeCapability*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_GpuComputeCapability_Get,
+        "gpu compute capability");
   }
 };
 

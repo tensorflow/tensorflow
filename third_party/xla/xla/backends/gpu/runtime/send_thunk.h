@@ -25,11 +25,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 
@@ -43,8 +44,7 @@ class SendThunk : public CollectiveThunk {
             int64_t replica_count, int64_t partition_count,
             const Buffer& buffer);
   SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
-            std::shared_ptr<AsyncEvents> async_events,
-            AsyncStreamKind stream_kind, const Buffer& buffer,
+            std::shared_ptr<AsyncEvents> async_events, const Buffer& buffer,
             absl::string_view instr_name);
 
   absl::Status Initialize(const InitializeParams& params) override;
@@ -56,8 +56,23 @@ class SendThunk : public CollectiveThunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
- protected:
   const CollectiveConfig& config() const override { return config_.config; }
+
+  const Buffer& buffer() const { return buffer_; }
+
+  const P2PConfig& p2p_config() const { return config_; }
+
+  BufferUses buffer_uses() const override {
+    BufferUses uses{
+        BufferUse::Read(buffer_.source_buffer.slice,
+                        buffer_.source_buffer.shape),
+        BufferUse::Write(buffer_.destination_buffer.slice,
+                         buffer_.destination_buffer.shape),
+    };
+    return uses;
+  }
+
+ protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      const GpuCliqueKey& clique_key,
                                      se::Stream& stream,
@@ -68,7 +83,14 @@ class SendThunk : public CollectiveThunk {
   const Buffer buffer_;
   std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
+  absl::StatusOr<bool> ConditionalShouldRun(const ExecuteParams& params,
+                                            int64_t current_id,
+                                            int64_t target_id) const;
 };
+
+absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
+                     Communicator& comm, int64_t current_id, int64_t target_id,
+                     absl::string_view device_string);
 
 }  // namespace gpu
 }  // namespace xla

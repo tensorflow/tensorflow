@@ -55,12 +55,12 @@ class TFStats {
           std::unique_ptr<OpLogProto> op_log,
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
 
-  TFStats(const string& filename,
+  TFStats(const std::string& filename,
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
 
   ~TFStats() = default;
 
-  const std::map<string, std::unique_ptr<TFGraphNode>>& nodes() const {
+  const std::map<std::string, std::unique_ptr<TFGraphNode>>& nodes() const {
     return nodes_map_;
   }
   const std::set<int64_t>& steps() const { return steps_; }
@@ -69,7 +69,7 @@ class TFStats {
     return covered_nodes_.size() / (nodes_map_.size() + 1e-10);
   }
 
-  void BuildView(const string& cmd);
+  void BuildView(const std::string& cmd);
   void BuildAllViews();
 
   // Note: Must first BuildView(view_foo) before ShowXXX(view_foo) methods.
@@ -77,9 +77,9 @@ class TFStats {
   // Organize the TensorFlow model as different types of views, and generate
   // outputs for profiling.
   // TODO(xpan): Should it return reference here?
-  const GraphNodeProto& ShowGraphNode(const string& cmd,
+  const GraphNodeProto& ShowGraphNode(const std::string& cmd,
                                       const Options& opts) const;
-  const MultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
+  const MultiGraphNodeProto& ShowMultiGraphNode(const std::string& cmd,
                                                 const Options& opts) const;
 
   // Add a (partial) graph to existing graph.
@@ -91,15 +91,15 @@ class TFStats {
   // and code traces.
   void AddOpLogProto(std::unique_ptr<OpLogProto> op_log);
 
-  void SerializeToString(string* content);
-  void WriteProfile(const string& filename);
+  void SerializeToString(std::string* content);
+  void WriteProfile(const std::string& filename);
 
   // For test purpose only.
   void AddNodeForTest(int64_t step, std::unique_ptr<TFGraphNode> node);
 
  private:
   bool Validate(const Options& opts) const;
-  string MaybeReportMissingTrace() const;
+  std::string MaybeReportMissingTrace() const;
 
   std::set<int64_t> steps_;
   bool has_code_traces_;
@@ -112,11 +112,11 @@ class TFStats {
   // TODO(xpan): Store TFGraphNode instead of TFGraphNode* to avoid large
   // number of dynamic alloc.
   // Maps from graph node name to TFGraphNode.
-  std::map<string, std::unique_ptr<TFGraphNode>> nodes_map_;
+  std::map<std::string, std::unique_ptr<TFGraphNode>> nodes_map_;
   GraphNodeProto empty_graph_node_;
   MultiGraphNodeProto empty_multi_graph_node_;
 
-  std::map<int64_t, string> id_to_string_;
+  std::map<int64_t, std::string> id_to_string_;
   // Graph nodes covered by RunMetadata, that is traced with run time stats.
   std::set<int64_t> covered_nodes_;
 };

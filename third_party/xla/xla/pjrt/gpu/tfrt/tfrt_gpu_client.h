@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
@@ -64,8 +65,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -120,7 +121,7 @@ class TfrtGpuClient final : public PjRtClient {
                 bool should_stage_host_to_device_transfers,
                 bool abort_collectives_on_failure,
                 MaybeOwning<se::DeviceAddressAllocator> allocator,
-                std::shared_ptr<HostMemoryAllocator> host_memory_allocator,
+                HostMemoryAllocator::Factory host_memory_allocator_factory,
                 std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
                 std::shared_ptr<KeyValueStoreInterface> kv_store,
                 std::shared_ptr<const GpuTopology> gpu_topology);
@@ -158,8 +159,13 @@ class TfrtGpuClient final : public PjRtClient {
 
   se::DeviceAddressAllocator* allocator() { return allocator_.get_mutable(); }
 
-  bool should_stage_host_to_device_transfers() const {
-    return should_stage_host_to_device_transfers_;
+  bool ShouldStageHostToDeviceTransfers(const void* data, int64_t size) {
+    // Disable staging buffers for large transfers because allocation and extra
+    // memcpy overheads for multi-gigabyte buffers will likely offset the
+    // benefit of using a staging buffer. The current threshold is arbitrarily
+    // chosen and may need to be adjusted in the future.
+    return should_stage_host_to_device_transfers_ &&
+           size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
   HostMemoryAllocator* host_memory_allocator() const {
@@ -184,11 +190,11 @@ class TfrtGpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 
-  tsl::thread::ThreadPool* blocking_thread_pool() const {
+  AsyncWorkRunner* blocking_thread_pool() const {
     return blocking_thread_pool_.get();
   }
 
-  tsl::thread::ThreadPool* non_blocking_thread_pool() const {
+  AsyncWorkRunner* non_blocking_thread_pool() const {
     return non_blocking_thread_pool_.get();
   }
 
@@ -378,12 +384,13 @@ class TfrtGpuClient final : public PjRtClient {
   // Thread pools must be destructed first, to make all the pending tasks are
   // completed before the client is destructed.
   std::unique_ptr<tsl::thread::ThreadPool> compile_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> blocking_thread_pool_;
-  std::unique_ptr<tsl::thread::ThreadPool> non_blocking_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> blocking_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> non_blocking_thread_pool_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_TFRT_GPU_CLIENT_H_

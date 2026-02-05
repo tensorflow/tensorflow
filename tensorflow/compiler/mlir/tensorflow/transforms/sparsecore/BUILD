@@ -112,6 +112,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )

@@ -1,7 +1,7 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
+load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -46,9 +46,9 @@ tsl_pybind_extension(
         "@llvm-project//mlir:CAPIIR",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MLIRBindingsPythonHeadersAndDeps",
-        "@local_xla//third_party/python_runtime:headers",
         "@nanobind",
         "@stablehlo//:stablehlo_capi",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -86,7 +86,7 @@ gentbl_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
-        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@xla//xla/mlir_hlo:hlo_ops_td_files",
     ],
 )
 
@@ -111,7 +111,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
 )
@@ -124,7 +124,7 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -137,7 +137,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
 )
 
@@ -172,19 +172,19 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_tsl//tsl/platform:bfloat16",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:padding",
-        "@local_xla//xla/hlo/builder:sharding_builder",
-        "@local_xla//xla/hlo/builder/lib:conv_grad_size_util",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:convert_op_folder",
-        "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
-    ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
+        "@tsl//tsl/platform:bfloat16",
+        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:padding",
+        "@xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla/hlo/builder/lib:conv_grad_size_util",
+        "@xla//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:convert_op_folder",
+        "@xla//xla/tsl/platform:status",
+    ] + if_static(["@tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
 cc_library(
@@ -214,12 +214,12 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/mlir_hlo:type_conversion",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:register",
+        "@xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/mlir_hlo:type_conversion",
     ],
     alwayslink = 1,
 )
@@ -283,7 +283,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
 )
@@ -311,7 +311,7 @@ cc_library(
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@xla//xla/mlir_hlo",
     ],
     alwayslink = 1,
 )

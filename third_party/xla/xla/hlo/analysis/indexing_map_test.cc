@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 
@@ -45,6 +46,7 @@ using ::testing::ElementsAre;
 
 class IndexingMapTest : public HloHardwareIndependentTestBase {
  public:
+  IndexingMapTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   IndexingMap Parse(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
     EXPECT_TRUE(indexing_map.has_value());

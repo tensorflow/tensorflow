@@ -31,7 +31,8 @@ class ParallelBatchDatasetParams : public DatasetParams {
                              DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
                              const bool parallel_copy,
-                             const std::string& deterministic, string node_name)
+                             const std::string& deterministic,
+                             std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         batch_size_(batch_size),
@@ -55,7 +56,8 @@ class ParallelBatchDatasetParams : public DatasetParams {
     return {batch_size, num_parallel_calls, drop_remainder};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {ParallelBatchDatasetOp::kInputDataset,
                     ParallelBatchDatasetOp::kBatchSize,
                     ParallelBatchDatasetOp::kNumParallelCalls,
@@ -74,7 +76,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   };
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return ParallelBatchDatasetOp::kDatasetType;
   }
 

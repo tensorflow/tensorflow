@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -38,11 +39,10 @@ limitations under the License.
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
-
-using PjRtPlatformId = uint64_t;
 
 inline const char* CpuName() {
   static constexpr char kCpuName[] = "cpu";
@@ -321,6 +321,14 @@ class PjRtCompiler {
   DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
     return absl::UnimplementedError(
         "DeserializePjRtTopologyDescription is not implemented.");
+  }
+
+  // Returns the target runtime ABI version that the compiled executables will
+  // be compatible with.
+  virtual absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  GetTargetRuntimeAbiVersion() {
+    return absl::UnimplementedError(
+        "GetTargetRuntimeAbiVersion is not implemented.");
   }
 };
 

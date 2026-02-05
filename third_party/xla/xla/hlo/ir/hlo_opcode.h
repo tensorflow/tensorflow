@@ -153,6 +153,7 @@ namespace xla {
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
   V(kScaledDot, "scaled-dot", 4)                                               \
+  V(kScan, "scan", kHloOpcodeIsVariadic)                                       \
   V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \

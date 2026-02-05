@@ -50,8 +50,8 @@ Arena::Arena(const size_t block_size)
       overflow_blocks_(nullptr) {
   assert(block_size > kDefaultAlignment);
 
-  first_blocks_[0].mem =
-      reinterpret_cast<char*>(port::AlignedMalloc(block_size_, sizeof(void*)));
+  first_blocks_[0].mem = reinterpret_cast<char*>(tsl::port::AlignedMalloc(
+      block_size_, static_cast<std::align_val_t>(sizeof(void*))));
 
   first_blocks_[0].size = block_size_;
 
@@ -170,8 +170,8 @@ Arena::AllocatedBlock* Arena::AllocNewBlock(const size_t block_size,
     const uint32 excess = adjusted_block_size % adjusted_alignment;
     adjusted_block_size += (excess > 0 ? adjusted_alignment - excess : 0);
   }
-  block->mem = reinterpret_cast<char*>(
-      port::AlignedMalloc(adjusted_block_size, adjusted_alignment));
+  block->mem = reinterpret_cast<char*>(tsl::port::AlignedMalloc(
+      adjusted_block_size, static_cast<std::align_val_t>(adjusted_alignment)));
   block->size = adjusted_block_size;
   CHECK(nullptr != block->mem) << "block_size=" << block_size
                                << " adjusted_block_size=" << adjusted_block_size

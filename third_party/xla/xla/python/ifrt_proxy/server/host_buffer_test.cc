@@ -54,7 +54,7 @@ TEST(HostBufferStoreTest, WriteAfterReadStarted) {
   const uint64_t kHandle = 1;
 
   auto [lookup_promise, lookup_fut] =
-      tsl::Future<HostBufferStore::MemRegion>::MakePromise();
+      tsl::MakePromise<HostBufferStore::MemRegion>();
 
   absl::Notification closure_started;
   tsl::Env::Default()->SchedClosure(
@@ -76,7 +76,7 @@ TEST(HostBufferStoreTest, ShutdownAfterReadStarted) {
   const uint64_t kHandle = 1;
 
   auto [lookup_promise, lookup_fut] =
-      tsl::Future<HostBufferStore::MemRegion>::MakePromise();
+      tsl::MakePromise<HostBufferStore::MemRegion>();
 
   absl::Notification closure_started;
   tsl::Env::Default()->SchedClosure([&, promise = std::move(

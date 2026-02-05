@@ -474,19 +474,6 @@ GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
   return collective_device_list;
 }
 
-// Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
-GetParticipatingFlattenedIdGroups(const HloInstruction* hlo, int replica_count,
-                                  int partition_count) {
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
-                      GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(GetCollectiveDeviceList(hlo), mode,
-                                        replica_count, partition_count));
-  return collective_device_list;
-}
-
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
     GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
     absl::Span<const ReplicaGroup> replica_groups,

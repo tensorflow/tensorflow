@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -460,21 +461,7 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   if (uniquify_channel_ids_) {
-    // If we're going to uniquify channel IDs, make sure the new IDs we assigned
-    // are not already used in the module. The easiest way is to just start at
-    // the top currently used ID.
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        HloChannelInstruction* channel_instruction =
-            DynCast<HloChannelInstruction>(instruction);
-        if (channel_instruction &&
-            channel_instruction->channel_id().has_value()) {
-          next_unique_channel_id_ =
-              std::max(next_unique_channel_id_,
-                       channel_instruction->channel_id().value() + 1);
-        }
-      }
-    }
+    next_unique_channel_id_ = hlo_query::NextChannelId(*module);
   }
 
   // Because call graph nodes are visited in post-order (callees before callers)

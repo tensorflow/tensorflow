@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_profiler.h"
 
-#include "absl/cleanup/cleanup.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include <cstdint>
+#include <string>
+
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "tsl/platform/env.h"

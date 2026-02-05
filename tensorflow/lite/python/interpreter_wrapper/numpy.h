@@ -72,8 +72,9 @@ TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
 bool FillStringBufferWithPyArray(PyObject* value,
                                  DynamicBuffer* dynamic_buffer);
 
-// Helper function to pack int8 numpy array data into an INT4 tensor.
-PyObject* SetInt4Tensor(TfLiteTensor* tensor, PyArrayObject* array,
+// Helper function to pack int8/uint8 numpy array data into an INT4/UINT4
+// tensor.
+PyObject* Set4BitTensor(TfLiteTensor* tensor, PyArrayObject* array,
                         int tensor_index);
 
 }  // namespace python_utils

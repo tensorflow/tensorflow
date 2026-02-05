@@ -21,10 +21,11 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 
 namespace xla {
 namespace gpu {
@@ -33,12 +34,13 @@ namespace gpu {
 // operations into a single group call in order for them to be dispatched
 // together. Implementation is backend-specific and might not be supported by
 // all collective implementations.
-
 class CollectiveGroupThunk : public Thunk {
  public:
-  CollectiveGroupThunk(const HloInstruction* instruction, Thunk::Kind kind,
-                       std::vector<std::unique_ptr<Thunk>> thunks,
-                       AsyncStreamKind stream_kind, ThunkId thunk_id);
+  CollectiveGroupThunk(
+      ThunkInfo thunk_info, Thunk::Kind kind,
+      std::vector<std::unique_ptr<Thunk>> thunks,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
+          std::make_shared<CollectiveThunk::AsyncEvents>());
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -53,9 +55,16 @@ class CollectiveGroupThunk : public Thunk {
     return async_events_;
   }
 
+  static absl::StatusOr<std::unique_ptr<CollectiveGroupThunk>> FromProto(
+      ThunkInfo thunk_info, const CollectiveGroupThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map,
+      const Deserializer& deserializer);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   ThunkSequence thunks_;
-  AsyncStreamKind stream_kind_;
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
 };
 

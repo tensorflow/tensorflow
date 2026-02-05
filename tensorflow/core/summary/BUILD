@@ -57,8 +57,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
-        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -77,7 +77,7 @@ tf_cc_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/protobuf:histogram_proto_cc",
+        "@xla//xla/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -95,7 +95,7 @@ cc_library(
         "//tensorflow/core/kernels:summary_interface",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -149,7 +149,7 @@ tf_cc_binary(
         "//tensorflow/core/lib/db:sqlite",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

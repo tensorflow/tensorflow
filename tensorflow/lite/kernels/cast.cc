@@ -243,6 +243,20 @@ TfLiteStatus castInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
   return kTfLiteOk;
 }
 
+TfLiteStatus castUInt4ToFloat(TfLiteContext* context, const TfLiteTensor* in,
+                              TfLiteTensor* out, int num_elements) {
+  const int8_t* in_data = (const int8_t*)in->data.data;
+  float* out_data = (float*)out->data.data;
+  for (int i = 0; i < (num_elements + 1) / 2; ++i) {
+    uint8_t byte = static_cast<uint8_t>(in_data[i]);
+    out_data[2 * i] = static_cast<float>(byte & 0x0F);
+    if (2 * i + 1 < num_elements) {
+      out_data[2 * i + 1] = static_cast<float>(byte >> 4);
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus castFloatToInt4(const float* in, TfLiteTensor* out,
                              int num_elements) {
   const float min_val = -8.0f;
@@ -268,6 +282,20 @@ TfLiteStatus castFloatToInt2(const float* in, TfLiteTensor* out,
   }
   tensor_utils::PackInt8IntoDenseInt(unpacked_temp.data(), num_elements,
                                      /*bit_width=*/2, (int8_t*)out->data.data);
+  return kTfLiteOk;
+}
+
+TfLiteStatus castFloatToUint4(const float* in, TfLiteTensor* out,
+                              int num_elements) {
+  const float min_val = 0.0f;
+  const float max_val = 15.0f;
+  std::vector<int8_t> unpacked_temp(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    unpacked_temp[i] =
+        static_cast<int8_t>(std::max(min_val, std::min(max_val, in[i])));
+  }
+  tensor_utils::PackInt8IntoDenseInt(unpacked_temp.data(), num_elements,
+                                     /*bit_width=*/4, (int8_t*)out->data.data);
   return kTfLiteOk;
 }
 
@@ -331,6 +359,13 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       } else {
         TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
       }
+    case kTfLiteUInt4:
+      if (std::is_same<FromT, float>::value) {
+        return castFloatToUint4(reinterpret_cast<const float*>(in), out,
+                                num_elements);
+      } else {
+        TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
+      }
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
@@ -384,6 +419,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
         TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
       }
       return castInt2ToFloat(context, input, output, num_elements);
+    case kTfLiteUInt4:
+      if (output->type != kTfLiteFloat32) {
+        TF_LITE_UNSUPPORTED_TYPE(context, output->type, "Cast");
+      }
+      return castUInt4ToFloat(context, input, output, num_elements);
     default:
       // Unsupported type.
       TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");

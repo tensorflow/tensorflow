@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"

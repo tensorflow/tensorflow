@@ -22,13 +22,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -46,14 +47,11 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::Not;
 
-class XlaCompileLibTest : public HloTestBase {
+class XlaCompileLibTest : public HloPjRtTestBase {
  protected:
-  XlaCompileLibTest()
-      : HloTestBase(*PlatformUtil::GetPlatform(std::string("GPU")),
-                    GetReferencePlatform()) {}
   void SetUp() override {
     const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                                                   "../external/local_xla/xla",
+                                                   "../external/xla/xla",
 						   "tools", "data", "add.hlo");
     std::string hlo;
     TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
@@ -66,7 +64,7 @@ class XlaCompileLibTest : public HloTestBase {
 TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
   CompilationResult result;
   EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
-                                std::nullopt, result),
+                                std::nullopt, std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
@@ -75,14 +73,16 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   auto path = tsl::testing::XlaSrcRoot();
   path = path.erase(path.length() - 4);
   const std::string target_config_path =
-      tsl::io::JoinPath(path, "external/local_xla/xla",
+      tsl::io::JoinPath(path, "external/xla/xla",
                         "backends/gpu/target_config/specs", "h100_sxm.txtpb");
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));
   CompilationResult result;
-  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
-                                std::nullopt, result),
+  EXPECT_THAT(CompileExecutable(
+                  std::move(module_), BackendType::kGpu,
+                  Compiler::GpuTargetConfig::FromProto(target_config).value(),
+                  /*cpu_target_config=*/std::nullopt, result),
               absl_testing::IsOkAndHolds(Not(IsEmpty())));
   EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
 }
@@ -123,7 +123,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "../external/local_xla/xla",
+                        "../external/xla/xla",
 	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));
@@ -150,7 +150,7 @@ TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
   TF_ASSERT_OK(tsl::ReadTextProto(
       tsl::Env::Default(),
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "../external/local_xla/xla",
+                        "../external/xla/xla",
 	                "service", "gpu",
                         "gpu_compiler_test_autotune_db.textproto"),
       &autotune_results));

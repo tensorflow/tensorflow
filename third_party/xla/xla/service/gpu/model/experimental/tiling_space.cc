@@ -68,7 +68,8 @@ void TilingSpace::AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
 void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kDot:
-      ProcessDot(hlo);
+    case HloOpcode::kScaledDot:
+      ProcessDotLike(hlo);
       break;
     case HloOpcode::kReduce:
       ProcessReduce(hlo);
@@ -83,11 +84,10 @@ void TilingSpace::ProcessInstruction(const HloInstruction& hlo) {
 }
 
 // Add dot contraction dimensions in the order of contracting dimensions.
-void TilingSpace::ProcessDot(const HloInstruction& hlo) {
-  auto dot = Cast<HloDotInstruction>(&hlo);
-  const Shape& lhs_shape = dot->operand(0)->shape();
-  const DotDimensionNumbers& dim_numbers = dot->dot_dimension_numbers();
-  int64_t output_rank = dot->shape().dimensions().size();
+void TilingSpace::ProcessDotLike(const HloInstruction& hlo) {
+  const Shape& lhs_shape = hlo.operand(0)->shape();
+  const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
+  int64_t output_rank = hlo.shape().dimensions().size();
   for (auto [index, contracting_dim_id] :
        llvm::enumerate(dim_numbers.lhs_contracting_dimensions())) {
     AppendDimension(&hlo, output_rank + index,

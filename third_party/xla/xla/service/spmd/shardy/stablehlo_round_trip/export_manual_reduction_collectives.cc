@@ -172,8 +172,8 @@ ManualComputationOp createFullyManualComputation(
     manualAxes.push_back(builder.getStringAttr(axis.getName()));
   }
   TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
-  auto op = builder.create<ManualComputationOp>(
-      loc, input.getType(), input, inSharding, outSharding, manualAxes);
+  auto op = ManualComputationOp::create(builder, loc, input.getType(), input,
+                                        inSharding, outSharding, manualAxes);
 
   mlir::Block& block = op.getBody().emplaceBlock();
   auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
@@ -183,9 +183,10 @@ ManualComputationOp createFullyManualComputation(
   CHECK(localType) << kNonDivisibleShardingError;
 
   OpBuilder blockBuilder = OpBuilder::atBlockBegin(&block);
-  blockBuilder.create<sdy::ReturnOp>(
-      loc, bodyPopulator(block.addArgument(localType, input.getLoc()),
-                         blockBuilder));
+  sdy::ReturnOp::create(
+      blockBuilder, loc,
+      bodyPopulator(block.addArgument(localType, input.getLoc()),
+                    blockBuilder));
   return op;
 }
 
@@ -201,8 +202,8 @@ void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
             op->getContext(), /*handle=*/channelId, /*type=*/1);
         // Setting `use_global_device_ids=true` as we are targeting the
         // `CollectiveOpGroupMode::kFlattenedID` mode.
-        auto newAllReduce = blockBuilder.create<stablehlo::AllReduceOp>(
-            op.getLoc(), arg.getType(), arg,
+        auto newAllReduce = stablehlo::AllReduceOp::create(
+            blockBuilder, op.getLoc(), arg.getType(), arg,
             getReplicaGroups(op.getReductionAxesAttr(), mesh, blockBuilder),
             channelHandle,
             /*use_global_device_ids=*/true);
@@ -241,12 +242,11 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
               op->getContext(), /*handle=*/nextChannelId++, /*type=*/1);
           // Setting `use_global_device_ids=true` as we are targeting the
           // `CollectiveOpGroupMode::kFlattenedID` mode.
-          auto newReduceScatter =
-              blockBuilder.create<stablehlo::ReduceScatterOp>(
-                  op.getLoc(),
-                  RankedTensorType::get(curShape, inputType.getElementType()),
-                  curInput, dim, replicaGroups, channelHandle,
-                  /*use_global_device_ids=*/true);
+          auto newReduceScatter = stablehlo::ReduceScatterOp::create(
+              blockBuilder, op.getLoc(),
+              RankedTensorType::get(curShape, inputType.getElementType()),
+              curInput, dim, replicaGroups, channelHandle,
+              /*use_global_device_ids=*/true);
           // No need to add a sharding to the reduce-scatter, since it's inside
           // a fully manual computation.
           stablehlo::buildReduceBody<stablehlo::AddOp>(

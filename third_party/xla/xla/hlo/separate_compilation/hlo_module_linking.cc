@@ -73,6 +73,7 @@ class HloLinker {
 
       if (SkipIfFinished(current)) {
         VLOG(6) << "Already linked: " << current.stub->name();
+        stack_.pop();
 
       } else if (!current.entered) {
         VLOG(6) << "First visit to link: " << current.principal->name();
@@ -84,6 +85,7 @@ class HloLinker {
         if (current.principal == root_computation_) {
           result = linked_computation;
         }
+        stack_.pop();
       }
     }
 
@@ -101,7 +103,6 @@ class HloLinker {
     if (auto it = finished_principals_.find(state.principal);
         it != finished_principals_.end()) {
       clone_context_.MapComputation(state.stub, it->second);
-      stack_.pop();
       return true;
     }
     return false;
@@ -170,7 +171,6 @@ class HloLinker {
     finished_principals_.insert({state.principal, linked_computation});
 
     being_linked_.erase(state.principal);
-    stack_.pop();
     return linked_computation;
   }
 

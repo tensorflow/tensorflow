@@ -43,8 +43,175 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
+
+TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module
+  StackFrameIndexProto index;
+  index.add_file_names("file1.py");
+  index.add_file_names("file2.py");
+  index.add_function_names("func1");
+  index.add_function_names("func2");
+
+  auto loc1 = index.add_file_locations();
+  loc1->set_file_name_id(1);
+  loc1->set_function_name_id(1);
+  loc1->set_line(10);
+  loc1->set_column(5);
+
+  auto loc2 = index.add_file_locations();
+  loc2->set_file_name_id(2);
+  loc2->set_function_name_id(2);
+  loc2->set_line(20);
+  loc2->set_column(1);
+
+  auto frame1 = index.add_stack_frames();
+  frame1->set_file_location_id(1);
+  frame1->set_parent_frame_id(0);
+
+  auto frame2 = index.add_stack_frames();
+  frame2->set_file_location_id(2);
+  frame2->set_parent_frame_id(1);
+
+  module->set_stack_frame_index(index);
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(2);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    file1.py:10:5 [func1]"));
+  EXPECT_THAT(stack_trace, HasSubstr("    file2.py:20:1 [func2]"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceString1BasedIndexing) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames to the module using 1-based indexing
+  StackFrameIndexProto index;
+  index.add_file_names("file.py");
+  index.add_function_names("func");
+
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);      // 1-based
+  loc->set_function_name_id(1);  // 1-based
+  loc->set_line(100);
+
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);  // 1-based
+  frame->set_parent_frame_id(0);   // 0 means no parent
+
+  module->set_stack_frame_index(index);
+
+  // Set metadata on the instruction
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);  // Points to frame 1
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+  EXPECT_THAT(stack_trace, HasSubstr("    file.py:100 [func]"));
+
+  // Test invalid frame ID (0)
+  metadata.set_stack_frame_id(0);
+  sqrt->set_metadata(metadata);
+  EXPECT_THAT(sqrt->GetStackTraceStringFromMetadata(4),
+              HasSubstr("<no source information>"));
+
+  // Test out-of-bounds frame ID
+  metadata.set_stack_frame_id(42);
+  sqrt->set_metadata(metadata);
+  EXPECT_THAT(sqrt->GetStackTraceStringFromMetadata(4),
+              HasSubstr("<no source information>"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringFromSourceInfo) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Set metadata with direct source info (no stack frames)
+  OpMetadata metadata;
+  metadata.set_source_file("direct_file.py");
+  metadata.set_source_line(42);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    direct_file.py:42"));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringCombined) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Add stack frames
+  StackFrameIndexProto index;
+  index.add_file_names("frame_file.py");
+  index.add_function_names("frame_func");
+  auto loc = index.add_file_locations();
+  loc->set_file_name_id(1);
+  loc->set_function_name_id(1);
+  loc->set_line(10);
+  auto frame = index.add_stack_frames();
+  frame->set_file_location_id(1);
+  frame->set_parent_frame_id(0);
+  module->set_stack_frame_index(index);
+
+  // Set both stack_frame_id and source_info
+  OpMetadata metadata;
+  metadata.set_stack_frame_id(1);
+  metadata.set_source_file("source_file.py");
+  metadata.set_source_line(20);
+  sqrt->set_metadata(metadata);
+
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    frame_file.py:10 [frame_func]"));
+  EXPECT_THAT(stack_trace, Not(HasSubstr("source_file.py:20")));
+}
+
+TEST_F(HloInstructionTest, GetStackTraceStringNoSourceInfo) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  auto sqrt = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {1}), HloOpcode::kSqrt, param));
+  module->AddEntryComputation(builder.Build());
+
+  // Set no metadata on the instruction
+  std::string stack_trace = sqrt->GetStackTraceStringFromMetadata(4);
+
+  EXPECT_THAT(stack_trace, HasSubstr("    <no source information>"));
+}
 
 TEST_F(HloInstructionTest, SetFrontendAttribute) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));

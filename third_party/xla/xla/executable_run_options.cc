@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace xla {
 
-RunId::RunId() {
+/*static*/ RunId RunId::CreateUniqueId() {
   static std::atomic<int64_t> counter{0};
-  data_ = counter.fetch_add(1);
+  return RunId(counter.fetch_add(1));
 }
 
 bool operator==(const RunId& a, const RunId& b) { return a.data_ == b.data_; }

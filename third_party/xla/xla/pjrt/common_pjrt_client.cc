@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/error/error_codes.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout.h"
@@ -100,7 +101,7 @@ Future<> CommonPjRtClient::CreateProfiledFuture(PjRtMemorySpace* memory_space,
 std::pair<Promise<>, Future<>> CommonPjRtClient::CreateLinkedUserPromise(
     PjRtMemorySpace* memory_space, const char* callee_type,
     const char* callee_method, absl::string_view debug_info) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   auto profiled_future = CreateProfiledFuture(memory_space, callee_type,
                                               callee_method, std::move(future));
   TrackFuture(memory_space, debug_info, profiled_future);
@@ -440,7 +441,8 @@ absl::Status CommonPjRtClient::PrepareArguments(
         input_buffers,
     absl::InlinedVector<CommonPjRtBuffer::ScopedHold, 4>& device_buffers,
     PjRtDevice* device, int replica, int partition,
-    absl::Span<const Shape> parameter_device_shapes, bool& is_error) {
+    absl::Span<const Shape> parameter_device_shapes, bool& is_error,
+    bool allow_fallback_for_donation) {
   input_buffers.reserve(argument_handles.size());
   device_buffers.reserve(argument_handles.size());
   auto donate_it = donated_params.begin();
@@ -464,6 +466,9 @@ absl::Status CommonPjRtClient::PrepareArguments(
       }
       const bool donated_param =
           donate_it != donated_params.end() && *donate_it == i;
+      if (donated_param) {
+        ++donate_it;
+      }
       const bool donation_denied_at_runtime =
           options.non_donatable_input_indices.contains(i);
       if (donated_param && donation_denied_at_runtime &&
@@ -475,19 +480,28 @@ absl::Status CommonPjRtClient::PrepareArguments(
             "`ExecuteOptions::non_donatable_input_indices`");
       }
       bool must_donate = donated_param && !donation_denied_at_runtime;
-      if (must_donate) {
-        ++donate_it;
-        if (VLOG_IS_ON(1)) {
-          TF_ASSIGN_OR_RETURN(size_t on_device_size,
-                              tfrt_buffer->GetOnDeviceSizeInBytes());
-          donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
-        }
-      }
       TF_RETURN_IF_ERROR(TestBufferDonationClashes(
           tfrt_buffer, donation_clashes, must_donate, i, replica, partition));
-      device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
-          must_donate ? CommonPjRtBuffer::ScopedHold::kDonation
-                      : CommonPjRtBuffer::ScopedHold::kUsage));
+      if (allow_fallback_for_donation && must_donate) {
+        // On CPU, we allow donation to succeed by introducing a copy. This was
+        // added when enabling buffer donation on CPU since it turned out that a
+        // number of users were holding external references to buffers that were
+        // supposed to be donated. We may wish to tighten those semantics in the
+        // future.
+        device_buffers.emplace_back([&]() -> CommonPjRtBuffer::ScopedHold {
+          auto result = tfrt_buffer->GetBufferWithHold(
+              CommonPjRtBuffer::ScopedHold::kDonation);
+          if (!result.ok()) {
+            return tfrt_buffer->GetBufferWithHold(
+                CommonPjRtBuffer::ScopedHold::kUsage);
+          }
+          return result;
+        }());
+      } else {
+        device_buffers.emplace_back(tfrt_buffer->GetBufferWithHold(
+            must_donate ? CommonPjRtBuffer::ScopedHold::kDonation
+                        : CommonPjRtBuffer::ScopedHold::kUsage));
+      }
       CommonPjRtBuffer::ScopedHold& hold = device_buffers.back();
       if (!hold.ok()) {
         return InvalidArgument(
@@ -534,7 +548,12 @@ absl::Status CommonPjRtClient::PrepareArguments(
       // mutated. Usage holds on this buffer are excluded during a donation hold
       // so we know that its usage events won't be modified while we are
       // enqueueing, but we ignore any errors from usage events.
-      if (must_donate) {
+      if (hold.type() == CommonPjRtBuffer::ScopedHold::kDonation) {
+        if (VLOG_IS_ON(1)) {
+          TF_ASSIGN_OR_RETURN(size_t on_device_size,
+                              tfrt_buffer->GetOnDeviceSizeInBytes());
+          donated_buffer_stats.emplace_back(std::make_pair(i, on_device_size));
+        }
         device_buffer->AddUsageEventsToSet(control_deps);
       }
     }
@@ -606,8 +625,13 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
     if (num_input_pjrt_buffers > 1 && alias->parameter_index.size() == 1) {
       parameter_index = alias->parameter_index[0];
     }
-    return input_device_buffer_holds[parameter_index].type() !=
-           CommonPjRtBuffer::ScopedHold::kDonation;
+    if (input_device_buffer_holds[parameter_index].type() !=
+        CommonPjRtBuffer::ScopedHold::kDonation) {
+      return true;
+    }
+    auto& buffer =
+        input_device_buffer_holds[parameter_index].buffer()->raw_buffer();
+    return buffer && !buffer->is_mutable();
   };
   std::vector<size_t> output_buffer_sizes;
   for (int i = 0; i < output_leaf_shapes.size(); ++i) {
@@ -634,10 +658,9 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
       }
       TF_ASSIGN_OR_RETURN(int64_t on_device_bytes,
                           GetOnDeviceBytesCount(memory_space, leaf_shape));
-      TF_ASSIGN_OR_RETURN(auto raw_buffer,
-                          AllocateRawBuffer(memory_space, on_device_bytes,
-                                            /*retry_on_oom=*/false,
-                                            /*allocate_after=*/{}));
+      TF_ASSIGN_OR_RETURN(auto raw_buffer, AllocateRawBufferForExecute(
+                                               memory_space, on_device_bytes,
+                                               /*retry_on_oom=*/false));
       buffers.push_back(std::move(raw_buffer));
     } else {
       // a tuple output element alias to input. There are 3 supported cases.
@@ -827,7 +850,7 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
     if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
       const auto& expected_shape = parameter_device_shapes_[i];
       const auto& actual_shape = argument_handles[i]->on_device_shape();
-      return InvalidArgument(
+      return error::RuntimeProgramInputMismatch(
           "Executable(%s) expected parameter %d of size %lld (%s) but got "
           "buffer with incompatible size %lld (%s)",
           name(), i, input_buffer_sizes_in_bytes_[i],
@@ -1547,7 +1570,8 @@ Future<> CommonPjRtBufferImpl::ToLiteral(MutableLiteralBase* literal) {
 Future<> CommonPjRtBufferImpl::ToLiteralImpl(
     MutableLiteralBase* literal,
     absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) {
-  tsl::profiler::TraceMe traceme("CommonPjRtBuffer::ToLiteral");
+  tsl::profiler::TraceMeProducer producer("CommonPjRtBuffer::ToLiteral",
+                                          tsl::profiler::ContextType::kPjRt);
   VLOG(1) << "CommonPjRtBuffer::ToLiteral";
   auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
   if (!common_client->allows_recursion() && ThisThreadIsInsideHostCallback()) {
@@ -1603,24 +1627,26 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
       src_definition_events_avs_copy = src_definition_events_avs;
   common_client->async_work_runner()->ScheduleWhenReady(
       src_definition_events_avs_copy,
-      [shape = *std::move(device_shape),
+      [common_client, shape = *std::move(device_shape),
        src_definition_events_avs = std::move(src_definition_events_avs),
        raw_buffer = std::move(raw_buffer),
        device_promise = std::move(device_promise), literal,
-       generator = std::move(generator),
-       promise = std::move(promise)]() mutable {
+       generator = std::move(generator), promise = std::move(promise),
+       context_id = producer.GetContextId()]() mutable {
         auto copy_literal_async =
             [shape = std::move(shape),
              src_definition_events_avs = std::move(src_definition_events_avs),
              raw_buffer = std::move(raw_buffer),
              device_promise = std::move(device_promise),
-             promise = std::move(promise)](
+             promise = std::move(promise), context_id = context_id](
                 const absl::StatusOr<MutableLiteralBase*>& value) mutable {
-              tsl::profiler::TraceMe traceme([&] {
-                return tsl::profiler::TraceMeEncode(
-                    "D2H Dispatch",
-                    {{"shape", shape.ToString(/*print_layout=*/true)}});
-              });
+              tsl::profiler::TraceMeConsumer traceme(
+                  [&] {
+                    return tsl::profiler::TraceMeEncode(
+                        "D2H Dispatch",
+                        {{"shape", shape.ToString(/*print_layout=*/true)}});
+                  },
+                  tsl::profiler::ContextType::kPjRt, context_id);
 
               // Notify all pending events with `status`.
               auto notify_all = [&](absl::Status status) {
@@ -1649,7 +1675,22 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
                   return;
                 }
               }
-
+              // Fast path for token shape, no need to copy in this case.
+              // Already checked that the shape is compatible with the literal.
+              if (shape.element_type() == TOKEN) {
+                // A sanity check to ensure token buffers have no data.
+                if (raw_buffer->GetOnDeviceSizeInBytes() != 0) {
+                  notify_all(absl::InternalError(absl::StrFormat(
+                      "Token buffer should have zero bytes, but has size %d.",
+                      raw_buffer->GetOnDeviceSizeInBytes())));
+                  return;
+                }
+                if (device_promise) {
+                  device_promise->SetReady();
+                }
+                promise.Set();
+                return;
+              }
               raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
                                              literal, std::move(shape));
             };
@@ -1658,11 +1699,16 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
           copy_literal_async(literal);
         } else {
           Future<MutableLiteralBase*> generated = std::move(generator)();
-          generated.OnReady(
-              [copy_literal_async = std::move(copy_literal_async)](
-                  const absl::StatusOr<MutableLiteralBase*>& value) mutable {
-                copy_literal_async(value);
-              });
+          if (generated.IsKnownReady()) {
+            copy_literal_async(generated.Await());
+          } else {
+            generated.OnReady(
+                common_client->async_work_runner()->AsExecutor(),
+                [copy_literal_async = std::move(copy_literal_async)](
+                    const absl::StatusOr<MutableLiteralBase*>& value) mutable {
+                  copy_literal_async(value);
+                });
+          }
         }
       });
   return result;

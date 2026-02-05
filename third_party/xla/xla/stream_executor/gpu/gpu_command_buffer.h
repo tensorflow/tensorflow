@@ -106,9 +106,13 @@ class GpuCommandBuffer : public CommandBuffer {
     GraphConditionalNodeHandle conditional_node;
   };
 
+  // A child GPU command constructed from a `cb` command buffer. We use this
+  // type of command only for `ChildGraphOwnership::kMoved`, so that we can
+  // do efficient child command updates by recording command updates into `cb`.
   struct GpuChildCommand : public CommandBuffer::Command {
-    GpuChildCommand(GraphNodeHandle h, std::unique_ptr<CommandBuffer> cb)
-        : handle(h), command_buffer(std::move(cb)) {}
+    GpuChildCommand(GraphNodeHandle h,
+                    std::unique_ptr<CommandBuffer> command_buffer)
+        : handle(h), command_buffer(std::move(command_buffer)) {}
     GraphNodeHandle handle = nullptr;
     std::unique_ptr<CommandBuffer> command_buffer;
   };
@@ -121,36 +125,31 @@ class GpuCommandBuffer : public CommandBuffer {
 
   absl::StatusOr<const Command*> CreateEmptyCmd(
       absl::Span<const Command* const> dependencies,
-      StreamPriority priority = StreamPriority::Default) override;
+      StreamPriority priority) override;
 
   absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
-      StreamPriority priority = StreamPriority::Default) override;
+      StreamPriority priority) override;
 
   absl::Status UpdateLaunch(const Command* command, const ThreadDim& threads,
                             const BlockDim& blocks, const Kernel& kernel,
                             const KernelArgs& args) override;
 
-  // Cloned type child command creation and update.
   absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, CommandBuffer& nested,
+      const CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateChildCommand(ChildCommandType type, const Command* command,
+  absl::Status UpdateChildCommand(const Command* command,
                                   const CommandBuffer& nested) override;
 
-  // Moved type child command creation and update.
   absl::StatusOr<const Command*> CreateChildCommand(
-      ChildCommandType type, StreamExecutor* executor,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> record_fn,
       absl::Span<const Command* const> dependencies) override;
 
   absl::Status UpdateChildCommand(
-      ChildCommandType type, const Command* command,
-      absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
-          record_fn) override;
+      const Command* command,
+      absl::AnyInvocable<absl::Status(CommandBuffer*)> update_fn) override;
 
   absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceAddressBase* dst, const DeviceAddressBase& src, uint64_t size,
@@ -349,16 +348,26 @@ class GpuCommandBuffer : public CommandBuffer {
       dnn::DnnGraph&, Stream&, absl::Span<DeviceAddressBase> operands,
       GraphNodeHandle) = 0;
 
-  // Adds a new nested command buffer node to the graph.
-  virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
-      ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
-      CommandBuffer& nested) = 0;
+  // Adds a new nested command node to the graph by cloning nested command
+  // buffer graph into the underlying graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateClonedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      const CommandBuffer& nested) = 0;
 
-  // Updates an existing child node. Will return an error if the given node
-  // has not been created as a child node.
-  virtual absl::Status UpdateChildNode(ChildCommandType type,
-                                       GraphNodeHandle node_handle,
-                                       const CommandBuffer& nested) = 0;
+  // Adds a new nested command node to the graph by moving nested command buffer
+  // graph into the underlying graph. Nested command buffer becomes linked to
+  // the current one via the parent relationship, and all updates to the nested
+  // command buffer will be reflected in the next top-level command buffer
+  // execution. This enables efficient child command updates, withiut having to
+  // replace the whole graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateMovedChildNode(
+      absl::Span<const GraphNodeHandle> dependencies,
+      CommandBuffer* nested) = 0;
+
+  // Updates an existing child node that was created by cloning a command
+  // buffer. Updated command buffer must have compatible graph structure.
+  virtual absl::Status UpdateClonedChildNode(GraphNodeHandle node_handle,
+                                             const CommandBuffer& nested) = 0;
 
   // Adds a new kernel launch node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateKernelNode(

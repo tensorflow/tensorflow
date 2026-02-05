@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 
 // Runs loaded kernel on the stream with the provided arguments.
 absl::Status ExecuteKernelOnStream(
-    se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
+    se::Kernel& kernel, absl::Span<const se::KernelArg> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream);
 

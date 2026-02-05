@@ -37,10 +37,8 @@ namespace gpu {
 
 class SortRewriter : public HloModulePass {
  public:
-  explicit SortRewriter(const se::DeviceDescription& device_description,
-                        std::string platform_name)
-      : device_description_(device_description),
-        platform_name_(std::move(platform_name)) {}
+  explicit SortRewriter(const se::DeviceDescription& device_description)
+      : device_description_(device_description) {}
   absl::string_view name() const override { return "sort-rewriter"; }
 
   enum class Mode {
@@ -70,7 +68,6 @@ class SortRewriter : public HloModulePass {
 
   static inline Mode sort_mode_ = Mode::kAuto;
   se::DeviceDescription device_description_;
-  std::string platform_name_;
 };
 
 }  // namespace gpu

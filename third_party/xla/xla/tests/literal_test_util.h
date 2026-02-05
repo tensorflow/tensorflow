@@ -141,6 +141,12 @@ class LiteralTestUtil {
       const LiteralSlice& expected, const LiteralSlice& actual,
       const std::optional<ErrorSpec>& error);
 
+  // Writes the given literal to a file in the test temporary directory.
+  // This is useful for debugging tests. The file is written in both binary and
+  // text formats (.pb and .txt extensions).
+  static void WriteLiteralToTempFile(const LiteralSlice& literal,
+                                     const std::string& name);
+
  private:
   LiteralTestUtil(const LiteralTestUtil&) = delete;
   LiteralTestUtil& operator=(const LiteralTestUtil&) = delete;

@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace xla {
 
@@ -51,6 +53,14 @@ class KeyValueStoreInterface {
   virtual absl::StatusOr<std::string> TryGet(absl::string_view key) = 0;
 
   virtual absl::Status Set(absl::string_view key, absl::string_view value) = 0;
+
+  // Async version of `Get`. The `done` callback is invoked when the key-value
+  // becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  virtual std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) = 0;
 };
 
 struct MultiProcessKeyValueStore {

@@ -603,9 +603,7 @@ TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionNotCompatible) {
     fused_computation_1 {
       p0.1 = f32[64,32]{1,0} parameter(0)
       neg = f32[64,32]{1,0} negate(p0.1)
-      bc = f32[1,64,32]{2,1,0} bitcast(neg)
-      transpose = f32[1,32,64]{2,1,0} transpose(bc), dimensions={0,2,1}
-      ROOT bc2 = f32[32,64]{1,0} bitcast(transpose)
+      ROOT transpose = f32[32,64]{1,0} transpose(neg), dimensions={1,0}
     }
 
     fused_computation_2 {
@@ -623,12 +621,10 @@ TEST_F(GpuFusibleTest, FusionHeroesAreCompatible_TransposeFusionNotCompatible) {
   const HloInstruction* fusion_1 =
       module->entry_computation()->root_instruction();
   const HloInstruction* fusion_2 = fusion_1->operand(0);
-  EXPECT_FALSE(
-      FusionHeroesAreCompatible(fusion_1->fused_expression_root(),
-                                fusion_2->fused_expression_root()->operand(0)));
-  EXPECT_FALSE(
-      FusionHeroesAreCompatible(fusion_2->fused_expression_root()->operand(0),
-                                fusion_1->fused_expression_root()));
+  EXPECT_FALSE(FusionHeroesAreCompatible(fusion_1->fused_expression_root(),
+                                         fusion_2->fused_expression_root()));
+  EXPECT_FALSE(FusionHeroesAreCompatible(fusion_2->fused_expression_root(),
+                                         fusion_1->fused_expression_root()));
 }
 
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_LoopFusions) {
@@ -1310,9 +1306,9 @@ TEST_F(GpuFusibleTest, ChooseFusionKind) {
 HloModule module
 
 ENTRY computation {
-    p = f32[1,5000,6000]{2,1,0} parameter(0)
-    c = f32[1,6000,5000]{2,1,0} transpose(p), dimensions={0,2,1}
-    ROOT r = f32[300,20,5000]{2,1,0} reshape(c)
+    p = f32[5000,6000]{1,0} parameter(0)
+    c = f32[6000,5000] transpose(p), dimensions={1,0}
+    ROOT r = f32[300,20,5000] reshape(c)
 }
 )")
                     .value();
@@ -1737,9 +1733,9 @@ max {
 }
 
 ENTRY main {
-  p0 = f16[270336,8]{1,0} parameter(0)
+  p0 = f16[303104,8]{1,0} parameter(0)
   neg_inf = f16[] constant(-inf)
-  ROOT res = f16[270336]{0} reduce(p0, neg_inf), dimensions={1}, to_apply=max
+  ROOT res = f16[303104]{0} reduce(p0, neg_inf), dimensions={1}, to_apply=max
 }
 )"));
   const HloInstruction* root = module->entry_computation()->root_instruction();
@@ -1786,6 +1782,30 @@ HloModule m
 ENTRY main {
   p0 = f16[256,2048,8]{2,1,0} parameter(0)
   ROOT res = f16[2048,256,8]{2,1,0} transpose(p0), dimensions={1,0,2}
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::RTXB200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 8);
+}
+
+TEST_F(GpuFusibleTest,
+       ComputeLoopFusionConfigForLoopTransposeEffectiveLargerMinorDim) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f16[256,2048,4,2]{3,2,1,0} parameter(0)
+  ROOT res = f16[2048,256,4,2]{3,2,1,0} transpose(p0), dimensions={1,0,2,3}
 }
 )"));
   const HloInstruction* root = module->entry_computation()->root_instruction();

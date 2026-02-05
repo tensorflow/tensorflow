@@ -260,7 +260,7 @@ void TensorSlice::UpdateToCover(const TensorSlice& other) {
 
 // static
 bool TensorSlice::HasExtentLength(const TensorSliceProto::Extent& extent) {
-  return extent.has_length_case() == TensorSliceProto::Extent::kLength;
+  return extent.has_length();
 }
 
 // static

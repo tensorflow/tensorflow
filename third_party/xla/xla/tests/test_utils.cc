@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -130,10 +131,10 @@ bool ReachableViaDataFormatting(const HloInstruction* src,
 // instructions that correspond to their uses.
 //
 // Should be paired with the CreateLiteralForConstrainedUses() function below.
-std::vector<HloInstruction*> FindConstrainedUses(
-    const HloDataflowAnalysis& dataflow, const HloInstruction& param,
-    bool treat_gte_as_data_formatting) {
-  std::vector<HloInstruction*> constrained_uses;
+std::vector<HloUse> FindConstrainedUses(const HloDataflowAnalysis& dataflow,
+                                        const HloInstruction& param,
+                                        bool treat_gte_as_data_formatting) {
+  std::vector<HloUse> constrained_uses;
   for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
     const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
     for (const HloUse& use : value.GetUses()) {
@@ -142,11 +143,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
       const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if ((opcode == HloOpcode::kGather ||
                   opcode == HloOpcode::kScatter) &&
                  op_num == 1) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if (opcode == HloOpcode::kFusion) {
         const HloInstruction* const to_analyze =
             instruction->fused_parameter(op_num);
@@ -155,7 +156,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
         constrained_uses.insert(constrained_uses.end(), fused_uses.begin(),
                                 fused_uses.end());
       } else if (NeedsInitValue(use)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if (opcode == HloOpcode::kConvert ||
                  opcode == HloOpcode::kReducePrecision) {
         auto converted_uses = FindConstrainedUses(dataflow, *instruction,
@@ -171,7 +172,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
         // guaranteed, constrain keys of key-value sort not to have
         // duplicates, since otherwise the value order may legitimately
         // differ.
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       }
     }
   }
@@ -185,7 +186,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
       }
       if (ReachableViaDataFormatting(&param, instruction->operand(1),
                                      treat_gte_as_data_formatting)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(
+            HloUse{instruction, /*operand_number=*/1, ShapeIndex{}});
       }
     }
   }
@@ -197,7 +199,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
 absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
-    const absl::Span<HloInstruction* const> constrained_uses,
+    const absl::Span<const HloUse> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision) {
@@ -206,7 +208,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
   bool needs_constant = false;
   bool needs_sorted_indices = false;
   ConstantType constant_type = ConstantType::kUnknown;
-  for (HloInstruction* use : constrained_uses) {
+  for (const HloUse& hlo_use : constrained_uses) {
+    HloInstruction* use = hlo_use.instruction;
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice: {
@@ -216,15 +219,13 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
                                        : use->operand(1)->shape();
         const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
-        for (int64_t operand = first_index; operand < use->operand_count();
-             ++operand) {
-          if (use->operand(operand) == &param) {
-            index_bound = std::min(
-                index_bound,
-                ShapeUtil::GetDimension(indexed_shape, operand - first_index) -
-                    ShapeUtil::GetDimension(slice_shape,
-                                            operand - first_index));
-          }
+        if (hlo_use.operand_number >= first_index) {
+          index_bound = std::min(
+              index_bound,
+              ShapeUtil::GetDimension(indexed_shape,
+                                      hlo_use.operand_number - first_index) -
+                  ShapeUtil::GetDimension(
+                      slice_shape, hlo_use.operand_number - first_index));
         }
         break;
       }

@@ -22,47 +22,37 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/no_destructor.h"
-#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
 
-namespace {
+CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map)
+    : cliques_map_(std::move(cliques_map)) {}
 
-// A container for per-process persistent cliques.
-struct PersistentCliquesMap {
-  absl::Mutex mutex;
-  AcquiredCliquesMap cliques_map ABSL_GUARDED_BY(mutex);
-};
-
-static PersistentCliquesMap& GetPersistentCliquesMap() {
-  static absl::NoDestructor<PersistentCliquesMap> persistent_cliques;
-  return *persistent_cliques;
-}
-}  // namespace
-
-CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
-                                     int32_t num_transient_cliques)
-    : cliques_map_(std::move(cliques_map)),
-      num_transient_cliques_(num_transient_cliques) {}
-
-absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
+absl::StatusOr<GpuCommunicator*> CollectiveCliques::GetComm(
     const GpuCliqueKey& clique_key, RankId rank) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
@@ -74,14 +64,19 @@ absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
   // Check that clique has a communicator for our rank.
   auto communicator = (*clique->second)->comm(rank);
   if (!communicator.has_value()) {
-    return Internal("Communicator for rank %d not found in a NCCL clique %s",
-                    rank.value(), clique_key.ToString());
+    return Internal("Communicator for rank %v not found in a NCCL clique %s",
+                    rank, clique_key.ToString());
   }
 
-  return *communicator;
+  auto* gpu_communicator = dynamic_cast<GpuCommunicator*>(*communicator);
+  if (!gpu_communicator) {
+    return Internal("Communicator for rank %v is not a GpuCommunicator", rank);
+  }
+
+  return gpu_communicator;
 }
 
-absl::StatusOr<Communicator*> CollectiveCliques::GetComm(
+absl::StatusOr<GpuCommunicator*> CollectiveCliques::GetComm(
     const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id) const {
   std::optional<RankId> rank = clique_key.rank(global_device_id);
   if (!rank.has_value()) {
@@ -103,106 +98,117 @@ absl::StatusOr<bool> CollectiveCliques::peer_access_enabled(
 }
 
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
-    const CollectiveParams& params, const CollectiveCliqueRequests& cliques,
-    bool use_persistent_cliques) {
+    const CollectiveParams& params, const CollectiveCliqueRequests& cliques) {
   std::vector<CollectiveCliqueRequests::CliqueRequest> ordered_cliques =
       cliques.OrderedRequestedCliques();
   if (ordered_cliques.empty()) {
     return CollectiveCliques();
   }
 
-  VLOG(2) << "Acquire " << ordered_cliques.size()
-          << " collective cliques for global device id "
-          << params.global_device_id.value()
-          << "; run_id=" << params.run_id.ToInt()
-          << "; max number of channels for collectives "
-          << params.collective_max_nchannels
-          << "; max number of channels for p2p " << params.p2p_max_nchannels
-          << "; use_persistent_cliques=" << use_persistent_cliques;
+  VLOG(2) << absl::StreamFormat(
+      "[%d] Acquire %d collective cliques for global device id %v; "
+      "run_id=%d; max number of channels for collectives %d; max number of "
+      "channels for p2p %d",
+      params.executor->device_ordinal(), ordered_cliques.size(),
+      params.global_device_id, params.run_id.ToInt(),
+      params.collective_max_nchannels, params.p2p_max_nchannels);
 
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
     const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
-    VLOG(2) << "  clique #" << i << " (for global device id "
-            << params.global_device_id.value() << ")"
-            << ": num_local_participants=" << r.key.num_local_participants()
-            << "; id=" << r.id << "; key=" << r.key.ToString();
+    VLOG(2) << absl::StreamFormat(
+        "[%d]    clique #%d (global device %v): "
+        "num_local_participants=%d; id=%d; key=%s; dev_comms=[%s]",
+        params.executor->device_ordinal(), i, params.global_device_id,
+        r.key.num_local_participants(), r.id, r.key.ToString(),
+        absl::StrJoin(r.dev_comms, ", "));
   }
 
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
-        "AcquireCollectiveCliques",
-        {{"num_cliques", ordered_cliques.size()},
-         {"use_persistent_cliques", use_persistent_cliques}});
+        "AcquireCollectiveCliques", {{"num_cliques", ordered_cliques.size()}});
   });
 
-  auto start_micros = tsl::Env::Default()->NowMicros();
-
   AcquiredCliquesMap cliques_map;
-  int32_t num_transient_cliques = 0;
+  auto start_micros = tsl::Env::Default()->NowMicros();
 
   for (const CollectiveCliqueRequests::CliqueRequest& r : ordered_cliques) {
     std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
     if (!rank.has_value()) {
-      return Internal("Can't find global device id %d in clique key %s",
-                      params.global_device_id.value(), r.key.ToString());
+      return Internal("Can't find global device id %v in clique key %s",
+                      params.global_device_id, r.key.ToString());
     }
 
-    TF_ASSIGN_OR_RETURN(const CliqueIdCallback* clique_id_callback,
-                        params.collectives->GetCliqueIdCallback(
-                            params.nccl_clique_id_callback, r.key.is_local()));
+    // Default clique id callback that generates a unique clique id for the
+    // clique key. This callback supports only local cliques (all ranks belong
+    // to the same process), as otherwise clique id should be exchanged across
+    // multiple processes via an external storage (i.e. builtin KV store).
+    //
+    // IMPORTANT: This callback is called once for the clique key by the
+    // rendezvous leader elected inside the `AcquireGpuClique` implementation.
+    CliqueIdCallback default_clique_id_callback =
+        [&](const CliqueKey& key) -> absl::StatusOr<CliqueId> {
+      auto& gpu_key = tsl::down_cast<const GpuCliqueKey&>(key);
+      if (!gpu_key.is_local()) {
+        return Internal(
+            "For non-local GPU cliques (cliques that span multiple processes) "
+            "clique id callback must be passed via execution params");
+      }
+      return params.collectives->CreateUniqueCliqueId();
+    };
 
     int64_t max_channels = r.key.is_p2p() ? params.p2p_max_nchannels
                                           : params.collective_max_nchannels;
 
-    // Check if we have a persistent clique for this key.
-    if (use_persistent_cliques) {
-      auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(pc.mutex);
-
-      if (auto it = pc.cliques_map.find(r.key); it != pc.cliques_map.end()) {
-        VLOG(2) << "Found persistent clique for key " << r.key.ToString();
-        cliques_map[r.key] = it->second;
-        continue;
-      }
-    }
-
-    // If we don't have a persistent clique we have to acquire a transient
-    // one.
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<LockableGpuClique::Lock> clique,
         AcquireGpuClique(params.collectives, params.executor, params.run_id,
-                         r.key, *clique_id_callback, *rank, cliques_map,
-                         max_channels));
-    ++num_transient_cliques;
-
-    // Take a copy of the clique lock, so that we can reuse it. This is
-    // potentially unsafe in the case when we have multiple racing executions
-    // of XLA, as we might observe partial state and some of the replicas will
-    // use persistent clique, and others will try to acquire a new one.
-    //
-    // However given that persistent cliques is an unsafe escape hatch, any
-    // racing execution together with persistent cliques will lead to
-    // deadlocks anyway, so we don't bother to fix this. If anyone is doing
-    // it, it's 100% their fault and they will suffer.
-    if (use_persistent_cliques) {
-      auto& pc = GetPersistentCliquesMap();
-      absl::MutexLock lock(pc.mutex);
-      pc.cliques_map[r.key] = clique;
-    }
+                         r.key,
+                         params.clique_id_callback ? *params.clique_id_callback
+                                                   : default_clique_id_callback,
+                         *rank, cliques_map, max_channels));
 
     cliques_map[r.key] = std::move(clique);
   }
 
   auto end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(2) << "Acquired " << cliques_map.size()
-          << " collective cliques for global device id "
-          << params.global_device_id.value() << " in "
-          << (end_micros - start_micros) << " μs"
-          << "; run_id=" << params.run_id.ToInt()
-          << "; num_transient_cliques=" << num_transient_cliques;
+  VLOG(2) << absl::StreamFormat(
+      "[%d] Acquired %d collective cliques for global device id %v in "
+      "%s; run_id=%d",
+      params.executor->device_ordinal(), cliques_map.size(),
+      params.global_device_id,
+      absl::FormatDuration(absl::Microseconds(end_micros - start_micros)),
+      params.run_id.ToInt());
 
-  return CollectiveCliques(std::move(cliques_map), num_transient_cliques);
+  // After we acquired all GPU cliques, check if they already have required
+  // device communicators, and create them if needed. Creating device
+  // communicators is a collective operation that must be executed by all ranks,
+  // but luckily we already are inside the collective function, so we can safely
+  // create missing communicators here.
+  for (const CollectiveCliqueRequests::CliqueRequest& r : ordered_cliques) {
+    std::optional<RankId> rank = r.key.rank(params.global_device_id);
+    std::shared_ptr<LockableGpuClique::Lock> clique = cliques_map.at(r.key);
+
+    for (const GpuDeviceCommunicator::Requirements& reqs : r.dev_comms) {
+      // Device communicator already exists in the GPU clique.
+      if ((*clique)->device_comm(*rank, reqs)) {
+        continue;
+      }
+
+      VLOG(2) << absl::StreamFormat(
+          "[%d] Create device communicator: rank=%v clique=%s",
+          params.executor->device_ordinal(), *rank, r.key.ToString());
+
+      auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
+      DCHECK(comm) << "Communicator must be in the acquired clique";
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuDeviceCommunicator> dev_comm,
+                          comm->CreateDeviceComm(reqs));
+      TF_RETURN_IF_ERROR(
+          (*clique)->AddDeviceComm(*rank, reqs, std::move(dev_comm)));
+    }
+  }
+
+  return CollectiveCliques(std::move(cliques_map));
 }
 
 }  // namespace xla::gpu

@@ -1547,4 +1547,35 @@ BM_TopKCPU(128, 70000, 70000, 16, "topk_nmt_r_128_c_70000_k_70000_th_16");
 BM_TopKCPU(128, 175000, 175000, 16, "topk_nmt_r_128_c_175000_k_175000_th_16");
 BM_TopKCPU(128, 350000, 350000, 16, "topk_nmt_r_128_c_350000_k_350000_th_16");
 
+class MaxPoolingTest : public OpsTestBase {};
+
+TEST_F(MaxPoolingTest, MaxPoolGradGradWithArgmaxOutOfBounds) {
+  // This test is for GPU only.
+  if (!IsGoogleCudaEnabled()) {
+    return;
+  }
+  SetDevice(DEVICE_GPU,
+            DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
+  DataType dtype = DT_FLOAT;
+  TF_ASSERT_OK(NodeDefBuilder("maxpoolgradgradwithargmax_op",
+                              "MaxPoolGradGradWithArgmax")
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(dtype))
+                   .Input(FakeInput(DT_INT64))
+                   .Attr("ksize", {1, 1, 1, 1})
+                   .Attr("strides", {1, 1, 1, 1})
+                   .Attr("padding", "SAME")
+                   .Attr("include_batch_in_index", false)
+                   .Attr("T", dtype)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 1, 1, 1}), {42.0});
+  AddInputFromArray<float>(TensorShape({1, 1, 1, 1}), {1.0});
+  AddInputFromArray<int64_t>(TensorShape({1, 1, 1, 1}), {-1});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1}));
+  test::FillValues<float>(&expected, {0.0});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 }  // namespace tensorflow

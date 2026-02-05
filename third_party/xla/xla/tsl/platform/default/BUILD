@@ -25,7 +25,7 @@ package(
     default_visibility = internal_visibility([
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
-        "@local_tsl//tsl/platform:__pkg__",
+        "@tsl//tsl/platform:__pkg__",
         "//xla/tsl/platform:__pkg__",
     ]),
     licenses = ["notice"],
@@ -43,7 +43,7 @@ cc_library(
 
 cc_library(
     name = "context",
-    hdrs = ["@local_tsl//tsl/platform:context.h"],
+    hdrs = ["@tsl//tsl/platform:context.h"],
     tags = [
         "manual",
         "no_oss",
@@ -52,7 +52,7 @@ cc_library(
     ],
     textual_hdrs = ["context.h"],
     deps = [
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
@@ -66,14 +66,14 @@ cc_library(
     ],
     textual_hdrs = ["criticality.h"],
     deps = [
-        "@local_tsl//tsl/platform",
+        "@tsl//tsl/platform",
     ],
 )
 
 cc_library(
     name = "cuda_root_path",
     srcs = ["cuda_root_path.cc"],
-    hdrs = ["@local_tsl//tsl/platform:cuda_root_path.h"],
+    hdrs = ["@tsl//tsl/platform:cuda_root_path.h"],
     compatible_with = [],
     data = if_cuda_tools(if_cuda_newer_than(
         "13_0",
@@ -91,8 +91,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -118,14 +118,14 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:load_library",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:load_library",
+        "@tsl//tsl/platform:path",
     ] + if_oss([
         # keep sorted
         "@local_config_nccl//:nccl_config",
         "@local_config_tensorrt//:tensorrt_headers",
-        "@local_tsl//tsl/platform",
         "@nvshmem//:nvshmem_config",
+        "@tsl//tsl/platform",
     ]) + if_rocm_is_configured([
         # keep sorted
         "@local_config_rocm//rocm:rocm_headers",
@@ -184,22 +184,22 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@com_google_protobuf//:protobuf_lite",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:context",
-        "@local_tsl//tsl/platform:cord",
-        "@local_tsl//tsl/platform:denormal",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:scanner",
-        "@local_tsl//tsl/platform:setround",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:thread_annotations",
-        "@local_tsl//tsl/platform:tracing",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:blocking_counter",
+        "@tsl//tsl/platform:context",
+        "@tsl//tsl/platform:cord",
+        "@tsl//tsl/platform:denormal",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:regexp",
+        "@tsl//tsl/platform:scanner",
+        "@tsl//tsl/platform:setround",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:tracing",
     ],
 )
 
@@ -219,9 +219,9 @@ cc_library(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:load_library",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:load_library",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -240,7 +240,7 @@ cc_library(
 cc_library(
     name = "error_logging",
     srcs = ["error_logging.cc"],
-    hdrs = ["@local_tsl//tsl/platform:error_logging.h"],
+    hdrs = ["@tsl//tsl/platform:error_logging.h"],
     tags = [
         "manual",
         "no_oss",
@@ -271,7 +271,7 @@ cc_library(
 cc_library(
     name = "human_readable_json",
     srcs = ["human_readable_json.cc"],
-    hdrs = ["@local_tsl//tsl/platform:human_readable_json.h"],
+    hdrs = ["@tsl//tsl/platform:human_readable_json.h"],
     tags = [
         "manual",
         "no_oss",
@@ -282,16 +282,16 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
 cc_library(
     name = "load_library",
     srcs = ["load_library.cc"],
-    hdrs = ["@local_tsl//tsl/platform:load_library.h"],
+    hdrs = ["@tsl//tsl/platform:load_library.h"],
     linkstatic = True,
     tags = [
         "manual",
@@ -317,7 +317,7 @@ cc_library(
     name = "net",
     srcs = ["net.cc"],
     hdrs = [
-        "@local_tsl//tsl/platform:net.h",
+        "@tsl//tsl/platform:net.h",
     ],
     tags = [
         "manual",
@@ -328,7 +328,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:strcat",
     ],
     alwayslink = True,
 )
@@ -337,7 +337,7 @@ cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
-        "@local_tsl//tsl/platform:cpu_info.cc",
+        "@tsl//tsl/platform:cpu_info.cc",
     ] + select({
         "//xla/tsl:with_numa_support": [
             "//xla/tsl/platform:numa_hwloc.cc",
@@ -348,13 +348,13 @@ cc_library(
     }),
     hdrs = [
         "//xla/tsl/platform/profile_utils:cpu_utils.h",
-        "@local_tsl//tsl/platform:cpu_info.h",
-        "@local_tsl//tsl/platform:demangle.h",
-        "@local_tsl//tsl/platform:host_info.h",
-        "@local_tsl//tsl/platform:init_main.h",
-        "@local_tsl//tsl/platform:mem.h",
-        "@local_tsl//tsl/platform:numa.h",
-        "@local_tsl//tsl/platform:snappy.h",
+        "@tsl//tsl/platform:cpu_info.h",
+        "@tsl//tsl/platform:demangle.h",
+        "@tsl//tsl/platform:host_info.h",
+        "@tsl//tsl/platform:init_main.h",
+        "@tsl//tsl/platform:mem.h",
+        "@tsl//tsl/platform:numa.h",
+        "@tsl//tsl/platform:snappy.h",
     ],
     copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"],
@@ -372,8 +372,10 @@ cc_library(
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
-        "@local_tsl//tsl/platform",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/time",
         "@snappy",
+        "@tsl//tsl/platform",
     ] + select({
         "//xla/tsl:with_numa_support": [
             "@com_google_absl//absl/log",
@@ -394,7 +396,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -412,7 +414,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -421,19 +423,19 @@ cc_library(
     hdrs = ["stacktrace.h"],
     linkopts = ["-ldl"],
     deps = [
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:abi",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:abi",
     ],
 )
 
 cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
-    hdrs = ["@local_tsl//tsl/platform:stacktrace_handler_hdrs"],
+    hdrs = ["@tsl//tsl/platform:stacktrace_handler_hdrs"],
     linkstatic = 1,
     deps = [
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:stacktrace",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:stacktrace",
     ],
     alwayslink = 1,
 )
@@ -454,8 +456,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = True,
 )
@@ -464,9 +466,9 @@ cc_library(
     name = "tracing",
     srcs = [
         "tracing.cc",
-        "@local_tsl//tsl/platform:tracing.cc",
+        "@tsl//tsl/platform:tracing.cc",
     ],
-    hdrs = ["@local_tsl//tsl/platform:tracing.h"],
+    hdrs = ["@tsl//tsl/platform:tracing.h"],
     tags = [
         "manual",
         "no_oss",
@@ -478,9 +480,9 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:threadpool_listener_state",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:stringpiece",
     ],
     alwayslink = True,
 )
@@ -508,7 +510,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -527,8 +529,8 @@ cc_library(
     textual_hdrs = ["crash_analysis.h"],
     visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     deps = [
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -589,7 +591,7 @@ bzl_library(
     # copybara:uncomment parse_tests = False,
     deps = [
         "//xla/tsl:package_groups_bzl",
-        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],
 )
 
@@ -601,7 +603,7 @@ bzl_library(
         ":build_config_root_bzl",
         # copybara:uncomment "@rules_cc//cc:core_rules",
         "//xla/tsl:tsl_bzl",
-        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],
 )
 
@@ -631,7 +633,7 @@ filegroup(
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__pkg__",
-        "@local_tsl//tsl/platform:__pkg__",
+        "@tsl//tsl/platform:__pkg__",
     ]),
 )
 

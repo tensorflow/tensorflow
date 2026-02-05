@@ -71,8 +71,8 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         << ShapeUtil::HumanStringWithLayout(dest_slices_[index].shape);
     se::DeviceAddressBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
-    TF_RETURN_IF_ERROR(
-        stream.Memcpy(&dest_address, buffer.memory(), buffer.memory().size()));
+    TF_RETURN_IF_ERROR(stream.Memcpy(&dest_address, buffer.address(),
+                                     buffer.address().size()));
   }
 
   // Make sure that all dest slices have been copied into.

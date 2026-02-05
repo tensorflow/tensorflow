@@ -56,6 +56,8 @@ class CpuInstructionFusion : public InstructionFusion {
   }
 
  private:
+  static bool IsExpensive(const HloInstruction& instruction);
+
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 

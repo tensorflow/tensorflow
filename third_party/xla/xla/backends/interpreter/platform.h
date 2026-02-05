@@ -32,8 +32,9 @@ namespace interpreter {
 class XlaInterpreterPlatform : public Platform {
  public:
   XlaInterpreterPlatform()
-      : XlaInterpreterPlatform("Interpreter", kXlaInterpreterPlatformId) {}
-  XlaInterpreterPlatform(const std::string& name, const Platform::Id& id);
+      : XlaInterpreterPlatform(kXlaInterpreterPlatformId->ToName(),
+                               kXlaInterpreterPlatformId) {}
+  XlaInterpreterPlatform(absl::string_view name, const Platform::Id& id);
   ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;

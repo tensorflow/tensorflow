@@ -109,7 +109,7 @@ tf_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

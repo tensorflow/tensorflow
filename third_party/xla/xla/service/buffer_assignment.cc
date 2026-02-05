@@ -1253,6 +1253,11 @@ std::string BufferAssignment::BufferInfoString() const {
 
 BufferAssignmentProto BufferAssignment::ToProto() const {
   BufferAssignmentProto proto;
+  ToProto(&proto);
+  return proto;
+}
+
+void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
   // NOTE: DataflowAnalysis state is serialized here in BufferAssignment,
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
@@ -1261,7 +1266,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
       LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);
-      proto.add_logical_buffers()->Swap(&proto_buffer);
+      proto->add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const HloValue* alias :
@@ -1271,7 +1276,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
-            proto.add_buffer_aliases();
+            proto->add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             BufferValue::ToLocationProto(*alias->instruction(), alias->index());
         proto_alias->set_source_buffer_id(value->id());
@@ -1281,12 +1286,11 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   }
   for (const BufferAllocation& allocation : Allocations()) {
     BufferAllocationProto proto_allocation = allocation.ToProto();
-    proto.add_buffer_allocations()->Swap(&proto_allocation);
+    proto->add_buffer_allocations()->Swap(&proto_allocation);
     for (const HeapSimulatorTrace& heap_trace : allocation.HeapTraces()) {
-      *proto.add_heap_simulator_traces() = heap_trace;
+      *proto->add_heap_simulator_traces() = heap_trace;
     }
   }
-  return proto;
 }
 
 /* static */

@@ -17,7 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_H_
 
 #include <cstdint>
+#include <optional>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -105,6 +109,28 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
   }
 
   static char ID;  // NOLINT
+};
+
+typedef absl::AnyInvocable<absl::Status(
+    const absl::flat_hash_map<Device*, xla::ifrt::AttributeMap>&)>
+    OnDeviceAttributeChangeCallback;
+
+// Object that controls the lifetime of subscription.
+class DeviceAttributeSubscription {
+ public:
+  DeviceAttributeSubscription() = default;
+  // Unsubscribe from device attribute changes on destruction.
+  virtual ~DeviceAttributeSubscription() = default;
+
+  typedef absl::flat_hash_map<Device*, xla::ifrt::AttributeMap> UpdateType;
+
+  // Not copyable or movable.
+  DeviceAttributeSubscription(const DeviceAttributeSubscription&) = delete;
+  DeviceAttributeSubscription(DeviceAttributeSubscription&&) = delete;
+  DeviceAttributeSubscription& operator=(const DeviceAttributeSubscription&) =
+      delete;
+  DeviceAttributeSubscription& operator=(DeviceAttributeSubscription&&) =
+      delete;
 };
 
 }  // namespace ifrt

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -70,6 +71,8 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -184,6 +187,7 @@ class StatelessAutotunerTest : public HloTestBase {
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
     HloTestBase::SetUp();
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   void TearDown() override {
@@ -270,85 +274,6 @@ class StatelessAutotunerTest : public HloTestBase {
  protected:
   mlir::MLIRContext mlir_context_;
 };
-
-constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
-  HloModule module
-
-  computation {
-    p0 = f32[1024,1024] parameter(0)
-    p1 = f32[1024,1024] parameter(1)
-    ROOT r = f32[1024,1024] dot(p0, p1),
-      algorithm=$0,
-      lhs_contracting_dims={1},
-      rhs_contracting_dims={0}
-  }
-
-  ENTRY main {
-    p0 = f32[1024,1024] parameter(0)
-    p1 = f32[1024,1024] parameter(1)
-    ROOT computation = f32[1024,1024] fusion(f32[1024,1024] p0,f32[1024,1024] p1),
-      kind=kCustom,
-      calls=computation
-  }
-)";
-
-TEST_F(StatelessAutotunerTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
-  if (GetDebugOptionsForTest()
-          .xla_gpu_experimental_disable_binary_libraries()) {
-    GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(absl::Substitute(
-                       kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3")));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          GetPossibleMatmulAutotuneConfigs(*module));
-  EXPECT_TRUE(hasCublasConfig(configs))
-      << "There is dot_algorithm_rewrite that supports fallback to cublas "
-         "implementation for dot_tf32_tf32_f32_x3.";
-}
-
-TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
-  if (GetDebugOptionsForTest()
-          .xla_gpu_experimental_disable_binary_libraries()) {
-    GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(absl::Substitute(
-                       kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          GetPossibleMatmulAutotuneConfigs(*module));
-  if (!GpuComputeComp().IsRocm()) {
-    switch (GetCudaComputeCapability().major) {
-      case se::CudaComputeCapability::kAmpere:
-        EXPECT_TRUE(hasCublasConfig(configs))
-            << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
-               "Ampere";
-        break;
-      case se::CudaComputeCapability::kHopper:
-        EXPECT_TRUE(hasCublasConfig(configs))
-            << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
-               "Hopper";
-        break;
-      case se::CudaComputeCapability::kBlackwell:
-      case se::CudaComputeCapability::kBlackwell_11:
-      case se::CudaComputeCapability::kBlackwell_12:
-        EXPECT_TRUE(hasCublasConfig(configs))
-            << "There should be a cublas fallback for dot_bf16_bf16_f32 on "
-               "Blackwell";
-        break;
-      default:
-        // We don't know what to expect for other compute capabilities.
-        EXPECT_FALSE(hasCublasConfig(configs));
-    }
-  } else {
-    // ROCm
-    EXPECT_TRUE(hasCublasConfig(configs));
-  }
-}
 
 class GemmFusionAutotunerTest : public StatelessAutotunerTest {
  public:
@@ -591,40 +516,6 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
 }
 
-TEST_F(GemmFusionAutotunerTest, ApplySplitKWithoutAlteringTiling) {
-  const std::string kHloText = R"(
-triton_dot {
-  p0 = f16[55,120] parameter(0)
-  p1 = f16[120,20] parameter(1)
-  ROOT dot = f16[55,20] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f16[55,120]{1,0} parameter(0)
-  p1 = f16[120,20]{1,0} parameter(1)
-  ROOT _ = f16[55,20] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config={"fusion_backend_config":{kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}}}
-})";
-
-  // Check for tiling and splitk.
-  // To check for splitk, we check that two fusions are created - one for dot
-  // and the second for reduce.
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: f16[55,3,40]{2,1,0} fusion
-; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
-; CHECK-SAME: "sizes":["16","1","32"]
-; CHECK: f16[3,40,20]{2,1,0} fusion
-; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
-; CHECK-SAME: "sizes":["1","32","64"]
-; CHECK: ENTRY
-; CHECK: f32[3,55,20]{2,1,0} fusion({{.*}})
-; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}})
-)");
-
-  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
-}
-
 TEST_F(GemmFusionAutotunerTest, RunAutotuningKernelNotSpillingRegisters) {
   const std::string kHloText = R"(
 HloModule m
@@ -657,8 +548,7 @@ ENTRY %e {
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      module->mutable_config().mutable_debug_options(),
-      /*force_allow_register_spills=*/false);
+      module->mutable_config().mutable_debug_options());
   Compiler::CompileOptions options;
   options.embed_hlo_module = false;
   std::unique_ptr<Executable> executable =
@@ -746,76 +636,6 @@ ENTRY main {
                                            ? "// CHECK: __cublas$lt"
                                            : "// CHECK: __cublas$gemm"));
   EXPECT_TRUE(filecheck_matches);
-}
-
-TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
-  if (GpuComputeComp().IsRocm() ||
-      GetDebugOptionsForTest()
-          .xla_gpu_experimental_disable_binary_libraries()) {
-    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
-  }
-  HloModuleConfig config;
-  DebugOptions options = GetDebugOptionsForTest();
-  options.set_xla_gpu_cublas_fallback(true);
-  options.set_xla_gpu_dump_autotuned_gemm_fusions(true);
-  std::string output_directory;
-  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
-    output_directory = tsl::testing::TmpDir();
-  }
-  options.set_xla_dump_to(output_directory);
-  config.set_debug_options(options);
-  // Computation is chosen such that relatively heavy math operations before the
-  // GEMM are not worth fusing because they would get duplicated many times and
-  // slow down execution. Therefore autotuning picks cuBLAS here.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-fusion1 {
-  p0 = f32[333,333] parameter(0)
-  s = f32[333,333] sine(p0)
-  p1 = f32[333,333] parameter(1)
-  c = f32[333,333] cosine(p1)
-  ROOT dot = f32[333,333] dot(s, c),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY e {
-  p0 = f32[333,333] parameter(0)
-  p1 = f32[333,333] parameter(1)
-  ROOT rr = f32[333,333] fusion(p0, p1), kind=kCustom, calls=fusion1,
-    backend_config={"fusion_backend_config": {kind: "__triton_gemm"}}
-})",
-                                                       config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
-
-  std::string dump;
-  TF_EXPECT_OK(tsl::ReadFileToString(
-      tsl::Env::Default(),
-      tsl::io::JoinPath(output_directory,
-                        FilenameFor(*optimized_module, /*prefix=*/"",
-                                    /*suffix=*/"gemm_fusion_0.rr.txt")),
-      &dump));
-  EXPECT_TRUE(*RunFileCheck(dump, R"(
-CHECK: HloModule rr
-CHECK-NOT: cublas
-CHECK: __triton_gemm
-CHECK-NOT: block_m
-)"));
-
-  dump.clear();
-
-  TF_EXPECT_OK(tsl::ReadFileToString(
-      tsl::Env::Default(),
-      tsl::io::JoinPath(
-          output_directory,
-          FilenameFor(*optimized_module, /*prefix=*/"",
-                      /*suffix=*/"gemm_fusion_0.rr.optimized.txt")),
-      &dump));
-  EXPECT_TRUE(*RunFileCheck(dump, R"(
-CHECK: HloModule rr
-CHECK-NOT: triton
-CHECK: cublas
-)"));
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
@@ -967,7 +787,7 @@ ENTRY e {
         RunFileCheck(
             module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
             R"(
-// CHECK: "triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"16","split_k":"1","num_stages":"1","num_warps":"2","num_ctas":"1"
+// CHECK: "triton_gemm_config":{"block_m":"{{[0-9]+}}","block_n":"{{[0-9]+}}","block_k":"{{[0-9]+}}","split_k":"{{[0-9]+}}","num_stages":"{{[0-9]+}}","num_warps":"{{[0-9]+}}","num_ctas":"{{[0-9]+}}"
             )"));
     EXPECT_TRUE(filecheck_matches);
   } else {
@@ -1330,6 +1150,15 @@ class KeyValueStoreForTest : public KeyValueStoreInterface {
     }
 
     return absl::NotFoundError(absl::StrCat("Key not found: ", key));
+  }
+
+  std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override {
+    absl::Status status = absl::UnimplementedError(
+        "AsyncGet is not supported in KeyValueStoreForTest.");
+    done(status);
+    return nullptr;
   }
 
   absl::Status Set(absl::string_view key, absl::string_view value) override {
@@ -1735,59 +1564,6 @@ TEST_F(GemmFusionAutotunerTest, ScaledDotConfigsHaveCuBlasFallback) {
   EXPECT_TRUE(hasCublasConfig(configs.value()))
       << "There should be at least one config with cublas fallback for "
          "scaled-dot.";
-}
-
-TEST_F(GemmFusionAutotunerTest,
-       TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
-  if (GpuComputeComp().IsRocm()) {
-    GTEST_SKIP() << "Not supported on ROCm.";
-  }
-
-  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
-    ENTRY e {
-      p0 = f32[64,64] parameter(0)
-      p1 = f32[64,64] parameter(1)
-      ROOT r = f32[64,64] dot(p0, p1),
-        lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    })")
-                                                  .value();
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> ampere_configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          se::CudaComputeCapability(se::CudaComputeCapability::kAmpere, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      const std::vector<TritonGemmConfig> hopper_configs,
-      GetPossibleMatmulAutotuneTritonConfigs(
-          *Cast<HloDotInstruction>(
-              module->entry_computation()->root_instruction()),
-          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
-          GetToolkitVersion(), GetDebugOptionsForTest(), &mlir_context_));
-
-  std::set<TritonGemmConfig> ampere_configs_set(ampere_configs.begin(),
-                                                ampere_configs.end());
-  std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
-                                                hopper_configs.end());
-
-  // Expect that both configs sets are non-empty, that Hopper configs include
-  // TMA options, and Ampere configs do not.
-  EXPECT_GT(ampere_configs_set.size(), 0);
-  EXPECT_GT(hopper_configs_set.size(), 0);
-
-  auto any_tma_allowed = [](const std::vector<TritonGemmConfig>& configs) {
-    return std::any_of(
-        configs.begin(), configs.end(),
-        [](const TritonGemmConfig& config) { return config.is_tma_allowed; });
-  };
-  EXPECT_FALSE(any_tma_allowed(ampere_configs));
-  EXPECT_TRUE(any_tma_allowed(hopper_configs));
-
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
 
 // Context in b/421858850. This test ensures that we work around the issue

@@ -49,8 +49,8 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = True,
 )

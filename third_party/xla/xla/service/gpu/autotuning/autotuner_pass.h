@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_PASS_H_
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -48,7 +49,8 @@ class AutotunerPass : public HloModulePass {
       const Compiler::GpuTargetConfig* target_config,
       se::DeviceAddressAllocator* allocator = nullptr,
       bool optimize_scratch_bytes = true,
-      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore());
+      MultiProcessKeyValueStore key_value_store = MultiProcessKeyValueStore(),
+      bool allow_reg_spills = false);
 
   absl::string_view name() const override { return "autotuner"; }
 
@@ -63,7 +65,7 @@ class AutotunerPass : public HloModulePass {
                          MultiProcessKeyValueStore key_value_store,
                          bool enable_sharding)
       : autotuner_(std::move(autotuner)),
-        should_autotune_(should_autotune),
+        should_autotune_(std::move(should_autotune)),
         key_value_store_(std::move(key_value_store)),
         enable_sharding_(enable_sharding) {}
 

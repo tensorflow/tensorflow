@@ -65,7 +65,7 @@ void EvalQuantize(const Tensor& input, const Tensor& scales,
                                       quantization_max_val, output);
   } else {
     EvalPerTensorQuantize<Tin, Tout>(
-        input, scales.scalar<float>()(), zero_points.scalar<int32>()(),
+        input, scales.scalar<float>()(), zero_points.scalar<int32_t>()(),
         quantization_min_val, quantization_max_val, output);
   }
 }

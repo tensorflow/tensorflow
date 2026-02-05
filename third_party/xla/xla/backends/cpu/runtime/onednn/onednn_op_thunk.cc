@@ -126,6 +126,8 @@ OneDnnOpThunk::OneDnnRuntime::Invoke(
 absl::StatusOr<std::unique_ptr<OneDnnOpThunk>> OneDnnOpThunk::Create(
     const std::string& custom_call_target, Info info, OpBuffers buffers,
     OneDnnOpConfig config) {
+  // Update custom_call op_name with target
+  info.op_name = absl::StrCat(info.op_name, custom_call_target);
   return absl::WrapUnique(new OneDnnOpThunk(std::move(custom_call_target),
                                             std::move(info), std::move(buffers),
                                             std::move(config)));

@@ -153,7 +153,7 @@ REGISTER_DEFAULT_KERNEL(bool);
                               .TypeConstraint<type>("T"),     \
                           IdentityOp);
 
-REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(int32_t);
 REGISTER_GPU_HOST_KERNEL(tstring);
 REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 

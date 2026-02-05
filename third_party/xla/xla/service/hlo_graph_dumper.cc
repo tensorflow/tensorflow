@@ -96,6 +96,16 @@ using absl::StrJoin;
 using std::nullopt;
 using std::optional;
 
+// Some fused instructions are not in a fusion computation; require the parent
+// computation's FusionInstruction to be present before treating them as fused.
+bool IsFusedWithParentFusionInstNotNull(const HloInstruction* instr) {
+  if (!instr->IsFused()) {
+    return false;
+  }
+  const HloComputation* parent = instr->parent();
+  return parent != nullptr && parent->FusionInstruction() != nullptr;
+}
+
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
 enum NodeFilterResult {
@@ -644,12 +654,17 @@ stylesheet=<
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
     if (to_node) {
-      if (from_node->IsFused() &&
+      // Only treat as fused if the parent fusion instruction exists; needed
+      // for reliable cluster membership.
+      if (IsFusedWithParentFusionInstNotNull(from_node) &&
           from_node->parent()->root_instruction() == from_node) {
         int64_t cluster_id = cluster_ids_.at(from_node->parent());
         add_hover_css_rule("clust", cluster_id, kBlue);
       }
-      if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
+      // Fusion parameters should only map to a cluster when the fusion
+      // instruction is present.
+      if (IsFusedWithParentFusionInstNotNull(to_node) &&
+          to_node->opcode() == HloOpcode::kParameter) {
         int64_t cluster_id = cluster_ids_.at(to_node->parent());
         add_hover_css_rule("clust", cluster_id, kRed);
       }
@@ -851,7 +866,8 @@ std::string HloDotDumper::DumpRootTag() {
 
 static const HloConstantInstruction* TryGetFusionParameterConstant(
     const HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kParameter || !instr->IsFused()) {
+  if (instr->opcode() != HloOpcode::kParameter ||
+      !IsFusedWithParentFusionInstNotNull(instr)) {
     return nullptr;
   }
   const HloInstruction* fusion = instr->parent()->FusionInstruction();
@@ -881,7 +897,9 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   }
   const int kMinUsersToOmit = 3;
   return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
-         !instr->IsFused() &&
+         // Treat as fused only when the parent fusion instruction exists to
+         // avoid misclassifying non-fusion parameters.
+         !IsFusedWithParentFusionInstNotNull(instr) &&
          absl::c_count_if(instr->users(),
                           [&](const HloInstruction* user) {
                             return filter_.Show(user);
@@ -1089,7 +1107,9 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
 
   // Special case: fused parameter is fed from a get-tuple-element.  If
   // so, name the tuple index.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+  // Only access FusionInstruction when the parent fusion instruction exists.
+  if (instr->opcode() == HloOpcode::kParameter &&
+      IsFusedWithParentFusionInstNotNull(instr)) {
     const HloInstruction* param_input =
         instr->parent()->FusionInstruction()->operand(
             instr->parameter_number());
@@ -1259,6 +1279,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kGather:  // not a reduction, but goes with scatter
@@ -1628,7 +1649,9 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // Add edges from instr's operands to instr.  Parameters within fusion
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+  // Only access FusionInstruction when the parent fusion instruction exists.
+  if (instr->opcode() == HloOpcode::kParameter &&
+      IsFusedWithParentFusionInstNotNull(instr)) {
     // Only add the edge if this is not the outermost computation; otherwise it
     // will lead from a node we're not drawing.
     if (instr->parent() != computation_) {
@@ -1690,8 +1713,9 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 // implementation details.
 bool IsAcfPrameter(const xla::HloInstruction* instruction) {
   // Parameter is fused
+  // Require a real fusion parent to avoid nullptr FusionInstruction.
   if (instruction->opcode() != xla::HloOpcode::kParameter ||
-      !instruction->IsFused())
+      !IsFusedWithParentFusionInstNotNull(instruction))
     return false;
 
   // Parameter piped through and is only consumed by 1 user

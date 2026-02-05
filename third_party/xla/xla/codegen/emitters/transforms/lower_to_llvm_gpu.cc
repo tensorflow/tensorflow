@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Conversion/GPUToLLVMSPV/GPUToLLVMSPVPass.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
+#include "mlir/Conversion/GPUToROCDL/Runtimes.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Location.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/codegen/device_spec.h"
 #include "xla/codegen/emitters/transforms/lower_to_llvm_common.h"
+#include "xla/codegen/emitters/transforms/lowering_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/logging.h"
@@ -122,8 +125,18 @@ class LowerToLLVMGPUPass
       return mlir::success();
     };
 
-    if (mlir::failed(LowerToLLVM(getOperation(), populate_patterns))) {
+    // NVVM and ROCDL lower math.log1p directly via their GPU pattern sets, but
+    // the SPIR-V pipeline does not. For Intel GPUs we therefore fall back to
+    // the generic MathToLLVM conversion, hence enabling approximate log1p.
+    bool lower_math_log1p = device_spec_.IsIntelGpu();
+    if (mlir::failed(
+            LowerToLLVM(getOperation(), populate_patterns, lower_math_log1p))) {
       signalPassFailure();
+      return;
+    }
+
+    if (device_spec_.IsAmdGpu()) {
+      EnsureAMDGPUAllocasUseAS5(getOperation());
     }
   }
 

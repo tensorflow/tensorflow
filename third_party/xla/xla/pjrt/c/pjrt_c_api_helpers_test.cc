@@ -19,26 +19,31 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "stablehlo/dialect/Version.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace pjrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::HasSubstr;
 
 TEST(PjRtCApiHelperTest, ConvertValidPjRtValueType) {
@@ -111,19 +116,23 @@ TEST(PjRtCApiHelperTest, Callback) {
       kv_callback_data->c_kv_try_get, &kv_callback_data->kv_try_get_c_func,
       kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
 
-  auto v_not_found = converted_kv_store->Get("key", absl::Seconds(1));
+  absl::StatusOr<std::string> v_not_found =
+      converted_kv_store->Get("key", absl::Seconds(1));
   EXPECT_TRUE(absl::IsNotFound(v_not_found.status())) << v_not_found.status();
 
-  auto s = converted_kv_store->Set("key", "value");
-  TF_EXPECT_OK(s);
+  EXPECT_OK(converted_kv_store->Set("key", "value"));
 
-  auto v = converted_kv_store->Get("key", absl::Seconds(1));
-  TF_EXPECT_OK(v.status());
-  EXPECT_EQ(*v, "value");
+  EXPECT_THAT(converted_kv_store->Get("key", absl::Seconds(1)),
+              IsOkAndHolds("value"));
+  EXPECT_THAT(converted_kv_store->TryGet("key"), IsOkAndHolds("value"));
 
-  auto v_2 = converted_kv_store->TryGet("key");
-  TF_EXPECT_OK(v.status());
-  EXPECT_EQ(*v, "value");
+  auto [promise, future] = xla::MakePromise<std::string>();
+  std::shared_ptr<tsl::CallOptions> call_options = converted_kv_store->AsyncGet(
+      "key",
+      [promise = std::move(promise).ToShared()](
+          const absl::StatusOr<std::string>& result) { promise->Set(result); });
+  EXPECT_EQ(call_options, nullptr);
+  EXPECT_TRUE(absl::IsUnimplemented(future.Await().status()));
 }
 
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {

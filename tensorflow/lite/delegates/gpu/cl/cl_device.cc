@@ -436,6 +436,7 @@ void CLDevice::DisableOneLayerTextureArray() {
 }
 
 absl::Status CreateDefaultGPUDevice(CLDevice* result) {
+  // Get num. platforms
   cl_uint num_platforms;
   cl_int status = clGetPlatformIDs(0, nullptr, &num_platforms);
   if (status != CL_SUCCESS) {
@@ -445,36 +446,54 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   if (num_platforms == 0) {
     return absl::UnknownError("No supported OpenCL platform.");
   }
+  // Get platforms
   std::vector<cl_platform_id> platforms(num_platforms);
   status = clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
   if (status != CL_SUCCESS) {
     return absl::UnknownError(
         absl::StrFormat("clGetPlatformIDs returned %d", status));
   }
-
-  cl_platform_id platform_id = platforms[0];
-  cl_uint num_devices;
-  status =
-      clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status));
+  // Select fastest indicated GPU
+  cl_uint perf_indicator_fastest = 0;  // Performance indicator of fastest GPU
+  cl_device_id device_id_fastest;      // ID of fastest indicated GPU
+  cl_platform_id
+      platform_id_fastest;  // ID of platform with fastest indicated GPU
+  for (cl_uint p = 0; p < num_platforms; ++p) {
+    // Get GPUs of platform
+    cl_uint num_devices;
+    status = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, 0, nullptr,
+                            &num_devices);  // Get num. GPUs
+    if (status != CL_SUCCESS) continue;
+    std::vector<cl_device_id> devices(num_devices);
+    status = clGetDeviceIDs(platforms[p], CL_DEVICE_TYPE_GPU, num_devices,
+                            devices.data(), nullptr);  // Get GPU IDs
+    if (status != CL_SUCCESS) continue;
+    // Iterate over GPUs
+    for (cl_uint d = 0; d < num_devices; ++d) {
+      // Compute performance indicator
+      cl_uint max_comp_units;
+      status = clGetDeviceInfo(devices[d], CL_DEVICE_MAX_COMPUTE_UNITS,
+                               sizeof(max_comp_units), &max_comp_units, NULL);
+      if (status != CL_SUCCESS) max_comp_units = 1;
+      cl_uint max_clock_freq;
+      status = clGetDeviceInfo(devices[d], CL_DEVICE_MAX_CLOCK_FREQUENCY,
+                               sizeof(max_clock_freq), &max_clock_freq, NULL);
+      if (status != CL_SUCCESS) max_clock_freq = 1;
+      cl_uint perf_indicator = max_comp_units * max_clock_freq;
+      // Bookmark fastest indicated GPU and its platform
+      if (perf_indicator > perf_indicator_fastest) {
+        perf_indicator_fastest = perf_indicator;
+        device_id_fastest = devices[d];
+        platform_id_fastest = platforms[p];
+      }
+    }
   }
-  if (num_devices == 0) {
-    return absl::UnknownError("No GPU on current platform.");
+  if (perf_indicator_fastest == 0) {
+    return absl::UnknownError("No GPU detected.");
   }
+  *result = CLDevice(device_id_fastest, platform_id_fastest);
 
-  std::vector<cl_device_id> devices(num_devices);
-  status = clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, num_devices,
-                          devices.data(), nullptr);
-  if (status != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrFormat("clGetDeviceIDs returned %d", status));
-  }
-
-  *result = CLDevice(devices[0], platform_id);
-
-  LoadOpenCLFunctionExtensions(platform_id);
+  LoadOpenCLFunctionExtensions(platform_id_fastest);
 
   return absl::OkStatus();
 }

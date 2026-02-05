@@ -95,7 +95,7 @@ class FunctionType(inspect.Signature, metaclass=abc.ABCMeta):
   structure (and optionally type) information of input parameters and output of
   a Python function. Additionally, it integrates with the tf.function type
   system (`tf.types.experimental.TraceType`) to provide a holistic
-  representation of the the I/O contract of the callable. It is used for:
+  representation of the I/O contract of the callable. It is used for:
     - Canonicalization and type-checking of Python input arguments
     - Type-based dispatch to concrete functions
     - Packing/unpacking structured python values to Tensors

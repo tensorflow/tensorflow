@@ -49,7 +49,8 @@ namespace tensorflow {
 class XlaHostSendDeviceContext : public DeviceContext {
  public:
   XlaHostSendDeviceContext(
-      se::Stream* stream, se::DeviceMemoryBase* device_memory_base,
+      se::Stream* stream,
+      stream_executor::DeviceAddressBase* device_memory_base,
       const xla::Shape& shape,
       tsl::AsyncValueRef<std::unique_ptr<se::Event>>& done_event)
       : stream_(stream),
@@ -77,7 +78,7 @@ class XlaHostSendDeviceContext : public DeviceContext {
 
  private:
   se::Stream* stream_;                        // Not owned.
-  se::DeviceMemoryBase* device_memory_base_;  // Not owned.
+  stream_executor::DeviceAddressBase* device_memory_base_;  // Not owned.
   const xla::Shape shape_;
   tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event_;
 

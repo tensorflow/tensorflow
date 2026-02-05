@@ -20,7 +20,7 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-PLATFORM_DEFINE_ID(kHostPlatformId);
+PLATFORM_DEFINE_ID(kHostPlatformId, Host);
 
 }  // namespace host
 }  // namespace stream_executor

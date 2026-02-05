@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_TILING_SPECIFICATION_H_
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -119,6 +120,9 @@ class TilingSpecification {
 
   // Returns the total number of parameters in the tiling specification.
   int64_t num_parameters() const { return num_parameters_; }
+
+  // Returns a string representation of the tiling specification.
+  std::string ToString() const;
 
  private:
   // `SymbolicTileAnalysis` is the only class allowed to construct

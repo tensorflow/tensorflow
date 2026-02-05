@@ -1145,5 +1145,103 @@ TEST_F(ShardyXLATest, ManualComputationCallOpWithToken) {
   EXPECT_EQ(callInst->sharding().ToString(), "{manual}");
 }
 
+// This test is to ensure that the stack frame index is fully copied.
+TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
+  const char* const hloString = R"(
+  HloModule main
+
+  FileNames
+  1 "file1.py"
+  2 "file2.py"
+
+  FunctionNames
+  1 "foo"
+  2 "bar"
+
+  FileLocations
+  1 {file_name_id=1 function_name_id=1 line=1 end_line=1 column=1 end_column=1}
+  2 {file_name_id=2 function_name_id=2 line=2 end_line=2 column=2 end_column=2}
+
+  StackFrames
+  1 {file_location_id=1 parent_frame_id=1}
+  2 {file_location_id=2 parent_frame_id=2}
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    add = f32[6,3] add(p0, p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add), metadata={op_name="copy", stack_frame_id=2}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+
+  // Verify the stack frame index is fully copied both frames.
+  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 2);
+  const auto& frame1 = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(frame1.file_location_id(), 1);
+  EXPECT_EQ(frame1.parent_frame_id(), 0);
+  const auto& frame2 = module->stack_frame_index()->stack_frames()[1];
+  EXPECT_EQ(frame2.file_location_id(), 2);
+  EXPECT_EQ(frame2.parent_frame_id(), 1);
+
+  EXPECT_EQ(module->stack_frame_index()->file_locations().size(), 2);
+
+  HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
+  EXPECT_NE(copy, nullptr);
+  EXPECT_EQ(copy->metadata().op_name(), "copy");
+  EXPECT_EQ(copy->metadata().stack_frame_id(), 2);
+}
+
+// This test is to ensure that the stack frame index is replaced with a single
+// frame, instead of being fully copied.
+TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
+  const char* const hloString = R"(
+  HloModule main
+
+  FileNames
+  1 "file1.py"
+  2 "file2.py"
+
+  FunctionNames
+  1 "foo"
+  2 "bar"
+
+  FileLocations
+  1 {file_name_id=1 function_name_id=1 line=1 end_line=1 column=1 end_column=1}
+  2 {file_name_id=2 function_name_id=2 line=2 end_line=2 column=2 end_column=2}
+
+  StackFrames
+  1 {file_location_id=1 parent_frame_id=1}
+  2 {file_location_id=2 parent_frame_id=2}
+
+  ENTRY %entry {
+    p0 = f32[6,3] parameter(0)
+    p1 = f32[6,3] parameter(1)
+    add = f32[6,3] add(p0, p1), sharding={devices=[2,1]<=[2]}
+    ROOT result = f32[6,3] copy(add), metadata={op_name="copy", stack_frame_id=1}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
+
+  // Verify the stack frame index is replaced with a single frame.
+  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 1);
+  const auto& frame = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(frame.file_location_id(), 1);
+  EXPECT_EQ(frame.parent_frame_id(), 0);
+
+  const auto& location = module->stack_frame_index()->file_locations()[0];
+  EXPECT_EQ(location.file_name_id(), 1);
+  EXPECT_EQ(location.function_name_id(), 1);
+  EXPECT_EQ(location.line(), 1);
+  EXPECT_EQ(location.column(), 1);
+
+  HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
+  EXPECT_NE(copy, nullptr);
+  EXPECT_EQ(copy->metadata().op_name(), "copy");
+  EXPECT_EQ(copy->metadata().stack_frame_id(), 1);
+}
+
 }  // namespace sdy
 }  // namespace xla

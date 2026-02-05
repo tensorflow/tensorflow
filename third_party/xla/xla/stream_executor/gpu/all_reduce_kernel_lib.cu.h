@@ -22,14 +22,9 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/collective_signal.cu.h"
 
 namespace stream_executor::gpu {
-
-enum class PlatformType : uint32_t {
-  ROCM,
-  CUDA,
-  NOGPU,  // place holder for compiling header only without errors
-};
 
 template <typename T>
 union Vec;
@@ -110,29 +105,6 @@ __device__ __forceinline__ RestrictedPtr<T> GetMultimemPtr(
   return (RestrictedPtr<T>)((uint64_t)metadata.multicast_buffer_ptr + offset);
 }
 
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {}
-
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
-                                               uint32_t expected) {}
-
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void SyncRemoteBlocks(
-    std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
-        signal_pad_ptrs,
-    int64_t rank, int64_t num_ranks, uint32_t signal_value) {
-  if (threadIdx.x < num_ranks) {
-    auto target_rank = threadIdx.x;
-    PutSignalFlag<T>(
-        signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank,
-        signal_value);
-    WaitSignalFlag<T>(
-        signal_pad_ptrs[rank] + blockIdx.x * num_ranks + target_rank,
-        signal_value);
-  }
-}
-
 template <typename T, xla::ReductionKind ReductionKindT,
           PlatformType PlatformT = PlatformType::NOGPU>
 __device__ __forceinline__ void OneShotAllReduceKernelImpl(
@@ -162,8 +134,8 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
     VecStore(args.symmetric_input_ptrs + i, VecLoad(args.input_buffer + i));
   }
 
-  SyncRemoteBlocks<PlatformT>(signal_flags_buffers, args.rank, args.num_ranks,
-                              args.signal_value);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
   __syncthreads();
 
   for (int i = offset; i < args.num_elements; i += stride) {
@@ -215,8 +187,8 @@ __device__ __forceinline__ void MultimemAllReduceKernelImpl(
     VecStore(args.symmetric_input_ptrs + i, VecLoad(args.input_buffer + i));
   }
 
-  SyncRemoteBlocks<PlatformT>(signal_flags_buffers, args.rank, args.num_ranks,
-                              args.signal_value);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
   __syncthreads();
 
   RestrictedPtr<T> multimem_ptr = GetMultimemPtr<T>(
@@ -246,8 +218,8 @@ __device__ __forceinline__ void MultimemAllReduceKernelImpl(
 
   __syncthreads();
   // Wait for all participants to receive the data.
-  SyncRemoteBlocks<PlatformT>(signal_flags_buffers, args.rank, args.num_ranks,
-                              args.signal_value + 1);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value + 1);
   __syncthreads();
 
   for (int i = offset; i < args.num_elements; i += stride) {
@@ -304,8 +276,8 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
 
   // Shot1: Wait for all participating devices to finish copying data to their
   // shared buffer.
-  SyncRemoteBlocks<PlatformT>(signal_flags_buffers, args.rank, args.num_ranks,
-                              args.signal_value);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
   __syncthreads();
 
   // Step2: Accumulate data for the responsible indices in the shared buffers.
@@ -342,8 +314,8 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   // Shot2: Wait for all participating devices to finish accumulating data in
   // the shared buffer. Note that signal_value + 1 is used to ensure that the
   // synchronization is different from the one used above.
-  SyncRemoteBlocks<PlatformT>(signal_flags_buffers, args.rank, args.num_ranks,
-                              args.signal_value + 1);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value + 1);
   __syncthreads();
 
   // Step3: Copy data from the shared buffers to the output buffer.

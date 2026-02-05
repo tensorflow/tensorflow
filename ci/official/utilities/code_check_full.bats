@@ -46,6 +46,8 @@ do_external_licenses_check(){
 @bazel_tools//third_party/
 @bazel_tools//tools
 @local
+@xla//xla
+@tsl//tsl
 @com_google_absl//absl
 @pybind11_abseil//pybind11_abseil
 @org_tensorflow//
@@ -64,8 +66,8 @@ EOF
 
   # grep patterns for targets which are allowed to be extra licenses
   cat > $BATS_TEST_TMPDIR/allowed_to_be_extra <<EOF
-@local_xla//third_party/mkl
-@local_xla//third_party/mkl_dnn
+@xla//third_party/mkl
+@xla//third_party/mkl_dnn
 @absl_py//
 @bazel_tools//src
 @bazel_tools//platforms
@@ -77,6 +79,8 @@ EOF
 @pybind11_abseil//pybind11_abseil
 //external
 @local
+@xla//xla
+@tsl//tsl
 @com_github_googlecloudplatform_google_cloud_cpp//
 @embedded_jdk//
 ^//$

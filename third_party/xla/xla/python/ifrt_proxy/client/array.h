@@ -32,11 +32,13 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "google/protobuf/repeated_field.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -62,7 +64,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, xla::ifrt::Client::HostBufferSemantics semantics,
+      ShardingRef sharding, LayoutRef layout,
+      xla::ifrt::Client::HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer);
 
   // `Array::MakeArraysFromHostBufferShards()` implements
@@ -95,6 +98,10 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics);
+
+  // Gets handles from an array span.
+  static absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> GetHandles(
+      absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics);
 
   // Destructs the array associated with the given handle. The corresponding
   // array becomes unusable afterwards.
@@ -150,7 +157,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const Shape& shape() const override { return shape_; }
   const Sharding& sharding() const override { return *sharding_; }
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> pjrt_layout()
       const override;
   UserContextRef user_context() const override { return user_context_; }
 

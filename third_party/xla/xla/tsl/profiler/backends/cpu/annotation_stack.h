@@ -37,7 +37,7 @@ class AnnotationStack {
   static void PopAnnotation();
 
   // Returns the annotation stack for the current thread.
-  static const string& Get();
+  static const std::string& Get();
 
   // Returns the range id sequence for the stack for the current thread.
   static absl::Span<const int64_t> GetScopeRangeIds();

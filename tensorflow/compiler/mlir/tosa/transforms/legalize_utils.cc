@@ -1077,6 +1077,13 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     int64_t dim_dilation = dilations[i];
     int64_t dim_stride = strides[i];
 
+    // if input size is dynamic then we cannot compute static pad shapes for
+    // "SAME" padding for stride != 1
+    if (tf_pad == tensorflow::Padding::SAME && dim_stride != 1 &&
+        input_type.isDynamicDim(ifm_dim)) {
+      return false;
+    }
+
     int64_t ip_size = input_type.getDimSize(ifm_dim);
     int64_t f_size = filter_type.getDimSize(filter_dim);
     // If we have a dynamic shape we should assume it is wide enough.

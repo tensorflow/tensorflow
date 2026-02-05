@@ -3,8 +3,8 @@
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
 load("@com_google_benchmark//:bazel/benchmark_deps.bzl", "benchmark_deps")
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
-load("@local_xla//third_party/llvm:setup.bzl", "llvm_setup")
 load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+load("@xla//third_party/llvm:setup.bzl", "llvm_setup")
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/android:android_configure.bzl", "android_configure")
 

@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -55,13 +55,11 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -106,20 +104,25 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
 }
 
 TfrtGpuDevice::~TfrtGpuDevice() {
-  // Block the host until all pending work on the stream is done. This is to
-  // avoid user-after-free errors in host callbacks.
-  if (stream_ != nullptr) {
-    absl::Status status = BlockHostUntilDoneWithHostCallback(stream_.get());
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to wait for stream to finish: " << status;
-    }
-  }
-  if (d2h_stream_ != nullptr) {
-    absl::Status status = BlockHostUntilDoneWithHostCallback(d2h_stream_.get());
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
-    }
-  }
+  // Bounce through a thread to avoid calling CUDA inline.
+  absl::WrapUnique(
+      tsl::Env::Default()->StartThread({}, "TfrtGpuDeviceDestructor", [&]() {
+        // Block the host until all pending work on the stream is done. This is
+        // to avoid user-after-free errors in host callbacks.
+        if (stream() != nullptr) {
+          absl::Status status = BlockHostUntilDoneWithHostCallback(stream());
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to wait for stream to finish: " << status;
+          }
+        }
+        if (d2h_stream() != nullptr) {
+          absl::Status status =
+              BlockHostUntilDoneWithHostCallback(d2h_stream());
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
+          }
+        }
+      }));
 }
 
 PjRtClient* TfrtGpuDevice::client() const { return client_; }
@@ -148,15 +151,17 @@ absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
 
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
-
-  return transfer_manager->TransferLiteralToInfeed(executor_, literal);
+  return RunOnAsyncWorkRunner(client_->blocking_thread_pool(), [&]() {
+    return transfer_manager->TransferLiteralToInfeed(executor(), literal);
+  });
 }
 
 absl::Status TfrtGpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
-
-  return transfer_manager->TransferLiteralFromOutfeed(executor_, literal);
+  return RunOnAsyncWorkRunner(client_->blocking_thread_pool(), [&]() {
+    return transfer_manager->TransferLiteralFromOutfeed(executor(), literal);
+  });
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {

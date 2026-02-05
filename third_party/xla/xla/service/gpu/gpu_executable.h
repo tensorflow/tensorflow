@@ -223,7 +223,7 @@ class GpuExecutable : public Executable {
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> FromProto(
       const GpuExecutableProto&,
       const se::DeviceDescription& device_description,
-      absl::string_view platform,
+      absl::string_view platform, DebugOptions debug_options,
       const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
           symbol_resolver = std::nullopt);
 

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 
@@ -47,6 +48,7 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
     return {};
   }
+  RegisterSymbolicExprStorage(parser.getContext());
   auto indexing_map = parseChainOfStringsAsIndexingMap(parser);
   if (!indexing_map.has_value() || parser.parseGreater()) {
     return {};

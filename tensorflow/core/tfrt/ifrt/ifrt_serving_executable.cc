@@ -542,8 +542,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
           [&](std::unique_ptr<xla::ifrt::Program> program,
               std::unique_ptr<xla::ifrt::CompileOptions> options)
               -> absl::StatusOr<xla::ifrt::LoadedExecutableRef> {
-            return ifrt_client_->GetDefaultCompiler()->CompileAndLoad(
-                std::move(program), std::move(options));
+            return ifrt_client_->GetDefaultCompiler()
+                ->CompileAndLoad(std::move(program), std::move(options))
+                .Await();
           }));
 
   executable_bundle->ifrt_executable = std::move(ifrt_executable);
@@ -588,7 +589,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
     // Only create promise and future when cache missed.
     std::tie(promise, future) =
-        tsl::Future<SharedCachedExecutableBundle>::MakePromise();
+        tsl::MakePromise<SharedCachedExecutableBundle>();
 
     executable_bundles_.emplace(key, future);
     // Clone the module to avoid race condition between Freeze() and

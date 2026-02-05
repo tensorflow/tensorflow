@@ -78,8 +78,7 @@ AllGatherStartThunk::AllGatherStartThunk(
     ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
     CollectiveConfig config, std::vector<Buffer> buffers)
-    : CollectiveThunk(Thunk::kAllGatherStart, thunk_info, async_events,
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
+    : CollectiveThunk(Thunk::kAllGatherStart, thunk_info, async_events, false),
       config_(AllGatherConfig{config}),
       buffers_(std::move(buffers)) {}
 
@@ -88,8 +87,7 @@ AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
                                          std::vector<Buffer> buffers,
                                          bool p2p_memcpy_enabled)
     : CollectiveThunk(Thunk::kAllGatherStart, thunk_info,
-                      IsGPUSyncCollective(*inst),
-                      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
+                      IsGPUSyncCollective(*inst), false),
       config_(GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());

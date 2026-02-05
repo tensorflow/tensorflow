@@ -162,7 +162,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
@@ -181,7 +181,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -405,7 +405,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       DataServiceIteratorContext& operator=(const DataServiceIteratorContext&) =
           delete;
 
-      std::unique_ptr<Thread> StartThread(const string& name,
+      std::unique_ptr<Thread> StartThread(const std::string& name,
                                           std::function<void()> fn) override {
         return ctx_.StartThread(name, std::move(fn));
       }

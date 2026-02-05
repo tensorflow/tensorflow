@@ -35,16 +35,7 @@ absl::Status IfrtRestoreTensorRegistry::TryRegister(
     absl::string_view name, RestoredTensorInfo restored_tensor_info) {
   absl::MutexLock lock(mutex_);
   auto& info = restored_tensors_[name];
-  if (info.tensor_future.IsValid()) {
-    if (info.dtype_and_shape != restored_tensor_info.dtype_and_shape) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Variable '", name, "' already registered with dtype ",
-          info.dtype_and_shape.dtype, " and shape ",
-          info.dtype_and_shape.shape.DebugString(),
-          " but trying to register with dtype ",
-          restored_tensor_info.dtype_and_shape.dtype, " and shape ",
-          restored_tensor_info.dtype_and_shape.shape.DebugString()));
-    }
+  if (info.dtype_and_shape.IsValid() || info.tensor_future.IsValid()) {
     LOG(WARNING)
         << "Variable named '" << name
         << "' has been already registered. Ignore request of a new tensor with "
@@ -101,7 +92,7 @@ absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(
         absl::StrCat("Variable '", name, "' not found."));
   }
 
-  return it->second.dtype_and_shape;
+  return it->second.dtype_and_shape.Await();
 }
 
 }  // namespace ifrt_serving

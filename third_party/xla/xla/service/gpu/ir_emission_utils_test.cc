@@ -82,12 +82,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[1536,64]{1,0} parameter(0)
-  ROOT t = f32[64,1536]{1,0} transpose(p), dimensions={1,0}
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,32,48]{2,1,0} transpose(p), dimensions={2,0,1}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -102,12 +103,12 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogical102Transpose) {
 HloModule module
 
 ENTRY entry {
-  p = f32[32,48,2]{2,1,0} parameter(0)
-  ROOT t = f32[48,32,2]{2,1,0} transpose(p), dimensions={1,0,2}
+  p = f32[32,48,1,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[48,32,1,2]{3,2,1,0} transpose(p), dimensions={1,0,2,3}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
   HloInstruction* tr = module->entry_computation()->root_instruction();
 
   auto result = GetDescriptionForTiledTransposeEmitter(*tr);
@@ -412,10 +413,8 @@ fusion {
   p = f32[32,48,64]{2,1,0} parameter(0)
   p2 = f32[48,32,64]{2,1,0} parameter(1)
   t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
-  bc = f32[1,1536,64]{2,1,0} bitcast(p2)
-  t2 = f32[1,64,1536]{2,1,0} transpose(bc), dimensions={0,2,1}
-  bc2 = f32[64,48,32]{2,1,0} bitcast(t2)
-  ROOT add = f32[64,48,32]{2,1,0} add(t, bc2)
+  t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
+  ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
 }
 
 ENTRY main {
@@ -432,6 +431,26 @@ ENTRY main {
   EXPECT_FALSE(GetDescriptionForTiledTransposeEmitter(FindNonTrivialHero(*r))
                    .has_value());
   EXPECT_EQ(&FindNonTrivialHero(*r), r);
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeWithGrouping) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,32,64]{2,1,0} parameter(0)
+  ROOT t = f32[64,32,32]{2,1,0} transpose(p), dimensions={2,0,1}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({64, 1024}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindNonTrivialHeroOutsideFusion) {
@@ -533,13 +552,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[1100,12,8]{2,1,0} parameter(0)
-  ROOT t = f32[8,12,1100]{2,1,0} transpose(p), dimensions={2,1,0}
+  p = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT t = f32[8,12,100,11]{3,2,1,0} transpose(p), dimensions={3,2,0,1}
 }
 
 ENTRY main {
-  param = f32[1100,12,8]{2,1,0} parameter(0)
-  ROOT fusion = f32[8,12,1100]{2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[100,11,12,8]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[8,12,100,11]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -559,13 +578,13 @@ TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
 HloModule module
 
 fusion {
-  p = f32[8,12,1100]{2,1,0} parameter(0)
-  ROOT t = f32[1100,12,8]{2,1,0} transpose(p), dimensions={2,1,0}
+  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT t = f32[100,11,12,8]{3,2,1,0} transpose(p), dimensions={2,3,1,0}
 }
 
 ENTRY main {
-  param = f32[8,12,1100]{2,1,0} parameter(0)
-  ROOT fusion = f32[1100,12,8]{2,1,0} fusion(param), kind=kInput, calls=fusion
+  param = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  ROOT fusion = f32[100,11,12,8]{3,2,1,0} fusion(param), kind=kInput, calls=fusion
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -578,6 +597,28 @@ ENTRY main {
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({1100, 12, 8}));
   EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       FindTiledLogicalTransposeWithSize1DimensionInRawShape) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,1,16,2]{3,2,1,0} parameter(0)
+  ROOT t = f32[16,1,32,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({16, 32, 2}));
+  EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
 }
 
 TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {

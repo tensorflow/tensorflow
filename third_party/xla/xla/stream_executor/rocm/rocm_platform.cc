@@ -62,7 +62,7 @@ static absl::Status PlatformInitialize() {
 }
 }  // namespace
 
-ROCmPlatform::ROCmPlatform() : name_("ROCM") {}
+ROCmPlatform::ROCmPlatform() : name_(rocm::kROCmPlatformId->ToName()) {}
 
 Platform::Id ROCmPlatform::id() const { return rocm::kROCmPlatformId; }
 

@@ -53,8 +53,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -70,8 +70,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -113,8 +113,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -136,7 +136,7 @@ cc_library(
         ":types",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@local_tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -155,9 +155,9 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -238,8 +238,8 @@ cc_library(
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 

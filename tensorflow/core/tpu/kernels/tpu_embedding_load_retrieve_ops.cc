@@ -46,7 +46,7 @@ namespace tensorflow {
 // Computes (and VLOGs) the expected shapes of the embedding table shards.
 absl::Status ComputeExpectedTableShardShapes(
     const TPUEmbeddingConfiguration& config, int shard_id, int num_shards,
-    const string& op_name, std::vector<TensorShape>* table_shapes) {
+    const std::string& op_name, std::vector<TensorShape>* table_shapes) {
   std::vector<TensorShapeProto> shape_protos;
   const int num_tables = config.table_descriptor_size();
   TF_RETURN_IF_ERROR(TpuEmbeddingShapeUtil::ComputeTableShapes(
@@ -70,7 +70,7 @@ absl::Status ComputeExpectedTableShardShapes(
 }
 
 // Logs min/max/avg for the specified state_variable array.
-void LogRangeStatistics(int32 table_id, int32 state_variable_index,
+void LogRangeStatistics(int32_t table_id, int32_t state_variable_index,
                         absl::Span<const float> state_variable) {
   if (VLOG_IS_ON(5)) {
     float min = std::numeric_limits<float>::infinity();
@@ -91,7 +91,7 @@ void LogRangeStatistics(int32 table_id, int32 state_variable_index,
 LoadAllTPUEmbeddingParametersOp::LoadAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  string config_string;
+  std::string config_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
   OP_REQUIRES(
@@ -165,7 +165,7 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
               " but config specifies table shape ",
               table_shapes_[table_id].DebugString()));
     }
-    const int64 num_elements = state_variable[0][table_id].NumElements();
+    const int64_t num_elements = state_variable[0][table_id].NumElements();
     VLOG(1) << "Table " << table_id << " (name " << table_descriptor.name()
             << ") has shape: " << table_shapes_[table_id].DebugString()
             << ", number of elements: " << num_elements;
@@ -232,7 +232,7 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
 RetrieveAllTPUEmbeddingParametersOp::RetrieveAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
-  string config_string;
+  std::string config_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
   OP_REQUIRES(
@@ -297,7 +297,7 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
                                 "optimization algorithm specified for table ",
                                 table_id));
     num_state_variables[table_id] = state_variable_specs.size();
-    const int64 num_elements = table_shapes_[table_id].num_elements();
+    const int64_t num_elements = table_shapes_[table_id].num_elements();
     for (int i = 0; i < state_variable_specs.size(); ++i) {
       Tensor* state_variable_tensor;
       OP_REQUIRES_OK(
@@ -313,7 +313,7 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
          i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
       Tensor* auxiliary_tensor;
       TensorShape shape;
-      std::array<int32, 2> dims = {{0, 0}};
+      std::array<int32_t, 2> dims = {{0, 0}};
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(dims, &shape));
       OP_REQUIRES_OK(
           ctx, state_variable[i].allocate(table_id, shape, &auxiliary_tensor));

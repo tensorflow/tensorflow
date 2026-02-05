@@ -104,12 +104,13 @@ OpTypePattern GetMatMulBiasAddGeluPattern() {
 class PatternMatcherTest : public ::testing::Test {
  protected:
   struct NodeConfig {
-    NodeConfig(string name, string op, std::vector<string> inputs)
+    NodeConfig(std::string name, std::string op,
+               std::vector<std::string> inputs)
         : name(std::move(name)), op(std::move(op)), inputs(std::move(inputs)) {}
 
-    string name;
-    string op;
-    std::vector<string> inputs;
+    std::string name;
+    std::string op;
+    std::vector<std::string> inputs;
   };
 
   static GraphDef CreateGraph(const std::vector<NodeConfig>& nodes) {
@@ -119,7 +120,7 @@ class PatternMatcherTest : public ::testing::Test {
       NodeDef node_def;
       node_def.set_name(node.name);
       node_def.set_op(node.op);
-      for (const string& input : node.inputs) {
+      for (const std::string& input : node.inputs) {
         node_def.add_input(input);
       }
       *graph.add_node() = std::move(node_def);
@@ -172,7 +173,7 @@ TEST_F(PatternMatcherTest, Tree) {
   auto root_node_view = graph_view.GetNode("e");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
@@ -254,8 +255,8 @@ TEST_F(PatternMatcherTest, DAG) {
   auto root_node_view = graph_view.GetNode("e");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::unordered_set<string> nodes_to_preserve = {"foo"};
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::unordered_set<std::string> nodes_to_preserve = {"foo"};
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match =
       graph_matcher.GetMatchedNodes(pattern, nodes_to_preserve, root_node_view,
@@ -354,7 +355,7 @@ TEST_F(PatternMatcherTest, DAGExternalDependent) {
   auto root_node_view = graph_view.GetNode("e");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
@@ -375,7 +376,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGelu) {
   auto root_node_view = graph_view.GetNode("gelu");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
@@ -411,7 +412,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluExternalDependent) {
   auto root_node_view = graph_view.GetNode("gelu");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
@@ -432,7 +433,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluMutation) {
   auto root_node_view = graph_view.GetNode("gelu");
 
   SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(&graph_view);
-  std::map<string, int> matched_nodes_map;  // label to node index map
+  std::map<std::string, int> matched_nodes_map;  // label to node index map
   std::set<int> remove_node_indices;
   bool found_match = graph_matcher.GetMatchedNodes(
       pattern, {}, root_node_view, &matched_nodes_map, &remove_node_indices);
@@ -443,7 +444,7 @@ TEST_F(PatternMatcherTest, MatMulBiasAddGeluMutation) {
   // Before mutation number of nodes.
   int num_nodes_before = graph_view.NumNodes();
   // Before mutation node_names of the remove candidate nodes.
-  std::vector<string> remove_node_names;
+  std::vector<std::string> remove_node_names;
   for (auto const& node_idx : remove_node_indices) {
     remove_node_names.push_back(graph_view.GetNode(node_idx)->GetName());
   }
@@ -514,12 +515,12 @@ TEST_F(PatternMatcherTest, CommutativeInputs) {
   //   }
 
   absl::Status status;
-  std::vector<string> commutative_ops = {"Mul", "Add", "AddV2"};
+  std::vector<std::string> commutative_ops = {"Mul", "Add", "AddV2"};
   for (std::string op : commutative_ops) {
     for (bool should_swap : {false, true}) {
-      std::vector<string> commutative_operands =
-          (should_swap ? std::vector<string>{"d", "c"}
-                       : std::vector<string>{"c", "d"});
+      std::vector<std::string> commutative_operands =
+          (should_swap ? std::vector<std::string>{"d", "c"}
+                       : std::vector<std::string>{"c", "d"});
       GraphDef graph = CreateGraph({{"e", op, commutative_operands},
                                     {"c", "C", {"b"}},
                                     {"d", "D", {"b"}},
@@ -548,7 +549,7 @@ TEST_F(PatternMatcherTest, CommutativeInputs) {
 
       SubGraphMatcher<MatchingDirection::kFollowInputs> graph_matcher(
           &graph_view);
-      std::map<string, int> matched_nodes_map;  // label to node index map
+      std::map<std::string, int> matched_nodes_map;  // label to node index map
       std::set<int> remove_node_indices;
       bool found_match = graph_matcher.GetMatchedNodes(
           pattern, {}, root_node_view, &matched_nodes_map,

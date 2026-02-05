@@ -164,11 +164,9 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
       [&](const Shape& device_subshape,
           const ShapeIndex& index) -> absl::Status {
         if (device_subshape.IsArray()) {
-          int64_t size = GetByteSizeRequirement(device_subshape);
           se::DeviceAddressBase device_memory = device_buffer.buffer(index);
-          TF_RET_CHECK(size == device_memory.size());
 
-          auto TransferBuffer = [&](const void* source) {
+          auto TransferBuffer = [&](const void* source) -> absl::Status {
             if (PackSubbyteTypes() && primitive_util::IsSubByteNonPredType(
                                           device_subshape.element_type())) {
               if (!device_subshape.is_static()) {
@@ -183,6 +181,8 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
                   /*source=*/source,
                   /*destination=*/&device_memory);
             } else {
+              int64_t size = GetByteSizeRequirement(device_subshape);
+              TF_RET_CHECK(size == device_memory.size());
               return TransferBufferToDevice(stream, /*size=*/size,
                                             /*source=*/source,
                                             /*destination=*/&device_memory);
@@ -276,6 +276,7 @@ absl::Status GenericTransferManager::TransferIntNArrayToDevice(
   PackIntN(bit_width,
            absl::MakeSpan(static_cast<const char*>(source), num_elements),
            absl::MakeSpan(*packed_src_data));
+  TF_RET_CHECK(packed_src_data->size() == destination->size());
   TF_RETURN_IF_ERROR(TransferBufferToDevice(
       stream, packed_src_data->size(), packed_src_data->data(), destination));
   return stream->DoHostCallback([keep_alive = std::move(packed_src_data)] {});

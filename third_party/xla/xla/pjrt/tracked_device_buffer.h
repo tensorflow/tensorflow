@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/local_device_state.h"
@@ -72,6 +73,11 @@ class RawSEDeviceMemory {
   static tsl::AsyncValueRef<RawSEDeviceMemory> Create(
       se::DeviceAddressBase value, LocalDeviceState* local_device,
       se::DeviceAddressAllocator* allocator);
+  static tsl::AsyncValueRef<RawSEDeviceMemory> CreateDelayedMemory();
+  static void ConstructDelayed(tsl::AsyncValueRef<RawSEDeviceMemory> buf,
+                               se::DeviceAddressBase value,
+                               LocalDeviceState* local_device,
+                               se::DeviceAddressAllocator* allocator);
   static tsl::AsyncValueRef<RawSEDeviceMemory> CreateForeign(
       se::DeviceAddressBase value,
       absl::AnyInvocable<void() &&> on_delete_callback);
@@ -79,7 +85,7 @@ class RawSEDeviceMemory {
   // Returns a definition event (or nullptr if the definition is known to be in
   // the past).
   virtual absl::StatusOr<BufferSequencingEventRef> GetDefinitionEvent(
-      tsl::thread::ThreadPool* thread_pool, bool nullptr_if_past) const {
+      AsyncWorkRunner* async_work_runner, bool nullptr_if_past) const {
     return BufferSequencingEventRef();
   }
 
@@ -183,6 +189,10 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) override;
 
+  bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
+
+  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
+
  private:
   PjRtDevice* device_;
   // Events that are triggered when the content of one or more buffers is ready
@@ -203,13 +213,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // A callback to call when the TrackedDeviceBuffer is about to be destroyed.
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
-
-// Populates 'events' with the set of buffer events for buffer. If
-// get_usage_events=true populates with the latest usage events, otherwise
-// populates with the definition events.
-void GetDeviceBufferEvents(const TrackedDeviceBuffer& buffer,
-                           bool get_usage_events,
-                           absl::flat_hash_set<BufferSequencingEvent*>* events);
 
 // Waits for all of the definition events in a buffer on 'stream'.
 void WaitForBufferDefinitionEventsOnStream(

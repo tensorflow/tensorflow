@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -96,6 +97,7 @@ class TritonBackendTest : public HloHardwareIndependentTestBase {
                              .value()),
         target_config_(stream_executor_),
         backend_(&debug_options_, &compiler_, &target_config_, &mlir_context_) {
+    RegisterSymbolicExprStorage(&mlir_context_);
   }
 
   DebugOptions debug_options_;
@@ -189,6 +191,21 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
           *(module->entry_computation()->root_instruction()));
 
   EXPECT_THAT(config, absl_testing::IsOk());
+}
+
+TEST_F(TritonBackendTest, GetDefaultConfigReturnsSplitKOne) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  debug_options_.set_xla_gpu_enable_split_k_autotuning(true);
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_.GetDefaultConfig(
+          *(module->entry_computation()->root_instruction()));
+
+  ASSERT_THAT(config, absl_testing::IsOk());
+  TritonBackendConfig triton_config;
+  ASSERT_TRUE(config.value()->UnpackTo(&triton_config));
+  EXPECT_EQ(triton_config.split_k(), 1);
 }
 
 TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {

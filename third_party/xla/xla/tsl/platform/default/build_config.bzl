@@ -235,7 +235,7 @@ def tf_proto_library(
         deps = deps + protodeps + [
             proto_lib
             for proto_lib in well_known_proto_libs()
-            if proto_lib not in protodeps
+            if proto_lib not in (deps + protodeps)
         ],
         exports = exports,
         compatible_with = compatible_with,
@@ -553,13 +553,13 @@ def tf_windows_aware_platform_deps(name):
         ],
     })
 
-def tf_platform_deps(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_platform_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
-def tf_stream_executor_deps(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_stream_executor_deps(name, platform_dir = "@xla//xla/tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
 
-def tf_platform_alias(name, platform_dir = "@local_xla//xla/tsl/platform/"):
+def tf_platform_alias(name, platform_dir = "@xla//xla/tsl/platform/"):
     return [platform_dir + "default:" + name]
 
 def tf_error_logging_deps():

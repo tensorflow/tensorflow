@@ -153,7 +153,6 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   return RunHloBenchmark(state, std::move(module), args, benchmark_options);
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
                                  std::unique_ptr<HloModule> module,
                                  absl::Span<const Literal* const> args,

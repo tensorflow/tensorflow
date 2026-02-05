@@ -31,7 +31,7 @@ class Slack : public TFDataOptimizerBase {
   Slack() = default;
   ~Slack() override = default;
 
-  string name() const override { return "slack"; };
+  std::string name() const override { return "slack"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -39,7 +39,7 @@ class Slack : public TFDataOptimizerBase {
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     if (!config) return errors::InvalidArgument("Config parameter required.");
 
-    const string& slack_period_param =
+    const std::string& slack_period_param =
         config->parameter_map().at("slack_period").s();
     if (!absl::SimpleAtoi(slack_period_param, &slack_period_)) {
       return errors::InvalidArgument("Invalid `slack_period` parameter: ",

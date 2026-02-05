@@ -354,7 +354,7 @@ struct RestoreOp {
   int idx;
   string tensor_name;
   string shape_and_slice;
-  string reader_prefix;
+  std::string reader_prefix;
   DataType dtype;
 
   absl::Status status;

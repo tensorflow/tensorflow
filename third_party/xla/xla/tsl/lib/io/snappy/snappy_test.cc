@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/tstring.h"
 
@@ -121,17 +120,17 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
                               absl::MakeSpan(scratch, bytes_to_read)))
                .ok()) {
       file_pos += data.size();
-      TF_CHECK_OK(
+      CHECK_OK(
           corrupt_file_writer->Append(absl::string_view(buffer, buffer_size)));
       memcpy(buffer, data.data(), data.size());
       buffer_size = data.size();
     }
 
     // Drop the last byte. File is now corrupt.
-    TF_CHECK_OK(corrupt_file_writer->Append(
+    CHECK_OK(corrupt_file_writer->Append(
         absl::string_view(buffer, buffer_size - 1)));
-    TF_CHECK_OK(corrupt_file_writer->Flush());
-    TF_CHECK_OK(corrupt_file_writer->Close());
+    CHECK_OK(corrupt_file_writer->Flush());
+    CHECK_OK(corrupt_file_writer->Close());
     delete[] scratch;
     delete[] buffer;
     fname = corrupt_fname;
@@ -229,13 +228,13 @@ void TestTellWriteFile(size_t compress_input_buf_size,
 
   // Write the compressed file.
   std::unique_ptr<WritableFile> file_writer;
-  TF_CHECK_OK(env->NewWritableFile(fname, &file_writer));
+  CHECK_OK(env->NewWritableFile(fname, &file_writer));
   io::SnappyOutputBuffer out(file_writer.get(), compress_input_buf_size,
                              compress_output_buf_size);
-  TF_CHECK_OK(out.Write(absl::string_view(data)));
-  TF_CHECK_OK(out.Flush());
-  TF_CHECK_OK(file_writer->Flush());
-  TF_CHECK_OK(file_writer->Close());
+  CHECK_OK(out.Write(absl::string_view(data)));
+  CHECK_OK(out.Flush());
+  CHECK_OK(file_writer->Flush());
+  CHECK_OK(file_writer->Close());
 }
 
 void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
@@ -252,20 +251,20 @@ void TestTell(size_t compress_input_buf_size, size_t compress_output_buf_size,
   tstring first_half(std::string(data, 0, data.size() / 2));
   tstring bytes_read;
   std::unique_ptr<RandomAccessFile> file_reader;
-  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
+  CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
   io::SnappyInputBuffer in(file_reader.get(), uncompress_input_buf_size,
                            uncompress_output_buf_size);
 
   // Read the first half of the uncompressed file and expect that Tell()
   // returns half the uncompressed length of the file.
-  TF_CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
+  CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
   EXPECT_EQ(in.Tell(), first_half.size());
   EXPECT_EQ(bytes_read, first_half);
 
   // Read the remaining half of the uncompressed file and expect that
   // Tell() points past the end of file.
   tstring second_half;
-  TF_CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
+  CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
   EXPECT_EQ(in.Tell(), data.size());
   bytes_read.append(second_half);
 
@@ -289,20 +288,20 @@ void TestTellInputStream(size_t compress_input_buf_size,
   tstring first_half(std::string(data, 0, data.size() / 2));
   tstring bytes_read;
   std::unique_ptr<RandomAccessFile> file_reader;
-  TF_CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
+  CHECK_OK(env->NewRandomAccessFile(fname, &file_reader));
   io::RandomAccessInputStream random_input_stream(file_reader.get(), false);
   io::SnappyInputStream in(&random_input_stream, uncompress_output_buf_size);
 
   // Read the first half of the uncompressed file and expect that Tell()
   // returns half the uncompressed length of the file.
-  TF_CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
+  CHECK_OK(in.ReadNBytes(first_half.size(), &bytes_read));
   EXPECT_EQ(in.Tell(), first_half.size());
   EXPECT_EQ(bytes_read, first_half);
 
   // Read the remaining half of the uncompressed file and expect that
   // Tell() points past the end of file.
   tstring second_half;
-  TF_CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
+  CHECK_OK(in.ReadNBytes(data.size() - first_half.size(), &second_half));
   EXPECT_EQ(in.Tell(), data.size());
   bytes_read.append(second_half);
 
@@ -321,8 +320,8 @@ TEST(SnappyBuffers, MultipleWritesWithoutFlush) {
     fprintf(stderr, "Snappy disabled. Skipping test\n");
     return;
   }
-  TF_CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2));
-  TF_CHECK_OK(TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2));
+  CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2));
+  CHECK_OK(TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2));
 }
 
 TEST(SnappyBuffers, MultipleWriteCallsWithFlush) {
@@ -330,9 +329,8 @@ TEST(SnappyBuffers, MultipleWriteCallsWithFlush) {
     fprintf(stderr, "skipping compression tests\n");
     return;
   }
-  TF_CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2, true));
-  TF_CHECK_OK(
-      TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2, true));
+  CHECK_OK(TestMultipleWrites(10000, 10000, 10000, 10000, 2, true));
+  CHECK_OK(TestMultipleWritesInputStream(10000, 10000, 10000, 10000, 2, true));
 }
 
 TEST(SnappyBuffers, SmallUncompressInputBuffer) {

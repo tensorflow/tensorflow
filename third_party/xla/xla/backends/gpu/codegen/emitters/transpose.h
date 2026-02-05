@@ -50,8 +50,7 @@ namespace gpu {
 class TransposeFusionBase : public EmitterBase {
  public:
   explicit TransposeFusionBase(const HloFusionAnalysis& analysis,
-                               mlir::MLIRContext* mlir_context)
-      : analysis_(analysis), mlir_context_(mlir_context) {}
+                               mlir::MLIRContext* mlir_context);
 
  protected:
   absl::Status EmitEntryFunction(
@@ -88,6 +87,9 @@ class TransposeFusionBase : public EmitterBase {
 
   const HloFusionAnalysis& analysis_;
   mlir::MLIRContext* mlir_context_;
+
+  // Number of threads per block.
+  int64_t num_threads_per_block_;
 
   // Transpose instructions that require shared memory. Note that not all
   // transposes require shared memory, e.g. the ones with a large innermost
@@ -161,6 +163,7 @@ class TransposeFusion : public TransposeFusionBase {
   int vector_size_;
   int block_size_;
   int64_t base_block_size_;
+  int num_rows_;
 };
 
 // Packed transpose is a more advanced version of the transpose emitter.
@@ -239,7 +242,6 @@ class PackedTranspose : public TransposeFusionBase {
   explicit PackedTranspose(const HloFusionAnalysis& analysis,
                            const PackedTransposeDescription& spec,
                            absl::Span<const int64_t> output_block_tile,
-                           int64_t num_shmem_groups,
                            mlir::MLIRContext* mlir_context);
 
   LaunchDimensions launch_dimensions() const override;
@@ -267,11 +269,11 @@ class PackedTranspose : public TransposeFusionBase {
       mlir::ValueRange thread_and_block_ids) const override;
 
  private:
-  IndexingMap GetInputIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetShmemWriteIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetInputIndexing(mlir::MLIRContext* mlir_context) const;
+  IndexingMap GetShmemWriteIndexing(mlir::MLIRContext* mlir_context) const;
 
-  IndexingMap GetShmemReadIndexing(mlir::MLIRContext* ctx) const;
-  IndexingMap GetOutputIndexing(mlir::MLIRContext* ctx) const;
+  IndexingMap GetShmemReadIndexing(mlir::MLIRContext* mlir_context) const;
+  IndexingMap GetOutputIndexing(mlir::MLIRContext* mlir_context) const;
 
   PackedTransposeDescription spec_;
 

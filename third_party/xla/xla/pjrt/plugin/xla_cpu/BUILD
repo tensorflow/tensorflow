@@ -28,8 +28,8 @@ xla_cc_test(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -134,7 +134,7 @@ xla_cc_test(
         ":cpu_topology_proto_cc",
         "//xla/pjrt:pjrt_common",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

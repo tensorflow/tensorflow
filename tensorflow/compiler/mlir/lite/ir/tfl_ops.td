@@ -361,12 +361,23 @@ class TFL_LSTMKernelTypeEqualsTo<string value> : AttrConstraint<
             "llvm::cast<LSTMKernelTypeAttr>($_self).getValue() == " # value>,
     "whose value is " # value>;
 
+// Helper to allow 4-bit integer types compatibility (i4, ui4, si4, quantized 4-bit).
+class TFL_4BitIntTypesAreCompatible<int i, int j> : And<[
+    Or<[CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isInteger(4)">,
+        CPred<"llvm::isa<quant::QuantizedType>(getElementTypeOrSelf($_op.getResult(" # i # "))) && "
+              "llvm::cast<quant::QuantizedType>(getElementTypeOrSelf($_op.getResult(" # i # "))).getStorageTypeIntegralWidth() == 4">]>,
+    Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isInteger(4)">,
+        CPred<"llvm::isa<quant::QuantizedType>(getElementTypeOrSelf($_op.getOperand(" # j # "))) && "
+              "llvm::cast<quant::QuantizedType>(getElementTypeOrSelf($_op.getOperand(" # j # "))).getStorageTypeIntegralWidth() == 4">]>
+]>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
   Or<[
     TCresVTEtIsSameAsOpBase<i, j>,
     TFL_TFTypesWithSameBits<i, j, 8>,
+    TFL_4BitIntTypesAreCompatible<i, j>,
     And<[
       SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
         quant_QuantizedType.predicate>,
@@ -854,14 +865,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
+      [F32, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, UI32, I1]>:$output
+      [F32, I64, I32, I16, QI4, I8, QI8, QUI8, UI8, UI32, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -1703,7 +1714,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
   let arguments = (ins
     TFL_TensorOf<[I32]>:$lookup,
-    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4]>:$value
+    TFL_TensorOf<[F32, I8, UI8, QI8, QUI8, QI4, QI2]>:$value
    );
 
   let results = (outs TFL_TensorOf<[F32, I8, UI8]>:$output);
@@ -4079,10 +4090,10 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
-  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
+  let results = (outs TFL_TensorOf<[F16, BF16, F32, F64, I1, TFL_I2, TFL_I4, UI<4>, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
 
   // TFLite's cast op does not utilize CastOptions, instead derives types
   // from the TfLiteTensors.
@@ -4200,13 +4211,13 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I1, I8, I16, I32, I64, F32, F16]>:$operand,
-    TFL_TensorOf<[I1, I8, I16, I32, I64, F32, F16]>:$update,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$operand,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$update,
     TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (
-    outs TFL_TensorOf<[I1, I8, I16, I32, I64, F32, F16]>:$output);
+    outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$output);
 
   let hasFolder = 1;
 }

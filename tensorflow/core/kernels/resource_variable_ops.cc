@@ -1015,7 +1015,7 @@ Status CopyTensorToHost(OpKernelContext* c, const Tensor& device_tensor,
   auto stream = c->op_device_context()->stream();
   TF_RETURN_IF_ERROR(c->allocate_temp(
       device_tensor.dtype(), device_tensor.shape(), host_tensor, alloc_attr));
-  se::DeviceMemoryBase device_ptr(
+  stream_executor::DeviceAddressBase device_ptr(
       const_cast<Tensor&>(device_tensor).flat<T>().data(),
       device_tensor.flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(host_tensor->flat<T>().data(), device_ptr,
@@ -1052,8 +1052,8 @@ Status DoScatterOnCpu(OpKernelContext* c, Tensor* params, const Tensor& indices,
       c, &host_params, host_indices, host_updates, num_indices));
 
   // Copy 'host_params' to device.
-  se::DeviceMemoryBase params_ptr(params->flat<T>().data(),
-                                  params->flat<T>().size() * sizeof(T));
+  stream_executor::DeviceAddressBase params_ptr(
+      params->flat<T>().data(), params->flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(&params_ptr, host_params.flat<T>().data(),
                                     host_params.NumElements() * sizeof(T)));
   if (!stream) {

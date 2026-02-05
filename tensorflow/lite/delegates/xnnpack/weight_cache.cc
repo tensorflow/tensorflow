@@ -739,6 +739,10 @@ bool IsCompatibleCacheFile(FileDescriptorView fd) {
       cache::schema::GetBufferList(buffer.get());
   XNNPACK_RETURN_CHECK(buffer_list,
                        "could not get packed weights from flatbuffer.");
+
+  XNNPACK_RETURN_CHECK(
+      xnn_initialize(/*allocator=*/nullptr) == xnn_status_success,
+      "xnn_initialize failed.");
   XNNPACK_RETURN_CHECK(CheckFingerprints(buffer_list));
   return true;
 }

@@ -263,7 +263,7 @@ LogicalResult ConvertReduceOpToArgMinMax<
     auto tf_reduce_op = BooleanReduce::create(
         rewriter, reduce_op.getLoc(), reduce_op->getResult(0).getType(),
         operand, reduction_indices,
-        /*keep_dim=*/rewriter.getBoolAttr(false));
+        /*keep_dims=*/rewriter.getBoolAttr(false));
     auto tf_argreduce_op = ArgReduce::create(rewriter, reduce_op.getLoc(),
                                              reduce_op->getResult(1).getType(),
                                              operand, reduction_indices);
@@ -273,7 +273,7 @@ LogicalResult ConvertReduceOpToArgMinMax<
     auto tf_reduce_op = Reduce::create(
         rewriter, reduce_op.getLoc(), reduce_op->getResult(0).getType(),
         operand, reduction_indices,
-        /*keep_dim=*/rewriter.getBoolAttr(false));
+        /*keep_dims=*/rewriter.getBoolAttr(false));
 
     auto tf_argreduce_op = ArgReduce::create(rewriter, reduce_op.getLoc(),
                                              reduce_op->getResult(1).getType(),
@@ -369,7 +369,7 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
   Value reduce_result =
       ReduceOp::create(rewriter, reduce_op.getLoc(), reduce_op.getType(0),
                        input, reduction_indices,
-                       /*keep_dim=*/rewriter.getBoolAttr(false));
+                       /*keep_dims=*/rewriter.getBoolAttr(false));
 
   if constexpr (BuilderHasFAF) {
     rewriter.replaceOpWithNewOp<BinaryOp>(reduce_op, reduce_result,

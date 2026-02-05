@@ -30,8 +30,8 @@ pybind_extension(
     deps = [
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 

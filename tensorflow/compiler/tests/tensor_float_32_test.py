@@ -49,13 +49,14 @@ class TensorFloat32Test(xla_test.XLATestCase):
       else:
         f64_out = compiled_fn(*[math_ops.cast(x, 'float64') for x in inputs])
         # This test compares the F32 output of the model with the F64 output.
-        # oneDNN algorithms may loose some precision due to significant accumulations
-        # for large inputs. Therefore, we need to adjust the tolerance accordingly
-        # in these cases.
+        # oneDNN or YNNPACK algorithms may loose some precision due to
+        # significant accumulations for large inputs. Therefore, we need to
+        # adjust the tolerance accordingly in these cases.
         rtol_val, atol_val = (
             (3e-4, 1e-5)
             if test_util.IsCPUTargetAvailable('x86')
-            and test_util.IsBuiltWithXLA()
+            or test_util.IsCPUTargetAvailable('arm')
+            or test_util.IsCPUTargetAvailable('aarch64')
             else (1e-5, 1e-5)
         )
         self.assertAllClose(out, f64_out, rtol=rtol_val, atol=atol_val)

@@ -129,7 +129,7 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
 bool ShapeHasHostMemorySpace(const Shape& shape) {
   return shape.IsArray() && shape.has_layout() &&
          shape.layout().memory_space() ==
-             static_cast<int64_t>(stream_executor::MemoryType::kHost);
+             static_cast<int64_t>(stream_executor::MemorySpace::kHost);
 }
 
 bool IsSlicingMemcpy(const HloInstruction& hlo) {

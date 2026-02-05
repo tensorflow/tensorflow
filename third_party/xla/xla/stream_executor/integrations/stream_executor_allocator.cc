@@ -71,7 +71,7 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
       return nullptr;
     }
 
-    ptr = (*allocation)->opaque();
+    ptr = (*allocation)->address().opaque();
     VisitAlloc(ptr, index_, num_bytes);
 
     absl::MutexLock lock(mutex_);

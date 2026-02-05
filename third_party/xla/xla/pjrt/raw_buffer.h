@@ -177,6 +177,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
     return absl::UnimplementedError(
         "GetRawBufferAsyncValue is not implemented.");
   }
+
+  virtual bool is_mutable() const { return true; }
 };
 
 class RegisterRawBufferFactory {

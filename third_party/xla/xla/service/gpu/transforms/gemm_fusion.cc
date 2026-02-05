@@ -416,7 +416,7 @@ FusionPlanAndRequirements BuildFusionPlanTowardOperands(
     if (original_hlo.opcode() == HloOpcode::kDynamicSlice) {
       // TODO(b/417172838): support dynamic slice op.
       fusion_builder.SetShouldFuseNode(node_id, false);
-      LOG(INFO) << "Not fusing dynamic slice: " << original_hlo.ToString();
+      VLOG(5) << "Not fusing dynamic slice: " << original_hlo.ToString();
       continue;
     }
 

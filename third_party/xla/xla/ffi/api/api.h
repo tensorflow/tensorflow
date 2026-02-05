@@ -1663,13 +1663,10 @@ class Handler : public Ffi {
   using ResultType = std::invoke_result_t<Fn, FnArgType<Ts>...>;
 
  public:
-  // We deliberately opt-out from the cognitive complexity check, as this
-  // function is on a hot path, any any attempt to split it leads to measurable
-  // regressions in microbenchmarks. It is a straight line block of mostly
-  // constexpr conditionals, that gets optimized to a much smaller code size in
-  // all template instantiations.
-  //
-  // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+  // Note: this function is on a hot path, any any attempt to split it leads to
+  // measurable regressions in microbenchmarks. It is a straight line block of
+  // mostly constexpr conditionals, that gets optimized to a much smaller code
+  // size in all template instantiations.
   XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const override {
     // Sanity checking call frame struct size.
     if (XLA_FFI_Error* err = CheckStructSize(

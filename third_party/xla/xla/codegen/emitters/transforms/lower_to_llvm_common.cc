@@ -47,7 +47,8 @@ mlir::LogicalResult LowerToLLVM(
     absl::FunctionRef<mlir::LogicalResult(mlir::LLVMTypeConverter&,
                                           mlir::RewritePatternSet&,
                                           mlir::ConversionTarget&)>
-        populate_platform_patterns) {
+        populate_platform_patterns,
+    bool lower_math_log1p) {
   // Populate type conversions.
   mlir::LowerToLLVMOptions llvm_opts(op.getContext(), mlir::DataLayout(op));
   mlir::LLVMTypeConverter type_converter(op.getContext(), llvm_opts);
@@ -82,7 +83,7 @@ mlir::LogicalResult LowerToLLVM(
   // Clean up any leftover math ops.
   mlir::RewritePatternSet mathPatterns(op.getContext());
   mlir::populateMathToLLVMConversionPatterns(type_converter, mathPatterns,
-                                             /*approximateLog1p=*/false);
+                                             lower_math_log1p);
   target.addIllegalDialect<mlir::math::MathDialect>();
 
   if (mlir::failed(applyFullConversion(op, target, std::move(mathPatterns)))) {

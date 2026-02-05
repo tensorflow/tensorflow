@@ -319,4 +319,18 @@ def SafeIntegerArithmeticPass : Pass<"xla-safe-integer-arithmetic"> {
   }];
 }
 
+def ExpandIntegerPowerPass : Pass<"xla-expand-integer-power"> {
+  let summary = "Expands mlir::math::IPowIop to Exponentiation by squaring.";
+
+  let description = [{
+    See https://en.wikipedia.org/wiki/Exponentiation_by_squaring.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::scf::SCFDialect",
+  ];
+}
+
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

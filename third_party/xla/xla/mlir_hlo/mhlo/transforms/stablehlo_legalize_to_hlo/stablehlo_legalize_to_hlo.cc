@@ -408,8 +408,8 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
                                    hloOperands, hloAttrs,
                                    stablehloOp.getBranches().size());
     } else {
-      hloOp = rewriter.create<StablehloToHloOp<StablehloOpTy>>(
-          stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
+      hloOp = StablehloToHloOp<StablehloOpTy>::create(
+          rewriter, stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
     }
 
     // For backward compatibility, fix custom call with mhlo.backend_config

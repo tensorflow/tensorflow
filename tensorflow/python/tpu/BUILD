@@ -18,6 +18,7 @@ visibility = [
     "//learning/serving:__subpackages__",
     "//research/graph:__subpackages__",
     "//smartass/brain/configure:__subpackages__",
+    "//third_party/cloud_tpu:__subpackages__",
     "//third_party/py/jax_tpu_embedding:__subpackages__",
     "//third_party/py/lingvo:__subpackages__",
     "//third_party/py/orbit:__subpackages__",
@@ -1017,10 +1018,10 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:pybind11_status_headers",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:status_casters",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ] + if_pywrap(
         if_false = [
             "//tensorflow/core/tpu/kernels:_pywrap_sparse_core_layout_header_only",
@@ -1042,8 +1043,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 

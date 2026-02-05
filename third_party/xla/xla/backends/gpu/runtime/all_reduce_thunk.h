@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -60,6 +60,18 @@ class AllReduceReduceScatterThunkBase : public CollectiveThunk {
   ReductionKind reduction_kind() const { return config_.reduction_kind; }
 
   absl::Span<const Buffer> buffers() const { return buffers_; }
+
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
 
  protected:
   const AllReduceConfig config_;

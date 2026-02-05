@@ -20,7 +20,7 @@ limitations under the License.
 namespace stream_executor {
 namespace cuda {
 
-PLATFORM_DEFINE_ID(kCudaPlatformId);
+PLATFORM_DEFINE_ID(kCudaPlatformId, CUDA);
 
 }  // namespace cuda
 }  // namespace stream_executor

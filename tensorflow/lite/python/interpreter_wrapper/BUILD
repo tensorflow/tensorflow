@@ -17,7 +17,7 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//third_party/py/numpy:headers",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -46,7 +46,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -57,7 +57,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:stateful_error_reporter",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -67,7 +67,7 @@ cc_library(
     hdrs = ["python_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -103,8 +103,8 @@ pybind_extension(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ] + select({
         ":tflite_pip_with_flex": ["//tensorflow/lite/delegates/flex:delegate"],
         "//conditions:default": [],

@@ -28,7 +28,7 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // Initializes cluster_ and placer_.
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
     cpu_device.set_num_cores(4);

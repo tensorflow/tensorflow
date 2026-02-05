@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 #define XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_
 
+#if defined(__has_attribute) && __has_attribute(ext_vector_type) && \
+    defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -169,5 +172,8 @@ Vec Clamp(Vec x, Scalar min, Scalar max) {
 }
 }  // namespace codegen
 }  // namespace xla
+
+#endif  // defined(__has_attribute) && __has_attribute(ext_vector_type) &&
+        // defined(__has_builtin) && __has_builtin(__builtin_vectorelements)
 
 #endif  // XLA_CODEGEN_INTRINSIC_CPP_VECTOR_OPS_H_

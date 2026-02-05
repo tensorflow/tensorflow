@@ -48,7 +48,7 @@ GraphDef SimpleTestGraph() {
 }
 
 template <typename T>
-const string GetGraphViewTypeAsString() {
+const std::string GetGraphViewTypeAsString() {
   return std::is_same<T, class GraphView>::value ? "GraphView"
                                                  : "MutableGraphView";
 }
@@ -136,9 +136,9 @@ TYPED_TEST(TypedGraphViewTest, GetNodeWithName) {
   TypeParam graph_view(&graph, &s);
   TF_ASSERT_OK(s);
 
-  std::vector<string> node_names = {"a", "b", "c", "d"};
+  std::vector<std::string> node_names = {"a", "b", "c", "d"};
   for (int i = 0; i < node_names.size(); ++i) {
-    const string& node_name = node_names[i];
+    const std::string& node_name = node_names[i];
     const auto* node = graph_view.GetNode(node_name);
     ASSERT_NE(node, nullptr);
     EXPECT_EQ(node->node(), graph.mutable_node(i));
@@ -173,7 +173,7 @@ TYPED_TEST(TypedGraphViewTest, HasNode) {
   TypeParam graph_view(&graph, &s);
   TF_ASSERT_OK(s);
 
-  for (const string& node_name : {"a", "b", "c", "d"}) {
+  for (const std::string& node_name : {"a", "b", "c", "d"}) {
     EXPECT_TRUE(graph_view.HasNode(node_name));
   }
 
@@ -801,7 +801,7 @@ class CompareGraphTest : public GrapplerTest {
     EXPECT_EQ(graph_view->NumNodes(), expected_graph_view.NumNodes());
 
     for (const NodeView& expected_node_view : expected_graph_view.GetNodes()) {
-      const string& node_name = expected_node_view.GetName();
+      const std::string& node_name = expected_node_view.GetName();
       MutableNodeView* node_view = graph_view->GetNode(node_name);
       ASSERT_NE(node_view, nullptr);
 
@@ -1020,7 +1020,7 @@ TEST_F(MutationTest, NewNodeBadFaninsAfterAdd) {
   mutation->AddOrUpdateRegularFanin(new_node, 1, {"valid", 2});
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: new node 'valid' is ill-formed.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1045,7 +1045,7 @@ TEST_F(MutationTest, NewNodesConflictingNames) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'a' exists in "
       "Mutation.";
   EXPECT_EQ(s.message(), expected_error_msg);
@@ -1067,7 +1067,7 @@ TEST_F(MutationTest, UpdateNodeAndAddSelfLoop) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: inplace updated node 'd' is ill-formed.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1089,7 +1089,7 @@ TEST_F(MutationTest, RenameNodeAndAddSelfLoop) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: renamed updated node 'e' ('d') is ill-formed.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1114,7 +1114,7 @@ TEST_F(MutationTest, ExistingNodesConflictingNames) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'b' exists in "
       "Mutation.";
   EXPECT_EQ(s.message(), expected_error_msg);
@@ -1140,7 +1140,7 @@ TEST_F(MutationTest, NewAndExistingNodesConflictingNames) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'a' exists in "
       "Mutation.";
   EXPECT_EQ(s.message(), expected_error_msg);
@@ -1166,7 +1166,7 @@ TEST_F(MutationTest, NewAndExistingRenamedNodesConflictingNames) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'e' exists in "
       "Mutation.";
   EXPECT_EQ(s.message(), expected_error_msg);
@@ -1188,7 +1188,7 @@ TEST_F(MutationTest, RemoveNodesWithFanouts) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'b'.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1222,7 +1222,7 @@ TEST_F(MutationTest, SwapNodeNamesWithCycle) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: renamed updated node 'b' ('d') is ill-formed.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1256,7 +1256,7 @@ TEST_F(MutationTest, RenamedNodeWithFanouts) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'a'.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1344,7 +1344,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveRegularFanout) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'a'.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1388,7 +1388,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveControlledFanout) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'c'.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
@@ -1705,7 +1705,7 @@ TEST_F(MutationTest, Reset) {
 
   s = mutation->Apply();
   EXPECT_FALSE(s.ok());
-  string expected_error_msg =
+  std::string expected_error_msg =
       "Mutation::Apply error: fanout 'b' exist for missing node 'a'.";
   EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, TestGraphForMutation());
@@ -2002,7 +2002,7 @@ TEST_F(MutationTest, EmptyMutationUpdateIndexPersisting) {
 class TopologicalSortTest : public CompareGraphTest {
  protected:
   void CompareGraphOrder(const MutableGraphView& graph_view,
-                         absl::Span<const string> node_names) {
+                         absl::Span<const std::string> node_names) {
     const int num_nodes = graph_view.NumNodes();
     ASSERT_EQ(num_nodes, node_names.size());
     for (int i = 0; i < num_nodes; ++i) {
@@ -2012,7 +2012,7 @@ class TopologicalSortTest : public CompareGraphTest {
 
   void CompareGraphNodePrecedences(
       const MutableGraphView& graph_view,
-      absl::Span<const std::pair<string, std::string>> node_precedences) {
+      absl::Span<const std::pair<std::string, std::string>> node_precedences) {
     for (const auto& node_precedence : node_precedences) {
       auto* parent_node = graph_view.GetNode(node_precedence.first);
       ASSERT_NE(parent_node, nullptr);

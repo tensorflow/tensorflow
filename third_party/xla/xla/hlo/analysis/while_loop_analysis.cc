@@ -167,7 +167,7 @@ static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
   // Fast path : pattern matching.
   std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
       GetGTEOperandIndices(out, in);
-  if (tuple_idxs != std::nullopt) {
+  if (tuple_idxs.has_value()) {
     return tuple_idxs;
   }
 

@@ -32,7 +32,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -60,8 +60,8 @@ pybind_extension(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 

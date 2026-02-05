@@ -36,7 +36,7 @@ cc_library(
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
 )
@@ -70,8 +70,10 @@ xla_test(
     ],
     deps = [
         ":kernel_name_tracer",
+        "//xla/backends/gpu/runtime:command",
         "//xla/backends/gpu/runtime:command_buffer_cmd",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:command_executor",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/coordination/grpc_coordination_service_impl.h"
 
+#include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/threadpool.h"
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -268,6 +269,32 @@ ENTRY main (input_x: f32[1000,1000], input_y: f32[1000,1000]) -> f32[1000,1000] 
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(ParallelTaskAssignmentTest, NestedTupleParallelized) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule nested_tuple
+
+fused_computation (lhs: f32[1000,1000], rhs: f32[1000,1000]) -> ((f32[1000,1000], f32[1000,1000])) {
+  lhs = f32[1000,1000] parameter(0)
+  rhs = f32[1000,1000] parameter(1)
+  add_result = f32[1000,1000] add(lhs, rhs)
+  subtract_result = f32[1000,1000] subtract(lhs, rhs)
+  tuple_0 = (f32[1000,1000], f32[1000,1000]) tuple(add_result, subtract_result)
+  ROOT tuple_result = ((f32[1000,1000], f32[1000,1000])) tuple(tuple_0)
+}
+
+ENTRY main (lhs: f32[1000,1000], rhs: f32[1000,1000]) -> ((f32[1000,1000], f32[1000,1000])) {
+  lhs = f32[1000,1000] parameter(0)
+  rhs = f32[1000,1000] parameter(1)
+  ROOT fused_result = ((f32[1000,1000], f32[1000,1000])) fusion(lhs, rhs), kind=kLoop, calls=fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

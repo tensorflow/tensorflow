@@ -135,6 +135,30 @@ std::optional<SymbolicTiles> PropagateTileToInputForConcatenateOp(
   return symbolic_tiles;
 }
 
+SymbolicTiles PropagateTileToOutputForConcatenateOp(
+    const HloConcatenateInstruction& concatenate,
+    const SymbolicTile& input_tile, int64_t input_index) {
+  // Offsets and upper bounds need to be adjusted in the concatenate dimension
+  // for the output.
+  int64_t concat_dim = concatenate.concatenate_dimension();
+
+  int64_t output_offset = 0;
+  for (int i = 0; i < input_index; ++i) {
+    output_offset += concatenate.operand(i)->shape().dimensions(concat_dim);
+  }
+
+  SmallVector<DimTile> output_dim_tiles(input_tile.dim_tiles().begin(),
+                                        input_tile.dim_tiles().end());
+
+  output_dim_tiles[concat_dim].offset =
+      output_offset + input_tile.dim_tiles()[concat_dim].offset;
+
+  output_dim_tiles[concat_dim].upper_bound =
+      input_tile.dim_tiles()[concat_dim].upper_bound + output_offset;
+
+  return {SymbolicTile{input_tile.tiling_space(), std::move(output_dim_tiles)}};
+}
+
 template <typename T>
 SmallVector<T> Concat(ArrayRef<T> c1, ArrayRef<T> c2) {
   SmallVector<T> result;
@@ -289,10 +313,10 @@ SymbolicTiles PropagateTileToOutputForTransposeOp(
 }
 
 SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
-                                           const HloDotInstruction& dot,
+                                           const HloInstruction& hlo,
                                            const SymbolicTile& output_tile) {
   MLIRContext* ctx = output_tile.mlir_context();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  const DotDimensionNumbers& dim_numbers = hlo.dot_dimension_numbers();
   absl::Span<const int64_t> lhs_contracting_dims(
       dim_numbers.lhs_contracting_dimensions());
   absl::Span<const int64_t> rhs_contracting_dims =
@@ -301,11 +325,11 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
   absl::Span<const int64_t> lhs_batch_dims = dim_numbers.lhs_batch_dimensions();
   absl::Span<const int64_t> rhs_batch_dims = dim_numbers.rhs_batch_dimensions();
 
-  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& lhs_shape = hlo.operand(0)->shape();
   const int64_t lhs_rank = lhs_shape.dimensions().size();
   SmallVector<DimTile> lhs_dim_tiles(lhs_rank);
 
-  const Shape& rhs_shape = dot.operand(1)->shape();
+  const Shape& rhs_shape = hlo.operand(1)->shape();
   const int64_t rhs_rank = rhs_shape.dimensions().size();
   SmallVector<DimTile> rhs_dim_tiles(rhs_rank);
 
@@ -347,11 +371,11 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
        llvm::enumerate(llvm::zip(lhs_contracting_dims, rhs_contracting_dims))) {
     auto [lhs_contracting_dim, rhs_contracting_dim] = contracting_dims;
     const TilingSpace::DimensionInfo& contracting_dim_info =
-        tiling_space.GetDimensionInfo(dot, output_dim_id++);
+        tiling_space.GetDimensionInfo(hlo, output_dim_id++);
     CHECK(contracting_dim_info.type ==
           TilingSpace::DimensionSemantics::kSequential)
         << "Expected a sequential dimension info for contracting dimension "
-        << lhs_contracting_dim << " in dot op " << dot.ToString();
+        << lhs_contracting_dim << " in dot (like) op " << hlo.ToString();
     lhs_dim_tiles[lhs_contracting_dim] = rhs_dim_tiles[rhs_contracting_dim] =
         GetDefaultDimTile(contracting_dim_info.id,
                           contracting_dim_info.dimension_size, ctx);
@@ -359,6 +383,54 @@ SymbolicTiles PropagateTileToInputForDotOp(const TilingSpace& tiling_space,
   return SymbolicTiles{
       SymbolicTile{output_tile.tiling_space(), std::move(lhs_dim_tiles)},
       SymbolicTile{output_tile.tiling_space(), std::move(rhs_dim_tiles)}};
+}
+
+// Helper function for PropagateTileToInputForScaledDotOp to compute the
+// scale tile from the operand tile.
+SymbolicTile ComputeTileForScale(const Shape& scale_shape,
+                                 const Shape& operand_shape,
+                                 const SymbolicTile& operand_tile,
+                                 MLIRContext* ctx) {
+  SmallVector<DimTile> scale_dim_tiles;
+  scale_dim_tiles.reserve(scale_shape.dimensions().size());
+  for (auto [dim, operand_dim_tile] :
+       llvm::enumerate(operand_tile.dim_tiles())) {
+    const int64_t scale_dim_size = scale_shape.dimensions(dim);
+    const int64_t operand_dim_size = operand_shape.dimensions(dim);
+    if (scale_dim_size == operand_dim_size) {
+      scale_dim_tiles.push_back(operand_dim_tile);
+      continue;
+    }
+
+    const int64_t block_size = operand_dim_size / scale_dim_size;
+    CHECK_GT(block_size, 1);
+    auto max_index = (operand_dim_tile.offset +
+                      (operand_dim_tile.size - 1) * operand_dim_tile.stride)
+                         .floorDiv(block_size);
+    auto min_index = operand_dim_tile.offset.floorDiv(block_size);
+    scale_dim_tiles.push_back(
+        DimTile{operand_dim_tile.offset.floorDiv(block_size),
+                max_index - min_index + 1, mlir::getAffineConstantExpr(1, ctx),
+                operand_dim_tile.upper_bound.floorDiv(block_size)});
+  }
+  return SymbolicTile{operand_tile.tiling_space(), std::move(scale_dim_tiles)};
+}
+
+SymbolicTiles PropagateTileToInputForScaledDotOp(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const SymbolicTile& output_tile) {
+  SymbolicTiles operand_tiles =
+      PropagateTileToInputForDotOp(tiling_space, hlo, output_tile);
+
+  auto lhs_scale_tile =
+      ComputeTileForScale(hlo.operand(2)->shape(), hlo.operand(0)->shape(),
+                          operand_tiles[0], output_tile.mlir_context());
+  auto rhs_scale_tile =
+      ComputeTileForScale(hlo.operand(3)->shape(), hlo.operand(1)->shape(),
+                          operand_tiles[1], output_tile.mlir_context());
+
+  return {std::move(operand_tiles[0]), std::move(operand_tiles[1]),
+          std::move(lhs_scale_tile), std::move(rhs_scale_tile)};
 }
 
 SymbolicTiles PropagateTileToInputForReduceOp(
@@ -400,6 +472,24 @@ SymbolicTiles PropagateTileToInputForReduceOp(
   return SymbolicTiles{std::move(operand_tiles)};
 }
 
+SymbolicTiles PropagateTileToOutputForReduceOp(
+    const HloReduceInstruction& reduce, const SymbolicTile& input_tile) {
+  absl::flat_hash_set<int64_t> reduce_dims(reduce.dimensions().begin(),
+                                           reduce.dimensions().end());
+
+  SmallVector<DimTile> output_dim_tiles;
+  output_dim_tiles.reserve(input_tile.num_dim_tiles() - reduce_dims.size());
+  for (auto [idx, input_dim_tile] : llvm::enumerate(input_tile.dim_tiles())) {
+    if (!reduce_dims.contains(idx)) {
+      output_dim_tiles.push_back(input_dim_tile);
+    }
+  }
+
+  SymbolicTile output_tile{input_tile.tiling_space(),
+                           std::move(output_dim_tiles)};
+  return {std::move(output_tile)};
+}
+
 }  // namespace
 
 std::string ToString(const SymbolicTiles& tiles) {
@@ -430,8 +520,10 @@ std::optional<SymbolicTiles> PropagateTileToInput(
         tiling_space, *Cast<HloDynamicSliceInstruction>(&hlo), output_tile);
   }
   if (hlo.opcode() == HloOpcode::kDot) {
-    return PropagateTileToInputForDotOp(
-        tiling_space, *Cast<HloDotInstruction>(&hlo), output_tile);
+    return PropagateTileToInputForDotOp(tiling_space, hlo, output_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kScaledDot) {
+    return PropagateTileToInputForScaledDotOp(tiling_space, hlo, output_tile);
   }
   if (hlo.opcode() == HloOpcode::kPad) {
     const HloPadInstruction& pad = *Cast<HloPadInstruction>(&hlo);
@@ -465,6 +557,19 @@ std::optional<SymbolicTiles> PropagateTileToOutput(
   }
   if (hlo.opcode() == HloOpcode::kTranspose) {
     return PropagateTileToOutputForTransposeOp(hlo, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kReduce) {
+    const HloReduceInstruction& reduce = *Cast<HloReduceInstruction>(&hlo);
+    if (input_index >= reduce.input_count()) {
+      LOG(INFO) << "Input to output tile propagation not implemented "
+                   "from reduction init operands.";
+      return std::nullopt;
+    }
+    return PropagateTileToOutputForReduceOp(reduce, input_tile);
+  }
+  if (hlo.opcode() == HloOpcode::kConcatenate) {
+    return PropagateTileToOutputForConcatenateOp(
+        *Cast<HloConcatenateInstruction>(&hlo), input_tile, input_index);
   }
   LOG(INFO) << "Input to output tile propagation not implemented for "
             << hlo.opcode();

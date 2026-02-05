@@ -57,7 +57,7 @@ static int64_t GetNumLocalParticipants(
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
+    CollectiveOpGroupMode group_mode, bool is_p2p,
     bool include_participant_groups) {
   TF_RET_CHECK(params.collectives) << "Collectives API is not provided";
 
@@ -90,13 +90,6 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
                           GetParticipatingDevicesGroups(
                               *params.device_assn, replica_groups, group_mode));
     }
-
-    if (params.collectives->IsGlobalConfig() &&
-        (participants.size() != params.device_assn->replica_count())) {
-      return InvalidArgument(
-          "Partial replica groups are not allowed when using NCCL_COMM_ID "
-          "environment configuration.");
-    }
   }
 
   // Remove trivial group that contains all participants, as we do not want to
@@ -125,8 +118,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
                                           unique_incarnations.end());
   absl::c_sort(incarnations);
 
-  return GpuCliqueKey(std::move(participants), num_local_participants,
-                      xla::gpu::IsP2PStreamKind(stream_kind),
+  return GpuCliqueKey(std::move(participants), num_local_participants, is_p2p,
                       std::move(participant_groups), root_device, incarnations);
 }
 

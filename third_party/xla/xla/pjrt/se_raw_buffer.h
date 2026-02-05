@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -60,7 +61,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
  public:
   PjRtStreamExecutorDeviceEventPromise(PjRtMemorySpace* memory_space,
                                        LocalDeviceState* local_device,
-                                       tsl::thread::ThreadPool* thread_pool);
+                                       AsyncWorkRunner* async_work_runner);
 
   tsl::AsyncValue* async_value() const override {
     return event_.GetAsyncValue();
@@ -88,6 +89,22 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
   LocalDeviceState* local_device_;
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
+};
+
+class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
+ public:
+  explicit PjRtStreamExecutorDeviceEventSet(size_t reservation) {
+    events_.reserve(reservation);
+  }
+
+  void AddEvent(BufferSequencingEvent* event) { events_.insert(event); }
+
+  const absl::flat_hash_set<BufferSequencingEvent*>& events() const {
+    return events_;
+  }
+
+ private:
+  absl::flat_hash_set<BufferSequencingEvent*> events_;
 };
 
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {

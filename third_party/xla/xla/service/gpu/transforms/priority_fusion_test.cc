@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -54,6 +55,8 @@ namespace gpu {
 
 class PriorityFusionTest : public HloHardwareIndependentTestBase {
  public:
+  PriorityFusionTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   std::vector<HloFusionAnalysis::EmitterFusionKind> RunAndGetFusionKinds(
       absl::string_view hlo) {
     auto module = ParseAndReturnVerifiedModule(hlo).value();

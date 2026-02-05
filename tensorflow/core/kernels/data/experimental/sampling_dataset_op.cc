@@ -52,7 +52,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::unique_ptr<IteratorBase>(
         new Iterator({this, name_utils::IteratorPrefix(kDatasetType, prefix)},
                      seeds_.first, seeds_.second));
@@ -66,7 +66,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -201,7 +201,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
     float Random() {
       mutex_lock l(mu_);
       num_random_samples_++;
-      uint32 random_uint = generator_();
+      uint32_t random_uint = generator_();
 
       // PhiloxRandom returns 32-bit unsigned ints. Convert to float in [0,1)
       // using the same method that the RandomUniform op uses.

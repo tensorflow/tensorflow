@@ -26,11 +26,11 @@
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/Support/Casting.h"
 #include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -45,9 +45,9 @@
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/types.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -97,101 +97,6 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
     rpc_helper_->set_host_buffer_store(host_buffer_store_);
 
     InitResponse response;
-    if (rpc_helper_->protocol_version() <= 3) {
-      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-          R"pb(
-            platform_name: "ifrt-service"
-            platform_version: "n/a"
-            platform_id: 42
-            process_index: 1
-            runtime_type: "ifrt-service"
-            all_devices {
-              id: 0
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 0
-              memory_ids: [ 0 ]
-              deprecated_attributes {
-                key: "name"
-                value { string_value: "device0" }
-              }
-            }
-            all_devices {
-              id: 1
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 1
-              memory_ids: [ 1 ]
-              deprecated_attributes {
-                key: "name"
-                value { string_value: "device1" }
-              }
-            }
-            addressable_device_ids: 1
-            memories {
-              id: 0
-              memory_space_kind: "mock"
-              kind_id: 0
-              device_ids: [ 0 ]
-            }
-            memories {
-              id: 1
-              memory_space_kind: "mock"
-              kind_id: 1
-              device_ids: [ 1 ]
-            }
-          )pb",
-          &response));
-    } else if (rpc_helper_->protocol_version() < 7) {
-      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-          R"pb(
-            platform_name: "ifrt-service"
-            platform_version: "n/a"
-            platform_id: 42
-            process_index: 1
-            runtime_type: "ifrt-service"
-            all_devices {
-              id: 0
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 0
-              memory_ids: [ 0 ]
-              attributes {
-                attributes {
-                  key: "name"
-                  value { string_value: "device0" }
-                }
-              }
-            }
-            all_devices {
-              id: 1
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 1
-              memory_ids: [ 1 ]
-              attributes {
-                attributes {
-                  key: "name"
-                  value { string_value: "device1" }
-                }
-              }
-            }
-            addressable_device_ids: 1
-            memories {
-              id: 0
-              memory_space_kind: "mock"
-              kind_id: 0
-              device_ids: [ 0 ]
-            }
-            memories {
-              id: 1
-              memory_space_kind: "mock"
-              kind_id: 1
-              device_ids: [ 1 ]
-            }
-          )pb",
-          &response));
-    } else {
       ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
           R"pb(
             platform_name: "ifrt-service"
@@ -241,7 +146,6 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             }
           )pb",
           &response));
-    }
 
     AttributeMap::Map client_attributes(
         {{"test_key", AttributeMap::StringValue("test_value")}});
@@ -465,9 +369,41 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
               Not(absl_testing::IsOk()));
 }
 
+TEST_P(ClientTest, ReshardArraysSuccess) {
+  std::shared_ptr<xla::ifrt::SingleDeviceSharding> sharding =
+      xla::ifrt::SingleDeviceSharding::Create(device_, xla::ifrt::MemoryKind());
+  auto array = tsl::MakeRef<Array>(client_.get(), rpc_helper_,
+                                   DType(DType::kF64), Shape({1, 2, 3}),
+                                   sharding, ArrayHandle{1234}, layout_1_);
+
+  IfrtResponse response;
+  response.mutable_reshard_arrays_response()->add_array_handles(1);
+
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kReshardArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
+      .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
+
+  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array};
+  std::vector<xla::ifrt::ArraySpec> specs;
+  specs.push_back({array->dtype(), array->shape(), sharding, layout_2_});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto reshared_arrays,
+      client_->ReshardArrays(absl::MakeSpan(arrays), absl::MakeSpan(specs),
+                             ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_THAT(reshared_arrays, SizeIs(1));
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const xla::PjRtLayout> layout,
+                          reshared_arrays[0]->pjrt_layout());
+  EXPECT_EQ(layout->ToString(), layout_2_->ToString());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ClientTestWithAllVersions, ClientTest,
-    testing::Range(kClientMinVersion, kClientMaxVersion + 1),
+    testing::Range(protocol_version::kClientMin,
+                   protocol_version::kClientMax + 1),
     [](const testing::TestParamInfo<ClientTest::ParamType>& info) {
       return absl::StrCat(info.param);
     });

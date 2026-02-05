@@ -180,7 +180,7 @@ class GpuBlasLtThunkBuilder {
 
  private:
   se::StreamExecutor* exec_;
-  se::StreamExecutorMemoryAllocator allocator_;
+  stream_executor::StreamExecutorAddressAllocator allocator_;
   se::GpuComputeCapability gpu_comp_;
   std::deque<BufferAllocation> allocs_;
   std::vector<se::ScopedDeviceAddress<uint8_t>> mem_buffers_;

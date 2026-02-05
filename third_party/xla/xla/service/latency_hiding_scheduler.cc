@@ -828,6 +828,13 @@ BufferInfoTracker::BufferInfoTracker(
   std::function<void(const HloComputation*)> process_computation =
       [&process_computation, module, alias_analysis, this,
        &shape_size_bytes](const HloComputation* computation) {
+        // Skip computations that don't have schedules (e.g., host computations
+        // created during compute offload that are executed separately).
+        // Note: We don't need to track memory usage on CPU for now. If needed,
+        // it can be added later.
+        if (!module->schedule().is_computation_scheduled(computation)) {
+          return;
+        }
         const HloInstructionSequence& sequence =
             module->schedule().sequence(computation);
         for (int idx = 0; idx < sequence.size(); ++idx) {
@@ -862,6 +869,13 @@ void ModulePressureState::InitializePressureStates() {
                                 HloComputation* computation,
                                 const MemoryPressureTracker::LiveBufferSet&
                                     initial_live_buffers) {
+        // Skip computations that don't have schedules (e.g., host computations
+        // created during compute offload that are executed separately).
+        // Note: We don't need to track memory usage on CPU for now. If needed,
+        // it can be added later.
+        if (!module_->schedule().is_computation_scheduled(computation)) {
+          return;
+        }
         const HloInstructionSequence& sequence =
             module_->schedule().sequence(computation);
         MemoryPressureTracker tracker(hlo_alias_analysis_, buffer_tracker_,
@@ -1006,7 +1020,12 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
       continue;
     }
     auto it = pressure_state_cache_.find(called_comp);
-    CHECK(it != pressure_state_cache_.end());
+    // Skip computations that don't have pressure state tracked (e.g., host
+    // computations created during compute offload that are executed
+    // separately).
+    if (it == pressure_state_cache_.end()) {
+      continue;
+    }
     computations_peak = std::max(computations_peak, it->second.memory_peak);
   }
   if (pressure_state_.memory_peak < live_memory_usage_ + computations_peak) {
@@ -1043,7 +1062,12 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
         continue;
       }
       auto it = pressure_state_cache_.find(called_comp);
-      CHECK(it != pressure_state_cache_.end());
+      // Skip computations that don't have pressure state tracked (e.g., host
+      // computations created during compute offload that are executed
+      // separately).
+      if (it == pressure_state_cache_.end()) {
+        continue;
+      }
       // Take max increase of the called computations.
       peak = called_comp_peak =
           std::max(called_comp_peak, it->second.memory_peak);

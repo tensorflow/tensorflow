@@ -111,6 +111,14 @@ PjRtTransferServer::PjRtTransferServer(
       socket_address_(socket_address),
       transport_addresses_(transport_addresses) {}
 
+PjRtTransferServer::~PjRtTransferServer() {
+  connections_.clear();
+  if (socket_server_.has_value()) {
+    (*socket_server_)->WaitForQuiesce();
+  }
+  socket_server_ = std::nullopt;
+}
+
 absl::StatusOr<PjRtTransferServer::PjRtTransferServerFactory>
 PjRtTransferServer::MakePjRtTransferServerFactory(
     size_t transfer_size, absl::Duration cross_host_transfer_timeout,

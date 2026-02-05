@@ -289,10 +289,10 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
     rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q =
-        rewriter.create<QuantizeOpT>(op.getLoc(), result_type, op.getArg());
+        QuantizeOpT::create(rewriter, op.getLoc(), result_type, op.getArg());
     q->setAttr(kVolatileOpAttrName, rewriter.getUnitAttr());
 
-    auto dq = rewriter.create<DequantizeOpT>(op.getLoc(), op.getType(), q);
+    auto dq = DequantizeOpT::create(rewriter, op.getLoc(), op.getType(), q);
     op.getResult().replaceAllUsesWith(dq);
     q.getOperation()->replaceUsesOfWith(dq, op.getArg());
     op.erase();

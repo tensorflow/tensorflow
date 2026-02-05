@@ -348,26 +348,27 @@ static Value StaticBinaryBroadcast(Location loc, Value x, Value y,
   }
   auto larger_broadcast_dims =
       GetI64ArrayAttrForSeq(0, result_type.getRank(), &builder);
+  auto broadcast_dims_attr = ToDenseI64ArrayAttr(broadcast_dims, &builder);
   if (x_type.getRank() < y_type.getRank()) {
     if (x_type != result_type) {
-      x = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, x,
-                                                      broadcast_dims);
+      x = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, x,
+                                              broadcast_dims_attr);
     }
     if (y_type != result_type) {
-      y = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, y,
-                                                      larger_broadcast_dims);
+      y = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, y,
+                                              larger_broadcast_dims);
     }
   } else {
     if (x_type != result_type) {
-      x = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, x,
-                                                      larger_broadcast_dims);
+      x = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, x,
+                                              larger_broadcast_dims);
     }
     if (y_type != result_type) {
-      y = builder.create<stablehlo::BroadcastInDimOp>(loc, result_type, y,
-                                                      broadcast_dims);
+      y = stablehlo::BroadcastInDimOp::create(builder, loc, result_type, y,
+                                              broadcast_dims_attr);
     }
   }
-  return builder.create<BinaryOp>(loc, x, y);
+  return BinaryOp::create(builder, loc, x, y);
 }
 
 // Gets a 1D tensor type suitable for expressing extents of the given tensor
@@ -4656,12 +4657,12 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
         tensorflow::GetTypeFromTFTensorShape(broadcasted_shape, element_type);
     Type output_type = op.getType();
 
-    Value result = rewriter.create<stablehlo::BroadcastInDimOp>(
-        loc, broadcasted_type, op.getInput(),
+    Value result = stablehlo::BroadcastInDimOp::create(
+        rewriter, loc, broadcasted_type, op.getInput(),
         GetI64ArrayAttr(broadcast_dimensions, &rewriter));
 
     if (output_type != broadcasted_type) {
-      result = rewriter.create<stablehlo::ReshapeOp>(loc, output_type, result);
+      result = stablehlo::ReshapeOp::create(rewriter, loc, output_type, result);
     }
 
     rewriter.replaceOp(op, {result});
@@ -5309,22 +5310,24 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
     // just using static broadcasting.
     auto index_type =
         tensorflow::GetTypeFromTFTensorShape(output_dims, element_type);
-    auto iota = rewriter.create<stablehlo::IotaOp>(
-        loc, index_type, IntegerAttr::get(rewriter.getIntegerType(64), axis));
-    auto broadcast_indices = rewriter.create<stablehlo::BroadcastInDimOp>(
-        loc, index_type, op.getIndices(),
+    auto iota = stablehlo::IotaOp::create(
+        rewriter, loc, index_type,
+        IntegerAttr::get(rewriter.getIntegerType(64), axis));
+    auto broadcast_indices = stablehlo::BroadcastInDimOp::create(
+        rewriter, loc, index_type, op.getIndices(),
         GetI64ArrayAttr(broadcast_dims, &rewriter));
 
-    Value compare = rewriter.create<stablehlo::CompareOp>(
-        loc, broadcast_indices, iota, stablehlo::ComparisonDirection::EQ);
-    Value on_value = rewriter.create<stablehlo::BroadcastOp>(
-        loc, op.getType(), op.getOnValue(),
+    Value compare =
+        stablehlo::CompareOp::create(rewriter, loc, broadcast_indices, iota,
+                                     stablehlo::ComparisonDirection::EQ);
+    Value on_value = stablehlo::BroadcastOp::create(
+        rewriter, loc, op.getType(), op.getOnValue(),
         GetI64ArrayAttr(output_dims, &rewriter));
-    Value off_value = rewriter.create<stablehlo::BroadcastOp>(
-        loc, op.getType(), op.getOffValue(),
+    Value off_value = stablehlo::BroadcastOp::create(
+        rewriter, loc, op.getType(), op.getOffValue(),
         GetI64ArrayAttr(output_dims, &rewriter));
-    Value result = rewriter.create<stablehlo::SelectOp>(
-        loc, op.getType(), compare, on_value, off_value);
+    Value result = stablehlo::SelectOp::create(rewriter, loc, op.getType(),
+                                               compare, on_value, off_value);
 
     rewriter.replaceOp(op, {result});
 
@@ -6617,7 +6620,22 @@ class ConvertXlaConvV2Op : public OpRewritePattern<TF::XlaConvV2Op> {
         "precision_config",
         xla::stablehlo::ConvertPrecisionConfig(&precision_config, &rewriter));
 
-    SmallVector<Value, 2> operands{op.getLhs(), op.getRhs()};
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
+    auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
+    auto lhs_element_type = lhs_type.getElementType();
+    auto rhs_element_type = rhs_type.getElementType();
+    if (lhs_element_type != rhs_element_type) {
+      assert(lhs_element_type.getIntOrFloatBitWidth() >=
+             rhs_element_type.getIntOrFloatBitWidth());
+      auto new_rhs_type =
+          RankedTensorType::get(rhs_type.getShape(), lhs_element_type);
+      rhs = stablehlo::ConvertOp::create(rewriter, op.getLoc(), new_rhs_type,
+                                         rhs);
+    }
+
+    SmallVector<Value, 2> operands{lhs, rhs};
     NamedAttribute attrs[] = {
         window_strides_named_attr,      padding_named_attr,
         lhs_dilation_named_attr,        rhs_dilation_named_attr,

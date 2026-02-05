@@ -1,4 +1,5 @@
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 /* Copyright 2021 The OpenXLA Authors.
 
@@ -97,13 +98,11 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
                               const HloCollectivePermuteInstruction* instr,
                               int64_t replica_count, int64_t partition_count,
                               const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled,
-                              AsyncStreamKind stream_kind);
+                              bool p2p_memcpy_enabled);
   CollectivePermuteStartThunk(ThunkInfo thunk_info, const P2PConfig& config,
                               std::shared_ptr<AsyncEvents> async_events,
                               const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled,
-                              AsyncStreamKind stream_kind);
+                              bool p2p_memcpy_enabled);
 
   static P2PConfig GetP2PConfig(const HloCollectivePermuteInstruction* instr,
                                 int64_t replica_count, int64_t partition_count);
@@ -130,6 +129,18 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
       CollectiveThunk::AsyncEventsMap& async_events_map);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  BufferUses buffer_uses() const override {
+    BufferUses uses;
+    uses.reserve(buffers_.size() * 2);
+    for (const Buffer& buffer : buffers_) {
+      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                     buffer.source_buffer.shape));
+      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                      buffer.destination_buffer.shape));
+    }
+    return uses;
+  }
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,

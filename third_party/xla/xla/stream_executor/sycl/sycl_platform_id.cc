@@ -19,6 +19,6 @@ limitations under the License.
 
 namespace stream_executor::sycl {
 
-PLATFORM_DEFINE_ID(kSyclPlatformId);
+PLATFORM_DEFINE_ID(kSyclPlatformId, SYCL);
 
 }  // namespace stream_executor::sycl

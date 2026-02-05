@@ -20,7 +20,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:regexp",
+        "@tsl//tsl/platform:regexp",
     ],
 )
 
@@ -80,7 +80,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -120,7 +120,7 @@ tsl_cc_test(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -150,12 +150,11 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -203,8 +202,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -258,13 +257,13 @@ tsl_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",

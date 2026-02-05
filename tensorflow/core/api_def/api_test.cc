@@ -239,7 +239,7 @@ TEST_F(BaseApiTest, AllApiDefsHaveCorrespondingOp) {
 }
 
 std::string GetOpDefHasDocStringError(const std::string& op_name) {
-  return strings::Printf(
+  return absl::StrFormat(
       "OpDef for %s has a doc string. "
       "Doc strings must be defined in ApiDef instead of OpDef. "
       "Please, add summary and descriptions in api_def_%s"

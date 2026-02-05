@@ -32,7 +32,7 @@ namespace tfprof {
 class TFProfTimelineTest : public ::testing::Test {
  protected:
   TFProfTimelineTest() {
-    string graph_path =
+    std::string graph_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/graph.pbtxt");
     std::unique_ptr<tensorflow::GraphDef> graph_pb =
@@ -42,7 +42,7 @@ class TFProfTimelineTest : public ::testing::Test {
 
     std::unique_ptr<tensorflow::RunMetadata> run_meta_pb =
         std::make_unique<tensorflow::RunMetadata>();
-    string run_meta_path =
+    std::string run_meta_path =
         io::JoinPath(testing::TensorFlowSrcRoot(),
                      "core/profiler/internal/testdata/run_meta");
     TF_CHECK_OK(
@@ -59,7 +59,7 @@ class TFProfTimelineTest : public ::testing::Test {
 // Before adding test, first dump the json file and
 // manually check it's correct
 TEST_F(TFProfTimelineTest, GraphView) {
-  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  std::string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(10000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "name",
                {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
@@ -67,13 +67,13 @@ TEST_F(TFProfTimelineTest, GraphView) {
                {{"outfile", dump_file}});
   tf_stats_->ShowGraphNode("graph", opts);
 
-  string dump_str;
+  std::string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
   EXPECT_EQ(16556121177519539380ull, Hash64(dump_str));
 }
 
 TEST_F(TFProfTimelineTest, ScopeView) {
-  string dump_file = io::JoinPath(testing::TmpDir(), "dump");
+  std::string dump_file = io::JoinPath(testing::TmpDir(), "dump");
   Options opts(5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "name",
                {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
@@ -81,7 +81,7 @@ TEST_F(TFProfTimelineTest, ScopeView) {
                {{"outfile", dump_file}});
   tf_stats_->ShowGraphNode("scope", opts);
 
-  string dump_str;
+  std::string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file + "_0", &dump_str));
   EXPECT_EQ(17545174915963890413ull, Hash64(dump_str));
 }

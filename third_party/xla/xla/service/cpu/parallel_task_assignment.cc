@@ -270,11 +270,19 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     }
     // Get target parallel task count computed for 'instruction'.
     const int64_t target_parallel_task_count = (*it).second;
-    const Shape& shape = instruction->shape();
-    const Shape& index_shape = shape.IsTuple() ? shape.tuple_shapes(0) : shape;
+    const Shape& root_0_shape = instruction->shape().IsTuple()
+                                    ? instruction->shape().tuple_shapes(0)
+                                    : instruction->shape();
+    const Shape& indexing_shape =
+        root_0_shape.IsTuple() ? root_0_shape.tuple_shapes(0) : root_0_shape;
+
+    if (!indexing_shape.IsArray()) {
+      continue;
+    }
+
     // Assign feasible dimension partitions (based on actual dimension sizes).
     auto dim_partition_counts =
-        ShapePartitionAssigner(index_shape).Run(target_parallel_task_count);
+        ShapePartitionAssigner(indexing_shape).Run(target_parallel_task_count);
     const int64_t total_partition_count =
         ShapePartitionAssigner::GetTotalPartitionCount(dim_partition_counts);
     if (total_partition_count <= 1) {

@@ -16,7 +16,7 @@
 
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
-from local_xla.xla import xla_data_pb2
+from xla import xla_data_pb2
 from xla.python_api import types_
 from xla.python_api import xla_shape
 

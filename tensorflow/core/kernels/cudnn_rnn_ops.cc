@@ -333,7 +333,7 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
   return DeviceMemoryBase(offset_ptr, size);
 }
 
-inline Status FromExecutorStatus(const tsl::Status& s) {
+inline Status FromExecutorStatus(const absl::Status& s) {
   return s.ok() ? OkStatus() : Status(s.code(), s.message());
 }
 
@@ -342,7 +342,7 @@ inline Status FromExecutorStatus(const tsl::StatusOr<T>& s) {
   return FromExecutorStatus(s.status());
 }
 
-inline tsl::Status ToExecutorStatus(const Status& s) {
+inline absl::Status ToExecutorStatus(const Status& s) {
   return s.ok() ? OkStatus() : Status(s.code(), s.message());
 }
 
@@ -496,7 +496,7 @@ struct CudnnModelTypes {
   }
 
   string DebugString() const {
-    return strings::Printf(
+    return absl::StrFormat(
         "[rnn_mode, rnn_input_mode, rnn_direction_mode]: %d, %d, %d ",
         static_cast<int>(rnn_mode), static_cast<int>(rnn_input_mode),
         static_cast<int>(rnn_direction_mode));

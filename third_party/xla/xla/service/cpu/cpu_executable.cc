@@ -169,7 +169,7 @@ static absl::StatusOr<MaybeOwningDeviceAddress> MemoryForAllocation(
     VLOG(3) << "allocation is a constant";
     if (allocation.index() < constants.size()) {
       return MaybeOwningDeviceAddress(
-          constants[allocation.index()].AsDeviceMemoryBase());
+          constants[allocation.index()].AsDeviceAddress());
     }
     return MaybeOwningDeviceAddress{se::DeviceAddressBase{}};
   } else if (allocation.is_thread_local()) {

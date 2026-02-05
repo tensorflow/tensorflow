@@ -36,7 +36,7 @@ load(
     "if_tensorrt",
 )
 load(
-    "@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(
@@ -67,13 +67,13 @@ def clean_dep(target):
     """
 
     # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, e.g. @local_tsl or tsl.
+    # Label() call appears, e.g. @tsl or tsl.
     # TODO(ddunleavy): update this during and after go/moving-tsl-into-xla-lsc
     label = Label(target)
     not_yet_moved = ["concurrency", "framework", "lib", "platform", "profiler", "protobuf"]
 
     if any([label.package.startswith("tsl/" + dirname) for dirname in not_yet_moved]):
-        return "@local_tsl//" + label.package + ":" + label.name
+        return "@tsl//" + label.package + ":" + label.name
     else:
         return str(label)
 

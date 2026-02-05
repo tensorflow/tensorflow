@@ -18,7 +18,7 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
   %9 = phi i64 [ 0, %5 ], [ %15, %8 ]
   %10 = getelementptr inbounds nuw double, ptr %1, i64 %9
   %11 = load double, ptr %10, align 8
-  %13 = tail call double @local_xla.exp.f64(double %11) #1
+  %13 = tail call double @xla.exp.f64(double %11) #1
   %14 = getelementptr inbounds nuw double, ptr %0, i64 %9
   store double %13, ptr %14, align 8
   %15 = add nuw nsw i64 %9, 1
@@ -39,7 +39,7 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
 ; CHECK: scalar.ph:
 ; CHECK: call double @llvm.minimum.f64{{.+}}0x40862E42FEFA39EF
 
-declare double @local_xla.exp.f64(double) #1
+declare double @xla.exp.f64(double) #1
 
 attributes #0 = {  mustprogress nofree norecurse nounwind memory(argmem: readwrite) uwtable }
 attributes #1 = {  mustprogress nocallback nofree nounwind willreturn memory(none) }

@@ -133,7 +133,7 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
   // Execute the `task` when definition event becomes available. If it's already
   // available, the task will be executed immediately.
   event_.AndThen([this, traced_task = std::move(traced_task)]() mutable {
-    thread_pool_->Schedule(std::move(traced_task));
+    async_work_runner_->Schedule(std::move(traced_task));
   });
 }
 

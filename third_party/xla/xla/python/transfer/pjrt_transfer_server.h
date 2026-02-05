@@ -56,6 +56,8 @@ class PjRtTransferServer : public TransferServerInterface {
       std::function<absl::StatusOr<std::unique_ptr<PjRtTransferServer>>(
           std::shared_ptr<xla::PjRtClient>)>;
 
+  ~PjRtTransferServer() override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> CopyArraysForCrossHost(
       xla::ifrt::PjRtClient* client, absl::Span<ArrayRef> arrays,
       DeviceListRef src_devices, DeviceListRef dst_devices,

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
 namespace xla {
 

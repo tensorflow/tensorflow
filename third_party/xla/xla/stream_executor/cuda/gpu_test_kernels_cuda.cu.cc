@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/gpu_test_kernel_traits.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_lib.cu.h"
-#include "xla/stream_executor/kernel_argument_packing_spec.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
@@ -37,7 +37,7 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     IncrementBy5I32KernelWithCustomArgsPackingCuda,
     stream_executor::gpu::internal::IncrementBy5I32KernelWithCustomArgsPacking,
     stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {
-      stream_executor::KernelArgumentsPackingSpec spec;
+      stream_executor::KernelArgsPackingSpec spec;
       // This kernels is implemented in terms of the generic `IncI32` kernel
       // which accepts a constant scalar argument and an addressable pointer
       // argument. We use a custom args packing spec to pass a constant scalar
@@ -81,7 +81,7 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
             auto bufs =
                 stream_executor::Cast<
                     stream_executor::KernelArgsDeviceAddressArray>(&args)
-                    ->device_memory_args();
+                    ->device_addr_args();
             auto cast = [](auto m) {
               return reinterpret_cast<int32_t*>(m.opaque());
             };

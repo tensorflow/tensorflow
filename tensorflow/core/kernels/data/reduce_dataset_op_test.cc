@@ -34,7 +34,7 @@ class ReduceDatasetParams : public DatasetParams {
                       DataTypeVector type_state, DataTypeVector type_arguments,
                       DataTypeVector output_dtypes,
                       std::vector<PartialTensorShape> output_shapes,
-                      bool use_inter_op_parallelism, string node_name)
+                      bool use_inter_op_parallelism, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         initial_state_(std::move(initial_state)),
@@ -57,7 +57,8 @@ class ReduceDatasetParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back("input_dataset");
     for (int i = 0; i < initial_state_.size(); ++i) {
@@ -81,7 +82,7 @@ class ReduceDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return "Reduce"; }
+  std::string dataset_type() const override { return "Reduce"; }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 

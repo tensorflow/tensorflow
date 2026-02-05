@@ -29,12 +29,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
@@ -52,7 +52,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
-  absl::AnyInvocable<xla::Future<>(void* dst, int64_t offset,
+  absl::AnyInvocable<tsl::Future<>(void* dst, int64_t offset,
                                    int64_t transfer_size) &&>
       copy_fn;
   size_t buffer_id;
@@ -62,7 +62,7 @@ struct DmaCopyChunk {
   static DmaCopyChunk Make(xla::ifrt::ArrayRef arr, xla::PjRtBuffer* buffer,
                            size_t buffer_id, size_t offset, size_t size) {
     return DmaCopyChunk{[arr, buffer](void* dst, int64_t offset,
-                                      int64_t transfer_size) -> xla::Future<> {
+                                      int64_t transfer_size) -> tsl::Future<> {
                           return buffer->CopyRawToHost(dst, offset,
                                                        transfer_size);
                         },
@@ -130,7 +130,7 @@ class RawBufferEntry : public PullTable::Entry {
   struct BufferRef {
     // TODO(parkers): Technically this should be a use-ref instead of a
     // ready_future + buffer, but there is no PJRT api for this.
-    xla::Future<> ready_future;
+    tsl::Future<> ready_future;
     tsl::RCReference<xla::PjRtRawBuffer> buffer;
     size_t buf_size;
   };
@@ -156,7 +156,7 @@ class PjRtBufferEntry : public PullTable::Entry {
   struct BufferRef {
     std::shared_ptr<xla::PjRtBuffer> buffer;
     size_t buf_size;
-    xla::Future<> ready_future;
+    tsl::Future<> ready_future;
   };
   explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
                            std::shared_ptr<PremappedCopierState> state,
@@ -181,7 +181,7 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
 
 // Creates a ChunkDestination for a sliced offset into
 // a PjRtRawBuffer.
-absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::Future<>>>
+absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, tsl::Future<>>>
 CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
                           size_t offset, size_t size);
 

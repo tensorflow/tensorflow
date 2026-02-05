@@ -22,8 +22,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/scoped_mock_log.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
@@ -36,13 +40,23 @@ using ::testing::Values;
 // Test fixture to hold the context for all tests.
 struct SymbolicExprTest : public ::testing::Test {
  protected:
+  SymbolicExprTest() {
+    RegisterSymbolicExprStorage(&ctx);
+    v0 = CreateSymbolicVariable(0, &ctx);
+    v1 = CreateSymbolicVariable(1, &ctx);
+    c1 = CreateSymbolicConstant(1, &ctx);
+    c3 = CreateSymbolicConstant(3, &ctx);
+    c2 = CreateSymbolicConstant(2, &ctx);
+    c5 = CreateSymbolicConstant(5, &ctx);
+  }
+
   mlir::MLIRContext ctx;
-  SymbolicExpr v0 = CreateSymbolicVariable(0, &ctx);
-  SymbolicExpr v1 = CreateSymbolicVariable(1, &ctx);
-  SymbolicExpr c1 = CreateSymbolicConstant(1, &ctx);
-  SymbolicExpr c3 = CreateSymbolicConstant(3, &ctx);
-  SymbolicExpr c2 = CreateSymbolicConstant(2, &ctx);
-  SymbolicExpr c5 = CreateSymbolicConstant(5, &ctx);
+  SymbolicExpr v0;
+  SymbolicExpr v1;
+  SymbolicExpr c1;
+  SymbolicExpr c3;
+  SymbolicExpr c2;
+  SymbolicExpr c5;
 };
 
 TEST_F(SymbolicExprTest, CreateAndPrint) {
@@ -68,7 +82,7 @@ TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
 
 TEST_F(SymbolicExprTest, ParseAndPrint) {
   const std::string kStringContainingAllOperators =
-      "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)";
+      "(((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5)";
   SymbolicExpr parsed_expr =
       ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
   ASSERT_NE(parsed_expr, nullptr);
@@ -77,12 +91,60 @@ TEST_F(SymbolicExprTest, ParseAndPrint) {
 }
 
 TEST_F(SymbolicExprTest, ParseAndPrint_Invalid) {
-  EXPECT_DEATH(ParseSymbolicExpr("1 + ", &ctx), "Unexpected end of expression");
-  EXPECT_DEATH(ParseSymbolicExpr("max(1, )", &ctx),
-               "Failed to parse expression");
-  EXPECT_DEATH(ParseSymbolicExpr("(1 + 2", &ctx), "Missing parenthesis");
-  EXPECT_DEATH(ParseSymbolicExpr("foo(3, 4)", &ctx),
-               "Failed to parse expression");
+  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
+  log.StartCapturingLogs();
+
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Unexpected end of expression at: \"\""));
+  EXPECT_EQ(ParseSymbolicExpr("1 + ", &ctx), SymbolicExpr());
+
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Failed to parse expression at: \")\""));
+  EXPECT_EQ(ParseSymbolicExpr("max(1, )", &ctx), SymbolicExpr());
+
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Missing parenthesis at: \"\""));
+  EXPECT_EQ(ParseSymbolicExpr("(1 + 2", &ctx), SymbolicExpr());
+
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Failed to parse expression at: \"foo(3, 4)\""));
+  EXPECT_EQ(ParseSymbolicExpr("foo(3, 4)", &ctx), SymbolicExpr());
+}
+
+TEST_F(SymbolicExprTest, ParseWithVariableMap) {
+  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map;
+  variable_map["foo"] = v0;
+  // Purposely use a variable name that starts with a 'd' to test that the
+  // dim/symbol parsing is not triggered when the variable map is provided.
+  variable_map["dim_bar"] = v1;
+
+  absl::string_view expr_str = "foo + dim_bar * 2";
+  SymbolicExpr expr =
+      ParseSymbolicExprAndAdvance(&expr_str, &ctx, variable_map);
+  EXPECT_EQ(expr, v0 + v1 * 2);
+  EXPECT_TRUE(expr_str.empty());
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
+  log.StartCapturingLogs();
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Failed to parse expression at: \"baz\""));
+  expr_str = "baz";
+  EXPECT_EQ(ParseSymbolicExprAndAdvance(&expr_str, &ctx, variable_map),
+            SymbolicExpr());
+}
+
+TEST_F(SymbolicExprTest, ParseDimsAndSymbols) {
+  EXPECT_EQ(ParseSymbolicExpr("d0", &ctx), v0);
+  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx, /*num_dims=*/2),
+            CreateSymbolicVariable(2, &ctx));
+  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx, /*num_dims=*/0), v0);
+
+  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
+  log.StartCapturingLogs();
+  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
+                       "Symbol cannot be parsed because number of dimensions "
+                       "is not set. at: \"0\""));
+  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx), SymbolicExpr());
 }
 
 TEST_F(SymbolicExprTest, ConstantFolding) {

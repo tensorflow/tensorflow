@@ -58,6 +58,8 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
     case kTfLiteInt4:
       // TODO(b/246806634): NPY_INT4 currently doesn't exist
       return NPY_BYTE;
+    case kTfLiteUInt4:
+      return NPY_BYTE;
     case kTfLiteInt2:
       // TODO(b/246806634): NPY_INT2 currently doesn't exist
       return NPY_BYTE;
@@ -223,17 +225,31 @@ bool FillStringBufferWithPyArray(PyObject* value,
   return false;
 }
 
-// Helper function to pack int8 numpy array data into an INT4 tensor.
-PyObject* SetInt4Tensor(TfLiteTensor* tensor, PyArrayObject* array,
+// Helper function to pack int8/uint8 numpy array data into an INT4/UINT4
+// tensor.
+PyObject* Set4BitTensor(TfLiteTensor* tensor, PyArrayObject* array,
                         int tensor_index) {
   TfLiteType incoming_type = TfLiteTypeFromPyArray(array);
-  if (incoming_type != kTfLiteInt8) {
-    PyErr_Format(PyExc_ValueError,
-                 "Cannot set tensor:"
-                 " Expected a numpy array of int8 for INT4 input "
-                 "%d, name: %s, but got %s",
-                 tensor_index, tensor->name, TfLiteTypeGetName(incoming_type));
-    return nullptr;
+  if (tensor->type == kTfLiteInt4) {
+    if (incoming_type != kTfLiteInt8) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Expected a numpy array of int8 for INT4 input "
+                   "%d, name: %s, but got %s",
+                   tensor_index, tensor->name,
+                   TfLiteTypeGetName(incoming_type));
+      return nullptr;
+    }
+  } else if (tensor->type == kTfLiteUInt4) {
+    if (incoming_type != kTfLiteUInt8) {
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor:"
+                   " Expected a numpy array of uint8 for UINT4 input "
+                   "%d, name: %s, but got %s",
+                   tensor_index, tensor->name,
+                   TfLiteTypeGetName(incoming_type));
+      return nullptr;
+    }
   }
 
   size_t num_elements = 1;
@@ -243,13 +259,15 @@ PyObject* SetInt4Tensor(TfLiteTensor* tensor, PyArrayObject* array,
   size_t expected_packed_bytes = (num_elements + 1) / 2;
   size_t actual_numpy_bytes = PyArray_NBYTES(array);
 
+  const char* tensor_type_name = TfLiteTypeGetName(tensor->type);
+
   if (actual_numpy_bytes != num_elements) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Numpy array for INT4 input %d, name: %s, has %zu bytes, "
+                 " Numpy array for %s input %d, name: %s, has %zu bytes, "
                  "but expected %zu bytes for %zu elements",
-                 tensor_index, tensor->name, actual_numpy_bytes, num_elements,
-                 num_elements);
+                 tensor_type_name, tensor_index, tensor->name,
+                 actual_numpy_bytes, num_elements, num_elements);
     return nullptr;
   }
 
@@ -262,25 +280,42 @@ PyObject* SetInt4Tensor(TfLiteTensor* tensor, PyArrayObject* array,
     return nullptr;
   }
 
-  // Pack the int8 array into int4
+  // Pack the int8/uint8 array into int4/uint4
   uint8_t* packed_data = reinterpret_cast<uint8_t*>(tensor->data.raw);
-  int8_t* numpy_data = reinterpret_cast<int8_t*>(PyArray_DATA(array));
-  for (size_t i = 0; i < expected_packed_bytes; ++i) {
-    int8_t first_nibble = numpy_data[2 * i];
-    int8_t second_nibble =
-        (2 * i + 1 < num_elements) ? numpy_data[2 * i + 1] : 0;
-    if ((first_nibble < -8 || first_nibble > 7) ||
-        (second_nibble < -8 || second_nibble > 7)) {
-      PyErr_Format(PyExc_ValueError,
-                   "Cannot set tensor:"
-                   " Values for INT4 input must be between -8 and 7.");
-      return nullptr;
+
+  if (tensor->type == kTfLiteInt4) {
+    int8_t* numpy_data = reinterpret_cast<int8_t*>(PyArray_DATA(array));
+    for (size_t i = 0; i < expected_packed_bytes; ++i) {
+      int8_t first_nibble = numpy_data[2 * i];
+      int8_t second_nibble =
+          (2 * i + 1 < num_elements) ? numpy_data[2 * i + 1] : 0;
+      if ((first_nibble < -8 || first_nibble > 7) ||
+          (second_nibble < -8 || second_nibble > 7)) {
+        PyErr_Format(PyExc_ValueError,
+                     "Cannot set tensor:"
+                     " Values for INT4 input must be between -8 and 7.");
+        return nullptr;
+      }
+      // Pack the two int8 values into a single byte. The first nibble
+      // occupies the lower 4 bits and the second nibble occupies the upper 4
+      // bits. We mask the first nibble with 0x0F to ensure only the lower 4
+      // bits are used, handling potential sign extension in the int8 value.
+      packed_data[i] = (first_nibble & 0x0F) | (second_nibble << 4);
     }
-    // Pack the two int8 values into a single byte. The first nibble
-    // occupies the lower 4 bits and the second nibble occupies the upper 4
-    // bits. We mask the first nibble with 0x0F to ensure only the lower 4
-    // bits are used, handling potential sign extension in the int8 value.
-    packed_data[i] = (first_nibble & 0x0F) | (second_nibble << 4);
+  } else {  // kTfLiteUInt4
+    uint8_t* numpy_data = reinterpret_cast<uint8_t*>(PyArray_DATA(array));
+    for (size_t i = 0; i < expected_packed_bytes; ++i) {
+      uint8_t first_nibble = numpy_data[2 * i];
+      uint8_t second_nibble =
+          (2 * i + 1 < num_elements) ? numpy_data[2 * i + 1] : 0;
+      if (first_nibble > 15 || second_nibble > 15) {
+        PyErr_Format(PyExc_ValueError,
+                     "Cannot set tensor:"
+                     " Values for UINT4 input must be between 0 and 15.");
+        return nullptr;
+      }
+      packed_data[i] = (first_nibble & 0x0F) | (second_nibble << 4);
+    }
   }
   Py_RETURN_NONE;
 }

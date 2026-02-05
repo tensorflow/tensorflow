@@ -37,7 +37,9 @@ def TiledBufferInterface : OpInterface<"TiledBufferInterface",
     [DeclareOpInterfaceMethods<BufferizableOpInterface,
       ["bufferizesToMemoryRead",
        "bufferizesToMemoryWrite",
+       "bufferizesToAllocation",
        "getAliasingValues",
+       "getAliasingOpOperands",
        "isWritable",
        "bufferize"]>
     ]> {

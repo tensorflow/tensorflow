@@ -75,7 +75,8 @@ class DeviceOrDevicelessConfig {
     }
     if (allocator_ == nullptr) {
       allocator_ =
-          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+              GetExecutor());
     }
     return allocator_.get();
   }

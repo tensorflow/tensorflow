@@ -65,24 +65,6 @@ class NestGemmFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 };
 
-namespace detail {
-
-// Returns block level parameters based on tile sizes for the root of the
-// analysis that satisfy the requirements of the `dot`. That is, the tile sizes
-// need to satisfy the constraints of the analysis and map to the given `config`
-// of the dot.
-//
-// We expose this function because using `GpuDotFusionCostModel` is only
-// possible with `EstimateRunTimeForDotOpWithBlockParameters` method. This
-// function can be removed once `GpuDotFusionCostModel::EstimateRunTimeForDotOp`
-// is implemented.
-absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
-    HloInstruction* dot, const TritonGemmConfig& config,
-    mlir::MLIRContext* mlir_context,
-    const se::DeviceDescription& device_description);
-
-}  // namespace detail
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_TRANSFORMS_NEST_GEMM_FUSION_H_

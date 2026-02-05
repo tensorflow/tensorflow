@@ -48,9 +48,9 @@ def TosaFusebiasTFPass : Pass<"tosa-fuse-bias-tf", "mlir::func::FuncOp"> {
   let dependentDialects = ["TosaDialect"];
 }
 
-def TosaConvertTFLUint8Pass : Pass<"tosa-convert-tfl-uint8", "mlir::func::FuncOp"> {
-  let summary = "Convert uint8 graph to int8 graph";
-  let constructor = "createConvertTFLUint8Pass()";
+def TosaConvertTFLUnsignedIntToSignedPass : Pass<"tosa-convert-tfl-uint-to-int", "mlir::func::FuncOp"> {
+  let summary = "Convert unsigned integer graph to integer graph";
+  let constructor = "createConvertTFLUnsignedIntToSignedPass()";
   let dependentDialects = ["TosaDialect"];
 }
 

@@ -614,16 +614,15 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
             mlir::tf_saved_model::GetBoundInputArgTypeFor(global_tensor);
         arg.setType(new_type);
         if (global_tensor.getIsMutable()) {
-          auto arg_with_original_type = builder.create<mlir::TF::CastOp>(
-              global_tensor.getLoc(), old_type, arg,
+          auto arg_with_original_type = mlir::TF::CastOp::create(
+              builder, global_tensor.getLoc(), old_type, arg,
               /*Truncate=*/builder.getBoolAttr(false));
           arg.replaceAllUsesWith(arg_with_original_type);
           // The RAUW replaces the arg with itself, so we need to set it back.
           arg_with_original_type.setOperand(arg);
         } else {
-          auto arg_with_original_type =
-              builder.create<mlir::TF::ReadVariableOp>(global_tensor.getLoc(),
-                                                       old_type, arg);
+          auto arg_with_original_type = mlir::TF::ReadVariableOp::create(
+              builder, global_tensor.getLoc(), old_type, arg);
           arg.replaceAllUsesWith(arg_with_original_type);
           // The RAUW replaces the arg with itself, so we need to set it back.
           arg_with_original_type.setOperand(arg);
@@ -788,15 +787,16 @@ absl::Status CreateSavedModelIR(
           args_as_values.push_back(block_argument);
         }
         mlir::OpBuilder body_builder(&func.getBody());
-        auto call = body_builder.create<mlir::TF::StatefulPartitionedCallOp>(
-            func.getLoc(), orig_func.getFunctionType().getResults(),
-            args_as_values, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
+        auto call = mlir::TF::StatefulPartitionedCallOp::create(
+            body_builder, func.getLoc(),
+            orig_func.getFunctionType().getResults(), args_as_values,
+            /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
             mlir::SymbolRefAttr::get(builder.getContext(), orig_func.getName()),
             /*config=*/builder.getStringAttr(""),
             /*config_proto=*/builder.getStringAttr(""),
             /*executor_type=*/builder.getStringAttr(""));
-        body_builder.create<mlir::func::ReturnOp>(func.getLoc(),
-                                                  call.getResults());
+        mlir::func::ReturnOp::create(body_builder, func.getLoc(),
+                                     call.getResults());
       }
       func->setAttr(
           kTfSavedModelExportedNamesAttr,
@@ -880,8 +880,8 @@ absl::Status CreateSavedModelIR(
         // The user indicated we should allow loading the model with
         // uninitialized variables, use the type information to construct a
         // dummy uninitialized variable operation.
-        auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
-            builder.getUnknownLoc(),
+        auto op = mlir::tf_saved_model::GlobalTensorOp::create(
+            builder, builder.getUnknownLoc(),
             builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
             mlir::ElementsAttr(),
             /*type=*/mlir::TypeAttr::get(type),
@@ -913,8 +913,8 @@ absl::Status CreateSavedModelIR(
         // A variable can have a partially known type, such as
         // tensor<?x27x?xf32>, even if the initializer is a specific static
         // shape.
-        auto op = builder.create<GlobalTensorOp>(
-            builder.getUnknownLoc(),
+        auto op = GlobalTensorOp::create(
+            builder, builder.getUnknownLoc(),
             builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
             value_attr,
             /*type=*/mlir::TypeAttr::get(type),
@@ -935,8 +935,8 @@ absl::Status CreateSavedModelIR(
       }
       TF_ASSIGN_OR_RETURN(auto value_attr,
                           ConvertTensorProto(*value, &builder));
-      auto op = builder.create<GlobalTensorOp>(
-          builder.getUnknownLoc(),
+      auto op = GlobalTensorOp::create(
+          builder, builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
           /*type=*/mlir::TypeAttr::get(value_attr.getType()),
@@ -1224,8 +1224,8 @@ SavedModelSignatureDefImporterLite::ConvertAssets() {
   mlir::OpBuilder builder(module_->getBodyRegion());
   unsigned i = 0;  // Use to generate unique sym_name(s) for duplicate assets.
   for (const auto& asset : asset_file_defs) {
-    auto asset_op = builder.create<mlir::tf_saved_model::AssetOp>(
-        module_->getLoc(),
+    auto asset_op = mlir::tf_saved_model::AssetOp::create(
+        builder, module_->getLoc(),
         /*sym_name=*/
         builder.getStringAttr(
             absl::StrCat("__tf_saved_model_asset", i++, "_", asset.filename())),
@@ -1514,8 +1514,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
 
     // Create an AssetOp for the variable checkpoint files. The relative
     // filename is used here.
-    auto variable_filename_op = builder.create<mlir::tf_saved_model::AssetOp>(
-        module_->getLoc(),
+    auto variable_filename_op = mlir::tf_saved_model::AssetOp::create(
+        builder, module_->getLoc(),
         /*sym_name=*/
         builder.getStringAttr("__tf_saved_model_variables"),
         /*filename=*/
@@ -1545,8 +1545,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
         mlir::SymbolRefAttr::get(builder.getContext(), init_op_name));
   }
 
-  builder.create<mlir::tf_saved_model::SessionInitializerOp>(
-      module_->getLoc(), builder.getArrayAttr(init_sym_refs));
+  mlir::tf_saved_model::SessionInitializerOp::create(
+      builder, module_->getLoc(), builder.getArrayAttr(init_sym_refs));
 
   (*module_)->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
 

@@ -1963,10 +1963,6 @@ ENTRY SmallIntegerDot {
 }
 
 TEST_F(DotOperationTextTest, S4Dot) {
-  // TODO (b/456833594): reenable once the missing logic in tfrt_gpu_client
-  // to pack int4 type for host literals has been added.
-  GTEST_SKIP();
-
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot

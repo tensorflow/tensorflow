@@ -695,9 +695,19 @@ CopyRemover::CopyRemover(
           if (a == b) {
             return false;
           }
-          const bool a_has_smaller_id =
-              instruction_ids.at(a->defining_instruction()->unique_id()) <
-              instruction_ids.at(b->defining_instruction()->unique_id());
+
+          // instrion_ids does not contain entries for instructions in dead
+          // computations.
+          int64_t a_id =
+              a->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(a->defining_instruction()->unique_id());
+          int64_t b_id =
+              b->defining_instruction()->parent()->IsDeadComputation()
+                  ? 0
+                  : instruction_ids.at(b->defining_instruction()->unique_id());
+
+          const bool a_has_smaller_id = a_id < b_id;
           // Use a_has_smaller_id as a hint for the order between a and b. In
           // case it's right, there is no need for two IsDefinedBefore() tests.
           if (a_has_smaller_id) {

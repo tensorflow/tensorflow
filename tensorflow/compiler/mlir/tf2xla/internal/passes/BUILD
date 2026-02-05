@@ -93,7 +93,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -350,8 +350,8 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:sharding_builder",
     ],
 )
 
@@ -490,7 +490,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -554,8 +554,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla:xla_data_proto_cc",
-        "@local_xla//xla/hlo/builder:sharding_builder",
+        "@xla//xla:xla_data_proto_cc",
+        "@xla//xla/hlo/builder:sharding_builder",
     ],
 )
 

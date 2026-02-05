@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 
@@ -212,14 +213,14 @@ class SyclTimerTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_,
+    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                             platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    executor_ = static_cast<SyclExecutor*>(executor);
     TF_ASSERT_OK_AND_ASSIGN(stream_,
                             executor_->CreateStream(/*priority=*/std::nullopt));
   }
 
-  // TODO(intel-tf): Use SyclExecutor instead of StreamExecutor.
-  StreamExecutor* executor_;
+  SyclExecutor* executor_;
   std::unique_ptr<Stream> stream_;
 };
 

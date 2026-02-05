@@ -387,7 +387,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     // vector of buffer allocations, and only allocations corresponding to
     // constants have a valid index.
     if (constant.index >= 0) {
-      buffers[constant.index] = constant.AsDeviceMemoryBase();
+      buffers[constant.index] = constant.AsDeviceAddress();
     }
   }
 

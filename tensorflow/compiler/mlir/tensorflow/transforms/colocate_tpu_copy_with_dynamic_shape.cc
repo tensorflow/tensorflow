@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -116,6 +117,8 @@ class DeviceDataflowAnalysis
   }
   void visitBranchOperand(OpOperand &operand) override {}
   void visitCallOperand(OpOperand &operand) override {}
+  void visitNonControlFlowArguments(
+      RegionSuccessor& successor, ArrayRef<BlockArgument> arguments) override {}
   void setToExitState(Device *lattice) override {}
 };
 

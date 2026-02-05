@@ -14,14 +14,18 @@
 # ==============================================================================
 """Functions for configuring TensorFlow execution."""
 
+import platform
 from typing import Union
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_determinism
 from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+_warned_windows_gpu = False
 
 
 @tf_export('config.experimental.tensor_float_32_execution_enabled')
@@ -455,6 +459,14 @@ def list_physical_devices(device_type=None):
   Returns:
     List of discovered `tf.config.PhysicalDevice` objects
   """
+  global _warned_windows_gpu
+  if not _warned_windows_gpu and platform.system() == 'Windows':
+    logging.warning(
+        'TensorFlow GPU support is not available on native Windows for '
+        'TensorFlow >= 2.11. Even if CUDA/cuDNN are installed, GPU will '
+        'not be used. Please use WSL2 or the TensorFlow-DirectML plugin.'
+    )
+    _warned_windows_gpu = True
   return context.context().list_physical_devices(device_type)
 
 

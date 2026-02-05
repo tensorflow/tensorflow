@@ -149,6 +149,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
           op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
         return 4;
+      } else if (op_sig.inputs.at(1).type == kTfLiteInt2) {
+        return 5;
       }
       return 1;
     }
@@ -873,6 +875,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 5;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
         return 4;
       }
@@ -1063,7 +1068,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
-      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 5;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       } else if (op_sig.inputs.at(0).type == kTfLiteFloat16) {
         return 3;
@@ -1083,7 +1090,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 2;
     case BuiltinOperator_CAST:
       if (op_sig.inputs.at(0).type == kTfLiteInt2 ||
-          op_sig.outputs.at(0).type == kTfLiteInt2) {
+          op_sig.outputs.at(0).type == kTfLiteInt2 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt4 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt4) {
         return 8;
       } else if (op_sig.inputs.at(0).type == kTfLiteBFloat16 ||
                  op_sig.outputs.at(0).type == kTfLiteBFloat16) {

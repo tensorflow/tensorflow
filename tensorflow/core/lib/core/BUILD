@@ -37,7 +37,7 @@ tf_cc_test(
         ":arena",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:macros",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -45,7 +45,7 @@ cc_library(
     name = "bitmap",
     hdrs = ["bitmap.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/core:bitmap",
+        "@xla//xla/tsl/lib/core:bitmap",
     ],
     alwayslink = 1,
 )
@@ -56,7 +56,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/lib/core:bits",
+        "@xla//xla/tsl/lib/core:bits",
     ],
 )
 
@@ -74,7 +74,7 @@ tf_cc_test(
     deps = [
         ":coding",
         "//tensorflow/core:test",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -121,7 +121,7 @@ tf_cc_test(
         ":status",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -151,7 +151,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@xla//xla/tsl/platform:test_main",
     ],
 )
 
@@ -176,9 +176,9 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl",
     ],
-    exports = ["@local_xla//xla/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@xla//xla/tsl/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -226,7 +226,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
-        "@local_xla//xla/tsl/lib/core:legacy_lib_core_all_headers",
+        "@xla//xla/tsl/lib/core:legacy_lib_core_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -251,7 +251,7 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
-        "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
+        "@xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

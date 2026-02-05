@@ -1028,6 +1028,7 @@ int CuDnnFusionCompiler::GetAvailablePlanCount(
     se::StreamExecutor& stream_exec, const HloFusionInstruction& hlo) {
   auto graph = PrepareGraph(*stream_exec.AsDnn(), hlo);
   if (!graph.ok()) {
+    VLOG(1) << "Failed to prepare graph: " << graph.status();
     return 0;
   }
   return std::min(

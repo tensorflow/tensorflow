@@ -197,8 +197,8 @@ Operation* BuildCompileOp(
             << " metadata: "
             << metadata.args(operand_and_idx.index()).DebugString();
 
-    auto shape_op = builder->create<TF::ShapeOp>(
-        cluster_func.getLoc(),
+    auto shape_op = TF::ShapeOp::create(
+        *builder, cluster_func.getLoc(),
         tensorflow::GetTypeFromTFTensorShape({-1}, builder->getIntegerType(64)),
         operand_and_idx.value());
     compile_op_operands.emplace_back(shape_op.getResult());
@@ -233,8 +233,8 @@ Operation* BuildCompileOp(
     metadata.SerializeToString(&txt_metadata);
   }
 
-  auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
-      cluster_func.getLoc(),
+  auto compile_op = TF::_TPUCompileMlirOp::create(
+      *builder, cluster_func.getLoc(),
       /*compilation_status=*/compilation_status_type, /*program=*/
       llvm::SmallVector<Type, 8>(num_cores_per_replica, program_type),
       compile_op_operands, txt_module, txt_metadata);
@@ -295,8 +295,8 @@ LogicalResult BuildExecuteOp(
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
-  *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
-                                                  output_types, inputs);
+  *execute_op = TF::TPUExecuteOp::create(*builder, cluster_func.getLoc(),
+                                         output_types, inputs);
   auto producer_name_attr = cluster_func->getAttr("_producer_name");
   if (producer_name_attr)
     (*execute_op)->setAttr("_producer_name", producer_name_attr);
@@ -389,8 +389,8 @@ LogicalResult AddToParallelExecuteOp(
     auto block_launch_op = tensorflow::WrapOpInLaunch(
         builder, block.getParent()->getLoc(), execute, device);
 
-    builder->create<tf_device::ReturnOp>(block.getParent()->getLoc(),
-                                         block_launch_op.getResults());
+    tf_device::ReturnOp::create(*builder, block.getParent()->getLoc(),
+                                block_launch_op.getResults());
   }
 
   return success();
@@ -402,8 +402,8 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
                                       Operation* result_id,
                                       llvm::StringRef compilation_device,
                                       OpBuilder* builder) {
-  auto assert_op = builder->create<TF::TPUCompileSucceededAssertOp>(
-      compile_op->getLoc(), result_id->getResult(0));
+  auto assert_op = TF::TPUCompileSucceededAssertOp::create(
+      *builder, compile_op->getLoc(), result_id->getResult(0));
   tensorflow::WrapOpInLaunch(builder, compile_op->getLoc(), assert_op,
                              compilation_device);
 }
@@ -594,9 +594,9 @@ LogicalResult Rewrite(
   for (auto res : compilation_result) {
     // Build identity op with the same location/name as the original compilation
     // result op.
-    result_id = builder->create<TF::IdentityOp>(
-        res.getLoc(), compile_op->getResult(0).getType(),
-        result_id->getResult(0));
+    result_id = TF::IdentityOp::create(*builder, res.getLoc(),
+                                       compile_op->getResult(0).getType(),
+                                       result_id->getResult(0));
     // Assign to same device as result is currently set, unless unset and then
     // assign to the device on which compilation will happen.
     // TODO(jpienaar): Remove this later.

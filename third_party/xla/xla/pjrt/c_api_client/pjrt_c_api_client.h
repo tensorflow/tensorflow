@@ -801,7 +801,9 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
 
   // Override to call FingerprintExecutable through the wrapped
   // PjRtCApiExecutable.
-  absl::StatusOr<std::string> FingerprintExecutable() const override;
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
+    return executable_->FingerprintExecutable();
+  }
 
  private:
   // Groups data needed to support send/recv execution callbacks.

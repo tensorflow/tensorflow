@@ -31,7 +31,7 @@ namespace {
 std::string TestIRFile() {
   auto path = tsl::testing::XlaSrcRoot();
   path = path.erase(path.length() - 4);
-  return tsl::io::JoinPath(path, "external/local_xla/xla",
+  return tsl::io::JoinPath(path, "external/xla/xla",
           "service", "gpu", "llvm_gpu_backend", "tests_data", "amdgpu.ll");
 }
 

@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// DEPRECATED: This file is deprecated and will be removed soon.
+// Please use autotuner.cc instead.
+
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 
 #include <algorithm>
@@ -88,6 +91,7 @@ limitations under the License.
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/service/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
@@ -122,6 +126,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 // Log levels used in this file:
 // VLOG(1): Overview
@@ -353,8 +358,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   HoistFusedBitcasts hoist_fused_bitcasts;
   TF_RETURN_IF_ERROR(hoist_fused_bitcasts.Run(new_module.get()).status());
-  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
-  TF_RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  if (debug_opts.xla_gpu_unsupported_disable_nested_gemm_fusions()) {
+    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                       mlir_context);
+    RETURN_IF_ERROR(convert_triton_gemm_config.Run(new_module.get()).status());
+  } else {
+    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
+    RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  }
   return new_module;
 }
 
@@ -959,7 +970,9 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
   if (!debug_options_.xla_gpu_experimental_disable_binary_libraries() &&
       IsAutotuningEnabled() && !config_.IsDeviceless()) {
     // Add cuBLAS reference config, if available.
-    configs.push_back(CuBlasConfig{});
+    if (dot->operand(0)->shape().element_type() != F4E2M1FN) {
+      configs.push_back(CuBlasConfig{});
+    }
     // Add lib (e.g. cuDNN) plans, if available.
     if (AddLibConfigs(fusion, dot, configs)) {
       return configs;
@@ -967,14 +980,16 @@ GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
   }
 
   // TODO(b/436988479): fine tune the search space.
-  for (int block_m = 16; block_m <= 256; block_m *= 2) {
-    for (int block_n = 16; block_n <= 256; block_n *= 2) {
-      configs.push_back(TritonGemmConfig(block_m, block_n,
-                                         /*block_k=*/128, /*split_k=*/1,
-                                         /*num_stages=*/1,
-                                         /*num_warps=*/4,
-                                         /*num_ctas=*/1,
-                                         /*is_tma_allowed=*/false));
+  for (int block_m = 128; block_m <= 256; block_m *= 2) {
+    for (int block_n = 32; block_n <= 256; block_n *= 2) {
+      for (int block_k = 128; block_k <= 256; block_k *= 2) {
+        configs.push_back(TritonGemmConfig(block_m, block_n,
+                                           /*block_k=*/block_k, /*split_k=*/1,
+                                           /*num_stages=*/1,
+                                           /*num_warps=*/4,
+                                           /*num_ctas=*/1,
+                                           /*is_tma_allowed=*/false));
+      }
     }
   }
   return configs;
@@ -1690,8 +1705,9 @@ absl::StatusOr<bool> GemmFusionAutotuner::RunViaNewInfra(
   std::vector<std::unique_ptr<CodegenBackend>> backends;
 
   se::StreamExecutor* stream_exec = config_.GetExecutor();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                      Compiler::GetForPlatform(stream_exec->GetPlatform()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Compiler> compiler,
+      Compiler::GetForPlatform(stream_exec->GetPlatform()->id()));
   se::DeviceAddressAllocator* device_allocator = config_.GetAllocator();
   std::unique_ptr<Compiler::GpuTargetConfig> target_config;
   target_config = std::make_unique<Compiler::GpuTargetConfig>(stream_exec);

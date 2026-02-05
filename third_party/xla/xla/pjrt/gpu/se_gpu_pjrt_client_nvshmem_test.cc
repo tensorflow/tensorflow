@@ -273,7 +273,7 @@ ROOT all-reduce = u32[] all-reduce(id), to_apply=apply_op
       executable->Execute(/*argument_handles=*/{{}}, /*options=*/{}));
   EXPECT_EQ(results.size(), 1);
   EXPECT_EQ(results[0].size(), 1);
-  TF_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteralSync());
+  TF_ASSIGN_OR_RETURN(auto literal, results[0][0]->ToLiteral().Await());
   if (node_id == 0) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, *literal);
   } else if (node_id == 1) {

@@ -48,6 +48,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@local_xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:status",
     ],
 )

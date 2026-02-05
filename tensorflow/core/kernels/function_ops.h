@@ -67,7 +67,8 @@ class RemoteCallOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
-  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
+  std::string TraceString(const OpKernelContext& ctx,
+                          bool verbose) const override;
 
  private:
   NameAttrList func_;
@@ -79,7 +80,7 @@ class RemoteCallOp : public AsyncOpKernel {
   FullTypeDef return_type_;
 
   mutex mu_;
-  typedef std::pair<string, FunctionLibraryRuntime*> FunctionTarget;
+  typedef std::pair<std::string, FunctionLibraryRuntime*> FunctionTarget;
   std::map<FunctionTarget, FunctionLibraryRuntime::Handle> handle_cache_
       TF_GUARDED_BY(mu_);
 

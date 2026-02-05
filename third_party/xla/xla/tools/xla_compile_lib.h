@@ -40,7 +40,8 @@ namespace xla {
 // This is the expected entry point to the compilation functionality.
 absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
-    std::optional<Compiler::GpuTargetConfig> target_config,
+    std::optional<Compiler::GpuTargetConfig> gpu_target_config,
+    std::optional<Compiler::CpuTargetConfig> cpu_target_config,
     CompilationResult& result);
 
 // Merges the measured duration into compilation_result and writes
@@ -75,8 +76,16 @@ struct XlaCompileOptions {
     std::string autotune_results_path;
   };
 
+  // CPU-specific options.
+  struct CpuOptions {
+    std::string target_cpu;
+    std::string target_features;
+    std::string target_triple;
+  };
+
   SymbolRepoOptions repo_options;
   GpuOptions gpu_options;
+  CpuOptions cpu_options;
 };
 
 // Full entry point if you want to wrap a binary around this functionality. See

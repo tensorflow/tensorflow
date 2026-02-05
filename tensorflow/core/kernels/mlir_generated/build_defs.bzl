@@ -6,14 +6,14 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "rocm_gpu_architectures",
 )
-load(
-    "@local_xla//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load(
+    "@xla//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
 
 def _lookup_file(filegroup, path):
     """Extracts file at (relative) path in filegroup."""

@@ -53,7 +53,7 @@ class WrapperDataset : public DatasetBase {
     return *output_shapes_;
   }
 
-  string DebugString() const override { return "WrapperDataset"; }
+  std::string DebugString() const override { return "WrapperDataset"; }
 
   absl::Status InputDatasets(
       std::vector<const DatasetBase*>* inputs) const override {
@@ -70,7 +70,7 @@ class WrapperDataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     // MakeIterator should only be called once per WrapperDataset. However,
     // since this function expects an iterator return value, we raise the
     // error only at iterator initialization time.
@@ -222,7 +222,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
               this, absl::StrCat(prefix, "::ChooseFastestBranch")});
@@ -236,7 +236,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ChooseFastestBranchDatasetOp::Dataset";
     }
 
@@ -276,7 +276,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(
           b->AddScalar(ratio_denominator_, &ratio_denominator_node));
 
-      std::vector<int32> other_arguments_lengths;
+      std::vector<int32_t> other_arguments_lengths;
       other_arguments_lengths.reserve(captured_funcs_.size());
       int num_captured_inputs = 0;
       for (const auto& func : captured_funcs_) {
@@ -582,7 +582,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<std::shared_ptr<FunctionMetadata>> func_metadatas_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  std::vector<int32> other_arguments_lengths_;
+  std::vector<int32_t> other_arguments_lengths_;
 };  // class ChooseFastestBranchDatasetOp
 
 // Register the kernel implementation for ChooseFastestBranchDataset.

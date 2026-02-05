@@ -241,6 +241,23 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
     }
     return in_place_pairs;
   }
+  if (user->opcode() == HloOpcode::kAsyncStart) {
+    // Custom Calls previously assumed that aliased operands were
+    // forwarded, but now supports modification semantics.
+    const auto& aliasing_pairs =
+        Cast<HloAsyncStartInstruction>(user)->output_to_operand_aliasing();
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    in_place_pairs.reserve(aliasing_pairs.size());
+    for (const auto& pair : aliasing_pairs) {
+      ShapeIndex output_shape_index = pair.first;
+      int64_t operand_index = pair.second.first;
+      ShapeIndex operand_shape_index = pair.second.second;
+      in_place_pairs.push_back(
+          {HloOperandIndex{operand_index, {operand_shape_index}},
+           output_shape_index});
+    }
+    return in_place_pairs;
+  }
   if (user->opcode() == HloOpcode::kSetDimensionSize) {
     int64_t dimension = user->dimension();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;

@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/logistic_expander.h"
 #include "xla/hlo/transforms/expanders/optimization_barrier_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
-#include "xla/hlo/transforms/expanders/real_imag_expander.h"
 #include "xla/hlo/transforms/expanders/reduce_decomposer.h"
 #include "xla/hlo/transforms/expanders/reshape_decomposer.h"
 #include "xla/hlo/transforms/expanders/rng_bit_generator_expander.h"
@@ -305,7 +304,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<OptimizationBarrierExpander>();
   RegisterPass<OptimizeInputOutputBufferAlias>(true);
   RegisterPass<QrExpander>();
-  RegisterPass<RealImagExpander>();
   RegisterPass<ReduceDecomposer>();
   RegisterPass<ReduceWindowRewriter>(/*base_length=*/16);
   RegisterPass<ReorderConvertReduceAdd>();

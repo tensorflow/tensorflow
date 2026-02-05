@@ -4,7 +4,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_python//python:defs.bzl", "py_binary")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -326,11 +326,12 @@ def lit_test(
         srcs = tools,
         bin_dir = bin_dir,
         lib_dir = lib_dir,
-        deps = if_cuda_is_configured(
-            [
-                "//xla/stream_executor/cuda:all_runtime",
-            ],
-        ),
+        deps = if_cuda_is_configured([
+            "//xla/stream_executor/cuda:all_runtime",
+            "//xla/tsl/cuda:nvshmem_stub",
+        ]) + if_nccl([
+            "//xla/tsl/cuda:nccl",
+        ]),
         visibility = ["//visibility:private"],
         **kwargs
     )
@@ -461,6 +462,8 @@ def _tools_on_path_impl(ctx):
                 continue
             lib_path = paths.join(ctx.attr.lib_dir, lib.basename)
             if lib_path in runfiles_symlinks:
+                if runfiles_symlinks[lib_path] == lib:
+                    continue
                 fail("All libs used by lit tests must have unique basenames, as" +
                      " they are added to the path." +
                      " {} and {} conflict".format(runfiles_symlinks[lib_path], lib))

@@ -195,6 +195,41 @@ absl::Status NewSession(absl::string_view repository_root,
 
 }  // namespace
 
+absl::Status StartContinuousProfiling(
+    const char* service_addr,
+    const tensorflow::RemoteProfilerSessionManagerOptions& opts) {
+  std::string session_id = GetCurrentTimeStampAsString();
+  // repository_root is empty because we don't want to save profiles to a
+  // repository with this request.
+  ProfileRequest request = PopulateProfileRequest(
+      /*repository_root=*/"", session_id,
+      /*host_name=*/service_addr, opts);
+  tensorflow::ContinuousProfilingResponse response;
+  TF_RETURN_IF_ERROR(ContinuousProfilingGrpc(service_addr, request, &response));
+  return absl::OkStatus();
+}
+
+absl::Status GetSnapshot(const char* service_addr, const char* logdir) {
+  tensorflow::GetSnapshotRequest request;
+  ProfileResponse response;
+  TF_RETURN_IF_ERROR(GetSnapshotGrpc(service_addr, request, &response));
+
+  if (response.empty_trace()) {
+    return absl::OkStatus();
+  }
+
+  std::string repository_root = GetTensorBoardProfilePluginDir(logdir);
+  std::string snapshot_session_id = GetCurrentTimeStampAsString();
+  TF_RETURN_IF_ERROR(SaveProfile(repository_root, snapshot_session_id,
+                                 service_addr, response, &std::cout));
+  if (response.has_xspace()) {
+    TF_RETURN_IF_ERROR(SaveXSpace(repository_root, snapshot_session_id,
+                                  service_addr, response.xspace()));
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status CaptureRemoteTrace(const std::string& logdir,
                                 int num_tracing_attempts,
                                 RemoteProfilerSessionManagerOptions& opts,

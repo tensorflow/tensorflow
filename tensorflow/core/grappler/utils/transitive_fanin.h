@@ -29,20 +29,20 @@ namespace grappler {
 // transitive fanin into fanin_nodes. Optionally returns a map of name->node
 // for that graph into name_to_fanin_node if that is not set to nullptr.
 absl::Status ComputeTransitiveFanin(
-    const GraphDef& graph, const std::vector<string>& terminal_nodes,
-    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
+    const GraphDef& graph, const std::vector<std::string>& terminal_nodes,
+    std::unordered_map<std::string, const NodeDef*>* name_to_fanin_node,
     std::vector<const NodeDef*>* fanin_nodes);
 
-absl::Status ComputeTransitiveFanin(const GraphDef& graph,
-                                    const std::vector<string>& terminal_nodes,
-                                    std::vector<const NodeDef*>* fanin_nodes);
+absl::Status ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<std::string>& terminal_nodes,
+    std::vector<const NodeDef*>* fanin_nodes);
 
 // Creates output_graph from input_graph using the transitive fanin from the
 // specified terminal nodes. Returns error if the input_graph is deemed
 // structurally invalid.
-absl::Status SetTransitiveFaninGraph(const GraphDef& input_graph,
-                                     GraphDef* output_graph,
-                                     const std::vector<string>& terminal_nodes);
+absl::Status SetTransitiveFaninGraph(
+    const GraphDef& input_graph, GraphDef* output_graph,
+    const std::vector<std::string>& terminal_nodes);
 
 }  // namespace grappler
 }  // namespace tensorflow

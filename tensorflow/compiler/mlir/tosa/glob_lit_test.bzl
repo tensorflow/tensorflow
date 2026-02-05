@@ -8,7 +8,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
-    "@local_xla//xla:lit.bzl",
+    "@xla//xla:lit.bzl",
     "lit_script_with_xla_gpu_cuda_data_dir",
 )
 

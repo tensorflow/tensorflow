@@ -216,6 +216,9 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   debug_options.set_xla_cpu_emitter_verification_level(1);
+  // b/475785091: Tests are run with heap checker, which makes multi-threaded
+  // autotuning slow which leads to occasional timeouts.
+  debug_options.set_xla_gpu_force_compilation_parallelism(1);
   return debug_options;
 }
 

@@ -79,7 +79,7 @@ TEST(RecorderTest, Multithreaded) {
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {
     pool.Schedule([&start, &stop, &thread_count] {
-      uint64 j = 0;
+      uint64_t j = 0;
       bool was_active = false;
       auto record_event = [&j]() {
         int64_t start_time = GetCurrentTimeNanos();
@@ -118,7 +118,7 @@ TEST(RecorderTest, Multithreaded) {
   struct ThreadState {
     bool split_session = false;
     bool overlapping_sessions = false;
-    std::set<uint64> events;
+    std::set<uint64_t> events;
   };
   absl::flat_hash_map<int64_t /*tid*/, ThreadState> thread_state;
   // We expect each thread to eventually have multiple events, not all in a
@@ -151,10 +151,10 @@ TEST(RecorderTest, Multithreaded) {
       if (thread.events.empty()) continue;
       auto& state = thread_state[thread.thread.tid];
 
-      std::set<uint64> session_events;
-      uint64 current = 0;
+      std::set<uint64_t> session_events;
+      uint64_t current = 0;
       for (const auto& event : thread.events) {
-        uint64 activity_id;
+        uint64_t activity_id;
         ASSERT_TRUE(absl::SimpleAtoi(event.name, &activity_id));
         session_events.emplace(activity_id);
         // Session events should be contiguous.

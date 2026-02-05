@@ -99,8 +99,13 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 
     BackendContext operator()(const CallOptions::GpuOptions& options) const {
       return XLA_FFI_ExecutionContext::GpuContext{
-          options.stream, options.allocator, options.collective_params,
-          options.collective_clique_requests, options.collective_cliques};
+          options.stream,
+          options.allocator,
+          options.collective_params,
+          options.collective_clique_requests,
+          options.collective_memory_requests,
+          options.collective_cliques,
+          options.gpu_compute_capability};
     }
   };
 

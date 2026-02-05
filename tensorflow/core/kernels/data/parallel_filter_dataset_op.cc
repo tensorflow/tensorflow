@@ -77,7 +77,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -90,7 +90,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -116,7 +116,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
                                                   &other_arguments_types));
     Node* num_parallel_calls = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32>(num_parallel_calls_),
+    TF_RETURN_IF_ERROR(b->AddScalar(static_cast<int32_t>(num_parallel_calls_),
                                     &num_parallel_calls));
     AttrValue deterministic_attr;
     b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
@@ -286,10 +286,10 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
           "parallelism",
           parallelism == -1
               ? kTraceInfoUnavailable
-              : strings::Printf("%lld", static_cast<long long>(parallelism))));
+              : absl::StrFormat("%lld", static_cast<long long>(parallelism))));
       result.push_back(std::make_pair(
           "interleave_depth",
-          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
+          absl::StrFormat("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -622,7 +622,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // root node to this node (not including this node) in the input pipeline
     // tree. We record the interleave depth so that it can be included in the
     // trace metadata.
-    int64 interleave_depth_ = -1;
+    int64_t interleave_depth_ = -1;
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 

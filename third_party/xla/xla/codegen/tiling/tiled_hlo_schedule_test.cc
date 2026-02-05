@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -51,6 +52,7 @@ using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
  protected:
+  TiledHloScheduleTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   mlir::MLIRContext mlir_context_;
 };
 

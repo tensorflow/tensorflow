@@ -1,0 +1,202 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+"""Starlark implementation of cc_embed_data."""
+
+load("@bazel_skylib//lib:paths.bzl", "paths")
+
+visibility("public")
+
+def _root_mapper(f):
+    root = f.root.path
+    if root:
+        return root
+    else:
+        return None
+
+def _build_command_line_common(ctx, strip):
+    command_line = ctx.actions.args()
+    command_env = {}
+
+    if ctx.attr.flatten:
+        command_line.add("--flatten")
+    if ctx.attr.redact_filename:
+        command_line.add("--redact_filename")
+
+    # only include strip args if we're going to pass in the files (which we don't
+    # for the .h outputting action)
+    if strip:
+        # Note the order of the --strip arguments matter:
+        # filewrapper will apply each argument in order to the same file
+        # path, overwritting the previous string after strip.
+        # First, strip bazel artifact paths like bazel-out/k8-opt/bin, etc.
+        # Order within this section doesn't matter, since a source will only be under
+        # one artifact root.
+        # We grab them off the src files to handle non-standard paths such as those
+        # caused by transitions
+        command_line.add_all(
+            ctx.files.srcs,
+            map_each = _root_mapper,
+            uniquify = True,
+            before_each = "--strip",
+        )
+
+        # Second, strip the actual prefix w.r.t. the cc_embed_data's BUILD package.
+        prefix = ctx.label.package
+        if len(ctx.attr.strip) != 0:
+            if paths.is_absolute(ctx.attr.strip):
+                prefix = ctx.attr.strip.lstrip("/")
+            else:
+                prefix = paths.join(ctx.label.package, ctx.attr.strip)
+        prefix = paths.normalize(prefix)
+        command_line.add("--strip", prefix)
+
+    command_line.add("--include_path", ctx.label.package)
+
+    # Do this after adding all the other command line arguments so that user-provided arguments
+    # override the ones specified above.
+    command_line.add_all(ctx.attr.embedopts)
+
+    return command_line, command_env
+
+def _cc_skylark_embed_data_impl(ctx):
+    cc_file_artifact = None
+    h_file_artifact = None
+    for output in ctx.outputs.outs:
+        if output.path.endswith(".cc") or output.path.endswith(".cpp"):
+            cc_file_artifact = output
+        elif output.path.endswith(".h"):
+            h_file_artifact = output
+
+    files_to_build = depset([cc_file_artifact, h_file_artifact])
+
+    base_name = paths.split_extension(h_file_artifact.basename)[0]
+
+    header_command_line, header_env = _build_command_line_common(ctx, strip = False)
+    header_command_line.add("--nocreate_impl")
+    header_command_line.add("--out_h", h_file_artifact)
+    header_command_line.add(base_name)
+    ctx.actions.run(
+        inputs = [],
+        outputs = [h_file_artifact],
+        arguments = [header_command_line],
+        env = header_env,
+        mnemonic = "CcEmbedDataHeader",
+        progress_message = (
+            "Creating cc_embed_data header for {}".format(ctx.label)
+        ),
+        executable = ctx.executable._filewrapper,
+    )
+
+    cc_o_outputs = [cc_file_artifact]
+    cc_o_command_line, cc_o_env = _build_command_line_common(ctx, strip = True)
+
+    cc_o_command_line.add("--nocreate_header")
+    cc_o_command_line.add("--out_cc", cc_file_artifact)
+    cc_o_command_line.add(base_name)
+    cc_o_command_line.add_all(ctx.files.srcs)
+    ctx.actions.run(
+        inputs = ctx.files.srcs,
+        outputs = cc_o_outputs,
+        arguments = [cc_o_command_line],
+        env = cc_o_env,
+        mnemonic = "CcEmbedData",
+        progress_message = (
+            "Embedding data {}".format(ctx.label)
+        ),
+        executable = ctx.executable._filewrapper,
+    )
+
+    return [
+        DefaultInfo(files = files_to_build),
+    ]
+
+cc_embed_data = rule(
+    implementation = _cc_skylark_embed_data_impl,
+    attrs = {
+        "srcs": attr.label_list(
+            allow_files = True,
+            flags = ["SKIP_CONSTRAINTS_OVERRIDE"],
+            doc = """"
+The data files to be encapsulated.
+
+These names also identify the files in the table of contents.  If the files are all in a
+subdirectory, you can use the `strip` argument to remove the directory name.
+""",
+        ),
+        "outs": attr.output_list(
+            mandatory = False,
+            doc = """
+A list of output files generated by this rule.
+
+You can provide names for all three of the generated files or omit the `*.o`. They are recognized by their
+suffixes: `.cc`;`.h`; and `_data.o`. The build system enforces that all output files go in the
+same directory.
+""",
+        ),
+        "alwayslink": attr.bool(
+            default = False,
+            doc = """
+See go/be#cc_library.alwayslink
+""",
+        ),
+        "linkstatic": attr.bool(
+            default = False,
+            doc = """
+See go/be#cc_library.linkstatic
+""",
+        ),
+        "flatten": attr.bool(
+            doc = """
+If non-zero, the leading path components are removed from each `srcs` file.
+
+The `srcs` list may contain files that are pulled in from other parts of the repo. `flatten = 1`
+prevents the leading directory paths from cluttering up the names in the table of
+contents, preserving only the base name of the file. `flatten` overrides `strip`. This only affects
+how the names are stored in the table of contents.
+""",
+        ),
+        "redact_filename": attr.bool(
+            doc = """
+If true, the `name` member of the FileToc structure will be empty. This is useful if the binary
+is published externally, for example in an Android app, and the file name would leak information
+about unreleased products or features.
+""",
+        ),
+        "strip": attr.string(
+            doc = """
+A leading directory name to be removed from the beginning of each `srcs` file.
+
+It's likely that a package's to-be-wrapped files will be kept in a subdirectory.  The `strip`
+option removes the directory name.  This only affects how the names are stored in the table of
+contents.
+
+The package of the label that declares the embed rule will be stripped automatically.
+
+Example values: resources
+""",
+        ),
+        "embedopts": attr.string_list(
+            doc = """
+A list of options that will simply be passed through to `filewrapper`.
+""",
+        ),
+        "_filewrapper": attr.label(
+            executable = True,
+            cfg = "exec",
+            default = Label("//xla/tsl/util:filewrapper"),
+        ),
+    },
+)

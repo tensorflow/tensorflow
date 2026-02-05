@@ -158,9 +158,8 @@ class ClientLibraryTestRunnerMixin : public T {
         ExecuteAndTransfer(builder, arguments);
     if (!result.ok()) {
       return result.status().ToString();
-    } else {
-      return result.value().ToString();
     }
+    return result->ToString();
   }
 
   // Compare with reference.

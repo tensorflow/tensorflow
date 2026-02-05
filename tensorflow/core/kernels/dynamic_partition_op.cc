@@ -57,7 +57,7 @@ class DynamicPartitionOp_Shared : public OpKernel {
 
     // Count how many occurrences of each partition id we have in partitions
     absl::InlinedVector<int, 32UL> partition_count(num_partitions_);
-    auto e_partitions = (*partitions)->flat<int32>();
+    auto e_partitions = (*partitions)->flat<int32_t>();
     const int64_t N = e_partitions.dimension(0);
     for (int64_t i = 0; i < N; i++) {
       const int32_t p = internal::SubtleMustCopy(e_partitions(i));
@@ -98,7 +98,7 @@ class DynamicPartitionOp : public DynamicPartitionOp_Shared {
     if (!c->status().ok()) return;
     if (num_partitions_ == 0 || data->NumElements() == 0) return;
 
-    auto e_partitions = partitions->flat<int32>();
+    auto e_partitions = partitions->flat<int32_t>();
     const int64_t N = e_partitions.dimension(0);
     absl::InlinedVector<int, 32UL> output_index(num_partitions_);
 

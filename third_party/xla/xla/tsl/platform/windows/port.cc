@@ -18,6 +18,8 @@ limitations under the License.
 #include <string.h>
 
 #include <new>
+#include <string>
+#include <vector>
 #ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
@@ -26,6 +28,7 @@ limitations under the License.
 #include <processthreadsapi.h>
 #include <shlwapi.h>
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/cpu_info.h"
@@ -39,7 +42,22 @@ limitations under the License.
 namespace tsl {
 namespace port {
 
-void InitMain(const char* usage, int* argc, char*** argv) {}
+namespace {
+std::vector<std::string>& GetArgvsStorage() {
+  static absl::NoDestructor<std::vector<std::string>> g_argvs;
+  return *g_argvs;
+}
+}  // namespace
+
+void InitMain(const char* usage, int* argc, char*** argv) {
+  GetArgvsStorage().assign(*argv, *argv + *argc);
+}
+
+const std::vector<std::string>& GetArgvs() { return GetArgvsStorage(); }
+
+const char* GetArgv0() {
+  return GetArgvsStorage().empty() ? "" : GetArgvsStorage().front().c_str();
+}
 
 string Hostname() {
   char name[1024];

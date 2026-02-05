@@ -253,7 +253,7 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
     const HloSharding& dst_spec) const {
   auto reshard_with_collective_permute = [&]() {
     std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-    src_spec.tile_assignment().Each(
+    src_spec.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t src_device) {
           int64_t dst_device = dst_spec.tile_assignment()(indices);
           src_dst_pairs.emplace_back(src_device, dst_device);

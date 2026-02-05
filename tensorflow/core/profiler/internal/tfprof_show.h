@@ -43,14 +43,14 @@ class TFShow {
   virtual ~TFShow() = default;
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  virtual const GraphNodeProto& Show(const string& prefix,
+  virtual const GraphNodeProto& Show(const std::string& prefix,
                                      const Options& opts) final;
 
  protected:
   virtual const ShowNode* ShowInternal(const Options& opts,
                                        Timeline* timeline) = 0;
 
-  bool LookUpCheckPoint(const string& name,
+  bool LookUpCheckPoint(const std::string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
 
   // Overridden by subclass if extra requirements need to be met.
@@ -62,15 +62,15 @@ class TFShow {
   bool ShouldShow(const ShowNode* node, const Options& opts, int depth) const;
 
   bool ShouldTrim(const ShowNode* node,
-                  const std::vector<string>& regexes) const;
+                  const std::vector<std::string>& regexes) const;
 
   bool ReAccount(ShowNode* node, const Options& opts);
 
-  string FormatNode(ShowNode* node, const Options& opts) const;
-  string FormatNodeMemory(ShowNode* node, int64_t bytes,
-                          int64_t total_bytes) const;
+  std::string FormatNode(ShowNode* node, const Options& opts) const;
+  std::string FormatNodeMemory(ShowNode* node, int64_t bytes,
+                               int64_t total_bytes) const;
 
-  string FormatLegend(const Options& opts) const;
+  std::string FormatLegend(const Options& opts) const;
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {
@@ -122,8 +122,8 @@ class TFShow {
 };
 
 template <typename T>
-string FormatTotalExecTime(const T* node, const Options& opts) {
-  string time = FormatTime(node->proto().total_exec_micros());
+std::string FormatTotalExecTime(const T* node, const Options& opts) {
+  std::string time = FormatTime(node->proto().total_exec_micros());
   if (node->account) {
     time = FormatTime(node->proto().exec_micros()) + "/" + time;
   } else {
@@ -132,8 +132,8 @@ string FormatTotalExecTime(const T* node, const Options& opts) {
   return time;
 }
 template <typename T>
-string FormatCPUExecTime(const T* node, const Options& opts) {
-  string time = FormatTime(node->proto().total_cpu_exec_micros());
+std::string FormatCPUExecTime(const T* node, const Options& opts) {
+  std::string time = FormatTime(node->proto().total_cpu_exec_micros());
   if (node->account) {
     time = FormatTime(node->proto().cpu_exec_micros()) + "/" + time;
   } else {
@@ -142,8 +142,8 @@ string FormatCPUExecTime(const T* node, const Options& opts) {
   return time;
 }
 template <typename T>
-string FormatAcceleratorExecTime(const T* node, const Options& opts) {
-  string time = FormatTime(node->proto().total_accelerator_exec_micros());
+std::string FormatAcceleratorExecTime(const T* node, const Options& opts) {
+  std::string time = FormatTime(node->proto().total_accelerator_exec_micros());
   if (node->account) {
     time = FormatTime(node->proto().accelerator_exec_micros()) + "/" + time;
   } else {

@@ -81,7 +81,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
   auto platform = stream_exec->GetPlatform();
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
   auto device_ordinal = stream_exec->device_ordinal();
   VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal

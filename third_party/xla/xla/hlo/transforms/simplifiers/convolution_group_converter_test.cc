@@ -149,5 +149,42 @@ TEST_F(ConvolutionGroupConverterTest,
   ASSERT_TRUE(converter.Run(module.get()).value());
 }
 
+TEST_F(ConvolutionGroupConverterTest, FunctionChangedResetIncorrectly) {
+  std::string hlo_string = R"(HloModule FunctionChangedResetIncorrectly
+
+ENTRY %FunctionChangedResetIncorrectly (input: f32[1,2,4], filter: f32[1,2,2], filter2: f32[1,1,2]) -> f32[1,2,2] {
+  %input = f32[1,2,4]{2,1,0} parameter(0)
+  %filter = f32[1,2,2]{2,1,0} parameter(1)
+  %convolution = f32[1,2,2]{2,0,1} convolution(f32[1,2,4]{2,1,0} %input, f32[1,2,2]{2,1,0} %filter), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
+  %filter2 = f32[1,1,2]{2,1,0} parameter(2)
+  ROOT %convolution2 = f32[1,2,2]{2,0,1} convolution(f32[1,2,2]{2,0,1} %convolution, f32[1,1,2]{2,1,0} %filter2), window={size=1}, dim_labels=b0f_0io->b0f, feature_group_count=2
+})";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  auto should_expand = [](HloInstruction* conv) { return true; };
+  auto cost_model = [](HloInstruction* conv) { return true; };
+  // filter_expansion = false is key to trigger the bug.
+  ConvolutionGroupConverter converter(should_expand, cost_model,
+                                      /*convert_batch_groups_only=*/false,
+                                      /*filter_expansion=*/false);
+  // The first convolution should be converted, so the pass should return true.
+  // The second convolution is depthwise separable and filter_expansion is
+  // false, so it should not be converted.
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  auto computation = module->entry_computation();
+  HloInstruction* root = computation->root_instruction();
+  // The root (second convolution) should still be a convolution (not
+  // converted).
+  EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
+  EXPECT_EQ(root->feature_group_count(), 2);
+
+  // The first convolution (operand of root) should have been converted
+  // (reshaped).
+  HloInstruction* first_conv_replaced = root->mutable_operand(0);
+  EXPECT_NE(first_conv_replaced->opcode(), HloOpcode::kConvolution);
+}
+
 }  // namespace
 }  // namespace xla

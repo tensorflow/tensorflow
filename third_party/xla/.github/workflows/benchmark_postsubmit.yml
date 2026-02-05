@@ -110,7 +110,7 @@ jobs:
           PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:

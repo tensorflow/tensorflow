@@ -128,7 +128,9 @@ absl::StatusOr<bool> ConditionalCanonicalizer::RunImpl(
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       if (inst->opcode() == HloOpcode::kConditional) {
-        TF_ASSIGN_OR_RETURN(changed, CanonicalizeNonTupleConditional(inst));
+        bool result;
+        TF_ASSIGN_OR_RETURN(result, CanonicalizeNonTupleConditional(inst));
+        changed |= result;
       }
     }
   }

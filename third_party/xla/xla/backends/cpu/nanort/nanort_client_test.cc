@@ -164,8 +164,9 @@ TEST_P(NanoRtClientTest, CompileAndRunTupledComputation) {
   // Prepare executable parameters, results and temp storage.
   Arguments arguments = {{&p0_value, 1}, {&p1_value, 1}};
   Results results = {{&r0_value, 1}, {&r1_value, 1}};
+  NanoRtExecutable::ManagedTemp<32> temp(executable->temp_buffer_size());
 
-  auto event = executable->Execute(arguments, results);
+  auto event = executable->Execute(arguments, results, temp);
   tsl::BlockUntilReady(event);
 
   ASSERT_TRUE(event.IsConcrete());

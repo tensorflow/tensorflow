@@ -48,7 +48,7 @@ struct RawType<qint8> {
   // spacetodepth_op_gpu.cu.cc does not instantiate SpaceToDepthOpFunctor for
   // int8, so we map qint8 to uint8. Instantiating int8 could slow down
   // compilation and the code generated is almost the same as for uint8.
-  using type = uint8;
+  using type = uint8_t;
 };
 }  // namespace
 
@@ -59,7 +59,7 @@ template <typename Device, typename T>
 class SpaceToDepthOp : public OpKernel {
  public:
   explicit SpaceToDepthOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format_str;
+    std::string data_format_str;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
     OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -131,9 +131,10 @@ class SpaceToDepthOp : public OpKernel {
       using RT = typename RawType<T>::type;
       if (data_format_ == FORMAT_NCHW_VECT_C) {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
-        auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
-        auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::SpaceToDepthOpFunctor<Device, int32, FORMAT_NCHW> functor;
+        auto Tinput_v = input.template reinterpret_last_dimension<int32_t, 4>();
+        auto Toutput_v =
+            outputs_tensor->reinterpret_last_dimension<int32_t, 4>();
+        functor::SpaceToDepthOpFunctor<Device, int32_t, FORMAT_NCHW> functor;
         functor(context->eigen_device<Device>(), Tinput_v, block_size_,
                 Toutput_v);
       } else if (data_format_ == FORMAT_NCHW) {
@@ -217,8 +218,8 @@ REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     SpaceToDepthOp<GPUDevice, qint8>);
 REGISTER_KERNEL_BUILDER(
-    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8>("T"),
-    SpaceToDepthOp<GPUDevice, uint8>);
+    Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8_t>("T"),
+    SpaceToDepthOp<GPUDevice, uint8_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

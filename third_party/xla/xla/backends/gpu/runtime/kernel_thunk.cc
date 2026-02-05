@@ -207,7 +207,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     kernel = it->second.get();
   }
 
-  absl::InlinedVector<se::KernelArgument, 4> kernel_args;
+  absl::InlinedVector<se::KernelArg, 4> kernel_args;
   {
     TraceMe trace(
         [] {
@@ -245,7 +245,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   return ExecuteKernelOnStream(
       *kernel,
-      absl::Span<se::KernelArgument>(kernel_args.data(), kernel_args.size()),
+      absl::Span<se::KernelArg>(kernel_args.data(), kernel_args.size()),
       launch_dimensions_, cluster_dim_, stream);
 }
 

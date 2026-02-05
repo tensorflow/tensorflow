@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
@@ -23,7 +24,9 @@ limitations under the License.
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace {
@@ -68,11 +71,44 @@ class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
   tsl::thread::ThreadPool* pool_;
 };
 
+class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
+ public:
+  UnboundedAsyncWorkRunner(const std::string& name,
+                           const tsl::ThreadOptions& thread_options)
+      : queue_(tsl::Env::Default(), name, thread_options) {}
+
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    // `tsl::UnboundedWorkQueue` expects std::function that must be copyable, so
+    // we are forced to do a little bit of manual memory management here.
+    queue_.Schedule(
+        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
+          std::move (*ptr)();
+          delete ptr;
+        });
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
+      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
+    });
+  }
+
+ private:
+  tsl::UnboundedWorkQueue queue_;
+};
+
 }  // namespace
 
 std::unique_ptr<AsyncWorkRunner> MakeThreadPoolAsyncWorkRunner(
     tsl::thread::ThreadPool* pool) {
   return std::make_unique<ThreadPoolAsyncWorkRunner>(pool);
+}
+
+std::unique_ptr<AsyncWorkRunner> MakeUnboundedAsyncWorkRunner(
+    const std::string& name, const tsl::ThreadOptions& thread_options) {
+  return std::make_unique<UnboundedAsyncWorkRunner>(name, thread_options);
 }
 
 }  // namespace xla

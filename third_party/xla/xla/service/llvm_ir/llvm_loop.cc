@@ -104,8 +104,11 @@ void ForLoop::Emit(llvm::IRBuilderBase* b) {
   llvm::Function* func = preheader_bb_->getParent();
   b->SetInsertPoint(&func->getEntryBlock(),
                     func->getEntryBlock().getFirstInsertionPt());
-  llvm::Value* indvar_address = b->CreateAlloca(
-      start_index_->getType(), nullptr, GetQualifiedName("invar_address"));
+  // Use EmitAllocaAtFunctionEntryWithCount which handles AMD GPU address space
+  // correctly
+  llvm::Value* indvar_address = llvm_ir::EmitAllocaAtFunctionEntryWithCount(
+      start_index_->getType(), nullptr, GetQualifiedName("invar_address"), b,
+      0);
 
   // Preheader basic block.
   // Initialize induction variable starting index. Create branch to the header.

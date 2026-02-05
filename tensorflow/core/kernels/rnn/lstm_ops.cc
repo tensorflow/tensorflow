@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1236,6 +1238,28 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* h_out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h", &h_out));
+
+    OP_REQUIRES(ctx, i_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "i must be rank 3. Received: ", i_out->dims())));
+    OP_REQUIRES(ctx, cs_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "cs must be rank 3. Received: ", cs_out->dims())));
+    OP_REQUIRES(ctx, f_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "f must be rank 3. Received: ", f_out->dims())));
+    OP_REQUIRES(ctx, o_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "o must be rank 3. Received: ", o_out->dims())));
+    OP_REQUIRES(ctx, ci_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "ci must be rank 3. Received: ", ci_out->dims())));
+    OP_REQUIRES(ctx, co_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "co must be rank 3. Received: ", co_out->dims())));
+    OP_REQUIRES(ctx, h_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "h must be rank 3. Received: ", h_out->dims())));
 
     const Tensor* cs_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_grad", &cs_grad));

@@ -62,7 +62,7 @@ struct CollectiveParams {
 
   const DeviceAssignment* device_assn;
   const GlobalDeviceIdMap* global_device_id_map;
-  const CliqueIdCallback* nccl_clique_id_callback;
+  const CliqueIdCallback* clique_id_callback;
   const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations;
 
   int64_t collective_max_nchannels;
@@ -77,7 +77,7 @@ struct CollectiveParams {
       LocalDeviceId local_device_id, GlobalDeviceId global_device_id,
       const DeviceAssignment* device_assn,
       const GlobalDeviceIdMap* global_device_id_map,
-      const CliqueIdCallback* nccl_clique_id_callback,
+      const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
       int64_t collective_max_nchannels, int64_t p2p_max_nchannels);
 };

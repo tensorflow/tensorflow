@@ -1,16 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_cuda_or_rocm_is_configured",
-)
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -97,49 +88,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "emitter_helpers",
-    srcs = ["emitter_helpers.cc"],
-    hdrs = [
-        "emitter_helpers.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//xla:comparison_util",
-        "//xla:literal",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/codegen/tiling:tiled_hlo_instruction",
-        "//xla/codegen/xtile/ir:xtile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo",
-        "//xla/mlir_hlo:map_mhlo_to_scalar_op",
-        "//xla/mlir_hlo:transformation_helpers",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ArithUtils",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
     name = "lowering_util",
     srcs = ["lowering_util.cc"],
     hdrs = ["lowering_util.h"],
@@ -187,7 +135,6 @@ cc_library(
         "compilation_pipeline_rocm.cc",
     ],
     hdrs = ["compilation_pipeline.h"],
-    tags = ["gpu"],
     deps = [
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
@@ -245,106 +192,36 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "fusion_emitter",
-    srcs = ["fusion_emitter.cc"],
-    hdrs = ["fusion_emitter.h"],
-    deps = [
-        ":collective_emitter",  # TODO(willfroom): Migrate to using stablehlo.allreduce etc.
-        ":dot_algorithms",
-        ":emitter_helpers",
-        "//xla:autotuning_proto_cc",
-        "//xla:permutation_util",
-        "//xla:shape_util",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/codegen/emitters/ir:xla",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
-        "//xla/codegen/tiling:tiled_hlo_instruction",
-        "//xla/codegen/tiling:tiled_hlo_schedule",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/codegen/xtile/ir:xtile",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/builder:xla_builder",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
-        "//xla/mlir_hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service:instruction_fusion",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tools:hlo_decomposer_lib",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-        "@llvm-project//mlir:FunctionInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:NVVMToLLVMIRTranslation",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TensorDialect",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
-        "@local_tsl//tsl/platform:path",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler_impl",
+    name = "xtile_compiler",
     srcs =
         [
             "xtile_compiler.cc",
-            "xtile_compiler.h",
         ],
+    hdrs = ["xtile_compiler.h"],
     tags = [
-        "gpu",
-        "manual",
         "no-oneapi",
     ],
-    visibility = ["//visibility:private"],
     deps = [
         ":collective_emitter",
         ":compilation_pipeline",
-        ":fusion_emitter",
         ":lowering_util",
         ":support",
         "//xla:autotuning_proto_cc",
-        "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
+        "//xla/codegen:ir_printing",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
@@ -363,8 +240,10 @@ cc_library(
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -395,155 +274,14 @@ cc_library(
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
-        "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:path",
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler_stub",
-    srcs = [
-        "xtile_compiler.h",
-        "xtile_compiler_stub.cc",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla:autotuning_proto_cc_impl",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler",
-    hdrs = [
-        "xtile_compiler.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = if_cuda_or_rocm_is_configured(
-        [":xtile_compiler_impl"],
-        [":xtile_compiler_stub"],
-    ) + if_cuda_is_configured([
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-    ]) + [
-        "//xla:autotuning_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-cc_library(
-    name = "dot_algorithms",
-    srcs = ["dot_algorithms.cc"],
-    hdrs = ["dot_algorithms.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":emitter_helpers",
-        "//xla:xla_data_proto_cc",
-        "//xla/codegen/xtile/ir:xtile",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/translate/hlo_to_mhlo:attribute_importer",
-        "//xla/service:algorithm_util",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
-        "@stablehlo//:stablehlo_ops",
-        "@triton//:TritonDialects",
-    ],
-)
-
-cc_library(
-    name = "xtile_compiler_stub_for_testing",
-    srcs = [
-        "xtile_compiler_stub.cc",
-    ],
-    hdrs = [
-        "xtile_compiler.h",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla:autotuning_proto_cc",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@triton//:TritonDialects",
-    ],
-)
-
-xla_cc_test(
-    name = "xtile_compiler_stub_test",
-    srcs = ["xtile_compiler_stub_test.cc"],
-    deps = [
-        ":xtile_compiler_stub_for_testing",
-        "//xla:literal_util",
-        "//xla/codegen/tiling:tiled_hlo_instruction",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_module_config",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -554,6 +292,7 @@ xla_cc_test(
     deps = [
         ":xtile_compiler",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -587,7 +326,9 @@ xla_test(
     ],
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":test_utils",
         ":xtile_compiler",
@@ -595,6 +336,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:pattern_matcher_gmock",
@@ -625,7 +367,7 @@ xla_test(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -643,7 +385,9 @@ xla_test(
     tags = [
         "large",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
@@ -658,7 +402,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -686,7 +430,9 @@ xla_test(
     shard_count = 30,
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":test_utils",
         "//xla:autotuning_proto_cc",
@@ -723,7 +469,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -739,7 +485,9 @@ xla_test(
     shard_count = 10,
     tags = [
         "no_mac",
+        "pjrt_migration_candidate",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":support",
         ":test_utils",
@@ -753,6 +501,7 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -782,7 +531,7 @@ xla_test(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:path",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -792,18 +541,22 @@ cc_library(
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
     deps = [
-        ":fusion_emitter",
         ":xtile_compiler",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/transforms/simplifiers:float_normalization",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_float_support",
@@ -825,11 +578,11 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_for_library",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -848,9 +601,11 @@ xla_test(
         "no_mac",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
         "nozapfhahn",  # Times out under coverage
+        "pjrt_migration_candidate",
     ] + if_google([
         "requires-mem:16g",
     ]),
+    use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
@@ -872,7 +627,11 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["no_mac"],
+    tags = [
+        "no_mac",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
         ":support",
         ":test_utils",
@@ -900,10 +659,12 @@ xla_cc_test(
     tags = [
         "gpu",
         "no_mac",
+        "pjrt_migration_candidate",
     ],
     deps = [
         ":test_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tests:hlo_test_base_with_mlir_context",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -946,7 +707,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:tensor_float_32_utils",
+        "@tsl//tsl/platform:tensor_float_32_utils",
     ],
 )
 
@@ -956,15 +717,18 @@ xla_cc_test(
     shard_count = 25,
     # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
     # Force it to run on GPU temporarily in order to get important OSS coverage.
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "pjrt_migration_candidate",
+    ],
     deps = [
-        ":fusion_emitter",
         ":support",
         ":test_utils",
         ":xtile_compiler",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:ir_emission_utils",
@@ -980,7 +744,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -993,9 +757,12 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["no_mac",],
+    tags = [
+        "no_mac",
+        "pjrt_migration_candidate",
+    ],
+    use_legacy_runtime = True,
     deps = [
-        ":fusion_emitter",
         ":support",
         ":test_utils",
         ":xtile_compiler",
@@ -1003,6 +770,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:triton_fusion_analysis",
@@ -1040,7 +808,6 @@ cc_library(
     srcs = ["collective_emitter.cc"],
     hdrs = ["collective_emitter.h"],
     deps = [
-        ":emitter_helpers",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -1049,20 +816,22 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/runtime:all_reduce",
         "//xla/codegen/tiling:tiled_hlo_instruction",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/model:block_level_parameters",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1072,6 +841,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
     ],
 )
@@ -1123,54 +894,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "tiled_emitter_constraints",
-    srcs = ["tiled_emitter_constraints.cc"],
-    hdrs = ["tiled_emitter_constraints.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":emitter_helpers",
-        "//xla:util",
-        "//xla/codegen/tiling:affine_map_evaluator",
-        "//xla/codegen/tiling:constraint_expression",
-        "//xla/codegen/tiling:symbolic_tile",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:symbolic_tiled_hlo_instruction",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:interval",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_cc_test(
-    name = "tiled_emitter_constraints_test",
-    srcs = ["tiled_emitter_constraints_test.cc"],
-    deps = [
-        ":tiled_emitter_constraints",
-        "//xla/codegen/tiling:symbolic_tile_analysis",
-        "//xla/codegen/tiling:tiling_specification",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:instruction_fusion",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )

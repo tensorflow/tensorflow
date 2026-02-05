@@ -555,15 +555,19 @@ absl::StatusOr<ProgramShape> ProgramShape::FromProto(
   return program_shape;
 }
 
-ProgramShapeProto ProgramShape::ToProto() const {
-  ProgramShapeProto proto;
+void ProgramShape::ToProto(ProgramShapeProto& proto) const {
   for (const Shape& shape : parameters()) {
-    *proto.add_parameters() = shape.ToProto();
+    shape.ToProto(*proto.add_parameters());
   }
-  *proto.mutable_result() = result().ToProto();
+  result().ToProto(*proto.mutable_result());
   for (const std::string& name : parameter_names()) {
     proto.add_parameter_names(name);
   }
+}
+
+ProgramShapeProto ProgramShape::ToProto() const {
+  ProgramShapeProto proto;
+  ToProto(proto);
   return proto;
 }
 

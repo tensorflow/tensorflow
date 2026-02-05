@@ -87,11 +87,13 @@ BasicAtomProgramCompiler::CompileXla(
   TF_ASSIGN_OR_RETURN(
       xla::ifrt::DeviceListRef devices,
       xla::ifrt::GetDeviceListFromXlaCompileOptions(client_, options));
-  TF_ASSIGN_OR_RETURN(result.executable,
-                      client_->GetDefaultCompiler()->CompileAndLoad(
-                          std::move(hlo_program),
-                          std::make_unique<xla::ifrt::XlaCompileOptions>(
-                              std::move(options), std::move(devices))));
+  TF_ASSIGN_OR_RETURN(
+      result.executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::move(hlo_program),
+                           std::make_unique<xla::ifrt::XlaCompileOptions>(
+                               std::move(options), std::move(devices)))
+          .Await());
   result.name = absl::StrCat(result.executable->name(), ".",
                              tsl::random::ThreadLocalNew64());
 

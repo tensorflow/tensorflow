@@ -191,6 +191,12 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
+  Option<bool> allow_xla_cpu{
+      *this,
+      "allow-xla-cpu",
+      llvm::cl::desc("If true, allow XLA:CPU for CPU computations."),
+      llvm::cl::init(true),
+  };
 };
 
 }  // namespace tensorflow

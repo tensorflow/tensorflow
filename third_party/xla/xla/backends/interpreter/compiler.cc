@@ -158,7 +158,7 @@ InterpreterCompiler::Compile(std::unique_ptr<HloModule> hlo_module,
   return std::move(ret);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 InterpreterCompiler::CompileAheadOfTime(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& aot_options) {

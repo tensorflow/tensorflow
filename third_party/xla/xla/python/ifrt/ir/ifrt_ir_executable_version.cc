@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/xla_executable_version.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -99,24 +100,27 @@ IfrtIrExecutableVersion::IfrtIrExecutableVersion(
       device_assignments(device_assignments.begin(), device_assignments.end()),
       runtime_abi_versions(std::move(runtime_abi_versions)) {}
 
-bool IfrtIrExecutableVersion::IsCompatibleWith(
+absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     const ExecutableVersion& other) const {
   if (this == &other) {
-    return true;
+    return absl::OkStatus();
   }
   if (auto other_ifrt_ir_executable_version =
           llvm::dyn_cast<IfrtIrExecutableVersion>(&other)) {
-    return (ifrt_version == other_ifrt_ir_executable_version->ifrt_version);
+    if (ifrt_version == other_ifrt_ir_executable_version->ifrt_version) {
+      return absl::OkStatus();
+    }
+    return absl::InvalidArgumentError(
+        "Executable version is not compatible with current version");
   }
-  return false;
+  return absl::InvalidArgumentError(
+      "Other ExecutableVersion is not IfrtIrExecutableVersion");
 }
 
-bool IfrtIrExecutableVersion::IsCompatibleWith(
+absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     xla::ifrt::Client& client, const xla::ifrt::DeviceListRef& devices,
     const ExecutableVersion& other) const {
-  if (!IsCompatibleWith(other)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(IsCompatibleWith(other));
   const auto* other_ifrt_ir_executable_version =
       llvm::cast<IfrtIrExecutableVersion>(&other);
   // This version is compatible with the other IFRT IR version if the other's
@@ -126,19 +130,13 @@ bool IfrtIrExecutableVersion::IsCompatibleWith(
     absl::StatusOr<xla::ifrt::DeviceListRef> atom_device_list =
         MakeDeviceListFromAtomDeviceIds(client, devices, atom_devices);
     if (!atom_device_list.ok()) {
-      LOG(ERROR) << "Failed to make device list from atom device ids: "
-                 << atom_device_list.status();
-      return false;
+      return atom_device_list.status();
     }
-    absl::Status status =
+    TF_RETURN_IF_ERROR(
         client.GetDefaultCompiler()->IsExecutableVersionCompatible(
-            *runtime_abi_version, *atom_device_list);
-    if (!status.ok()) {
-      LOG(ERROR) << "Executable version not compatible: " << status;
-      return false;
-    }
+            *runtime_abi_version, *atom_device_list));
   }
-  return true;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<IfrtIrExecutableVersionProto> IfrtIrExecutableVersion::ToProto(
@@ -246,9 +244,7 @@ std::string IfrtIrExecutableVersion::ToString() const {
     if (auto xla_executable_version =
             llvm::dyn_cast<XlaExecutableVersion>(runtime_abi_version.get())) {
       runtime_abi_version_strs.push_back(absl::StrCat(
-          "{platform_id=", xla_executable_version->platform_id,
-          ", runtime_abi_version=", xla_executable_version->runtime_abi_version,
-          ", devices=[",
+          "{platform_id=", xla_executable_version->platform_id, ", devices=[",
           absl::StrJoin(atom_devices, ",",
                         [](std::string* out, xla::ifrt::DeviceId device_id) {
                           absl::StrAppend(out, device_id.value());

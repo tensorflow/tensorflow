@@ -38,14 +38,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_target.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
+#include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
-#include "xla/backends/gpu/runtime/kernel_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/ffi/attribute_map.h"
@@ -77,6 +75,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -135,7 +134,7 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
                               /*index*/ {});
   }
 
-  auto slice_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](HloInstructionAdaptor node) {
         return IsOpcodeAnyOf<HloOpcode::kDynamicSlice, HloOpcode::kSlice>(
@@ -220,7 +219,8 @@ std::unique_ptr<HloModule> ExtractOffsetModule(
     const HloInstruction* offset_value, int64_t indvar_idx) {
   // Extract offset as a function of parameter to while body.
   std::unique_ptr<HloModule> extracted_offset = ExtractModule(
-      /*instruction=*/offset_value, /*height=*/-1,
+      /*instruction=*/
+      offset_value, /*height=*/-1,
       /*extract_selector=*/
       [](const HloInstruction* instr) -> bool {
         return instr->opcode() != HloOpcode::kParameter;
@@ -324,7 +324,7 @@ absl::Status CollectSliceInfo(
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
 
   bool can_compute_offset_on_host =
-      indvar_idx != std::nullopt && can_compute_indvar_on_host;
+      indvar_idx.has_value() && can_compute_indvar_on_host;
 
   for (auto idx_op : arg_slice_instr->index_operands()) {
     const auto* param = Cast<HloParameterInstruction>(idx_op);
@@ -470,7 +470,7 @@ absl::StatusOr<BufferAllocation::Slice> GetResultSlice(
     }
   }
 
-  auto slice_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> slice_adaptor = HloBfsFindIf(
       {HloInstructionAdaptor(*start, &adaptor)}, adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kDynamicUpdateSlice; },
       /*visit_operands=*/false);
@@ -567,7 +567,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
   std::unique_ptr<HloModule> init_module, update_module;
   std::optional<int64_t> indvar_idx;
   InlinedModule* inlined_module = nullptr;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
     TF_ASSIGN_OR_RETURN(inlined_module,
@@ -576,7 +576,7 @@ absl::StatusOr<FusionEmissionResult> EmitGemm(
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -790,7 +790,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   std::unique_ptr<HloModule> init_module, update_module;
   std::optional<int64_t> indvar_idx = std::nullopt;
   InlinedModule* inlined_module = nullptr;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetWhileOp is not expected to return nullptr.";
     TF_ASSIGN_OR_RETURN(inlined_module,
@@ -799,7 +799,7 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -949,7 +949,8 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
         thunk_info, call_target_name, std::move(ops), std::move(res),
         std::move(attributes),
         called_computations.empty() ? nullptr : called_computations[0],
-        ir_emitter_context.platform_name());
+        ir_emitter_context.platform_name(),
+        ir_emitter_context.gpu_compute_capability());
   };
 
   auto legacy_thunk =
@@ -1109,14 +1110,14 @@ CollectSliceArgumentMetadataForCollectives(
   std::optional<HloInstruction*> while_op =
       GetParentWhileOp(fusion_instr, call_graph);
   std::optional<int64_t> indvar_idx = std::nullopt;
-  if (while_op != std::nullopt) {
+  if (while_op.has_value()) {
     CHECK(while_op.value() != nullptr)
         << "GetParentWhileOp is not expected to return nullptr.";
     auto inlined_while_op = inlined_module->get_inlined_inst(*while_op);
     CHECK(inlined_while_op != nullptr)
         << "While loop is not found in the inlined module.";
     indvar_idx = GetLoopInductionVarTupleIdx(inlined_while_op);
-    if (indvar_idx != std::nullopt) {
+    if (indvar_idx.has_value()) {
       VLOG(3) << "Found loop index variable: " << indvar_idx.value();
       slice_data.init_module =
           ExtractWhileInitModule(inlined_while_op, indvar_idx.value());
@@ -1147,20 +1148,20 @@ CollectSliceArgumentMetadataForCollectives(
   }
 
   // Collect slice information for outputs.
-  PtrVec<const HloInstruction*> collective_results;
+  std::vector<ShapeIndex> output_shape_indices;
   if (instr->shape().IsTuple()) {
-    for (const HloInstruction* user : instr->users()) {
-      collective_results.push_back(user);
+    for (int64_t i = 0; i < instr->shape().tuple_shapes_size(); ++i) {
+      output_shape_indices.push_back({i});
     }
   } else {
-    collective_results.push_back(instr);
+    output_shape_indices.push_back({});
   }
-  for (const HloInstruction* user : collective_results) {
+  for (const ShapeIndex& output_shape_idx : output_shape_indices) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice dst,
         GetResultSlice(buffer_assignment, adaptor, fusion_instr,
-                       /*start_instr=*/*user, slice_data.slice_instrs,
-                       /*shape_idx=*/{}, arg_idx));
+                       /*start_instr=*/*instr, slice_data.slice_instrs,
+                       output_shape_idx, arg_idx));
     slice_data.arguments[arg_idx] = dst;
     TF_RETURN_IF_ERROR(CollectSliceInfo(
         buffer_assignment, fusion_instr,
@@ -1209,16 +1210,15 @@ CollectSliceArgumentMetadataForCollectives(
       slice_data.fake_arguments[fake_arg_idx] = fake_slice;
       fake_arg_idx++;
     }
-    PtrVec<const HloInstruction*> collective_results;
+
+    std::vector<Shape> output_shapes;
     if (instr->shape().IsTuple()) {
-      for (const HloInstruction* user : instr->users()) {
-        collective_results.push_back(user);
-      }
+      output_shapes = instr->shape().tuple_shapes();
     } else {
-      collective_results.push_back(instr);
+      output_shapes.push_back(instr->shape());
     }
-    for (const HloInstruction* user : collective_results) {
-      int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(user->shape());
+    for (const Shape& shape : output_shapes) {
+      int64_t out_fake_byte_size = ShapeUtil::ByteSizeOf(shape);
       slice_data.fake_allocations[fake_arg_idx] = BufferAllocation(
           /*index=*/fake_arg_idx, /*size=*/out_fake_byte_size,
           /*color=*/0);
@@ -1302,16 +1302,16 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
                                    ? instr->shape().tuple_shapes(idx)
                                    : instr->shape();
       std::optional<BufferAllocation::Slice> src = slice_data.args()[idx];
+      TF_RET_CHECK(src.has_value())
+          << "Expected source to be present for non-degenerate collective";
       std::optional<BufferAllocation::Slice> dst =
           slice_data.args()[idx + instr->operand_count()];
-      TF_RET_CHECK(src.has_value() && dst.has_value())
-          << "Expected source and destination to be present for "
-             "non-degenerate "
-             "collective";
+      TF_RET_CHECK(dst.has_value())
+          << "Expected destination to be present for non-degenerate collective";
       buffers.push_back(CollectiveThunk::Buffer{
           /*element_count=*/ShapeUtil::ElementsIn(src_shape),
-          /*source_buffer=*/src.value(),
-          /*destination_buffer=*/dst.value(),
+          /*source_buffer=*/{src.value(), src_shape},
+          /*destination_buffer=*/{dst.value(), dst_shape},
           /*source_memory_space=*/src_shape.layout().memory_space(),
           /*destination_memory_space=*/dst_shape.layout().memory_space()});
     }
@@ -1333,8 +1333,7 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
           /*thunk_info=*/
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context.GetNextThunkId()),
-          /*async_events=*/async_events,
-          /*async_stream_kind=*/AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+          /*async_events=*/async_events);
       seq.emplace_back(std::move(collective_done_thunk));
     }
   } else {
@@ -1424,13 +1423,13 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     const HloFusionInstruction& fusion) const {
   const HloFusionAdaptor& adaptor = analysis_.fusion();
   // Only reduce-scatter is supported for now.
-  auto maybe_collective =
+  std::optional<HloInstructionAdaptor> maybe_collective =
       HloBfsFindIf(/*roots=*/adaptor.GetRoots(), /*fusion=*/adaptor,
                    /*visit=*/[](HloInstructionAdaptor node) -> bool {
                      return node.opcode() == HloOpcode::kReduceScatter;
                    });
 
-  if (maybe_collective != std::nullopt) {
+  if (maybe_collective.has_value()) {
     const HloReduceScatterInstruction* rs =
         Cast<const HloReduceScatterInstruction>(
             &maybe_collective->instruction());
@@ -1439,10 +1438,10 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
         /*use_global_device_ids=*/rs->use_global_device_ids(),
         /*call_graph=*/call_graph_);
   }
-  auto maybe_custom_call_adaptor = HloBfsFindIf(
+  std::optional<HloInstructionAdaptor> maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,
       [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-  if (maybe_custom_call_adaptor == std::nullopt) {
+  if (!maybe_custom_call_adaptor.has_value()) {
     return absl::InternalError("DynamicSliceFusion requires a CustomCall hero");
   }
 

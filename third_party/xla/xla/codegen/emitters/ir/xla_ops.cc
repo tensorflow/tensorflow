@@ -565,7 +565,7 @@ struct FoldApplyIndexingResults
     new_values.reserve(num_results);
     for (mlir::OpResult opresult : indexing_op->getOpResults()) {
       if (opresult.use_empty()) {
-        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
+        new_values.push_back(arith::ConstantIndexOp::create(rewriter, loc, 0));
         continue;
       }
 
@@ -573,8 +573,8 @@ struct FoldApplyIndexingResults
       AffineExpr result_expr = affine_map.getResult(id);
       if (auto const_expr =
               mlir::dyn_cast<mlir::AffineConstantExpr>(result_expr)) {
-        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, const_expr.getValue()));
+        new_values.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, const_expr.getValue()));
         continue;
       }
       if (auto dim_expr = mlir::dyn_cast<mlir::AffineDimExpr>(result_expr)) {
@@ -600,8 +600,8 @@ struct FoldApplyIndexingResults
     IndexingMap new_indexing_map(
         new_affine_map, indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
         indexing_map.GetRTVars(), indexing_map.GetConstraints());
-    auto new_indexing_op = rewriter.create<ApplyIndexingOp>(
-        loc, indexing_op.getOperands(), new_indexing_map);
+    auto new_indexing_op = ApplyIndexingOp::create(
+        rewriter, loc, indexing_op.getOperands(), new_indexing_map);
     for (int new_result_id = 0, new_indexing_op_result_id = 0;
          new_result_id < new_values.size(); ++new_result_id) {
       auto& new_value = new_values[new_result_id];
@@ -999,8 +999,8 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     }
 
     auto new_loop_op =
-        rewriter.create<LoopOp>(loop_op.getLoc(), replacement->indexing_map,
-                                used_dims, loop_op.getInits());
+        LoopOp::create(rewriter, loop_op.getLoc(), replacement->indexing_map,
+                       used_dims, loop_op.getInits());
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();
     rewriter.mergeBlocks(original_block, new_block, new_block->getArguments());
@@ -1064,8 +1064,9 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
                                  loop_indexing_map.GetRTVars(),
                                  new_constraints);
 
-    auto new_loop_op = rewriter.create<LoopOp>(
-        loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits());
+    auto new_loop_op =
+        LoopOp::create(rewriter, loop_op.getLoc(), new_indexing_map,
+                       used_operands, loop_op.getInits());
 
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();

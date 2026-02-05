@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/future.h"
@@ -505,11 +506,13 @@ TEST_P(KernelTest, IfrtLoadVariableOp) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto [input_tensor_promise, input_tensor_future] =
-      tsl::Future<tensorflow::Tensor>::MakePromise();
+      tsl::MakePromise<tensorflow::Tensor>();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
-                                              .shape = input_tensor.shape()},
-                          .tensor_future = input_tensor_future};
+      restore_tensor_info{
+          .dtype_and_shape = tsl::Future<ifrt_serving::DtypeAndShape>(
+              ifrt_serving::DtypeAndShape{.dtype = input_tensor.dtype(),
+                                          .shape = input_tensor.shape()}),
+          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
       kVariableRuntimeName, restore_tensor_info));
@@ -555,11 +558,13 @@ TEST_P(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
   auto [input_tensor_promise, input_tensor_future] =
-      tsl::Future<tensorflow::Tensor>::MakePromise();
+      tsl::MakePromise<tensorflow::Tensor>();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
-      restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
-                                              .shape = input_tensor.shape()},
-                          .tensor_future = input_tensor_future};
+      restore_tensor_info{
+          .dtype_and_shape = tsl::Future<ifrt_serving::DtypeAndShape>(
+              ifrt_serving::DtypeAndShape{.dtype = input_tensor.dtype(),
+                                          .shape = input_tensor.shape()}),
+          .tensor_future = input_tensor_future};
   input_tensor_promise.Set(input_tensor);
   TF_ASSERT_OK(ifrt_model_context_->GetRestoreTensorRegistry().TryRegister(
       kVariableRuntimeName, restore_tensor_info));

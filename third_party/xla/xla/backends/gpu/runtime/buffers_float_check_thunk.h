@@ -42,13 +42,7 @@ class BuffersDebugFloatCheckThunk : public Thunk {
       BufferAllocation::Slice log_slice, BufferAllocation::Slice tmp_slice,
       absl::flat_hash_map<size_t, BufferAllocation::Slice>
           checked_thunk_buffers,
-      std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store)
-      : Thunk(Thunk::Kind::kBuffersDebugFloatCheck, std::move(info)),
-        log_slice_(log_slice),
-        tmp_slice_(tmp_slice),
-        checked_thunk_info_(checked_thunk_info),
-        checked_thunk_buffers_(std::move(checked_thunk_buffers)),
-        metadata_store_(std::move(metadata_store)) {}
+      std::shared_ptr<BufferDebugLogEntryMetadataStore> metadata_store);
 
   absl::Status Initialize(const InitializeParams& params) override
       ABSL_LOCKS_EXCLUDED(kernels_mutex_);

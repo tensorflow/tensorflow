@@ -179,8 +179,8 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root_device=0; "
-            "num_local_participants=2; incarnations=[]");
+            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root=0; "
+            "local_participants=2; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
@@ -199,26 +199,6 @@ TEST(GpuCliqueIdStringTest, ToString) {
   for (int i = 0; i < 128; ++i) {
     EXPECT_EQ(clique_id.ToString()[i], id[i]);
   }
-}
-
-TEST(GpuCliqueKeyTest, GetCollectiveStreamId) {
-  EXPECT_EQ(GetCollectiveStreamId(false, CollectiveStreamId(0),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(0));
-  EXPECT_EQ(
-      GetCollectiveStreamId(true, CollectiveStreamId(0),
-                            AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      CollectiveStreamId(1));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(2));
-  EXPECT_EQ(
-      GetCollectiveStreamId(true, CollectiveStreamId(2),
-                            AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE),
-      CollectiveStreamId(2));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(1),
-                                  AsyncStreamKind::ASYNC_STREAM_KIND_P2P0),
-            CollectiveStreamId(1));
 }
 
 }  // namespace xla::gpu

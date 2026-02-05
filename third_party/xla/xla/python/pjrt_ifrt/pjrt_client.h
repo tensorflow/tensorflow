@@ -21,8 +21,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -53,23 +52,24 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/python/pjrt_ifrt/transfer_server_interface.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -130,6 +130,8 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
+  static constexpr absl::string_view kRuntimeType = "pjrt_ifrt";
+
   struct CreateOptions {
     std::shared_ptr<xla::PjRtClient> pjrt_client;
 
@@ -160,6 +162,10 @@ class PjRtClient final
     std::function<absl::StatusOr<std::unique_ptr<TransferServerInterface>>(
         std::shared_ptr<xla::PjRtClient>)>
         transfer_server_factory;
+
+    // If true, force DCN-based cross-host transfers even when the PJRT plugin
+    // supports cross-host transfers.
+    bool force_dcn_cross_host_transfers = false;
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -219,8 +225,10 @@ class PjRtClient final
   absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
+      ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) override;
+  // Expose the base class's `MakeArrayFromHostBuffer` overloads.
+  using xla::ifrt::Client::MakeArrayFromHostBuffer;
 
   absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
@@ -253,7 +261,11 @@ class PjRtClient final
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) override;
 
-  absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
+  void CancelExecution(
+      xla::ifrt::LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) override {}
+
+  absl::string_view runtime_type() const override { return kRuntimeType; }
 
   absl::string_view platform_name() const override {
     DCHECK(this);
@@ -348,6 +360,15 @@ class PjRtClient final
   // Returns the latest set of incarnation ids for every task.
   absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> Incarnations() const;
 
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<xla::ifrt::Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      xla::ifrt::OnDeviceAttributeChangeCallback callback) override {
+    return absl::UnimplementedError(
+        "SubscribeToAttributeChanges is not implemented in PjRtClient.");
+  }
+
   static char ID;  // NOLINT
 
  private:
@@ -385,7 +406,8 @@ class PjRtClient final
   // (source, destination) pairs is cross-host.
   absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHost(
       absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
-      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
+      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind,
+      ArrayCopySemantics semantics);
 
   // Extracts receive descriptors from a key-value store and sends buffers to a
   // remote device. This is used when the backend does not implement the
@@ -426,6 +448,10 @@ class PjRtClient final
   // If true, the backend implements the cross-host transfer APIs.
   bool pjrt_supports_cross_host_transfers_ = false;
 
+  // If true, force DCN-based cross-host transfers even when the backend
+  // supports cross-host transfers.
+  bool force_dcn_cross_host_transfers_ = false;
+
   absl::Status WatchGlobalProcessInfo(xla::CoordinationServiceAgent& agent);
 
   std::atomic<int64_t> next_transfer_key_ = 0;
@@ -446,10 +472,6 @@ class PjRtClient final
   absl::Mutex shutting_down_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutting_down_mu_) = false;
   std::unique_ptr<tsl::Thread> global_process_info_thread_;
-
-  // A work queue for dispatching background work. Enqueued work items can
-  // access the members of this class, so work_queue_ should be built last.
-  std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
 
   friend class PjRtClientPeer;
 };

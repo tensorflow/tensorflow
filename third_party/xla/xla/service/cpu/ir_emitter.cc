@@ -88,7 +88,6 @@ limitations under the License.
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_function.h"
-#include "xla/service/cpu/onednn_config.pb.h"
 #include "xla/service/cpu/parallel_loop_emitter.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/hlo_module_config.h"
@@ -109,10 +108,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-
-#ifdef XLA_ONEDNN
-#include "xla/service/cpu/onednn_memory_util.h"
-#endif  // XLA_ONEDNN
 
 namespace xla {
 
@@ -2421,148 +2416,6 @@ absl::Status IrEmitter::HandleTopK(HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-#ifdef XLA_ONEDNN
-
-// Emits operands alloca vector for oneDNN custom calls.
-std::vector<StackAlloca> IrEmitter::EmitOneDnnOperandsAlloca(
-    HloInstruction* custom_call, llvm::Value*& args_val, int& arg_indx) {
-  std::vector<StackAlloca> operands_stack_alloca;
-  const int num_operands = custom_call->operand_count();
-  operands_stack_alloca.reserve(num_operands);
-  for (int i = 0; i < num_operands; ++i) {
-    llvm_ir::IrArray ir_array(GetIrArrayFor(custom_call->operand(i)));
-    StackAlloca stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), ir_array);
-    args_val = b()->CreateInsertValue(args_val, stack_alloca.value, arg_indx++);
-    operands_stack_alloca.push_back(std::move(stack_alloca));
-  }
-  return operands_stack_alloca;
-}
-
-std::pair<llvm::Value*, StackAlloca> IrEmitter::GetPtrAndAllocaFromBufferSlice(
-    const BufferAllocation::Slice& slice, const Shape& shape) {
-  llvm::Value* slice_ptr = EmitBufferPointer(slice, shape);
-  llvm::Type* type = IrShapeType(shape);
-  llvm_ir::IrArray ir_array = llvm_ir::IrArray(slice_ptr, type, shape);
-  return {slice_ptr, GetAllocaAndEmitMemrefInfo(*b(), ir_array)};
-}
-
-absl::Status IrEmitter::HandleOneDnnMatMulCalls(
-    HloInstruction* custom_call, std::string runtime_symbol_name) {
-  // We would like to emit LLVM IR for the following function call
-  //      custom_call_target(void* result, void** args)
-  // args can be thought of an array of pointers allocated on the stack,
-  // i.e., alloca [nargs x ptr], as such
-  //      args[0]: ptr to nargs
-  //      args[1]: ptr to ExecutableRunOptions
-  //      args[2]: ptr to OneDnnMatMulConfig
-  //      args[3...]: ptrs to operands
-  //  This allows us to pass variable number of operands to the
-  //  custom_call_target function.
-  //
-  //  Currently, we assume that neither operands nor results are packed into
-  //  tuple(s).
-
-  // First three arguments: nargs, ExecutableRunOptions, and
-  // OneDnnMatMulConfig.
-  const int nargs_offset = 3;
-  const int num_operands = custom_call->operand_count();
-  const int nargs = nargs_offset + num_operands;
-  int arg_indx = 0;
-
-  llvm::Type* i64_type = b()->getInt64Ty();
-  llvm::Type* ptr_type = b()->getPtrTy();
-  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
-  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
-
-  // Insert nargs.
-  llvm::Value* nargs_val = b()->getInt64(nargs);
-  llvm::Value* nargs_ptr =
-      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", b());
-  b()->CreateLifetimeStart(nargs_ptr);
-  b()->CreateStore(nargs_val, nargs_ptr);
-  args_val = b()->CreateInsertValue(args_val, nargs_ptr, arg_indx++);
-
-  // Insert ExecutableRunOptions.
-  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
-  args_val = b()->CreateInsertValue(args_val, run_opts_val, arg_indx++);
-
-  // Insert OneDnnMatMulConfig.
-  auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
-  auto backend_config = typed_custom_call->backend_config<BackendConfig>();
-  OneDnnMatMulConfig matmul_config;
-  matmul_config.CopyFrom(backend_config->onednn_matmul_config());
-  std::string str_config;
-  matmul_config.SerializeToString(&str_config);
-  llvm::Value* matmul_config_val =
-      b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
-  args_val = b()->CreateInsertValue(args_val, matmul_config_val, arg_indx++);
-
-  // Insert operands.
-  auto operands_stack_alloca =
-      EmitOneDnnOperandsAlloca(custom_call, args_val, arg_indx);
-  TF_RET_CHECK(nargs == arg_indx)
-      << "Number of arguments don't equal the last argument index.";
-
-  llvm::Value* args_ptr =
-      llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", b());
-  b()->CreateLifetimeStart(args_ptr);
-  b()->CreateStore(args_val, args_ptr);
-
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
-
-  StackAlloca result_stack_alloca;
-  StackAlloca scratch_stack_alloca;
-  // Custom-call target for matmul has 3 arguments: void* result, void*
-  // scratch and void** args
-  std::vector<llvm::Value*> fn_call_args;
-  fn_call_args.reserve(3);
-  // Add the scratch buffer to the output, so that oneDNN can use it as a
-  // user-provided scratchpad
-  const bool use_scratchpad = custom_call->shape().IsTuple();
-  if (use_scratchpad) {
-    llvm::Value* result_slice_ptr;
-    llvm::Value* scratch_slice_ptr;
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                        assignment_.GetUniqueSlice(custom_call, {0}));
-    const Shape& result_shape = custom_call->shape().tuple_shapes(0);
-    std::tie(result_slice_ptr, result_stack_alloca) =
-        GetPtrAndAllocaFromBufferSlice(result_slice, result_shape);
-    fn_call_args.push_back(result_stack_alloca.value);
-
-    TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice scratch_slice,
-                        assignment_.GetUniqueSlice(custom_call, {1}));
-    const Shape& scratch_shape = custom_call->shape().tuple_shapes(1);
-    std::tie(scratch_slice_ptr, scratch_stack_alloca) =
-        GetPtrAndAllocaFromBufferSlice(scratch_slice, scratch_shape);
-    fn_call_args.push_back(scratch_stack_alloca.value);
-    llvm_ir::EmitTuple(GetIrArrayFor(custom_call),
-                       {result_slice_ptr, scratch_slice_ptr}, b());
-  } else {
-    llvm_ir::IrArray result_array;
-    result_array = GetIrArrayFor(custom_call);
-    result_stack_alloca = GetAllocaAndEmitMemrefInfo(*b(), result_array);
-    fn_call_args.push_back(result_stack_alloca.value);
-    fn_call_args.push_back(llvm::ConstantPointerNull::get(b()->getPtrTy()));
-  }
-  fn_call_args.push_back(args_ptr);
-  EmitCallToFunc(std::move(runtime_symbol_name), fn_call_args,
-                 b()->getVoidTy());
-
-  // Lifetime ends for all stack allocations.
-  b()->CreateLifetimeEnd(nargs_ptr);
-  b()->CreateLifetimeEnd(args_ptr);
-  for (auto& alloca : operands_stack_alloca) {
-    alloca.EmitLifetimeEnd();
-  }
-  result_stack_alloca.EmitLifetimeEnd();
-  if (use_scratchpad) {
-    scratch_stack_alloca.EmitLifetimeEnd();
-  }
-
-  return absl::OkStatus();
-}
-#endif  // XLA_ONEDNN
-
 absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "PadToStatic") {
     return HandlePadToStatic(custom_call);
@@ -2573,16 +2426,6 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "TopK") {
     return HandleTopK(custom_call);
   }
-#ifdef XLA_ONEDNN
-  if (custom_call->custom_call_target() == "__onednn$matmul") {
-    return HandleOneDnnMatMulCalls(custom_call,
-                                   runtime::kOneDnnMatMulSymbolName);
-  }
-  if (custom_call->custom_call_target() == "__onednn$matmul_reorder") {
-    return HandleOneDnnMatMulCalls(custom_call,
-                                   runtime::kOneDnnMatMulReorderSymbolName);
-  }
-#endif  // XLA_ONEDNN
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto is_typed_ffi = typed_custom_call->api_version() ==

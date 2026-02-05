@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/python/ifrt_proxy/integration_tests/scoped_pjrt_cpu_via_proxy.h"
 
 int main(int argc, char** argv) {
   const std::string disabled[] = {
@@ -46,5 +47,6 @@ int main(int argc, char** argv) {
 #endif
 
   testing::InitGoogleTest(&argc, argv);
+  xla::ifrt::proxy::test_util::ScopedPjRtCpuViaProxy scoped_pjrt_cpu_via_proxy;
   return RUN_ALL_TESTS();
 }

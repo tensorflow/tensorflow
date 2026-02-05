@@ -28,7 +28,7 @@ iteratively.
 Defines the `HloPassPipeline` class. Organizes a sequence of HLO passes into a
 pipeline for sequential execution.  Provides methods to add passes (`AddPass`)
 and invariant checkers (`AddInvariantChecker`) to the pipeline. `Run` method
-executes the entire pipeline on an HloModule or HloModuleGroup.
+executes the entire pipeline on an HloModule.
 
 ## Example Usage
 

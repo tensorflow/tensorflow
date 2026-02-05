@@ -201,10 +201,8 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
                           executor->CreateCommandBuffer(nested));
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* nested_command,
-      primary_cmd->CreateChildCommand(CommandBuffer::ChildCommandType::kCloned,
-                                      *nested_cmd, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto* nested_command,
+                          primary_cmd->CreateChildCommand(*nested_cmd, {}));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -226,8 +224,7 @@ TEST(GpuCommandBufferTest, LaunchNestedCommandBuffer) {
   TF_ASSERT_OK(
       nested_cmd->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, d));
   TF_ASSERT_OK(primary_cmd->Update());
-  TF_ASSERT_OK(primary_cmd->UpdateChildCommand(
-      CommandBuffer::ChildCommandType::kCloned, nested_command, *nested_cmd));
+  TF_ASSERT_OK(primary_cmd->UpdateChildCommand(nested_command, *nested_cmd));
   TF_ASSERT_OK(primary_cmd->Finalize());
 
   TF_ASSERT_OK(primary_cmd->Submit(stream.get()));
@@ -719,8 +716,7 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 
   CommandBuffer::CreateCommands create_body = [&](CommandBuffer* body_cmd,
                                                   auto deps) {
-    return Wrap(body_cmd->CreateChildCommand(
-        CommandBuffer::ChildCommandType::kCloned, *nested_cmd, deps));
+    return Wrap(body_cmd->CreateChildCommand(*nested_cmd, deps));
   };
 
   // Create a command buffer with a single conditional operation.
@@ -737,6 +733,30 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 
   std::vector<int32_t> expected = {10, 10, 10, 10};
   ASSERT_EQ(dst, expected);
+}
+
+struct TestResource : public CommandBuffer::Resource {
+  TestResource() = default;
+  explicit TestResource(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+TEST(GpuCommandBufferTest, GetOrCreateResource) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(CommandBuffer::Mode::kNested));
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), nullptr);
+
+  TestResource* resource = command_buffer->GetOrCreateResource<TestResource>(
+      [] { return std::make_unique<TestResource>(42); });
+  EXPECT_NE(resource, nullptr);
+  EXPECT_EQ(resource->value, 42);
+
+  EXPECT_EQ(command_buffer->GetOrNullResource<TestResource>(), resource);
 }
 
 //===----------------------------------------------------------------------===//

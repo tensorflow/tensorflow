@@ -34,9 +34,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -283,13 +283,17 @@ class TritonSupportTest : public TritonSupportTestBase {
                            llvm_ctx_, mlir_context_);
     };
 
-    if (IsTritonSupportedInstruction(ti.Instruction(), cc)) {
+    auto is_supported = IsTritonSupportedInstruction(ti.Instruction(), cc);
+    if (is_supported) {
       EXPECT_THAT(run_triton_codegen(), absl_testing::IsOk())
           << ti.Module()->ToString();
       return;
     }
     if (failure_mode == ExpectedFailMode::kFail) {
-      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()));
+      EXPECT_THAT(run_triton_codegen(), Not(absl_testing::IsOk()))
+          << "The instruction should not be supported, but it is.\nThe "
+             "decision to not support it was:\n\t"
+          << is_supported.Explain();
       return;
     }
     EXPECT_DEATH(
@@ -3563,6 +3567,7 @@ constexpr std::array kUnsupportedOps = {
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
     HloOpcode::kScaledDot,
+    HloOpcode::kScan,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,

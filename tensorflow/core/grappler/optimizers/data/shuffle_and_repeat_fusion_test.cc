@@ -33,7 +33,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV1AndRepeat) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue(kOutputShapes, &shapes_attr);
   common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
@@ -45,7 +45,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV1AndRepeat) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
@@ -56,7 +56,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV1AndRepeat) {
       graph_utils::AddScalarConstNode<int64_t>(128, &graph);
   NodeDef *seed_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
   NodeDef *seed2_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
-  std::vector<string> shuffle_inputs(4);
+  std::vector<std::string> shuffle_inputs(4);
   shuffle_inputs[0] = range_node->name();
   shuffle_inputs[1] = buffer_size_node->name();
   shuffle_inputs[2] = seed_node->name();
@@ -66,7 +66,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV1AndRepeat) {
   (*shuffle_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
 
   NodeDef *count_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
-  std::vector<string> repeat_inputs(2);
+  std::vector<std::string> repeat_inputs(2);
   repeat_inputs[0] = shuffle_node->name();
   repeat_inputs[1] = count_node->name();
   NodeDef *repeat_node = graph_utils::AddNode(
@@ -101,7 +101,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV2AndRepeat) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue(kOutputShapes, &shapes_attr);
   common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
@@ -113,7 +113,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV2AndRepeat) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
@@ -125,7 +125,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV2AndRepeat) {
   NodeDef *seed_generator_node =
       graph_utils::AddScalarConstNode<absl::string_view>("dummy_resource",
                                                          &graph);
-  std::vector<string> shuffle_inputs(3);
+  std::vector<std::string> shuffle_inputs(3);
   shuffle_inputs[0] = range_node->name();
   shuffle_inputs[1] = buffer_size_node->name();
   shuffle_inputs[2] = seed_generator_node->name();
@@ -133,7 +133,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV2AndRepeat) {
       "", "ShuffleDatasetV2", shuffle_inputs, common_attrs, &graph);
 
   NodeDef *count_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
-  std::vector<string> repeat_inputs(2);
+  std::vector<std::string> repeat_inputs(2);
   repeat_inputs[0] = shuffle_node->name();
   repeat_inputs[1] = count_node->name();
   NodeDef *repeat_node = graph_utils::AddNode(
@@ -167,7 +167,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV3AndRepeat) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue(kOutputShapes, &shapes_attr);
   common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
@@ -179,7 +179,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV3AndRepeat) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
@@ -193,7 +193,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV3AndRepeat) {
   NodeDef *seed_generator_node =
       graph_utils::AddScalarConstNode<absl::string_view>("dummy_resource",
                                                          &graph);
-  std::vector<string> shuffle_inputs(5);
+  std::vector<std::string> shuffle_inputs(5);
   shuffle_inputs[0] = range_node->name();
   shuffle_inputs[1] = buffer_size_node->name();
   shuffle_inputs[2] = seed_node->name();
@@ -204,7 +204,7 @@ TEST(ShuffleAndRepeatFusionTest, FuseShuffleV3AndRepeat) {
   (*shuffle_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
 
   NodeDef *count_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
-  std::vector<string> repeat_inputs(2);
+  std::vector<std::string> repeat_inputs(2);
   repeat_inputs[0] = shuffle_node->name();
   repeat_inputs[1] = count_node->name();
   NodeDef *repeat_node = graph_utils::AddNode(
@@ -240,7 +240,7 @@ TEST(ShuffleAndRepeatFusionTest, NoChange) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  std::vector<std::pair<string, AttrValue>> common_attrs(2);
+  std::vector<std::pair<std::string, AttrValue>> common_attrs(2);
   AttrValue shapes_attr;
   SetAttrValue(kOutputShapes, &shapes_attr);
   common_attrs[0] = std::make_pair(kOutputShapes, shapes_attr);
@@ -252,7 +252,7 @@ TEST(ShuffleAndRepeatFusionTest, NoChange) {
   NodeDef *stop_node = graph_utils::AddScalarConstNode<int64_t>(10, &graph);
   NodeDef *step_node = graph_utils::AddScalarConstNode<int64_t>(1, &graph);
 
-  std::vector<string> range_inputs(3);
+  std::vector<std::string> range_inputs(3);
   range_inputs[0] = start_node->name();
   range_inputs[1] = stop_node->name();
   range_inputs[2] = step_node->name();
@@ -260,7 +260,7 @@ TEST(ShuffleAndRepeatFusionTest, NoChange) {
                                              common_attrs, &graph);
 
   NodeDef *count_node = graph_utils::AddScalarConstNode<int64_t>(-1, &graph);
-  std::vector<string> repeat_inputs(2);
+  std::vector<std::string> repeat_inputs(2);
   repeat_inputs[0] = range_node->name();
   repeat_inputs[1] = count_node->name();
   graph_utils::AddNode("", "RepeatDataset", repeat_inputs, common_attrs,

@@ -35,10 +35,8 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   debug_options.set_xla_gpu_kernel_cache_file("foo.txt");
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       true);
-  debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
 
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      debug_options, /*force_allow_register_spills=*/false);
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(debug_options);
 
   EXPECT_FALSE(debug_options.xla_enable_dumping());
   EXPECT_EQ(debug_options.xla_gpu_force_compilation_parallelism(), 1);
@@ -48,35 +46,6 @@ TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
   EXPECT_FALSE(debug_options.xla_gpu_async_dot());
   EXPECT_FALSE(debug_options.xla_embed_ir_in_executable());
   EXPECT_EQ(debug_options.xla_gpu_kernel_cache_file(), "");
-  EXPECT_TRUE(
-      debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling());
-}
-
-TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuningAllowSpilling) {
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-      true);
-  debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(false);
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      debug_options, /*force_allow_register_spills=*/true);
-  EXPECT_FALSE(
-      debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling());
-}
-
-TEST_F(GpuCodegenBackendTest,
-       AdjustDebugOptionsForAutotuningKeepsAlreadySetFailOnSpilling) {
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-      false);
-  debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      debug_options, /*force_allow_register_spills=*/false);
-  EXPECT_TRUE(
-      debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling());
-  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(
-      debug_options, /*force_allow_register_spills=*/true);
-  EXPECT_TRUE(
-      debug_options.xla_gpu_fail_ptx_compilation_on_register_spilling());
 }
 
 }  // namespace

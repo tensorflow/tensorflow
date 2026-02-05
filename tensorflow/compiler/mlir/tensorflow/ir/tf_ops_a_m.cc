@@ -3280,8 +3280,7 @@ void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(
-        RegionSuccessor(point.getTerminatorPredecessorOrNull(), getResults()));
+    regions.push_back(RegionSuccessor::parent(getResults()));
     return;
   } else {
     // The parent can branch to either `then` or `else`.

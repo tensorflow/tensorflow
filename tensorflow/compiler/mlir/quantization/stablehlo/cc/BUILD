@@ -67,9 +67,9 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -84,7 +84,7 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:env",
     ],
 )
 
@@ -105,7 +105,7 @@ tf_cc_test(
         ":graph_def",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -179,8 +179,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -202,8 +202,8 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@tsl//tsl/platform:protobuf",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -232,8 +232,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -266,8 +266,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@stablehlo//:stablehlo_passes",
+        "@xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
 
@@ -293,7 +293,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -334,7 +334,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -353,7 +353,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -388,8 +388,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -423,7 +423,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -457,8 +457,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla/mlir_hlo:mhlo_passes",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )

@@ -45,7 +45,7 @@ this directory:
 For CUDA
 ```bash
 DOCKER_BUILDKIT=1 docker build \
-  --build-arg PYTHON_VERSION=python3.9 --target=devel -t my-tf-devel .
+  --build-arg PYTHON_VERSION=python3.10 --target=devel -t my-tf-devel .
 ```
 For ROCM
 ```
@@ -54,7 +54,7 @@ DOCKER_BUILDKIT=1 docker build -f Dockerfile.rocm \
 ```
 It will take a long time to build devtoolset and install packages. After
 it's done, you can use the commands below to test your changes. Just replace
-`tensorflow/build:latest-python3.9` with `my-tf-devel` to use your image
+`tensorflow/build:latest-python3.10` with `my-tf-devel` to use your image
 instead.
 
 ### Automatic GCR.io Builds for Presubmits
@@ -105,9 +105,9 @@ Now let's build `tf-nightly`.
 
 For CUDA
 
+    - `tensorflow/build:latest-python3.12`
     - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
-    - `tensorflow/build:latest-python3.9`
 
 For ROCM
 
@@ -116,14 +116,14 @@ For ROCM
     - `rocm/tensorflow-build:latest-python3.8`
     - `rocm/tensorflow-build:latest-python3.7`
 
-    For this example we'll use `tensorflow/build:latest-python3.9`.
+    For this example we'll use `tensorflow/build:latest-python3.10`.
 
 3. Pull the container you decided to use.
 
 For CUDA
 
     ```bash
-    docker pull tensorflow/build:latest-python3.9
+    docker pull tensorflow/build:latest-python3.10
     ```
 
 For ROCM
@@ -153,11 +153,11 @@ For ROCM
     For CUDA
     ```bash
     docker run --name tf -w /tf/tensorflow -it -d \
-      --env TF_PYTHON_VERSION=3.9 \
+      --env TF_PYTHON_VERSION=3.10 \
       -v "/tmp/packages:/tf/pkg" \
       -v "/tmp/tensorflow:/tf/tensorflow" \
       -v "/tmp/bazelcache:/tf/cache" \
-      tensorflow/build:latest-python3.9 \
+      tensorflow/build:latest-python3.10 \
       bash
     ```
 

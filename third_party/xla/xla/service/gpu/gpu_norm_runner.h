@@ -66,7 +66,7 @@ struct GpuNormDescriptor {
   std::optional<Shape> dy_shape;
   std::optional<Shape> dscale_shape;
   std::optional<Shape> dbias_shape;
-  size_t scratch_size;
+  Shape scratch_shape;
 
   static absl::StatusOr<GpuNormDescriptor> FromProto(
       const GpuNormDescriptorProto& proto);

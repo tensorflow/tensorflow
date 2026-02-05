@@ -268,6 +268,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSin:
     case HloOpcode::kSinh:
     case HloOpcode::kTopK:
+    case HloOpcode::kScan:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
@@ -409,6 +410,7 @@ bool SupportSpatialPartitioning(
     case HloOpcode::kAllReduce:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kReduceScatter:
+    case HloOpcode::kScan:
       return true;
     case HloOpcode::kParameter:
       return allow_spmd_sharding_propagation_to_parameters ||
@@ -1860,6 +1862,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       return user_sharding;
     }
+    case HloOpcode::kScan:
     case HloOpcode::kSort: {
       HloSharding user_sharding = user.sharding();
       if (user_sharding.IsTuple()) {

@@ -16,6 +16,7 @@ limitations under the License.
 // XLA Stack operators.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"

@@ -100,7 +100,7 @@ StatusOr<mlir::Operation*> DynamicEnqueueSparseExpander::ExpandOp(
   mlir::Operation* sparse_enqueue_op =
       mlir::TF::DynamicEnqueueTPUEmbeddingArbitraryTensorBatchOp::create(
           builder, location,
-          /*sample_indices_or_row_splits_list=*/indices,
+          /*sample_indices_or_row_splits=*/indices,
           /*embedding_indices=*/values,
           /*aggregation_weights=*/dense_enqueue_op.getAggregationWeights(),
           /*mode_override=*/
