@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -234,6 +235,127 @@ TEST(PjRtCompilerTest, VariantRegistryLookup) {
   // Lookup using the single-parameter overload.
   status = GetDefaultPjRtCompiler(platform);
   EXPECT_TRUE(absl::IsNotFound(status.status()));
+}
+
+TEST(PjRtCompilerTest, CompilerFactoryRegistered) {
+  const std::string platform = "factory_test_platform";
+  const std::string variant = "factory_variant";
+  bool factory_called = false;
+
+  auto factory = [&]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+    factory_called = true;
+    return std::make_unique<PjRtDeserializeCompiler>();
+  };
+
+  PjRtRegisterCompilerFactory(platform, variant, std::move(factory));
+
+  class PjRtResetPlatformNameTopology : public PjRtTestTopology {
+   public:
+    absl::string_view platform_name() const override {
+      return "factory_test_platform";
+    }
+  };
+  PjRtResetPlatformNameTopology topology;
+  CompileOptions options;
+  options.compiler_variant = variant;
+  XlaComputation computation;
+
+  // Factory should not be called yet.
+  EXPECT_FALSE(factory_called);
+
+  // PjRtCompile should trigger the factory via GetOrCreateCompiler.
+  auto res = PjRtCompile(options, computation, topology);
+
+  EXPECT_TRUE(factory_called);
+  // PjRtDeserializeCompiler::Compile returns Unimplemented("test compiler!").
+  EXPECT_TRUE(absl::IsUnimplemented(res.status()));
+}
+
+TEST(PjRtCompilerTest, InitializeCompilerVariant) {
+  const std::string platform = "init_test_platform";
+  const std::string variant = "init_variant";
+  const std::string unknown_variant = "unknown_variant";
+  int factory_call_count = 0;
+
+  PjRtRegisterCompilerFactory(
+      platform, variant,
+      [&]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        factory_call_count++;
+        return std::make_unique<PjRtDeserializeCompiler>();
+      });
+
+  EXPECT_EQ(factory_call_count, 0);
+
+  // First call should invoke the factory.
+  auto status = PjRtInitializeCompilerVariant(platform, variant);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(factory_call_count, 1);
+
+  // Second call should be a no-op as the compiler is already in the registry.
+  status = PjRtInitializeCompilerVariant(platform, variant);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(factory_call_count, 1);
+
+  // Verify it's actually registered by looking it up.
+  auto compiler = GetPjRtCompiler(platform, variant);
+  ASSERT_TRUE(compiler.ok());
+  EXPECT_NE(*compiler, nullptr);
+}
+
+TEST(PjRtCompilerTest, FactoryError) {
+  const std::string platform = "error_test_platform";
+  const std::string variant = "error_variant";
+
+  PjRtRegisterCompilerFactory(
+      platform, variant, []() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        return absl::InternalError("factory failed");
+      });
+
+  // The error from the factory should be propagated.
+  auto status = PjRtInitializeCompilerVariant(platform, variant);
+  EXPECT_TRUE(absl::IsInternal(status));
+  EXPECT_EQ(status.message(), "factory failed");
+}
+
+TEST(PjRtCompilerTest, UnknownVariantError) {
+  const std::string platform = "unknown_test_platform";
+  const std::string variant = "no_such_variant";
+
+  // Requesting a variant that has no factory and no registered compiler.
+  auto status = PjRtInitializeCompilerVariant(platform, variant);
+  EXPECT_TRUE(absl::IsNotFound(status));
+  EXPECT_THAT(status.message(),
+              testing::HasSubstr(
+                  "No compiler factory for platform: unknown_test_platform, "
+                  "variant: no_such_variant"));
+}
+
+TEST(PjRtCompilerTest, RegistriesOutOfSync) {
+  const std::string platform = "sync_test_platform";
+  const std::string variant = "";  // Default variant
+  bool factory_called = false;
+
+  // Manually register a compiler in the CompilerRegistry.
+  PjRtRegisterDefaultCompiler(platform,
+                              std::make_unique<PjRtDeserializeCompiler>());
+
+  // Register a factory for the same key in the CompilerFactoryRegistry.
+  // This simulates the "out of sync" state where both maps have entries,
+  // but the compiler is already "initialized".
+  PjRtRegisterCompilerFactory(
+      platform, variant,
+      [&]() -> absl::StatusOr<std::unique_ptr<PjRtCompiler>> {
+        factory_called = true;
+        return std::make_unique<PjRtDeserializeCompiler>();
+      });
+
+  // Initialize/Access the compiler.
+  auto status = PjRtInitializeCompilerVariant(platform, variant);
+  EXPECT_TRUE(status.ok());
+
+  // Verify that the existing compiler was used and the factory was NOT called.
+  // GetOrCreateCompiler should find the entry in CompilerRegistry() first.
+  EXPECT_FALSE(factory_called);
 }
 
 }  // namespace
