@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla {

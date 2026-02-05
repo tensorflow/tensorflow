@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/client_library.h"
