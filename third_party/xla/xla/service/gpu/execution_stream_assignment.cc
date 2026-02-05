@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/execution_stream_assignment.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <deque>
-#include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -33,204 +36,353 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/call_graph.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_opt_utils.h"
 #include "xla/side_effect_util.h"
 
 namespace xla::gpu {
 namespace {
-bool is_async_collective(HloInstruction* instruction) {
-  auto status_or_is_async_collective = IsAsyncCollective(instruction);
-  CHECK(status_or_is_async_collective.ok())
-      << status_or_is_async_collective.status();
-  return status_or_is_async_collective.value();
+
+// There are two kinds of async execution scopes: compute and collective. We
+// need just two as our goal is to effectively overlap computation with
+// communication.
+enum class ExecutionScopeKind { kCompute, kCollective };
+
+template <typename Sink>
+void AbslStringify(Sink sink, ExecutionScopeKind kind) {
+  switch (kind) {
+    case ExecutionScopeKind::kCompute:
+      sink.Append("compute");
+      break;
+    case ExecutionScopeKind::kCollective:
+      sink.Append("collective");
+      break;
+  }
 }
 
-std::optional<HloInstruction*> get_async_start_instruction(
-    HloInstruction* instruction) {
-  if (instruction->opcode() == HloOpcode::kAsyncDone ||
-      instruction->opcode() == HloOpcode::kAsyncUpdate) {
-    HloInstruction* current = instruction->mutable_operand(0);
-    while (current->opcode() == HloOpcode::kAsyncUpdate) {
-      current = current->mutable_operand(0);
+// A helper class to generate the next execution stream id. We assign ids
+// using round-robin assignment for two execution scope kinds.
+class ExecutionStreams {
+ public:
+  explicit ExecutionStreams(const ExecutionStreamAssignment::Options& opts)
+      : opts_(opts),
+        compute_id_(1),
+        collective_id_(1 + opts_.number_of_compute_execution_streams) {}
+
+  ExecutionStreamId Next(ExecutionScopeKind kind) {
+    switch (kind) {
+      case ExecutionScopeKind::kCompute: {
+        ExecutionStreamId id(compute_id_++);
+        if (compute_id_ > opts_.number_of_compute_execution_streams) {
+          compute_id_ = 1;
+        }
+        return id;
+      }
+      case ExecutionScopeKind::kCollective: {
+        ExecutionStreamId id(collective_id_++);
+        if (collective_id_ > (opts_.number_of_compute_execution_streams +
+                              opts_.number_of_collective_execution_streams)) {
+          collective_id_ = 1 + opts_.number_of_compute_execution_streams;
+        }
+        return id;
+      }
     }
-    return current;
   }
-  if (instruction->opcode() == HloOpcode::kAllGatherDone ||
-      instruction->opcode() == HloOpcode::kAllReduceDone ||
-      instruction->opcode() == HloOpcode::kCollectivePermuteDone) {
-    return instruction->mutable_operand(0);
+
+ private:
+  ExecutionStreamAssignment::Options opts_;
+  size_t compute_id_;
+  size_t collective_id_;
+};
+
+// Returns true if async instruction wraps a collective operation.
+bool IsWrappedCollective(const HloAsyncInstruction* async) {
+  switch (async->async_wrapped_opcode()) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kReduceScatter:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns a computation that corresponds to HLO operation execution scope.
+const HloComputation* ExecutionScopeComputation(const HloInstruction* hlo) {
+  if (auto* async = DynCast<HloAsyncInstruction>(hlo)) {
+    return async->async_wrapped_computation();
+  };
+  return nullptr;
+}
+
+// Returns an execution scope if operations starts it. Null optional otherwise.
+std::optional<ExecutionScopeKind> IsExecutionScopeStart(
+    const HloInstruction* hlo) {
+  // Async operation that starts a new execution scope.
+  if (auto* start = DynCast<HloAsyncStartInstruction>(hlo)) {
+    return IsWrappedCollective(start) ? ExecutionScopeKind::kCollective
+                                      : ExecutionScopeKind::kCompute;
+  }
+
+  // Async-collective operations not yet migrated to async wrappers.
+  if (HloPredicateIsOp<HloOpcode::kAllGatherStart, HloOpcode::kAllReduceStart,
+                       HloOpcode::kCollectivePermuteStart>(hlo)) {
+    return ExecutionScopeKind::kCollective;
+  }
+
+  // Send/Recv operations are the only ones that can be partially pipelined and
+  // require a special handling. If this send/recv is not a canonical start,
+  // it must be an execution scope use operation.
+  if (HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(hlo)) {
+    return hlo == FindCanonicalSendRecvStartOp(hlo)
+               ? std::make_optional(ExecutionScopeKind::kCollective)
+               : std::nullopt;
+  }
+
+  // A special case of asynchronous compute operation.
+  if (HloPredicateIsOp<HloOpcode::kCopyStart>(hlo)) {
+    return ExecutionScopeKind::kCompute;
+  }
+
+  return std::nullopt;
+}
+
+// Returns an execution scope if operations uses it. Null optional otherwise.
+std::optional<ExecutionScopeKind> IsExecutionScopeUse(
+    const HloInstruction* hlo) {
+  if (HloPredicateIsOp<HloOpcode::kAsyncUpdate>(hlo)) {
+    auto* update = Cast<HloAsyncInstruction>(hlo);
+    return IsWrappedCollective(update) ? ExecutionScopeKind::kCollective
+                                       : ExecutionScopeKind::kCompute;
+  }
+
+  // A special case for partially pipelined send/recv operations. If this is
+  // a non-canonical send/recv inside a loop, we treat it as scope use.
+  if (HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend>(hlo)) {
+    return hlo != FindCanonicalSendRecvStartOp(hlo)
+               ? std::make_optional(ExecutionScopeKind::kCollective)
+               : std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
+// Returns an execution scope if operations ends it. Null optional otherwise.
+std::optional<ExecutionScopeKind> IsExecutionScopeEnd(
+    const HloInstruction* hlo) {
+  // Async operation that ends the execution scope.
+  if (HloPredicateIsOp<HloOpcode::kAsyncDone>(hlo)) {
+    auto* done = Cast<HloAsyncInstruction>(hlo);
+    return IsWrappedCollective(done) ? ExecutionScopeKind::kCollective
+                                     : ExecutionScopeKind::kCompute;
+  }
+
+  // Async-collective operations not yet migrated to async wrappers.
+  if (HloPredicateIsOp<HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
+                       HloOpcode::kCollectivePermuteDone>(hlo)) {
+    return ExecutionScopeKind::kCollective;
+  }
+
+  // We always treat send/recv done operations as execution scope end. Strictly
+  // speaking pipelined send/recv can be an execution scope use, but today we
+  // don't care about that as it doesn't impact stream assignment.
+  if (HloPredicateIsOp<HloOpcode::kRecvDone, HloOpcode::kSendDone>(hlo)) {
+    return ExecutionScopeKind::kCollective;
+  }
+
+  // A special case of asynchronous compute operation.
+  if (HloPredicateIsOp<HloOpcode::kCopyDone>(hlo)) {
+    return ExecutionScopeKind::kCompute;
+  }
+
+  return std::nullopt;
+}
+
+// Find HLO operation that starts an execution scope.
+const HloInstruction* FindExecutionScopeStart(const HloInstruction* hlo) {
+  DCHECK(IsExecutionScopeUse(hlo) || IsExecutionScopeEnd(hlo));
+
+  if (auto* async = DynCast<HloAsyncInstruction>(hlo)) {
+    return async->async_chain_start();
+  }
+
+  // A special-case for partially pipelined send/recv operations.
+  if (HloPredicateIsOp<HloOpcode::kRecv, HloOpcode::kSend, HloOpcode::kRecvDone,
+                       HloOpcode::kSendDone>(hlo)) {
+    return FindCanonicalSendRecvStartOp(hlo);
+  }
+
+  DCHECK((
+      HloPredicateIsOp<HloOpcode::kAllGatherDone, HloOpcode::kAllReduceDone,
+                       HloOpcode::kCollectivePermuteDone, HloOpcode::kCopyDone>(
+          hlo)))
+      << "Unsupported async operation: " << hlo->name();
+
+  return hlo->operand(0);
+}
+
+// Check if instruction has explicit stream assignment via the attributes.
+std::optional<ExecutionStreamId> FindAssignedStreamId(
+    const HloInstruction* instr) {
+  auto& attrs = instr->frontend_attributes().map();
+  if (auto it = attrs.find(kXlaStreamAnnotationAttr); it != attrs.end()) {
+    int32_t assigned_stream_id;
+    CHECK(absl::SimpleAtoi(it->second, &assigned_stream_id));  // Crash OK
+    return ExecutionStreamId(assigned_stream_id);
   }
   return std::nullopt;
 }
+
+// Each `PendingComputation` item represents an `HloComputation` that needs to
+// be processed. We start with the ENTRY computation and follow the call graph.
+struct PendingComputation {
+  const HloComputation* computation;
+  ExecutionStreamId stream_id;
+};
+
 }  // namespace
 
-ExecutionStreamAssignment::ExecutionStreamAssignment(
-    const HloModule* module, ExecutionStreamAssignmentOptions options) {
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module,
+                                                     const Options& options) {
+  VLOG(1) << absl::StreamFormat(
+      "Assign execution streams to module %s: #compute_streams=%d "
+      "#collective_streams=%d",
+      module->name(), options.number_of_compute_execution_streams,
+      options.number_of_collective_execution_streams);
+  ExecutionStreams execution_streams(options);
 
-  // We'll walk the `CallGraph` starting from the entrypoint. The instructions
-  // on the entrypoint computation will be assigned `ExecutionStreamId(0)`, and
-  // each invocation of `async-start` will result in the target computation
-  // being assigned a new `ExecutionStreamId`.
-  ExecutionStreamId next_compute_stream_id = ExecutionStreamId(1);
-  ExecutionStreamId next_collective_stream_id =
-      ExecutionStreamId(options.number_of_compute_execution_streams + 1);
-  VLOG(1) << "Using " << options.number_of_compute_execution_streams
-          << " compute execution streams and "
-          << options.number_of_collective_execution_streams
-          << " collective execution streams.";
-
-  // Each `Pending` item represents an `HloComputation` that needs to be
-  // processed. We start with the entrypoint and add callees as we discover
-  // them.
-  struct Pending {
-    Pending(HloComputation* node, ExecutionStreamId stream_id)
-        : node(node), stream_id(stream_id) {}
-    HloComputation* node;
-    ExecutionStreamId stream_id;
-  };
-  std::deque<Pending> queue;
-  queue.emplace_back(module->entry_computation(), ExecutionStreamId(0));
-
-  // Enqueues called computations of a given `callsite` unless the callees are
-  // only invoked in an embedded context, in which case children nodes will all
-  // be executed in a single kernel.
-  auto enqueue_called_computations = [&](const CallSite& callsite,
-                                         ExecutionStreamId stream) {
-    if (GetInstructionCallContext(callsite.instruction()->opcode()) ==
-        CallContext::kEmbedded) {
-      return;
-    }
-    for (HloComputation* computation : callsite.called_computations()) {
-      queue.emplace_back(computation, stream);
-    }
-  };
-
-  // Assigns source and destination streams to an instruction and records it in
-  // async_instructions_.
-  auto assign_async_execution_streams =
-      [&](HloInstruction* instruction, ExecutionStreamId source_stream_id,
-          std::optional<ExecutionStreamId> dest_stream_id) {
-        AsyncExecutionStreamIds streams;
-        streams.source_stream_id = source_stream_id;
-        if (dest_stream_id.has_value()) {
-          streams.destination_stream_id = dest_stream_id.value();
-          CHECK(async_instructions_.try_emplace(instruction, streams).second);
-        } else if (is_async_collective(instruction)) {
-          auto async_start_instruction =
-              get_async_start_instruction(instruction);
-          if (async_start_instruction.has_value()) {
-            // Assign async done instruction to the same stream as the async
-            // start instruction.
-            streams.destination_stream_id =
-                async_instructions_.at(async_start_instruction.value())
-                    .destination_stream_id;
-          } else {
-            streams.destination_stream_id = next_collective_stream_id;
-            CHECK(async_instructions_.try_emplace(instruction, streams).second);
-            ++next_collective_stream_id;
-            if (next_collective_stream_id.value() >
-                options.number_of_compute_execution_streams +
-                    options.number_of_collective_execution_streams) {
-              next_collective_stream_id = ExecutionStreamId(
-                  options.number_of_compute_execution_streams + 1);
-            }
-          }
-        } else {
-          streams.destination_stream_id = next_compute_stream_id;
-          CHECK(async_instructions_.try_emplace(instruction, streams).second);
-          ++next_compute_stream_id;
-          if (next_compute_stream_id.value() >
-              options.number_of_compute_execution_streams) {
-            next_compute_stream_id = ExecutionStreamId(1);
-          }
-        }
-      };
+  std::deque<PendingComputation> queue;
+  queue.push_back({module->entry_computation(), ExecutionStreamId(0)});
 
   while (!queue.empty()) {
-    Pending pending = queue.front();
+    PendingComputation pending = queue.front();
     queue.pop_front();
 
-    // First, we'll assign the current `ExecutionStreamId` to all synchronous
-    // instructions. Asynchronous instructions will be handled afterwards.
-    for (HloInstruction* instruction : pending.node->instructions()) {
-      if (instruction->IsAsynchronous()) continue;
-      // Handle some async instructions that are not wrapped by async wrapper.
-      if (instruction->opcode() == HloOpcode::kCopyStart ||
-          is_async_collective(instruction)) {
-        assign_async_execution_streams(instruction, pending.stream_id,
-                                       std::nullopt);
-      } else {
-        CHECK(sync_instructions_.try_emplace(instruction, pending.stream_id)
-                  .second);
-      }
-    }
+    VLOG(2) << "Assign execution streams to computation: "
+            << pending.computation->name();
+    ExecutionStreamId parent_stream_id = pending.stream_id;
 
-    // Next, we'll process all callsites in the current computation.
-    for (const CallSite& callsite :
-         call_graph->GetNode(pending.node).callsites()) {
-      if (callsite.instruction()->IsAsynchronous()) {
-        // Asynchronous calls will result in a new `ExecutionStreamId` being
-        // dispensed for the called computations.
-        // Special logic for explicit stream annotations.
-        std::optional<ExecutionStreamId> optional_stream_id = std::nullopt;
-        auto instruction = callsite.instruction();
-        auto it = instruction->frontend_attributes().map().find(
-            kXlaStreamAnnotationAttr);
-        if (it != instruction->frontend_attributes().map().end()) {
-          int stream_id;
-          CHECK(absl::SimpleAtoi(it->second, &stream_id));
-          optional_stream_id = ExecutionStreamId(stream_id);
+    // Process instructions in the post order, because we traverse the use-def
+    // chain to find execution stream assignment and must process `start`
+    // operations before `done`.
+    std::vector<HloInstruction*> instructions =
+        pending.computation->MakeInstructionPostOrder();
+
+    for (const HloInstruction* hlo : instructions) {
+      // If operation starts an async execution scope, assign a pair of
+      // execution stream ids to it, and maybe enqueue nested computation.
+      if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeStart(hlo)) {
+        // Try to find explicitly assigned stream id, otherwise generate a new
+        // execution stream id for the new execution scope.
+        std::optional<ExecutionStreamId> async_stream_id =
+            FindAssignedStreamId(hlo);
+        if (!async_stream_id.has_value()) {
+          async_stream_id = execution_streams.Next(*kind);
         }
-        enqueue_called_computations(
-            callsite,
-            optional_stream_id.value_or(is_async_collective(instruction)
-                                            ? next_collective_stream_id
-                                            : next_compute_stream_id));
-        assign_async_execution_streams(callsite.instruction(),
-                                       pending.stream_id, optional_stream_id);
-      } else {
-        // Synchronous calls will result in the called computations being
-        // invoked using the same `ExecutionStreamId`.
-        enqueue_called_computations(callsite, pending.stream_id);
-      }
-    }
 
-    // And finally, we need to assign `ExecutionStreamIds` to all asynchronous
-    // instructions that are were not handled by the iteration over callsites
-    // above. These are the `async-updates` and `async-dones`. Both of these
-    // should share the `ExecutionStreamId` with the originating `async-starts`.
-    for (HloInstruction* instruction : pending.node->instructions()) {
-      if (!instruction->IsAsynchronous()) continue;
-      if (instruction->opcode() == HloOpcode::kAsyncStart) {
-        CHECK(async_instructions_.find(instruction) !=
-              async_instructions_.end());
-      } else {
-        HloInstruction* async_start =
-            Cast<HloAsyncInstruction>(instruction)->async_chain_start();
-        AsyncExecutionStreamIds async_start_streams =
-            async_instructions_.at(async_start);
-        CHECK(async_instructions_.try_emplace(instruction, async_start_streams)
-                  .second);
+        VLOG(3) << absl::StreamFormat(
+            "Start new %v execution scope: instr=%s parent=%v async=%v", *kind,
+            hlo->name(), parent_stream_id, *async_stream_id);
+
+        auto [_, emplaced] = async_instructions_.emplace(
+            hlo, AsyncExecutionStreamIds{parent_stream_id, *async_stream_id});
+        DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                         << hlo->name();
+
+        if (auto* computation = ExecutionScopeComputation(hlo)) {
+          queue.push_back(PendingComputation{computation, *async_stream_id});
+        }
       }
+
+      // For operations that use execution scope copy execution stream
+      // assignment from the start operation.
+      if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeUse(hlo)) {
+        if (auto* start = FindExecutionScopeStart(hlo)) {
+          CHECK(async_instructions_.contains(start))  // Crash OK
+              << "Execution scope use operation '" << hlo->name()
+              << "' does't have stream assignment for the start operation '"
+              << start->name() << "'";
+
+          AsyncExecutionStreamIds& assn = async_instructions_.at(start);
+          VLOG(3) << absl::StreamFormat(
+              "Use %v execution scope: instr=%s parent=%v async=%v", *kind,
+              hlo->name(), assn.parent_stream_id, assn.async_stream_id);
+          auto [_, emplaced] = async_instructions_.emplace(hlo, assn);
+          DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                           << hlo->name();
+        }
+      }
+
+      // For operations that end execution scope copy execution stream
+      // assignment from the start operation.
+      if (std::optional<ExecutionScopeKind> kind = IsExecutionScopeEnd(hlo)) {
+        if (auto* start = FindExecutionScopeStart(hlo)) {
+          CHECK(async_instructions_.contains(start))  // Crash OK
+              << "Execution scope end operation '" << hlo->name()
+              << "' does't have stream assignment for the start operation '"
+              << start->name() << "'";
+
+          AsyncExecutionStreamIds& assn = async_instructions_.at(start);
+          VLOG(3) << absl::StreamFormat(
+              "End %v execution scope: instr=%s parent=%v async=%v", *kind,
+              hlo->name(), assn.parent_stream_id, assn.async_stream_id);
+          auto [_, emplaced] = async_instructions_.emplace(hlo, assn);
+          DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                           << hlo->name();
+        }
+      }
+
+      // Check and skip HLO operations that modify execution scopes.
+      if (IsExecutionScopeStart(hlo) || IsExecutionScopeUse(hlo) ||
+          IsExecutionScopeEnd(hlo)) {
+        DCHECK(async_instructions_.contains(hlo))
+            << "Async instruction was not assigned an execution stream";
+        continue;
+      }
+
+      // For operations that do not modify execution scopes assign a single
+      // execution stream id assigned to the whole computation.
+      auto [_, emplaced] = sync_instructions_.emplace(hlo, parent_stream_id);
+      DCHECK(emplaced) << "Found duplicate execution stream assignment: "
+                       << hlo->name();
+
+      // For control flow operations we keep processing called computation with
+      // the same stream id.
+      if (HloPredicateIsOp<HloOpcode::kCall, HloOpcode::kConditional,
+                           HloOpcode::kWhile>(hlo)) {
+        for (auto* computation : hlo->called_computations()) {
+          queue.push_back(PendingComputation{computation, parent_stream_id});
+        }
+      }
+
+      // We don't need to process any other called computation because:
+      // 1. For custom calls the semantics of called computation is defined
+      //    by the custom call implementation.
+      // 2. For reductions and other HLO operations with called computations XLA
+      //    will generate a single kernel and we don't need to assign execution
+      //    streams to embedded computations.
     }
   }
+
+  VLOG(1) << absl::StreamFormat(
+      "Assigned execution streams to module %s: #sync_instructions=%d "
+      "#async_instructions=%d",
+      module->name(), sync_instructions_.size(), async_instructions_.size());
 }
 
-namespace {
-absl::Status StreamNotFoundError(const HloInstruction* instruction) {
+static absl::Status StreamNotFoundError(const HloInstruction* instruction) {
   return absl::NotFoundError(absl::StrCat(
       "No ExecutionStreamId found for ", instruction->ToString(),
       "; this may happen if the Computation is not reachable from the module's "
       "entrypoint, or if it's only reachable through a embedded calls."));
 }
-}  // namespace
 
 absl::StatusOr<ExecutionStreamId>
 ExecutionStreamAssignment::GetSyncExecutionStreamId(
     const HloInstruction* instruction) const {
-  CHECK(!instruction->IsAsynchronous());
   auto stream = sync_instructions_.find(instruction);
   if (stream == sync_instructions_.end()) {
     return StreamNotFoundError(instruction);
@@ -241,9 +393,6 @@ ExecutionStreamAssignment::GetSyncExecutionStreamId(
 absl::StatusOr<ExecutionStreamAssignment::AsyncExecutionStreamIds>
 ExecutionStreamAssignment::GetAsyncExecutionStreamIds(
     const HloInstruction* instruction) const {
-  TF_ASSIGN_OR_RETURN(bool is_async_collective, IsAsyncCollective(instruction));
-  CHECK(instruction->IsAsynchronous() ||
-        instruction->opcode() == HloOpcode::kCopyStart || is_async_collective);
   auto streams = async_instructions_.find(instruction);
   if (streams == async_instructions_.end()) {
     return StreamNotFoundError(instruction);
