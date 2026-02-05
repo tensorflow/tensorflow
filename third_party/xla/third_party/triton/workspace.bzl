@@ -1,7 +1,7 @@
 """Provides the repository macro to import Triton."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
-load("//third_party/triton:llvm_integration/series.bzl", "llvm_patch_list")
+load("//third_party/triton:llvm_integration/series.bzl.bara.sky", "llvm_patch_list")
 load("//third_party/triton:temporary/series.bzl", "temporary_patch_list")
 
 def repo():
