@@ -3942,6 +3942,7 @@ cc_library(
         ]) + [
             "//xla/codegen/intrinsic/accuracy:__pkg__",
             "//xla/tests/exhaustive:__pkg__",
+            "//platforms/xla/tests/tpu:__pkg__",
         ],
         ["//visibility:public"],
     ),
