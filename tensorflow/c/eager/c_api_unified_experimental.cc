@@ -41,7 +41,8 @@ static FactoriesMap& GetFactories() {
 
 static tracing::FactoryFunction default_factory;
 
-void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
+void RegisterTracingEngineFactory(const std::string& name,
+                                  FactoryFunction factory) {
   assert((!GetFactories().count(name)) ||
          (GetFactories()[name] == factory) &&
              "Duplicate tracing factory registration");
@@ -54,15 +55,15 @@ absl::Status SetDefaultTracingEngine(const char* name) {
     default_factory = GetFactories().find(name)->second;
     return absl::OkStatus();
   }
-  string msg = absl::StrCat(
+  std::string msg = absl::StrCat(
       "No tracing engine factory has been registered with the key '", name,
       "' (available: ");
   // Ensure deterministic (sorted) order in the error message
-  std::set<string> factories_sorted;
+  std::set<std::string> factories_sorted;
   for (const auto& factory : GetFactories())
     factories_sorted.insert(factory.first);
   const char* comma = "";
-  for (const string& factory : factories_sorted) {
+  for (const std::string& factory : factories_sorted) {
     msg += comma + factory;
     comma = ", ";
   }
