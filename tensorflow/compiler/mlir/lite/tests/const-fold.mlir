@@ -988,23 +988,13 @@ func.func @cast_i64_to_i32() -> tensor<5xi32> {
 // CHECK:  return %[[CST]]
 }
 
-// CHECK-LABEL: @cast_i32_to_ui8
-func.func @cast_i32_to_ui8() -> tensor<6xui8> {
+// CHECK-LABEL: @cast_i32_to_i8
+func.func @cast_i32_to_i8() -> tensor<6xi8> {
   %cst = arith.constant dense<[0, -1, 256, 127, -128, -129]> : tensor<6xi32>
-  %0 = "tfl.cast"(%cst) : (tensor<6xi32>) -> tensor<6xui8>
-  func.return %0 : tensor<6xui8>
+  %0 = "tfl.cast"(%cst) : (tensor<6xi32>) -> tensor<6xi8>
+  func.return %0 : tensor<6xi8>
 
-// CHECK: %[[CST:.*]] = arith.constant dense<[0, 255, 0, 127, 128, 127]> : tensor<6xui8>
-// CHECK:  return %[[CST]]
-}
-
-// CHECK-LABEL: @cast_ui8_to_i8
-func.func @cast_ui8_to_i8() -> tensor<4xi8> {
-  %cst = arith.constant dense<[0, 255, 127, 128]> : tensor<4xui8>
-  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi8>
-  func.return %0 : tensor<4xi8>
-
-// CHECK: %[[CST:.*]] = arith.constant dense<[0, -1, 127, -128]> : tensor<4xi8>
+// CHECK: %[[CST:.*]] = arith.constant dense<[0, -1, 0, 127, -128, 127]> : tensor<6xi8>
 // CHECK:  return %[[CST]]
 }
 
@@ -1018,15 +1008,6 @@ func.func @cast_i8_to_i32() -> tensor<4xi32> {
 // CHECK:  return %[[CST]]
 }
 
-// CHECK-LABEL: @cast_ui8_to_i32
-func.func @cast_ui8_to_i32() -> tensor<4xi32> {
-  %cst = arith.constant dense<[0, 128, 129, 255]> : tensor<4xui8>
-  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi32>
-  func.return %0 : tensor<4xi32>
-
-// CHECK: %[[CST:.*]] = arith.constant dense<[0, 128, 129, 255]> : tensor<4xi32>
-// CHECK:  return %[[CST]]
-}
 
 // CHECK-LABEL: @cast_identity
 func.func @cast_identity(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
@@ -1045,30 +1026,10 @@ func.func @cast_i1_to_i8() -> tensor<2xi8> {
 // CHECK:  return %[[CST]]
 }
 
-// CHECK-LABEL: @cast_i1_to_ui8
-func.func @cast_i1_to_ui8() -> tensor<2xui8> {
-  %cst = arith.constant dense<[false, true]> : tensor<2xi1>
-  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xui8>
-  func.return %0 : tensor<2xui8>
-
-// CHECK: %[[CST:.*]] = arith.constant dense<[0, 1]> : tensor<2xui8>
-// CHECK:  return %[[CST]]
-}
-
 // CHECK-LABEL: @cast_i8_to_i1
 func.func @cast_i8_to_i1() -> tensor<4xi1> {
   %cst = arith.constant dense<[0, 1, 2, -1]> : tensor<4xi8>
   %0 = "tfl.cast"(%cst) : (tensor<4xi8>) -> tensor<4xi1>
-  func.return %0 : tensor<4xi1>
-
-// CHECK: %[[CST:.*]] = arith.constant dense<[false, true, true, true]> : tensor<4xi1>
-// CHECK:  return %[[CST]]
-}
-
-// CHECK-LABEL: @cast_ui8_to_i1
-func.func @cast_ui8_to_i1() -> tensor<4xi1> {
-  %cst = arith.constant dense<[0, 127, 128, 255]> : tensor<4xui8>
-  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi1>
   func.return %0 : tensor<4xi1>
 
 // CHECK: %[[CST:.*]] = arith.constant dense<[false, true, true, true]> : tensor<4xi1>
@@ -1732,17 +1693,17 @@ func.func @bitwise_xor_i32() -> tensor<3xi32> {
 
 // CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xi32>
 
-// CHECK-LABEL: bitwise_xor_ui8
-func.func @bitwise_xor_ui8() -> tensor<3xui8> {
-  %0 = arith.constant dense<[0, 5, 3]> : tensor<3xui8>
-  %1 = arith.constant dense<[5, 0, 7]> : tensor<3xui8>
+// CHECK-LABEL: bitwise_xor_i8
+func.func @bitwise_xor_i8() -> tensor<3xi8> {
+  %0 = arith.constant dense<[0, 5, 3]> : tensor<3xi8>
+  %1 = arith.constant dense<[5, 0, 7]> : tensor<3xi8>
 
-  %2 = "tfl.bitwise_xor"(%0, %1) : (tensor<3xui8>, tensor<3xui8>) -> tensor<3xui8>
+  %2 = "tfl.bitwise_xor"(%0, %1) : (tensor<3xi8>, tensor<3xi8>) -> tensor<3xi8>
 
-  func.return %2 : tensor<3xui8>
+  func.return %2 : tensor<3xi8>
 }
 
-// CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xui8>
+// CHECK: %cst = arith.constant dense<[5, 5, 4]> : tensor<3xi8>
 
 // CHECK-LABEL: relu
 func.func @relu() -> tensor<3xf32> {
