@@ -29,9 +29,10 @@ namespace xla::gpu {
 struct ExecutionStreamAssignmentOptions {
   // The `ExecutionStreamAssignment` will round-robin compute thunks across this
   // many `ExecutionStreams`.
-  int number_of_compute_execution_streams = 4;
+  int number_of_compute_execution_streams = kNumComputeStreams;
   // The `ExecutionStreamAssignment` will round-robin collective thunks
   // across this many `ExecutionStreams`.
+  // TODO: use kNumCollectiveStreams when collective multi-streaming is default.
   int number_of_collective_execution_streams = 1;
 };
 
