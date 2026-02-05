@@ -590,7 +590,7 @@ struct KernelThunkInfo {
   std::unique_ptr<Thunk> thunk;
 };
 
-absl::StatusOr<KernelThunkInfo> BuildKernelThunkForNonFusionOp(
+absl::StatusOr<KernelThunkInfo> BuildKernelThunkForOp(
     llvm::Module* llvm_module, const HloInstruction* hlo,
     const BufferAssignment& buffer_assignment, ThunkId thunk_id,
     const se::DeviceDescription& gpu_device_info,
@@ -867,11 +867,10 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
-    bool is_fusion = sort->parent()->IsFusionComputation();
     const HloInstruction* hlo_with_buffers =
-        is_fusion ? sort->parent()->FusionInstruction() : sort;
+        sort->parent()->FusionInstruction();
     ASSIGN_OR_RETURN(KernelThunkInfo kernel_thunk_info,
-                     BuildKernelThunkForNonFusionOp(
+                     BuildKernelThunkForOp(
                          llvm_module, hlo_with_buffers,
                          ir_emitter_context->buffer_assignment(),
                          ir_emitter_context->GetNextThunkId(),
@@ -946,12 +945,12 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
 
   ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          launch_dimensions));
+      BuildKernelThunkForOp(llvm_module, hlo,
+                            ir_emitter_context->buffer_assignment(),
+                            ir_emitter_context->GetNextThunkId(),
+                            ir_emitter_context->gpu_device_info(),
+                            ir_emitter_context->GetSanitizedUniqueName(ir_name),
+                            ir_emitter, launch_dimensions));
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
 
@@ -1094,12 +1093,12 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
       hlo, launch_dimensions.launch_bound(), ir_emitter.builder());
   ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          launch_dimensions));
+      BuildKernelThunkForOp(llvm_module, hlo,
+                            ir_emitter_context->buffer_assignment(),
+                            ir_emitter_context->GetNextThunkId(),
+                            ir_emitter_context->gpu_device_info(),
+                            ir_emitter_context->GetSanitizedUniqueName(ir_name),
+                            ir_emitter, launch_dimensions));
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
 
@@ -1227,12 +1226,12 @@ absl::StatusOr<ThunkSequence> EmitRngGetAndUpdateStateLLVMIR(
   // algorithm.
   ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
-      BuildKernelThunkForNonFusionOp(
-          llvm_module, hlo, ir_emitter_context->buffer_assignment(),
-          ir_emitter_context->GetNextThunkId(),
-          ir_emitter_context->gpu_device_info(),
-          ir_emitter_context->GetSanitizedUniqueName(ir_name), ir_emitter,
-          LaunchDimensions()));
+      BuildKernelThunkForOp(llvm_module, hlo,
+                            ir_emitter_context->buffer_assignment(),
+                            ir_emitter_context->GetNextThunkId(),
+                            ir_emitter_context->gpu_device_info(),
+                            ir_emitter_context->GetSanitizedUniqueName(ir_name),
+                            ir_emitter, LaunchDimensions()));
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(kernel_thunk_info.thunk));
 

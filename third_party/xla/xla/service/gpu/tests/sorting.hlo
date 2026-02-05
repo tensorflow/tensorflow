@@ -521,9 +521,14 @@ compare {
 // CHECK:         store i8 %[[VAL_340]], ptr %[[VAL_341:.*]], align 1
 // CHECK:         ret void
 
+wrapped_sort {
+  p = f32[2, 3] parameter(0)
+  ROOT sort = f32[2, 3] sort(p), dimensions={1}, to_apply=compare
+}
+
 ENTRY main {
-  x = f32[2, 3] parameter(0)
-  ROOT sort = f32[2, 3] sort(x), dimensions={1}, to_apply=compare
+  p = f32[2, 3] parameter(0)
+  ROOT fusion = f32[2, 3] fusion(p), kind=kCustom, calls=wrapped_sort
 }
 
 // -----
@@ -1260,10 +1265,16 @@ compare {
 // CHECK-PTX:     store i8 %[[VAL_847]], ptr %[[VAL_848:.*]], align 1
 // CHECK-PTX:     ret void
 
-ENTRY main {
+wrapped_sort {
   x = s32[2, 3] parameter(0)
   y = f32[2, 3] parameter(1)
   ROOT sort = (s32[2, 3], f32[2, 3]) sort(x, y), dimensions={1}, to_apply=compare
+}
+
+ENTRY main {
+  p0 = s32[2, 3] parameter(0)
+  p1 = f32[2, 3] parameter(1)
+  ROOT fusion = (s32[2, 3], f32[2, 3]) fusion(p0, p1), kind=kCustom, calls=wrapped_sort
 }
 
 // -----
@@ -1282,12 +1293,20 @@ compare {
   ROOT lt = pred[] compare(p.1.lhs, p.1.rhs), direction=LT
 }
 
-ENTRY main {
+wrapped_sort {
   param0 = f64[2, 2048] parameter(0)
   param1 = f64[2, 2048] parameter(1)
   param2 = f64[2, 2048] parameter(2)
   param3 = f64[2, 2048] parameter(3)
   ROOT sort = (f64[2, 2048], f64[2, 2048], f64[2, 2048], f64[2, 2048]) sort(param0, param1, param2, param3), dimensions={1}, to_apply=compare
+}
+
+ENTRY main {
+  p0 = f64[2, 2048] parameter(0)
+  p1 = f64[2, 2048] parameter(1)
+  p2 = f64[2, 2048] parameter(2)
+  p3 = f64[2, 2048] parameter(3)
+  ROOT fusion = (f64[2, 2048], f64[2, 2048], f64[2, 2048], f64[2, 2048]) fusion(p0, p1, p2, p3), kind=kCustom, calls=wrapped_sort
 }
 // Check that we have a tile size of 1024.
 // CHECK-PTX:         getelementptr [1024 x double], ptr addrspace(3) @sort_tile_param_0
@@ -1302,9 +1321,14 @@ compare {
   ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
-ENTRY main {
+wrapped_sort {
   param0 = f64[3072] parameter(0)
   ROOT sort = f64[3072] sort(param0), dimensions={0}, to_apply=compare
+}
+
+ENTRY main {
+  p0 = f64[3072] parameter(0)
+  ROOT fusion = f64[3072] fusion(p0), kind=kCustom, calls=wrapped_sort
 }
 
 // CHECK-COUNT-334: xor i64
