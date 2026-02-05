@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -52,7 +54,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -142,26 +146,19 @@ absl::Status RunAllToAllOnIndexBuffer(
   return stream.BlockHostUntilDone();
 }
 
-// Executes the rendezvous before the kernel start.
-// Inserts CUDA events into the stream to ensure that all devices have reached
-// the start event before the kernel starts.
+// Executes the rendezvous to exchange buffer addresses and barrier signal
+// buffers.
 absl::StatusOr<std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>>
-RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key, se::Stream& stream,
-                            RankId rank, se::Event* start_event,
-                            se::Event* end_event,
-                            const se::DeviceAddressBase& output_buffer) {
+RendezvousResources(int device_ordinal, RankId rank,
+                    const GpuCliqueKey& clique_key,
+                    const se::DeviceAddressBase& output_buffer,
+                    const se::DeviceAddressBase& barrier_signal_buffer) {
   int64_t num_ranks = clique_key.num_local_participants();
 
   RaggedAllToAllRendezvousValue rendezvous_value;
   rendezvous_value.rank = rank;
   rendezvous_value.output_buffer = output_buffer;
-  rendezvous_value.start_event = start_event;
-  rendezvous_value.end_event = end_event;
-
-  // Record that this device has started the memcpy ragged-all-to-all. We do
-  // this before the rendezvous to make sure that RecordEvent is called before
-  // WaitFor on another stream.
-  RETURN_IF_ERROR(stream.RecordEvent(start_event));
+  rendezvous_value.barrier_signal_buffer = barrier_signal_buffer;
 
   auto rendezvous_fn =
       [](absl::Span<const RaggedAllToAllRendezvousValue* const> values) {
@@ -175,49 +172,57 @@ RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key, se::Stream& stream,
         return values_copy;
       };
 
-  std::string name =
-      absl::StrFormat("start one-shot ragged-all-to-all for rank %d, clique %s",
-                      rank.value(), clique_key.ToString());
-  ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
-          rendezvous_values,
-      Rendezvous<std::vector<RaggedAllToAllRendezvousValue>>(
-          name, clique_key, rendezvous_value, num_ranks, rendezvous_fn));
+  auto rendezvous_name = absl::StrFormat(
+      "[%d] [rank=%v] One-shot ragged-all-to-all rendezvous, clique: %v",
+      device_ordinal, rank, clique_key);
 
-  // Wait for all devices to reach the start event. This indicates that all
-  // output buffers are ready for transfer.
-  for (auto& value : *rendezvous_values) {
-    RETURN_IF_ERROR(stream.WaitFor(value.start_event));
-  }
-
-  return rendezvous_values;
+  return Rendezvous<std::vector<RaggedAllToAllRendezvousValue>>(
+      rendezvous_name, clique_key, rendezvous_value, num_ranks, rendezvous_fn);
 }
 
-// Executes the rendezvous after the kernel finish. Waits for all devices to
-// reach the end event.
-absl::Status RendezvousAfterKernelFinish(
-    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    se::Event* end_event,
-    const std::vector<RaggedAllToAllRendezvousValue>& rendezvous_values) {
-  int64_t num_ranks = clique_key.num_local_participants();
+// Helper to launch the MultiGpuBarrierKernel.
+//
+// This implements a decentralized peer-to-peer barrier synchronization:
+// 1. Each device maintains a signal buffer array (one slot per peer) and a
+//    local monotonic step counter.
+// 2. During execution, a device writes to its designated slot in *every*
+//    peer's signal buffer to indicate arrival.
+// 3. The device then waits locally for all slots in its own signal buffer to
+//    match the expected step value (confirming all peers have arrived).
+absl::Status LaunchMultiGpuBarrier(
+    se::Stream* stream, RankId rank, int64_t num_ranks,
+    const std::vector<RaggedAllToAllRendezvousValue>& participants,
+    se::DeviceAddressBase local_barrier_signal_value) {
+  using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
-  // Record that this device has finished the memcpy ragged-all-to-all.
-  RETURN_IF_ERROR(stream.RecordEvent(end_event));
+  CHECK(participants.size() <= MultiGpuBarrierKernel::kMaxPeers)
+      << "Number of participants exceeds MultiGpuBarrierKernel::kMaxPeers";
+  CHECK(num_ranks <= MultiGpuBarrierKernel::kMaxPeers)
+      << "Number of ranks exceeds MultiGpuBarrierKernel::kMaxPeers";
 
-  // Do another rendezvous to make sure that we call RecordEvent for end_event
-  // before WaitFor on another stream.
-  std::string name = absl::StrFormat(
-      "finish one-shot ragged-all-to-all for rank %d, clique %s", rank.value(),
-      clique_key.ToString());
-  RETURN_IF_ERROR(Rendezvous(name, clique_key, num_ranks));
+  // 1. Prepare signal buffers (pointers to peers' signal buffer arrays)
+  std::array<void*, MultiGpuBarrierKernel::kMaxPeers> signal_buffers;
+  std::fill(signal_buffers.begin(), signal_buffers.end(), nullptr);
 
-  // Wait for all devices to reach the end event. This indicates that all
-  // updates from other devices have arrived.
-  for (auto& value : rendezvous_values) {
-    RETURN_IF_ERROR(stream.WaitFor(value.end_event));
+  for (const auto& participant : participants) {
+    // This points to the peer's signal buffer where we will write our signal.
+    signal_buffers[participant.rank.value()] =
+        participant.barrier_signal_buffer.opaque();
   }
 
-  return absl::OkStatus();
+  // 2. Load and Launch Kernel
+  se::StreamExecutor* executor = stream->parent();
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+                           .LoadKernel<MultiGpuBarrierKernel>(executor)));
+
+  // Cast local_barrier_signal_value void* pointer to uint32_t*
+  se::DeviceAddress<uint32_t> typed_sync_counter(local_barrier_signal_value);
+
+  return kernel.Launch(
+      se::ThreadDim(MultiGpuBarrierKernel::kMaxPeers, 1, 1),
+      se::BlockDim(1, 1, 1), stream, static_cast<int64_t>(rank.value()),
+      static_cast<int64_t>(num_ranks), signal_buffers, typed_sync_counter);
 }
 
 }  // namespace
@@ -320,13 +325,39 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
       executor,
       executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
 
-  if (state->output_offsets_device_buffer.address().is_null()) {
-    return absl::InternalError("Failed to allocate output offsets buffer.");
-  }
+  CHECK(state->output_offsets_device_buffer.address())
+      << "Failed to allocate output offsets buffer.";
 
   if (is_local()) {
-    ASSIGN_OR_RETURN(state->start_event, executor->CreateEvent());
-    ASSIGN_OR_RETURN(state->end_event, executor->CreateEvent());
+    using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
+
+    // 1. Allocate Signal Buffer (Array of uint32_t)
+    // We allocate kMaxPeers to be safe and avoid bounds issues, aligning with
+    // the fixed-size kernel logic.
+    int64_t signal_buf_bytes =
+        MultiGpuBarrierKernel::kMaxPeers * sizeof(uint32_t);
+    state->barrier_signal_buffer =
+        se::DeviceAddressHandle{executor, executor->Allocate(signal_buf_bytes)};
+
+    CHECK(state->barrier_signal_buffer.address())
+        << "Failed to allocate barrier signal buffer.";
+
+    // 2. Allocate Counter (Scalar uint32_t)
+    // This value acts as the local step counter.
+    state->barrier_signal_value =
+        se::DeviceAddressHandle{executor, executor->Allocate(sizeof(uint32_t))};
+
+    CHECK(state->barrier_signal_value.address())
+        << "Failed to allocate barrier signal value.";
+
+    // 3. Zero-out BOTH buffers using SynchronousMemZero.
+    TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
+        state->barrier_signal_buffer.address_ptr(), signal_buf_bytes));
+
+    // Initialize the counter to 0.
+    // This is ok, as the MultiGpuBarrierKernel pre-increments signal_value.
+    TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
+        state->barrier_signal_value.address_ptr(), sizeof(uint32_t)));
   }
 
   {
@@ -438,9 +469,11 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
 
   if (should_use_one_shot_kernel) {
     TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
-        clique_key, stream, state->rank, state->start_event.get(),
-        state->end_event.get(), config_.num_total_updates,
-        config_.num_input_rows, config_.num_row_elements, device_buffers));
+        clique_key, stream, state->rank,
+        state->barrier_signal_buffer.address(),  // Buff peers write signals to
+        state->barrier_signal_value.address(),   // Local monotonic step counter
+        config_.num_total_updates, config_.num_input_rows,
+        config_.num_row_elements, device_buffers));
     return false;
   }
 
@@ -536,10 +569,18 @@ absl::Status RunRaggedAllToAll(
   return future.Await();
 }
 
+// Executes the RaggedAllToAll collective using a "One-Shot" kernel with
+// explicit device-side synchronization.
+// The execution flow is:
+// 1. Rendezvous: Exchange output buffers and barrier signal buffers with peers.
+// 2. Pre-Kernel Barrier: Wait until all peers are ready to receive data.
+// 3. Execution: Run the RaggedAllToAll kernel (direct P2P writes).
+// 4. Post-Kernel Barrier: Wait until all peers have finished writing.
 absl::Status RunOneShotRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
-    int64_t num_input_rows, int64_t num_row_elements,
+    const se::DeviceAddressBase& barrier_signal_buffer,
+    const se::DeviceAddressBase& barrier_signal_value,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
     absl::Span<DeviceBufferPair const> buffers) {
   int device_ordinal = stream.parent()->device_ordinal();
   const int64_t num_ranks = clique_key.num_local_participants();
@@ -548,18 +589,25 @@ absl::Status RunOneShotRaggedAllToAll(
       << "Performing one-shot ragged-all-to-all rank: " << rank.value();
 
   PrimitiveType element_type = buffers[0].element_type;
-
   se::DeviceAddressBase input_buffer = buffers[0].source_buffer;
   se::DeviceAddressBase output_buffer = buffers[1].destination_buffer;
 
-  // Note: RecordEvent and WaitFor(event) wouldn't work with CUDA graph.
-  // b/409511004: Use atomics for multi-GPU barrier in ragged-all-to-all thunk
+  // 1. Rendezvous - Exchange output pointers and barrier signal buffers.
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>
           rendezvous_values,
-      RendezvousBeforeKernelStart(clique_key, stream, rank, start_event,
-                                  end_event, output_buffer));
+      RendezvousResources(device_ordinal, rank, clique_key, output_buffer,
+                          barrier_signal_buffer));
 
+  // 2. Barrier (Pre-Kernel)
+  // Global synchronization before P2P writes.
+  // Ensures that all peers have reached this point and their output buffers are
+  // ready to receive data. This prevents the kernel from attempting to write
+  // to a peer's memory before that peer has completed the rendezvous setup.
+  TF_RETURN_IF_ERROR(LaunchMultiGpuBarrier(
+      &stream, rank, num_ranks, *rendezvous_values, barrier_signal_value));
+
+  // 3. Execution of RunRaggedAllToAllKernel
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
   absl::InlinedVector<se::DeviceAddressBase, 4> output_ptrs;
@@ -573,8 +621,15 @@ absl::Status RunOneShotRaggedAllToAll(
       buffers[4].source_buffer, num_ranks, num_updates_per_replica,
       num_input_rows, num_row_elements));
 
-  return RendezvousAfterKernelFinish(clique_key, stream, rank, end_event,
-                                     *rendezvous_values);
+  // 4. Barrier (Post-Kernel)
+  // Global synchronization to ensure data consistency.
+  // We wait for all peers to signal completion.
+  // This guarantees that all P2P writes to our output buffer are complete and
+  // safe to consume.
+  TF_RETURN_IF_ERROR(LaunchMultiGpuBarrier(
+      &stream, rank, num_ranks, *rendezvous_values, barrier_signal_value));
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu
