@@ -1,67 +1,218 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..5106181 100644
+index 5106181..7a6dcec 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,47 @@
+@@ -1,47 +1,156 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
-+--- a/libcxx/include/stdatomic.h
-++++ b/libcxx/include/stdatomic.h
-+@@ -231,7 +231,7 @@
-+ using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
-+ using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
+-diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
+---- a/libcxx/include/stdatomic.h
+-+++ b/libcxx/include/stdatomic.h
+-@@ -231,7 +231,7 @@
+- using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
+- using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
++diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
++--- a/clang/lib/Driver/ToolChains/Darwin.cpp
+++++ b/clang/lib/Driver/ToolChains/Darwin.cpp
++@@ -2076,7 +2076,8 @@
++                                   std::to_string(TargetEnvironment) +
++                                   "' is unsupported when inferring SDK Info.");
++     }
++-    Components.push_back(Version.getAsString());
+++    std::string VersionString = Version.getAsString();
+++    Components.push_back(VersionString);
++     return join(Components, " ");
++   }
+  
+--#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
+-+#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VectorCombine.cpp b/llvm/lib/Transforms/Vectorize/VectorCombine.cpp
++--- a/llvm/lib/Transforms/Vectorize/VectorCombine.cpp
+++++ b/llvm/lib/Transforms/Vectorize/VectorCombine.cpp
++@@ -5453,6 +5453,11 @@
++         NewUses.push_back({Shuffle, {}});
++         std::vector<int> &NewMask = NewUses.back().second;
++         for (int Index : OldMask) {
+++          // Preserve poison indices without modification.
+++          if (Index == PoisonMaskElem) {
+++            NewMask.push_back(Index);
+++            continue;
+++          }
++           int NewIndex = Index >= static_cast<int>(OldNumElements)
++                              ? Index - LowOffset - HighOffset
++                              : Index - LowOffset;
++@@ -5480,10 +5485,12 @@
+  
+- // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
+- // the header. We do this because Clang has historically shipped a <stdatomic.h>
+-diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+---- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+-+++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+-@@ -0,0 +1,30 @@
+-+//===----------------------------------------------------------------------===//
+-+//
+-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+-+// See https://llvm.org/LICENSE.txt for license information.
+-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-+//
+-+//===----------------------------------------------------------------------===//
+-+
+-+// We're building as C, so this test doesn't work when building with modules.
+-+// UNSUPPORTED: clang-modules-build
+-+
+-+// GCC complains about unrecognized arguments because we're compiling the
+-+// file as C, but we're passing C++ flags on the command-line.
+-+// UNSUPPORTED: gcc
+-+
+-+// Test that stdatomic.h gets the C header with its definitions.
+-+
+-+// NOTE: It's not common or recommended to have libc++ in the header search
+-+// path when compiling C files, but it does happen often enough.
+-+
+-+// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
+-+
+-+#include <stdatomic.h>
++       // Create new load of smaller vector.
++       Type *IndexTy = DL->getIndexType(PtrOp->getType());
++-      Value *NewPtr = LowOffset > 0u
++-                          ? Builder.CreateInBoundsPtrAdd(
++-                                PtrOp, ConstantInt::get(IndexTy, LowOffset))
++-                          : PtrOp;
+++      TypeSize ElemSize = DL->getTypeAllocSize(ElemTy);
+++      Value *NewPtr =
+++          LowOffset > 0u
+++              ? Builder.CreateInBoundsPtrAdd(
+++                    PtrOp, ConstantInt::get(IndexTy, LowOffset * ElemSize))
+++              : PtrOp;
 + 
-+-#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
-++#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
++       auto *NewLoad = cast<LoadInst>(
++           Builder.CreateAlignedLoad(NewLoadTy, NewPtr, OldLoad->getAlign()));
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/VectorCombine/load-shufflevector.ll b/llvm/test/Transforms/VectorCombine/load-shufflevector.ll
++--- a/llvm/test/Transforms/VectorCombine/load-shufflevector.ll
+++++ b/llvm/test/Transforms/VectorCombine/load-shufflevector.ll
++@@ -47,7 +47,7 @@
++ ; CHECK-LABEL: define <4 x half> @shuffle_v4_v4f16_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 2
++ ; CHECK-NEXT:    [[TMP2:%.*]] = load <2 x half>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x half> [[TMP2]], <2 x half> poison, <4 x i32> <i32 0, i32 0, i32 1, i32 1>
++ ; CHECK-NEXT:    ret <4 x half> [[TMP1]]
++@@ -62,7 +62,7 @@
++ ; CHECK-LABEL: define <8 x half> @shuffle_v4_v8f16_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 2
++ ; CHECK-NEXT:    [[TMP2:%.*]] = load <2 x half>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x half> [[TMP2]], <2 x half> poison, <8 x i32> <i32 0, i32 0, i32 0, i32 0, i32 1, i32 1, i32 1, i32 1>
++ ; CHECK-NEXT:    ret <8 x half> [[TMP1]]
++@@ -110,7 +110,7 @@
++ ; CHECK-LABEL: define <4 x half> @shuffle_v4_v4f16_cond_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]], i1 [[COND:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 2
++ ; CHECK-NEXT:    [[TMP1:%.*]] = load <2 x half>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    br i1 [[COND]], label %[[THEN:.*]], label %[[ELSE:.*]]
++ ; CHECK:       [[THEN]]:
++@@ -144,7 +144,7 @@
++ ; CHECK-LABEL: define <8 x half> @shuffle_v4_v8f16_cond_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]], i1 [[COND:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 2
++ ; CHECK-NEXT:    [[TMP1:%.*]] = load <2 x half>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    br i1 [[COND]], label %[[THEN:.*]], label %[[ELSE:.*]]
++ ; CHECK:       [[THEN]]:
++@@ -206,7 +206,7 @@
++ ; CHECK-LABEL: define <4 x i32> @shuffle_v4_v4i32_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 4
++ ; CHECK-NEXT:    [[TMP2:%.*]] = load <2 x i32>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i32> [[TMP2]], <2 x i32> poison, <4 x i32> <i32 0, i32 0, i32 1, i32 1>
++ ; CHECK-NEXT:    ret <4 x i32> [[TMP1]]
++@@ -221,7 +221,7 @@
++ ; CHECK-LABEL: define <8 x i32> @shuffle_v4_v8i32_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 4
++ ; CHECK-NEXT:    [[TMP2:%.*]] = load <2 x i32>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    [[TMP1:%.*]] = shufflevector <2 x i32> [[TMP2]], <2 x i32> poison, <8 x i32> <i32 0, i32 0, i32 0, i32 0, i32 1, i32 1, i32 1, i32 1>
++ ; CHECK-NEXT:    ret <8 x i32> [[TMP1]]
++@@ -302,7 +302,7 @@
++ ; CHECK-LABEL: define <4 x i32> @shuffle_v4_v4i32_cond_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]], i1 [[COND:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 4
++ ; CHECK-NEXT:    [[TMP1:%.*]] = load <2 x i32>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    br i1 [[COND]], label %[[THEN:.*]], label %[[ELSE:.*]]
++ ; CHECK:       [[THEN]]:
++@@ -336,7 +336,7 @@
++ ; CHECK-LABEL: define <8 x i32> @shuffle_v4_v8i32_cond_r1_2(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]], i1 [[COND:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 4
++ ; CHECK-NEXT:    [[TMP1:%.*]] = load <2 x i32>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    br i1 [[COND]], label %[[THEN:.*]], label %[[ELSE:.*]]
++ ; CHECK:       [[THEN]]:
++@@ -370,7 +370,7 @@
++ ; CHECK-LABEL: define <8 x i32> @shuffle_v4_v8i32_cond_r1_4(
++ ; CHECK-SAME: ptr addrspace(1) readonly captures(none) [[ARG0:%.*]], i1 [[COND:%.*]]) local_unnamed_addr {
++ ; CHECK-NEXT:  [[ENTRY:.*:]]
++-; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 1
+++; CHECK-NEXT:    [[TMP0:%.*]] = getelementptr inbounds i8, ptr addrspace(1) [[ARG0]], i64 4
++ ; CHECK-NEXT:    [[TMP1:%.*]] = load <3 x i32>, ptr addrspace(1) [[TMP0]], align 32
++ ; CHECK-NEXT:    br i1 [[COND]], label %[[THEN:.*]], label %[[ELSE:.*]]
++ ; CHECK:       [[THEN]]:
++@@ -411,3 +411,17 @@
++   %shuf = shufflevector <16 x i8> %load, <16 x i8> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 24, i32 25, i32 26, i32 27, i32 28, i32 29, i32 30, i32 31>
++   ret <16 x i8> %shuf
++ }
+ +
+-+int main(int argc, char** argv) {
+-+  (void)argc;
+-+  (void)argv;
+-+  [[maybe_unused]] atomic_bool x;
+-+  return 0;
+++; PR178917: Verify poison mask elements are preserved when trimming loads.
+++define <8 x i16> @shuffle_with_poison_mask(ptr %p) {
+++; CHECK-LABEL: define <8 x i16> @shuffle_with_poison_mask(
+++; CHECK-SAME: ptr [[P:%.*]]) {
+++; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[P]], i64 2
+++; CHECK-NEXT:    [[TMP2:%.*]] = load <7 x i16>, ptr [[TMP1]], align 1
+++; CHECK-NEXT:    [[SHUF:%.*]] = shufflevector <7 x i16> [[TMP2]], <7 x i16> poison, <8 x i32> <i32 0, i32 2, i32 poison, i32 poison, i32 poison, i32 4, i32 poison, i32 6>
+++; CHECK-NEXT:    ret <8 x i16> [[SHUF]]
+++;
+++  %pre = load <8 x i16>, ptr %p, align 1
+++  %shuf = shufflevector <8 x i16> %pre, <8 x i16> poison, <8 x i32> <i32 1, i32 3, i32 poison, i32 poison, i32 poison, i32 5, i32 poison, i32 7>
+++  ret <8 x i16> %shuf
+ +}
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
++--- a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
+++++ b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
++@@ -1,3 +1,4 @@
+++; REQUIRES: asserts
++ ; RUN: opt -passes=vector-combine -debug-only=vector-combine -disable-output < %s 2>&1 | FileCheck %s
++ target triple = "x86_64-unknown-linux-gnu"
 + 
-+ // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
-+ // the header. We do this because Clang has historically shipped a <stdatomic.h>
-+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-+--- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-++++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-+@@ -0,0 +1,30 @@
-++//===----------------------------------------------------------------------===//
-++//
-++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-++// See https://llvm.org/LICENSE.txt for license information.
-++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-++//
-++//===----------------------------------------------------------------------===//
-++
-++// We're building as C, so this test doesn't work when building with modules.
-++// UNSUPPORTED: clang-modules-build
-++
-++// GCC complains about unrecognized arguments because we're compiling the
-++// file as C, but we're passing C++ flags on the command-line.
-++// UNSUPPORTED: gcc
-++
-++// Test that stdatomic.h gets the C header with its definitions.
-++
-++// NOTE: It's not common or recommended to have libc++ in the header search
-++// path when compiling C files, but it does happen often enough.
-++
-++// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
-++
-++#include <stdatomic.h>
-++
-++int main(int argc, char** argv) {
-++  (void)argc;
-++  (void)argv;
-++  [[maybe_unused]] atomic_bool x;
-++  return 0;
-++}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 31e5be0..9b5614a 100644
+index 9b5614a..44c4075 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
--    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
-+    LLVM_COMMIT = "909041e4802c4b9a2223ca04099f35bf1dbbd460"
-+    LLVM_SHA256 = "3f986184ee126677dbd77edb16d6b82c057ec869fefd7a9871979941e52e837a"
+-    LLVM_COMMIT = "909041e4802c4b9a2223ca04099f35bf1dbbd460"
+-    LLVM_SHA256 = "3f986184ee126677dbd77edb16d6b82c057ec869fefd7a9871979941e52e837a"
++    LLVM_COMMIT = "bc7315749d6d16d0f162f816b3ec0ef7169615f2"
++    LLVM_SHA256 = "5ef1737d939b938fc23c9f13e9d5fad4c20fbcc7c6ab232602c7d2ff094ba8a9"
  
      tf_http_archive(
          name = name,
