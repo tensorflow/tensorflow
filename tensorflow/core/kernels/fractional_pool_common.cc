@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/fractional_pool_common.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
+#include "absl/log/check.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 namespace tensorflow {

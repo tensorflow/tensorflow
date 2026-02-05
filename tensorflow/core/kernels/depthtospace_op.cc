@@ -15,15 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <type_traits>
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/depthtospace_op.h"
 
 #include <cmath>
 #include <limits>
-#include <memory>
 #include <string>
-#include <utility>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
@@ -33,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/depthtospace_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
