@@ -1455,6 +1455,8 @@ xla_cc_test(
         ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_phase_compile_sample_plugin",
+        "//xla:debug_options_flags",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:test",
         "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",

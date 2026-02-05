@@ -151,16 +151,6 @@ static int CpuDeviceCount() {
   return GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
 }
 
-namespace cpu {
-
-PjRtPlatformId PlatformId() { return tsl::Fingerprint64(CpuName()); }
-
-absl::string_view PlatformName() { return CpuName(); }
-
-absl::string_view PlatformVersion() { return CpuName(); }
-
-}  // namespace cpu
-
 namespace {
 
 // A custom memory allocator function passed via the CPU client options.
@@ -221,12 +211,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     }
 
     topology = std::make_unique<CpuTopologyDescription>(
-        cpu::PlatformId(), cpu::PlatformName(), cpu::PlatformVersion(),
-        cpu_topology_devices,
-        cpu::DetectMachineAttributes(
-            cpu::CpuFeatureFromString(
-                GetDebugOptionsFromFlags().xla_cpu_max_isa()))
-            .features);
+        xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+        CpuTopology(cpu_topology_devices,
+                    cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
   } else {
     topology = std::make_unique<CpuTopologyDescription>(*options.topology);
     if (topology->cpu_topology().number_of_devices() != cpu_device_count) {
@@ -895,12 +882,8 @@ PjRtCpuClient::CompileInternal(
       compile_options.thread_pool = pjrt_client_thread_pool();
     }
 
-    cpu::TargetMachineOptions target_machine_options(
-        hlo_module->config().debug_options());
-    // Overwrite the features with the machine attributes from the topology.
-
-    TF_RETURN_IF_ERROR(target_machine_options.SetFeatures(
-        absl::StrJoin(topology_->cpu_topology().machine_attributes(), ",")));
+    const cpu::TargetMachineOptions& target_machine_options =
+        topology_->cpu_topology().target_machine_options();
 
     compile_options.cpu_target_config.emplace(target_machine_options);
 
