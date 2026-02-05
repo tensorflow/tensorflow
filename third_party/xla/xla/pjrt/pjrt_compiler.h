@@ -25,12 +25,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -99,6 +101,21 @@ absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
 // platform and compiler variant.
 absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
     absl::string_view platform_name, absl::string_view compiler_variant);
+
+// A factory that creates a PjRtCompiler. Creation is deferred to avoid
+// InitGoogle violations (e.g., RPC or file access during global init).
+using PjRtCompilerFactory =
+    absl::AnyInvocable<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
+
+// Registers a compiler factory for a specific platform and variant.
+void PjRtRegisterCompilerFactory(absl::string_view platform_name,
+                                 absl::string_view variant_name,
+                                 PjRtCompilerFactory factory);
+
+// Explicitly initializes a compiler with a given variant.
+// If the compiler is already initialized, this is a no-op.
+absl::Status PjRtInitializeCompilerVariant(absl::string_view platform_name,
+                                           absl::string_view variant_name);
 
 class PjRtClient;
 
