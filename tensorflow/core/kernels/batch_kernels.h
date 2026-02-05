@@ -98,18 +98,18 @@ class BatchFunctionKernel : public AsyncOpKernel {
   //   Read from corresponding attributes as long as they are set.
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
-  string container_;
-  string shared_name_;
-  string batcher_queue_;
-  int32 num_batch_threads_;
-  int32 max_batch_size_;
-  int32 batch_timeout_micros_;
-  int32 max_enqueued_batches_;
-  std::vector<int32> allowed_batch_sizes_;
-  int32 low_priority_max_batch_size_;
-  int32 low_priority_batch_timeout_micros_;
-  int32 low_priority_max_enqueued_batches_;
-  std::vector<int32> low_priority_allowed_batch_sizes_;
+  std::string container_;
+  std::string shared_name_;
+  std::string batcher_queue_;
+  int32_t num_batch_threads_;
+  int32_t max_batch_size_;
+  int32_t batch_timeout_micros_;
+  int32_t max_enqueued_batches_;
+  std::vector<int32_t> allowed_batch_sizes_;
+  int32_t low_priority_max_batch_size_;
+  int32_t low_priority_batch_timeout_micros_;
+  int32_t low_priority_max_enqueued_batches_;
+  std::vector<int32_t> low_priority_allowed_batch_sizes_;
   std::string mixed_priority_policy_;
   std::string batch_padding_policy_;
   NameAttrList func_;
@@ -124,11 +124,11 @@ class BatchFunctionKernel : public AsyncOpKernel {
   // Note 'num_batch_threads_' above is shared by two implementations of batch
   // scheduler.
   struct AdaptiveBatchSchedulerOptions {
-    int32 min_in_flight_batches_limit = kMinInflightBatches;
-    int32 initial_in_flight_batches_limit = kInitialInflightBatches;
-    int32 max_in_flight_batches_limit = kMaxInflightBatches;
-    int32 batches_to_average_over = kBatchesToAverageOver;
-    int64 full_batch_scheduling_boost_micros = -1;
+    int32_t min_in_flight_batches_limit = kMinInflightBatches;
+    int32_t initial_in_flight_batches_limit = kInitialInflightBatches;
+    int32_t max_in_flight_batches_limit = kMaxInflightBatches;
+    int32_t batches_to_average_over = kBatchesToAverageOver;
+    int64_t full_batch_scheduling_boost_micros = -1;
   };
   absl::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = absl::nullopt;
