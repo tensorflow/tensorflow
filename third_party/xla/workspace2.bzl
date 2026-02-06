@@ -43,6 +43,7 @@ load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/raft:workspace.bzl", raft = "repo")
 load("//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
+load("//third_party/re2:workspace.bzl", re2 = "repo")
 load("//third_party/riegeli:workspace.bzl", riegeli = "repo")
 load("//third_party/rmm:workspace.bzl", rmm = "repo")
 load("//third_party/robin_map:workspace.bzl", robin_map = "repo")
@@ -99,6 +100,7 @@ def _initialize_third_party():
     pthreadpool()
     raft()
     rapids_logger()
+    re2()
     rmm()
     robin_map()
     rocm_device_libs()
@@ -240,13 +242,6 @@ def _tf_repositories():
         sha256 = "3f76650b1d048036473b16b647b8fd005ffccd1a2869c10994967e0e49f26ac2",
         strip_prefix = "arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu/11.3.rel1/binrel/arm-gnu-toolchain-11.3.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz"),
-    )
-
-    tf_http_archive(
-        name = "com_googlesource_code_re2",
-        sha256 = "ef516fb84824a597c4d5d0d6d330daedb18363b5a99eda87d027e6bdd9cba299",
-        strip_prefix = "re2-03da4fc0857c285e3a26782f6bc8931c4c950df4",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/03da4fc0857c285e3a26782f6bc8931c4c950df4.tar.gz"),
     )
 
     tf_http_archive(

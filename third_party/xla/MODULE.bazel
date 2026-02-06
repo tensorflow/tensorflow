@@ -21,7 +21,6 @@ bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf"
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
-bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
@@ -107,6 +106,7 @@ use_repo(
     "nvshmem",
     "onednn",
     "pthreadpool",
+    "re2",
     "riegeli",
     "rocm_device_libs",
     "shardy",
