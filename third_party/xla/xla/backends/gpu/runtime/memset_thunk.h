@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 // This file contains thunks that set a buffer's elements to a particular value.
 // This can be faster than emitting a kernel to set the elements.
