@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
 #define XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
 
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
