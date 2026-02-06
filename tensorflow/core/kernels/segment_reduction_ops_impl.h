@@ -1410,16 +1410,22 @@ class SparseSegmentGradV2OpCommon {
 
     for (int64_t i = 0; i < N; ++i) {
       const Index output_idx = internal::SubtleMustCopy(indices_vec(i));
-      OP_REQUIRES_ASYNC(context, FastBoundsCheck(output_idx, input_flat.dimension(0)),
-          errors::InvalidArgument("Index ", output_idx, " out of range [0, ",
-                                  input_flat.dimension(0), ")."),
-          done);
-
-      const SegmentId segment_id = internal::SubtleMustCopy(segment_vec(i));
-      OP_REQUIRES_ASYNC(context, FastBoundsCheck(segment_id, M),
-          errors::InvalidArgument("Segment id ", segment_id, " out of range [0, ",
-                                  M, ")."),
-          done);
+        if (!FastBoundsCheck(output_idx, input_flat.dimension(0))) {
+          return absl::InvalidArgumentError(
+              absl::StrCat("Index ", output_idx,
+                  " out of range [0, ",
+                  input_flat.dimension(0), ")."));
+          }
+        
+          const SegmentId segment_id =
+              internal::SubtleMustCopy(segment_vec(i));
+          if (!FastBoundsCheck(segment_id, M)) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Segment id ", segment_id,
+                    " out of range [0, ",
+                    M, ")."));
+          }
+        }
     }
 
     functor::SparseSegmentGradV2Functor<Device, T, Index, SegmentId>()(
