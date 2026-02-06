@@ -1847,6 +1847,7 @@ cc_library(
         "//xla/service/gpu/transforms:triton_fusion_numerics_verifier",
         "//xla/service/gpu/transforms:windowed_einsum_handler",
         "//xla/service/gpu/transforms/collectives:all_gather_dynamic_slice_simplifier",
+        "//xla/service/gpu/transforms/collectives:all_gather_major_dimension_rewriter",
         "//xla/service/gpu/transforms/collectives:all_gather_optimizer",
         "//xla/service/gpu/transforms/collectives:all_reduce_blueconnect",
         "//xla/service/gpu/transforms/collectives:all_reduce_decomposer",
