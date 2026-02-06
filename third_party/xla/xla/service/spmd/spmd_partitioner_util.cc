@@ -3134,7 +3134,7 @@ GetMeshAxesPartitionGroupsAcrossTargetDims(const HloSharding& sharding,
 
 // Expands partition group list across all replicas. Expects that provided
 // partition group list utilizes all the partitions.
-IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+CollectiveDeviceList ExpandPartitionGroupListAcrossReplicas(
     IotaReplicaGroupList partition_group_list, int64_t num_replicas,
     int64_t num_partitions) {
   int64_t partition_group_count = partition_group_list.num_replica_groups();
@@ -3162,8 +3162,9 @@ IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
     new_transpose_dims.push_back(dim + 1);
   }
 
-  return IotaReplicaGroupList(replica_group_count, partition_group_size,
-                              new_reshape_dims, new_transpose_dims);
+  return CollectiveDeviceList(
+      IotaReplicaGroupList(replica_group_count, partition_group_size,
+                           new_reshape_dims, new_transpose_dims));
 }
 
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,

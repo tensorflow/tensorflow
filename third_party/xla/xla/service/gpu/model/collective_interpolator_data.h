@@ -42,11 +42,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "82724b215353fdf447c8f5867b927fe2"
@@ -69,11 +71,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "70a080ed258662e7a7c448a580386531"
@@ -125,11 +129,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b119f67d214e8219e6b672422c7ff82d"
@@ -180,11 +186,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6a6da3f8a701c6de63d3f3eff5a326d0"
@@ -207,11 +215,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4f39fbed3ed5b26fd8f01ceb12a6958e"
@@ -235,11 +245,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d99a31a5731cd087d2a57a04dbeda416"
@@ -263,11 +275,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "991c99cf49ca7ed01041e4151f354da3"
@@ -290,11 +304,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8dd875a32ca9280cac2fb6c8b4a3f900"
@@ -317,11 +333,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "36c99c9ecd2afb910616dba7e7604d76"
@@ -374,11 +392,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b6cdb267bfc64ec38e1e2740095c8805"
@@ -402,11 +422,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "27a51e9c9148298fd01ee900e6a81c2c"
@@ -429,11 +451,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "22444f0e312a3499cbfd75eaf67c0888"
@@ -482,11 +506,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e67540b745e062c37cb2d5e38a645a43"
@@ -511,11 +537,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "02f84dcfcb5697b10aa0548ff15c1379"
@@ -590,11 +618,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4fd09bd390682728f7da420003fb7c37"
@@ -618,11 +648,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f9d967d15c65b7c80d2055c0c6dbf3c6"
@@ -647,11 +679,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "bb6b916563714f9bbad245e71a3d56e3"
@@ -676,11 +710,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c04d9b7c7ac56f98fcf87ee9c131ab68"
@@ -703,11 +739,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ef5d4bc6c48c17023f1713afce3c88c3"
@@ -732,11 +770,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "644ed15c889d04ca582b384ff68fc71e"
@@ -759,11 +799,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5b2d32958f53fbfe8142848551afad7c"
@@ -788,11 +830,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "498af7a3213702edfadb727477672515"
@@ -816,11 +860,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6b3fd8cf011b133409ba2ce19f78aed7"
@@ -844,11 +890,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f9040b578d0f9eba41c4ac1a07ee4224"
@@ -897,11 +945,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8154a3ab4411af0b0a94fc14f69ac096"
@@ -925,11 +975,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "64fc8a1589366b418b88651876990852"
@@ -954,11 +1006,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8abe97935f10f37b31406be7fe615de0"
@@ -1006,11 +1060,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "9f6af0d6b827293d0386ca2378e5d71b"
@@ -1035,11 +1091,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b8e3907c6dfb227acf1602dcedd1dfae"
@@ -1063,11 +1121,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "83d2f5e591feefe0553a301d532b898f"
@@ -1090,11 +1150,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "413eb782ec4e2c4409f95026e7b720e6"
@@ -1118,11 +1180,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ca28c1cb14c2361c8daf298f6de5fc47"
@@ -1146,11 +1210,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c8859ac88de21b0d40acf7b94c89a34e"
@@ -1174,11 +1240,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e5dc26fcdbdb577aa5941155f0d4fc57"
@@ -1201,11 +1269,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "85bb8349a62442dcab56384b99cbe6d0"
@@ -1229,11 +1299,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6632fafd05450c9ca5bdd86c67f7cc0a"
@@ -1257,11 +1329,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c6fbc0a09d2d44806949eef49196c7a2"
@@ -1314,11 +1388,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ad9a13d7c03557ae4a78b547c910aaa9"
@@ -1341,11 +1417,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "2e4edd9d5f901a539189122797458ea4"
@@ -1369,11 +1447,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e39d4c38abe32c0b8bf790196f492d26"
@@ -1397,11 +1477,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ca3eb58708ad6e9c3551f90b9d193653"
@@ -1424,11 +1506,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0f527662a7b68694b48d50d10a297e0b"
@@ -1452,11 +1536,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4351be00ad096ee1fcfe565c2215c7dd"
@@ -1480,11 +1566,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6ab6cfdfc119a9143b046bd2262766d6"
@@ -1531,11 +1619,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "84086fea224a69018a6bcf0db282b861"
@@ -1559,11 +1649,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "695c9c2e1a16cd287cd6b80d66c3cf24"
@@ -1586,11 +1678,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0120a2fd4590718b617dbde5030314f0"
@@ -1613,11 +1707,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b398f3b5618fef0e8beefc3d9fb45eee"
@@ -1641,11 +1737,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a9f1ccc1dcdd0ea4b6d345c626fc0464"
@@ -1697,11 +1795,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b51292fa84bc7fc3b5a42c808ed0538a"
@@ -1726,11 +1826,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "19bfe133a0d02c4cac3fe71ed6e3e741"
@@ -1753,11 +1855,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d04da75eb576bed3d4db82103261bf34"
@@ -1781,11 +1885,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c986af5a1df1d20f73d7d40cf5b1e067"
@@ -1809,11 +1915,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d71debdb12a8986a0f288def2a8ac093"
@@ -1837,11 +1945,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d6ceb25936203837f994d4ea62fccbcb"
@@ -1866,11 +1976,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a83d894078ce2cfadd898cfbdd4955ea"
@@ -1895,11 +2007,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a9e70188f014a7fd5d3664cb93a8ceea"
@@ -1975,11 +2089,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "10f1eac7685082516c77e28c1c570603"
@@ -2002,11 +2118,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "62c4fc6430ca1eb1c9da917231cf7c2c"
@@ -2030,11 +2148,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f7fd5b7bdf4d97b0eb10f5fbab3117c5"
@@ -2086,11 +2206,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "35882d22990344fadfe4e45b8e2721eb"
@@ -2141,11 +2263,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "71fef15b131813a4d472ccf5528d373b"
@@ -2169,11 +2293,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c9746f1c866d390a80ecaa1cd0747467"
@@ -2197,11 +2323,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d0a5ced62829c6ceb591eb442eb1b79c"
@@ -2225,11 +2353,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7090d041bc0599ce9b8dc0095e8d7135"
@@ -2252,11 +2382,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "584651046fab6aa022a9fcdaa741ca49"
@@ -2307,11 +2439,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3e00e3751db2f0a54edfc160509a0c32"
@@ -2363,11 +2497,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3fbaf73ace028a5c0673748316b980bf"
@@ -2392,11 +2528,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "28ed8d8831773650ac1210294feb985d"
@@ -2447,11 +2585,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "361bab01e1544bbd7d4c57964c7cb2e8"
@@ -2476,11 +2616,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f2e7c307868389c7b945a60985fdbfb7"
@@ -2505,11 +2647,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d8ba4d1f1855930537e677def956da0c"
@@ -2533,11 +2677,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "21c3dea5239284aed45517eccc2c77a1"
@@ -2561,11 +2707,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b5ef73f8707a38b85661790207aa156e"
@@ -2590,11 +2738,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e188b963e5912029be041b83f8c32803"
@@ -2619,11 +2769,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "58212b0c758c8c906c2df8d9cd23841e"
@@ -2699,11 +2851,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3fc3265f1d4f48b553f24df733a0ec07"
@@ -2728,11 +2882,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "905de60dd6e7b89f580e55ae80ac8d79"
@@ -2784,11 +2940,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "012c7d96d1729d9e95f6cb6f9cc6646d"
@@ -2812,11 +2970,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "add1d98ea03d7ecc59ff9877b5bd5e93"
@@ -2841,11 +3001,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8f93e3c7983b80f6171d861fa67a2bb5"
@@ -2868,11 +3030,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8370a1824c7b75672651c80e67bfcc33"
@@ -2923,11 +3087,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fc2857874212cf751e4b60decec734a7"
@@ -2951,11 +3117,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "eebdac40c94b93e0e8351eba013b7958"
@@ -2979,11 +3147,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5357a763f8b75abbd8c2b3aa99d399b0"
@@ -3030,11 +3200,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "25f7485f5479f664a4f493d61ff1a4d8"
@@ -3059,11 +3231,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ea64b110db7c46aafbb394dd547e9e23"
@@ -3087,11 +3261,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "766a46b63049615920fa933700606ad3"
@@ -3139,11 +3315,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4f6b04c57baf41d308928831e49e6f05"
@@ -3167,11 +3345,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a80bdc2e68784e2f6b048f9070199b93"
@@ -3220,11 +3400,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "22006dffcceb6352ce0d7f47b568a045"
@@ -3249,11 +3431,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ae02e28f43d17a07b5679b487f20fb4a"
@@ -3276,11 +3460,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ef648be80ef0366d556323938cba8b8b"
@@ -3305,11 +3491,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4a53acb196d9813effc6e5c5955a28c2"
@@ -3361,11 +3549,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "cc87abd4e4f49d00a84464d67ac1cc63"
@@ -3389,11 +3579,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b064bd92e8bb26128984b39785b63827"
@@ -3418,11 +3610,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5cfc87185d90d1302586da3e1c0f6fde"
@@ -3446,11 +3640,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e6fb7f1db9f0def5ca27f01f28291a63"
@@ -3474,11 +3670,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "9c002f2bdf400f2638aac27df778dfc1"
@@ -3501,11 +3699,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b9ca069b3d1f1eeefa7a6ecf54baacae"
@@ -3554,11 +3754,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7137b6e88084dce1309b8c65093ae1ff"
@@ -3582,11 +3784,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d08ba83901c2428a2cacfc0d6e826840"
@@ -3611,11 +3815,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c2aa9452829d26d4fbfc6be7dcd22902"
@@ -3639,11 +3845,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4ce7115cb0355a0436faffe9d4f63a60"
@@ -3667,11 +3875,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b253ab825e72a17754e0f920ba0ac47b"
@@ -3694,11 +3904,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "90fc6688a7894e5c0b2688b8b3b56e5b"
@@ -3723,11 +3935,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0c83ea7171fd3e561e96f900b77b901b"
@@ -3750,11 +3964,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5ecb8bfdacc065c41d076a95fde10de2"
@@ -3778,11 +3994,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "98b831c4ca72406f37389214c5e19865"
@@ -3806,11 +4024,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "224b0c65bfb5a0772e3b3ef5e529c630"
@@ -3833,11 +4053,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7c15270553f884594396ea3a9e22288a"
@@ -3860,11 +4082,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b5dc833e1006db332dcf16fc073558e4"
@@ -3917,11 +4141,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7cac54d6e1d08a6cd127ab0f81c94048"
@@ -3945,11 +4171,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f40071ad502637ac5fbb867e29baea24"
@@ -3974,11 +4202,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a7adb6a1534bbf74d4512d8e05eb5ad0"
@@ -4003,11 +4233,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "96b26a3b1e59d77bab95e0026d23275c"
@@ -4031,11 +4263,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7607dfea803f89904d8e152fb8189956"
@@ -4058,11 +4292,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "25a76511510793444ae58b29d1d310cd"
@@ -4086,11 +4322,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "17e8b701cba039ffed5c4c64b81bd38e"
@@ -4166,11 +4404,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "01cbebe328fc80e3c97d6b476fec64ff"
@@ -4223,11 +4463,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "bac7b1d59bfbf3ce3c9770a882b7d9d9"
@@ -4252,11 +4494,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4afbc2a251fde8fe2a2f21f9b3680acf"
@@ -4281,11 +4525,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0f6fd7c2255ef5d6619d3e266e4493b1"
@@ -4309,11 +4555,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b3774b957d17024bdec4dfb6aa7015b8"
@@ -4365,11 +4613,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d23936a34187f9cecae83b71e3b7c071"
@@ -4392,11 +4642,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0ac37c0c61461a98a53778858abef7c2"
@@ -4420,11 +4672,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c5c9c12452980db70f61be1deb2f609c"
@@ -4477,11 +4731,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e001496ab38237a7a240b9087b52ce67"
@@ -4506,11 +4762,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "687f7f1c2f260eab74a9b0fe20926d8a"
@@ -4562,11 +4820,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4fcbe7e7d7bb2d20520c051dd60ad89e"
@@ -4590,11 +4850,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "713bd2c46abfb6ce361f71da4eb7d023"
@@ -4617,11 +4879,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a2d264c6a62d0909b4dc78be82a6aff6"
@@ -4645,11 +4909,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "03e84199997302127c56cdb92f61f92d"
@@ -4673,11 +4939,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "64fcb07cb34dfdc261edff3094f5e329"
@@ -4701,11 +4969,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "9f83571c52a45ed6fa719a3ef1b35f56"
@@ -4758,11 +5028,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "378df9b975bd6f83307c54c5ebf8a5e3"
@@ -4786,11 +5058,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "50e0778e29cbb85bbe9e52c8a9e3f53b"
@@ -4814,11 +5088,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fd47bb6bf2e69ef941ae3455e0980ec2"
@@ -4842,11 +5118,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "70cc3d28822cfa34a6f4f77936bd4122"
@@ -4870,11 +5148,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7e46aa6a95b79c94bd27c5e9de8038c1"
@@ -4898,11 +5178,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "906601acb6c0bdb8e772d3adb5a7e148"
@@ -4954,11 +5236,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "29421a4f1a4df068f67122b659311863"
@@ -4982,11 +5266,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f6813a624e0d4cd5931fd1911a59ce8d"
@@ -5009,11 +5295,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d84ec32ec9d5bce065cad02d30309053"
@@ -5037,11 +5325,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a490a74ef07c6ec14e8318d4b8142f8e"
@@ -5066,11 +5356,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a6f8b72cb4b9af96eef324934f9de021"
@@ -5122,11 +5414,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "668e8b905ffbce1829608cbf4befc332"
@@ -5150,11 +5444,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "48e28feb64dc3689b568926698d8e02e"
@@ -5179,11 +5475,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0690a7935a759eb144aeec77b49771d9"
@@ -5207,11 +5505,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5d605c04268d15a46391c0ef5400e98e"
@@ -5262,11 +5562,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3f33c91a674d3a639ad8460a9fee21f0"
@@ -5290,11 +5592,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ea826b5b3a3cd11ff917bb395a93cd6f"
@@ -5318,11 +5622,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d5bb5db4849bbe872fc0a3ab1ec6d0d9"
@@ -5345,11 +5651,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4447fc843a198e997259f2a45d1c5078"
@@ -5373,11 +5681,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7e50a143617aca892c3824cf04c47087"
@@ -5402,11 +5712,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "790112769afed6a30fcc1c8cbce08768"
@@ -5429,11 +5741,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e77afb055f2c55ce8a9f881f93f4ccec"
@@ -5457,11 +5771,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6dd3b94c1709ebff95103a4422009c8b"
@@ -5486,11 +5802,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c708aebbaea40d6ad370faaa7d411d0f"
@@ -5513,11 +5831,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "9c2db8231f5ef24a566554bcd16a60d4"
@@ -5565,11 +5885,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "bffcfdab46001339d858d2bde0841588"
@@ -5593,11 +5915,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d4bb9864d0881eafd2fa5efec09c6e99"
@@ -5700,11 +6024,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "abd659445180bd7e7b25417a2c970841"
@@ -5728,11 +6054,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "696f90418e9a91559c454b6ef6ce9b85"
@@ -5756,11 +6084,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3007a47f1e00d56e53224073fd790288"
@@ -5783,11 +6113,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8eb0c3afb6d4a5a42937daf0b2ca9327"
@@ -5834,11 +6166,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e1c68238c33369569964e0715085e11e"
@@ -5918,11 +6252,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8f9d476f5290f9fd2653c4f975ec810e"
@@ -5947,11 +6283,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "46eb6d6f2c352a68dd5943ccbf21f917"
@@ -5976,11 +6314,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f85a8aefce6c3bcea1643e35008f1774"
@@ -6003,11 +6343,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b0b00085d45064632771977a738377fa"
@@ -6032,11 +6374,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "75c0063e60c072af0ddaa5e2dbbfa741"
@@ -6059,11 +6403,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ade554f65ab408a90ce8976d623c021f"
@@ -6167,11 +6513,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c37087da0a44968200e66995156557e7"
@@ -6195,11 +6543,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "02feb5e94baeeab2372bc39cf64b4dc3"
@@ -6247,11 +6597,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "61804978175d4c86d2e9535c315a7c67"
@@ -6276,11 +6628,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3b80581304fa3c1ea59b5614ce83e167"
@@ -6357,11 +6711,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "77c8cbc50f987483fee44f7a20bf8b1f"
@@ -6386,11 +6742,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3b97564ed96cdb745f18dfba342d89a0"
@@ -6413,11 +6771,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fb071244e8d81a3688446f7a2515f445"
@@ -6441,11 +6801,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3a320de13af8d0a2b9013cfbf39985fb"
@@ -6469,11 +6831,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "60c70a6d99cce4e304e50c40c8f99fce"
@@ -6497,11 +6861,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c8fe77ad4d6a5f9c9e08e64b66c5aa36"
@@ -6525,11 +6891,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fab7de7fff87c4825d063b15cf576f4a"
@@ -6553,11 +6921,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "762f33c509d278627132d4806885cfc9"
@@ -6582,11 +6952,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ad7d779a1ec5f906606de9e4e93650d9"
@@ -6634,11 +7006,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "141f0055829b89a154053476d8d5fabe"
@@ -6661,11 +7035,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "96ca5c7e1f1638828edc08d3daa8f8f7"
@@ -6718,11 +7094,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e94911366d0b4cfff0d6742f123be8a9"
@@ -6747,11 +7125,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7da45b992c6f90f878e16349e67435ed"
@@ -6775,11 +7155,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "656be27a022b3b74531f5f2327584a2a"
@@ -6802,11 +7184,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "24af8009842c9b30f9fc309675fd46c8"
@@ -6830,11 +7214,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0588b7c974105348d0a2515c0abd898b"
@@ -6858,11 +7244,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "188b7c8f49ee518ef3f12f7239d0542a"
@@ -6937,11 +7325,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "afc15c1b4deac0e2789adf42fce916f4"
@@ -6965,11 +7355,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "2965a87c08fc2bb44b5e63f4a8232930"
@@ -6993,11 +7385,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "66a5b4b136e3e63482a26491f2086663"
@@ -7020,11 +7414,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ffb987920d3dcd0f23601030220f2c32"
@@ -7048,11 +7444,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "96e82cb9d09f5d9b43c2800f01b5f3ff"
@@ -7075,11 +7473,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "542e81cf1beafb7de263b511ad1f5d7c"
@@ -7102,11 +7502,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "2c9f9cea76ec0a7f35987d8bdeea1d30"
@@ -7129,11 +7531,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7ab9f4f3c725f05b8e8f79d1d9a79a65"
@@ -7157,11 +7561,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "03330f0defed011fd622da3ddcd58de5"
@@ -7185,11 +7591,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d51ae4f483b29ba1518794ed1f635d41"
@@ -7213,11 +7621,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fac36931d73a8f77c6af1f29aa01f950"
@@ -7241,11 +7651,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "954fa4e199cb0e689954013992370dc4"
@@ -7270,11 +7682,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "32921213d78db478164e6ece7132d57a"
@@ -7298,11 +7712,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "3a965e23c93556616a155131d28e076f"
@@ -7326,11 +7742,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e937e6f6cd2b6db16fe9cd7c2979d357"
@@ -7382,11 +7800,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c578baa139f847a50200e65a501cfe37"
@@ -7410,11 +7830,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "997ccdcc3c56a275439d3efb9d75628b"
@@ -7439,11 +7861,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ecf9d950bcd7b6c6223401f066216fd4"
@@ -7467,11 +7891,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "bdda763fe4cbd4dbd2cd6e538df4d2f5"
@@ -7494,11 +7920,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "59b183e8704a0ba13869ade15fa2b92b"
@@ -7522,11 +7950,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0b76c03ffc5616ae8aaf7fe05d58a8e5"
@@ -7549,11 +7979,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ee0857faea7d71857c6fb8036e979d2d"
@@ -7602,11 +8034,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "22d939e4ee859968ac17ebf1c62fef05"
@@ -7630,11 +8064,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "bd85fa7c974409dc2c659688fdfb262f"
@@ -7659,11 +8095,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f4c16425b37cb7c0469f632bc5f2954f"
@@ -7687,11 +8125,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b4c5c1f7997e35be9d661c5ab8917bbc"
@@ -7772,11 +8212,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "fd886f592d094bb3c992eb050b3aeb7a"
@@ -7829,11 +8271,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b3181d33b743bf7d8e93edc0102fa54b"
@@ -7856,11 +8300,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c092460e68acec60d687e3ff6c5a6674"
@@ -7884,11 +8330,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ef3bbaf6d14ca5829ae80710febc85eb"
@@ -7940,11 +8388,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6b3993ffc7a2464a3f8f42c61f55394d"
@@ -7968,11 +8418,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "1287402cc6f1747882876a7ef488e090"
@@ -7996,11 +8448,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "9baae3a878bfbfff40ac180eb9c74753"
@@ -8052,11 +8506,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "a9ce40b744201dc85700fe442e18c6d3"
@@ -8080,11 +8536,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ae9b470b1a59d43e5b5fa203ca090cd9"
@@ -8108,11 +8566,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f36d3cb56a18e44b99c8e2bd01e47a20"
@@ -8136,11 +8596,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "56f48d98625522ae94180017c6e4235a"
@@ -8165,11 +8627,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "53d4043108c4d45128534295dc2c4234"
@@ -8220,11 +8684,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5016df44b768d5084d1607b448e77a3d"
@@ -8248,11 +8714,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "be567d531287055cea40ba66db60de94"
@@ -8276,11 +8744,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "680f6ed8e838fee643167dc7a214bcd4"
@@ -8304,11 +8774,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "d8c02d04f293873b5f6c56e662530193"
@@ -8333,11 +8805,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "8426634cb954bc9a04f5d3df48489b36"
@@ -8385,11 +8859,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "2d89d55373f92fb4e1b55e7456f04f79"
@@ -8412,11 +8888,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "147048ce1f70eaaf4c41e3a478797c71"
@@ -8441,11 +8919,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "c161c6ad6758b19e819c0db57a16b335"
@@ -8469,11 +8949,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0ee3ab31a2cbac43bf62cb9214b7c1d1"
@@ -8496,11 +8978,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "76f465d808cb817683770b3e6ab6838d"
@@ -8523,11 +9007,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "4a4598a1e81e510779605c8c674a3ac0"
@@ -8550,11 +9036,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "1576d013b336b385ef44a95d0cd74a2c"
@@ -8578,11 +9066,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "95b6a84a10fab4f19072622cadfd1acf"
@@ -8606,11 +9096,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "44ab650a56833b85a693cb515c43dee0"
@@ -8633,11 +9125,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5326b51b78d6cb159c04918bfead91ed"
@@ -8662,11 +9156,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "99623f61db0dd4933df0e1e1215c75eb"
@@ -8691,11 +9187,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "1dc1e161c38f7eff0cea4c9c323dcfad"
@@ -8719,11 +9217,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6fdb3d7a311222b991ec1edef14c5c26"
@@ -8747,11 +9247,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "f791188a95c2a553c9030fa46c38f2a0"
@@ -8774,11 +9276,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ecaeb13272e9384319989d342680549c"
@@ -8802,11 +9306,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "6b9183f8b747bcf1e11a605c2867f7ff"
@@ -8830,11 +9336,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "7c115f6e4ef6c361899235020514a18f"
@@ -8859,11 +9367,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "0516ad83d2a5538970091f77531c73c6"
@@ -8915,11 +9425,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "48cd9372c015dda07a982da1a5620727"
@@ -8943,11 +9455,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "e4c41dd6f65b2df6f78f48e9ef705d3e"
@@ -8998,11 +9512,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "b4310b6629879dd69750c1adf77eca35"
@@ -9027,11 +9543,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "22929fda0f320c7393deb2c18af09d78"
@@ -9054,11 +9572,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "1f1e13b498f3efcf560154972498ced3"
@@ -9083,11 +9603,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "5c21cfc6706586931dd655d0d05f90bb"
@@ -9110,11 +9632,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           operand_ids: 0
           frontend_attributes {}
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "15f365ac896c0b583d549fa6577c6d56"
@@ -9139,11 +9663,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "ad8d88294e7338062a0ebdb4f4cd2eb5"
@@ -9167,11 +9693,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           frontend_attributes {}
           use_global_device_ids: true
           statistics_viz {}
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         fingerprint: "2168cceecb93680ecc7859d77fc1492b"
@@ -9193,11 +9721,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 421983399567
@@ -9214,11 +9744,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1406593406
@@ -9234,11 +9766,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 2167195767
@@ -9255,11 +9789,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 5535135135
@@ -9275,11 +9811,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 118402890695
@@ -9351,11 +9889,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 19106705539
@@ -9372,11 +9912,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 209492635
@@ -9392,11 +9934,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1109425785
@@ -9413,11 +9957,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 277989395546
@@ -9434,11 +9980,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 537782991954
@@ -9454,11 +10002,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 28972590627
@@ -9530,11 +10080,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3599297012
@@ -9551,11 +10103,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 497570456
@@ -9572,11 +10126,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3602462620
@@ -9616,11 +10172,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 558905190219
@@ -9637,11 +10195,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 532224532
@@ -9657,11 +10217,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 220787703321
@@ -9678,11 +10240,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 208547334924
@@ -9698,11 +10262,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 471889400
@@ -9718,11 +10284,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 20189772027
@@ -9738,11 +10306,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 232468006096
@@ -9758,11 +10328,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 75112893982
@@ -9779,11 +10351,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 51990251
@@ -9800,11 +10374,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 239729309556
@@ -9820,11 +10396,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 713091922
@@ -9841,11 +10419,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 2343249427
@@ -9890,11 +10470,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 12681114551
@@ -9934,11 +10516,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 503937007
@@ -9955,11 +10539,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 385603346434
@@ -9976,11 +10562,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 2813186813
@@ -9996,11 +10584,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 6913080168
@@ -10016,11 +10606,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 13107200000
@@ -10037,11 +10629,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 60963720930
@@ -10133,11 +10727,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 13787160
@@ -10181,11 +10777,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 101426307
@@ -10201,11 +10799,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 450461571507
@@ -10221,11 +10821,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7492390
@@ -10242,11 +10844,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 5859799713
@@ -10262,11 +10866,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 16031311154
@@ -10311,11 +10917,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 360350874178
@@ -10331,11 +10939,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 250289469463
@@ -10352,11 +10962,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 12720496894
@@ -10456,11 +11068,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 211321241434
@@ -10476,11 +11090,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 98698795180
@@ -10525,11 +11141,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 299037786967
@@ -10545,11 +11163,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 181823478411
@@ -10565,11 +11185,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 176691549414
@@ -10585,11 +11207,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 251226692
@@ -10605,11 +11229,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 227204246905
@@ -10626,11 +11252,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 376090719201
@@ -10646,11 +11274,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 393543428
@@ -10667,11 +11297,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 82022528160
@@ -10688,11 +11320,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 314227150134
@@ -10709,11 +11343,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 59795620437
@@ -10757,11 +11393,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 177364005412
@@ -10778,11 +11416,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 347901791639
@@ -10799,11 +11439,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3605633802
@@ -10819,11 +11461,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 198288807469
@@ -10839,11 +11483,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 20765736
@@ -10859,11 +11505,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 42833986928
@@ -10880,11 +11528,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 73388577827
@@ -10900,11 +11550,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 170016376165
@@ -10921,11 +11573,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3524956970
@@ -10941,11 +11595,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 165913924050
@@ -10961,11 +11617,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 12593389700
@@ -11057,11 +11715,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 70888047593
@@ -11077,11 +11737,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 115076382791
@@ -11098,11 +11760,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 68266666666
@@ -11118,11 +11782,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 5031941031
@@ -11190,11 +11856,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 367582840366
@@ -11210,11 +11878,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 189098712833
@@ -11230,11 +11900,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 97234421364
@@ -11279,11 +11951,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 27443886097
@@ -11323,11 +11997,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 254726368
@@ -11343,11 +12019,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3778597785
@@ -11364,11 +12042,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 549964466006
@@ -11384,11 +12064,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3289959839
@@ -11460,11 +12142,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 47524292965
@@ -11481,11 +12165,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 303847000869
@@ -11526,11 +12212,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 371222516014
@@ -11547,11 +12235,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 99447647951
@@ -11567,11 +12257,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 468722523974
@@ -11612,11 +12304,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1740016992
@@ -11633,11 +12327,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 15873015
@@ -11654,11 +12350,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 342245989
@@ -11674,11 +12372,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 870008496
@@ -11695,11 +12395,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 4729792147
@@ -11715,11 +12417,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 503937007
@@ -11736,11 +12440,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 822489959
@@ -11757,11 +12463,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 488704223711
@@ -11801,11 +12509,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 216201237113
@@ -11822,11 +12532,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 537250786
@@ -11843,11 +12555,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 104746317
@@ -11864,11 +12578,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 326151166407
@@ -11884,11 +12600,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 58514285714
@@ -11905,11 +12623,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 389556301155
@@ -11926,11 +12646,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 147936794582
@@ -11974,11 +12696,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 30681647940
@@ -12019,11 +12743,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 259355923818
@@ -12040,11 +12766,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 343163538
@@ -12089,11 +12817,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 196509745127
@@ -12109,11 +12839,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 115481938325
@@ -12130,11 +12862,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 32125490196
@@ -12150,11 +12884,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 203192713884
@@ -12171,11 +12907,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 47904191
@@ -12191,11 +12929,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 158875151515
@@ -12211,11 +12951,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 148544553052
@@ -12231,11 +12973,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 27125827814
@@ -12252,11 +12996,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1160997732
@@ -12273,11 +13019,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 55220017
@@ -12293,11 +13041,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 200281921497
@@ -12369,11 +13119,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 53691275
@@ -12389,11 +13141,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 642663627744
@@ -12409,11 +13163,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 623839068919
@@ -12429,11 +13185,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 35463203463
@@ -12449,11 +13207,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 10317380352
@@ -12469,11 +13229,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 536687631
@@ -12490,11 +13252,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 367611030160
@@ -12511,11 +13275,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 204003112840
@@ -12560,11 +13326,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 88983027834
@@ -12581,11 +13349,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 410431685299
@@ -12601,11 +13371,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 5298835705
@@ -12621,11 +13393,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 79054282267
@@ -12641,11 +13415,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 227444546849
@@ -12690,11 +13466,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 343936367363
@@ -12710,11 +13488,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 193319306331
@@ -12731,11 +13511,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 136606189
@@ -12779,11 +13561,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 8650475184
@@ -12828,11 +13612,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7953398058
@@ -12849,11 +13635,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 348118354981
@@ -12870,11 +13658,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 240388812471
@@ -12919,11 +13709,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 277657266
@@ -12940,11 +13732,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 275565123
@@ -12989,11 +13783,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 393268230936
@@ -13010,11 +13806,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 35158798283
@@ -13031,11 +13829,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 20739240506
@@ -13052,11 +13852,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 128944417117
@@ -13129,11 +13931,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 51200000000
@@ -13174,11 +13978,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 330312175145
@@ -13195,11 +14001,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 51280125195
@@ -13243,11 +14051,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 56939501
@@ -13264,11 +14074,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 32064128
@@ -13284,11 +14096,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 756277695
@@ -13332,11 +14146,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 306825457205
@@ -13352,11 +14168,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 83591836734
@@ -13372,11 +14190,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 70368334
@@ -13392,11 +14212,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 153772693943
@@ -13412,11 +14234,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 253218063269
@@ -13432,11 +14256,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1650282030
@@ -13453,11 +14279,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 160200250
@@ -13474,11 +14302,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 153210987726
@@ -13495,11 +14325,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 17031185031
@@ -13515,11 +14347,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 221837088
@@ -13536,11 +14370,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 346765656649
@@ -13557,11 +14393,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 225749559
@@ -13578,11 +14416,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 6942372881
@@ -13598,11 +14438,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 212665939916
@@ -13619,11 +14461,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 136818371607
@@ -13639,11 +14483,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 106649308380
@@ -13659,11 +14505,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 156670746
@@ -13680,11 +14528,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 709141274
@@ -13700,11 +14550,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 201566254276
@@ -13721,11 +14573,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 251276300023
@@ -13741,11 +14595,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1400820793
@@ -13762,11 +14618,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 867796610
@@ -13783,11 +14641,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 117658886894
@@ -13804,11 +14664,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 402872346556
@@ -13825,11 +14687,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 722143864
@@ -13846,11 +14710,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 365819545593
@@ -13895,11 +14761,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 401897616481
@@ -13915,11 +14783,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 122137404
@@ -13935,11 +14805,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 2763832658
@@ -13955,11 +14827,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 676354029
@@ -13975,11 +14849,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 80117359413
@@ -14019,11 +14895,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 374926611245
@@ -14040,11 +14918,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 383183624061
@@ -14061,11 +14941,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1777777777
@@ -14082,11 +14964,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 246607714016
@@ -14103,11 +14987,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 162539682
@@ -14123,11 +15009,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 288545954870
@@ -14144,11 +15032,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 66737270875
@@ -14165,11 +15055,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 1142857142
@@ -14185,11 +15077,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 4302521008
@@ -14206,11 +15100,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 8933478735
@@ -14226,11 +15122,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 242242337131
@@ -14270,11 +15168,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 247189061763
@@ -14291,11 +15191,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 154216867
@@ -14335,11 +15237,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 12328066215
@@ -14355,11 +15259,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 400219847328
@@ -14376,11 +15282,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 347397523501
@@ -14396,11 +15304,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 229968237690
@@ -14417,11 +15327,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 132262361251
@@ -14437,11 +15349,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 4075621890
@@ -14457,11 +15371,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 127617148
@@ -14534,11 +15450,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 271581455581
@@ -14579,11 +15497,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 66264914054
@@ -14627,11 +15547,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 10571522
@@ -14648,11 +15570,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 140814081
@@ -14669,11 +15593,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 4437703141
@@ -14690,11 +15616,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 511594072086
@@ -14710,11 +15638,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 191345985401
@@ -14731,11 +15661,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 331854102381
@@ -14751,11 +15683,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 8344198
@@ -14771,11 +15705,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 112123182207
@@ -14816,11 +15752,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 58447488
@@ -14836,11 +15774,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 395838429596
@@ -14884,11 +15824,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 178663486113
@@ -14905,11 +15847,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 134736842
@@ -14926,11 +15870,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 296124258683
@@ -14947,11 +15893,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7876923076
@@ -14967,11 +15915,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 280087527
@@ -14988,11 +15938,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 443094410881
@@ -15008,11 +15960,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 353651264755
@@ -15029,11 +15983,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 93090909090
@@ -15106,11 +16062,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 9173572228
@@ -15127,11 +16085,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 383321513434
@@ -15147,11 +16107,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 317942995755
@@ -15192,11 +16154,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 306960187353
@@ -15212,11 +16176,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 383957524230
@@ -15232,11 +16198,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7626310
@@ -15253,11 +16221,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 193750184774
@@ -15273,11 +16243,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7816793893
@@ -15349,11 +16321,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 109821533305
@@ -15369,11 +16343,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 24129602356
@@ -15442,11 +16418,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 33677286742
@@ -15463,11 +16441,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 36008791208
@@ -15484,11 +16464,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 266001014713
@@ -15528,11 +16510,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 325265917022
@@ -15549,11 +16533,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 434192960662
@@ -15569,11 +16555,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 50027480916
@@ -15590,11 +16578,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 26047694753
@@ -15610,11 +16600,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 519129154031
@@ -15631,11 +16623,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 4511013215
@@ -15651,11 +16645,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 27629005059
@@ -15671,11 +16667,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 2285714285
@@ -15692,11 +16690,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 358832552668
@@ -15713,11 +16713,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 725212464
@@ -15734,11 +16736,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 368082843352
@@ -15754,11 +16758,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 125984251
@@ -15775,11 +16781,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 18593840
@@ -15795,11 +16803,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 388143599946
@@ -15815,11 +16825,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 435771844155
@@ -15835,11 +16847,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 3631205673
@@ -15856,11 +16870,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 423399772870
@@ -15876,11 +16892,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 36612290502
@@ -15924,11 +16942,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 228980322
@@ -15945,11 +16965,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 11838697
@@ -15965,11 +16987,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 61077353215
@@ -16013,11 +17037,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 5970845481
@@ -16033,11 +17059,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 13826160337
@@ -16054,11 +17082,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 28243601
@@ -16074,11 +17104,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 90267983
@@ -16095,11 +17127,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 98847662141
@@ -16115,11 +17149,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 253968253
@@ -16135,11 +17171,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 10014669926
@@ -16156,11 +17194,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 454420801733
@@ -16176,11 +17216,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 90523338
@@ -16197,11 +17239,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 416680309954
@@ -16218,11 +17262,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 18265328874
@@ -16238,11 +17284,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           dimensions: 0
           channel_id: 1
-          iota_collective_device_list {
-            num_replica_groups: 4
-            num_devices_per_group: 2
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 4
+              num_devices_per_group: 2
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 66528066
@@ -16283,11 +17331,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 342671895424
@@ -16304,11 +17354,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 7262411347
@@ -16324,11 +17376,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           }
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 2
-            num_devices_per_group: 4
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 2
+              num_devices_per_group: 4
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 519796954
@@ -16345,11 +17399,13 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
           dimensions: 0
           channel_id: 1
           use_global_device_ids: true
-          iota_collective_device_list {
-            num_replica_groups: 1
-            num_devices_per_group: 8
-            iota_reshape_dims: 8
-            iota_transpose_perm: 0
+          collective_device_list {
+            iota_replica_group_list {
+              num_replica_groups: 1
+              num_devices_per_group: 8
+              iota_reshape_dims: 8
+              iota_transpose_perm: 0
+            }
           }
         }
         network_throughput_bytes_per_sec: 141470048569

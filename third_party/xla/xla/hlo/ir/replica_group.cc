@@ -47,7 +47,11 @@ std::optional<IotaReplicaGroupList>
 CollectiveDeviceListBase::MaybeConvertToIotaReplicaGroupList() const {
   switch (version()) {
     case CollectiveDeviceListVersion::kIota:
-      return static_cast<const IotaReplicaGroupList&>(*this);
+      if (typeid(*this) == typeid(IotaReplicaGroupList)) {
+        return static_cast<const IotaReplicaGroupList&>(*this);
+      }
+      return static_cast<const CollectiveDeviceList&>(*this)
+          .iota_replica_group_list();
     case CollectiveDeviceListVersion::kMeshAxes:
       return static_cast<const MeshAxesReplicaGroupList&>(*this)
           .ToIotaReplicaGroupList();
@@ -400,10 +404,35 @@ IotaReplicaGroupList::flattened_replica_groups() const {
   return result;
 }
 
+namespace {
+std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
+    const IotaReplicaGroupList& iota) {
+  VLOG(3) << "Expanding iota replica group list: " << iota.ToString();
+  auto result = std::make_shared<std::vector<ReplicaGroup>>();
+  const int64_t num_replica_groups = iota.num_replica_groups();
+  result->reserve(num_replica_groups);
+
+  Array<int64_t> array = iota.ToArray();
+  // Iota replica group list array must only have 2 dimensions.
+  DCHECK_EQ(array.num_dimensions(), 2);
+  const int64_t num_devices_per_group = iota.num_devices_per_group();
+  DCHECK_EQ(array.end() - array.begin(),
+            num_devices_per_group * num_replica_groups);
+  for (auto it = array.begin(); it != array.end();
+       it += num_devices_per_group) {
+    auto& group = result->emplace_back();
+    *group.mutable_replica_ids() = {it, it + num_devices_per_group};
+  }
+  return result;
+}
+}  // namespace
+
 /************** CollectiveDeviceList implementation ***************************/
 const std::vector<ReplicaGroup>& CollectiveDeviceList::replica_groups() const {
   if (replica_groups_ == nullptr) {
-    replica_groups_ = std::make_shared<std::vector<ReplicaGroup>>();
+    CHECK(iota_replica_group_list_.has_value());
+    replica_groups_ = ExpandIota(iota_replica_group_list_.value());
+    CHECK(replica_groups_ != nullptr);
   }
   return *replica_groups_;
 }
@@ -424,6 +453,9 @@ std::string CollectiveDeviceList::ToString() const {
 
 std::string CollectiveDeviceList::ToString(
     bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
+    return iota_replica_group_list_->ToString();
+  }
   return ReplicaGroupsToString(replica_groups());
 }
 
@@ -433,6 +465,10 @@ void CollectiveDeviceList::Print(Printer* printer) const {
 
 void CollectiveDeviceList::Print(Printer* printer,
                                  bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
+    iota_replica_group_list_->Print(printer);
+    return;
+  }
   printer->Append("{");
   bool leading_comma = false;
   for (const ReplicaGroup& group : replica_groups()) {
@@ -444,6 +480,11 @@ void CollectiveDeviceList::Print(Printer* printer,
 
 CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {
   CollectiveDeviceListProto proto;
+  if (iota_replica_group_list_.has_value()) {
+    *(proto.mutable_iota_replica_group_list()) =
+        iota_replica_group_list_->ToProto();
+    return proto;
+  }
 
   proto.mutable_replica_groups()->Assign(replica_groups().begin(),
                                          replica_groups().end());
@@ -452,6 +493,11 @@ CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {
 
 CollectiveDeviceList CollectiveDeviceList::FromProto(
     const CollectiveDeviceListProto& proto) {
+  if (proto.has_iota_replica_group_list()) {
+    return CollectiveDeviceList(
+        IotaReplicaGroupList::FromProto(proto.iota_replica_group_list()));
+  }
+
   if (proto.replica_groups_size() > 0) {
     return CollectiveDeviceList(proto.replica_groups().begin(),
                                 proto.replica_groups().end());
@@ -471,18 +517,6 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
                                 proto.replica_groups().end());
   }
 
-  if (proto.has_iota_collective_device_list()) {
-    return CollectiveDeviceList(
-        IotaReplicaGroupList::FromProto(proto.iota_collective_device_list())
-            .flattened_replica_groups());
-  }
-
-  if (proto.has_mesh_axes_replica_group_list()) {
-    return MeshAxesReplicaGroupList::FromProto(
-               proto.mesh_axes_replica_group_list())
-        .ToCollectiveDeviceList();
-  }
-
   if (!proto.has_collective_device_list()) {
     return CollectiveDeviceList();
   }
@@ -498,9 +532,13 @@ CollectiveDeviceList ConvertToV1CollectiveDeviceList(
       return dynamic_cast<const CollectiveDeviceList&>(device_list);
     }
     case CollectiveDeviceListVersion::kIota: {
-      const auto* v2 = dynamic_cast<const IotaReplicaGroupList*>(&device_list);
-      CHECK(v2 != nullptr) << "Failed to convert kIota to V1 list.";
-      return CollectiveDeviceList(v2->flattened_replica_groups());
+      if (const auto* v2 =
+              dynamic_cast<const IotaReplicaGroupList*>(&device_list)) {
+        return CollectiveDeviceList(*v2);
+      }
+      const auto* v1 = dynamic_cast<const CollectiveDeviceList*>(&device_list);
+      CHECK(v1 != nullptr) << "Failed to convert kIota to V1 list.";
+      return *v1;
     }
     case CollectiveDeviceListVersion::kMeshAxes: {
       const auto* v3 =

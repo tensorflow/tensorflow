@@ -138,7 +138,9 @@ TEST(SPMDPartitionerUtilTest, ExpandPartitionGroupListAcrossReplicas) {
   IotaReplicaGroupList partition_group_list =
       IotaReplicaGroupList(10, 5, {2, 5, 5}, {0, 2, 1});
   IotaReplicaGroupList expanded_partition_group_list =
-      ExpandPartitionGroupListAcrossReplicas(partition_group_list, 2, 50);
+      ExpandPartitionGroupListAcrossReplicas(partition_group_list, 2, 50)
+          .iota_replica_group_list()
+          .value();
   EXPECT_EQ(expanded_partition_group_list.num_replica_groups(), 20);
   EXPECT_EQ(expanded_partition_group_list.num_devices_per_group(), 5);
   EXPECT_THAT(expanded_partition_group_list.reshape_dims(),

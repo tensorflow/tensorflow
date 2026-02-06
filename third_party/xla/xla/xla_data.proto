@@ -1234,8 +1234,9 @@ message CollectiveDeviceListProto {
   // lists.
   repeated ReplicaGroup replica_groups = 1;
 
-  reserved 2;
-  reserved "iota_replica_group_list";
+  // ReplicaGroupV2: Represents a list of replica groups with reshaping and
+  // transposing an iota array.
+  IotaReplicaGroupListProto iota_replica_group_list = 2;
 }
 
 // Describes the source target pair in the collective permute op.

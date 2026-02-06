@@ -485,11 +485,23 @@ TEST(CollectiveDeviceListTest, DeepCopy) {
   EXPECT_EQ(orig.ToString(), copy.ToString());
 }
 
+TEST(CollectiveDeviceListTest, DeepCopyIotaBeforeExpansion) {
+  CollectiveDeviceList orig(IotaReplicaGroupList(2, 4));
+  CollectiveDeviceList copy = orig;
+
+  EXPECT_NE(&orig.iota_replica_group_list().value(),
+            &copy.iota_replica_group_list().value());
+  EXPECT_NE(&orig.replica_groups(), &copy.replica_groups());
+  EXPECT_EQ(orig.ToString(), copy.ToString());
+}
+
 TEST(CollectiveDeviceListTest, DeepCopyIotaAfterExpansion) {
-  CollectiveDeviceList orig(
-      IotaReplicaGroupList(2, 4).flattened_replica_groups());
+  CollectiveDeviceList orig(IotaReplicaGroupList(2, 4));
   const std::vector<ReplicaGroup>& local_ref = orig.replica_groups();
   CollectiveDeviceList copy = orig;
+
+  EXPECT_NE(&orig.iota_replica_group_list().value(),
+            &copy.iota_replica_group_list().value());
   EXPECT_EQ(&orig.replica_groups(), &copy.replica_groups());
   EXPECT_EQ(&local_ref, &copy.replica_groups());
   EXPECT_EQ(orig.ToString(), copy.ToString());
@@ -504,6 +516,7 @@ TEST(CollectiveDeviceListTest, DefaultListToProto) {
               testing::ElementsAre(1, 2));
   EXPECT_THAT(proto.replica_groups(1).replica_ids(),
               testing::ElementsAre(3, 4));
+  EXPECT_FALSE(proto.has_iota_replica_group_list());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToProto2) {
@@ -512,6 +525,7 @@ TEST(CollectiveDeviceListTest, DefaultListToProto2) {
   EXPECT_THAT(proto.replica_groups().size(), 1);
   EXPECT_THAT(proto.replica_groups(0).replica_ids(),
               testing::ElementsAre(1, 2, 3, 4, 5, 6, 7));
+  EXPECT_FALSE(proto.has_iota_replica_group_list());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListFromProto) {
@@ -524,6 +538,7 @@ TEST(CollectiveDeviceListTest, DefaultListFromProto) {
               testing::ElementsAre(1, 2));
   EXPECT_THAT(list.replica_groups()[1].replica_ids(),
               testing::ElementsAre(3, 4));
+  EXPECT_FALSE(list.iota_replica_group_list().has_value());
 }
 
 TEST(CollectiveDeviceListTest, DefaultListFromProto2) {
@@ -534,34 +549,94 @@ TEST(CollectiveDeviceListTest, DefaultListFromProto2) {
   EXPECT_EQ(list.replica_groups().size(), 1);
   EXPECT_THAT(list.replica_groups()[0].replica_ids(),
               testing::ElementsAre(1, 2, 3, 4, 5, 6, 7));
+  EXPECT_FALSE(list.iota_replica_group_list().has_value());
 }
 
-TEST(CollectiveDeviceListTest, FromProtoWithIota) {
+TEST(CollectiveDeviceListTest, IotaToString) {
+  EXPECT_EQ(CollectiveDeviceList(IotaReplicaGroupList(0, 0)).ToString(),
+            "[0,0]<=[0]");
+  EXPECT_EQ(CollectiveDeviceList(IotaReplicaGroupList(2, 10)).ToString(),
+            "[2,10]<=[20]");
+}
+
+TEST(CollectiveDeviceListTest, IotaToReplicaGroupString) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10));
+  EXPECT_EQ(list.ToString(false), "[2,10]<=[20]");
+  EXPECT_EQ(list.ToString(true),
+            "{{0,1,2,3,4,5,6,7,8,9},{10,11,12,13,14,15,16,17,18,19}}");
+}
+
+TEST(CollectiveDeviceListTest, IotaListToString2) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
+  EXPECT_EQ(list.ToString(false), "[2,10]<=[4,5]T(1,0)");
+  EXPECT_EQ(list.ToString(true),
+            "{{0,5,10,15,1,6,11,16,2,7},{12,17,3,8,13,18,4,9,14,19}}");
+}
+
+TEST(CollectiveDeviceListTest, IotaListToProto) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10));
+  CollectiveDeviceListProto proto = list.ToProto();
+  EXPECT_EQ(proto.iota_replica_group_list().num_replica_groups(), 2);
+  EXPECT_EQ(proto.iota_replica_group_list().num_devices_per_group(), 10);
+  EXPECT_THAT(proto.iota_replica_group_list().iota_reshape_dims(),
+              testing::ElementsAre(20));
+  EXPECT_THAT(proto.iota_replica_group_list().iota_transpose_perm(),
+              testing::ElementsAre(0));
+  EXPECT_THAT(proto.replica_groups_size(), 0);
+}
+
+TEST(CollectiveDeviceListTest, IotaListToProto2) {
+  CollectiveDeviceList list(IotaReplicaGroupList(2, 10, {4, 5}, {1, 0}));
+  CollectiveDeviceListProto proto = list.ToProto();
+  EXPECT_EQ(proto.iota_replica_group_list().num_replica_groups(), 2);
+  EXPECT_EQ(proto.iota_replica_group_list().num_devices_per_group(), 10);
+  EXPECT_THAT(proto.iota_replica_group_list().iota_reshape_dims(),
+              testing::ElementsAre(4, 5));
+  EXPECT_THAT(proto.iota_replica_group_list().iota_transpose_perm(),
+              testing::ElementsAre(1, 0));
+  EXPECT_THAT(proto.replica_groups_size(), 0);
+}
+
+TEST(CollectiveDeviceListTest, IotaListFromProto) {
   HloInstructionProto initial_proto;
-  IotaReplicaGroupListProto* iota_proto =
-      initial_proto.mutable_iota_collective_device_list();
-  iota_proto->set_num_replica_groups(2);
-  iota_proto->set_num_devices_per_group(2);
-  iota_proto->add_iota_reshape_dims(4);
-  iota_proto->add_iota_transpose_perm(0);
-
-  // flattened: [0, 1], [2, 3]
+  CollectiveDeviceListProto device_group;
+  IotaReplicaGroupListProto* iota_replica_group_list =
+      device_group.mutable_iota_replica_group_list();
+  iota_replica_group_list->set_num_replica_groups(2);
+  iota_replica_group_list->set_num_devices_per_group(10);
+  iota_replica_group_list->add_iota_reshape_dims(20);
+  iota_replica_group_list->add_iota_transpose_perm(0);
+  *(initial_proto.mutable_collective_device_list()) = device_group;
   CollectiveDeviceList list = CollectiveDeviceList::FromProto(initial_proto);
-  EXPECT_EQ(list.replica_groups().size(), 2);
-  EXPECT_THAT(list.replica_groups()[0].replica_ids(),
-              testing::ElementsAre(0, 1));
-  EXPECT_THAT(list.replica_groups()[1].replica_ids(),
-              testing::ElementsAre(2, 3));
+  EXPECT_TRUE(list.iota_replica_group_list().has_value());
+  EXPECT_EQ(list.iota_replica_group_list()->num_replica_groups(), 2);
+  EXPECT_EQ(list.iota_replica_group_list()->num_devices_per_group(), 10);
+  EXPECT_THAT(list.iota_replica_group_list()->reshape_dims(),
+              testing::ElementsAre(20));
+  EXPECT_THAT(list.iota_replica_group_list()->transpose_perm(),
+              testing::ElementsAre(0));
 }
 
-TEST(IotaReplicaGroupListTest, ToString) {
-  EXPECT_EQ(IotaReplicaGroupList(0, 0).ToString(), "[0,0]<=[0]");
-  EXPECT_EQ(IotaReplicaGroupList(2, 10).ToString(), "[2,10]<=[20]");
-}
-
-TEST(IotaReplicaGroupListTest, ReshapeTransposeToString) {
-  IotaReplicaGroupList list(2, 10, {4, 5}, {1, 0});
-  EXPECT_EQ(list.ToString(), "[2,10]<=[4,5]T(1,0)");
+TEST(CollectiveDeviceListTest, IotaListFromProto2) {
+  HloInstructionProto initial_proto;
+  CollectiveDeviceListProto device_group;
+  IotaReplicaGroupListProto* iota_replica_group_list =
+      device_group.mutable_iota_replica_group_list();
+  iota_replica_group_list->set_num_replica_groups(2);
+  iota_replica_group_list->set_num_devices_per_group(10);
+  iota_replica_group_list->add_iota_reshape_dims(4);
+  iota_replica_group_list->add_iota_reshape_dims(5);
+  iota_replica_group_list->add_iota_transpose_perm(1);
+  iota_replica_group_list->add_iota_transpose_perm(0);
+  *(initial_proto.mutable_collective_device_list()) = device_group;
+  CollectiveDeviceList list = CollectiveDeviceList::FromProto(initial_proto);
+  EXPECT_TRUE(list.iota_replica_group_list().has_value());
+  EXPECT_EQ(list.iota_replica_group_list()->num_replica_groups(), 2);
+  EXPECT_EQ(list.iota_replica_group_list()->num_devices_per_group(), 10);
+  EXPECT_THAT(list.iota_replica_group_list()->reshape_dims(),
+              testing::ElementsAre(4, 5));
+  EXPECT_THAT(list.iota_replica_group_list()->transpose_perm(),
+              testing::ElementsAre(1, 0));
 }
 
 }  // namespace xla

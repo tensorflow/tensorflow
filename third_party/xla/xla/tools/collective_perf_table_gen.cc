@@ -35,7 +35,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
-#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -324,26 +323,12 @@ uint64_t GetNetworkThroughputBytesPerSec(absl::Duration runtime,
 
 IotaReplicaGroupList GetCollectiveDeviceList(
     absl::string_view collective_device_list_unparsed) {
-  auto device_list_or_status =
-      xla::ParseCollectiveDeviceListBase(collective_device_list_unparsed);
-  if (device_list_or_status.ok()) {
-    std::unique_ptr<xla::CollectiveDeviceListBase> list =
-        std::move(device_list_or_status.value());
-    if (auto* iota = dynamic_cast<xla::IotaReplicaGroupList*>(list.get())) {
-      return *iota;
-    }
-    if (auto iota = list->MaybeConvertToIotaReplicaGroupList()) {
-      return *iota;
-    }
-  }
+  auto collective_device_list =
+      xla::ParseCollectiveDeviceListOnly(collective_device_list_unparsed);
+  CHECK_OK(collective_device_list);
+  CHECK(collective_device_list->iota_replica_group_list().has_value());
 
-  IotaReplicaGroupListProto proto;
-  if (tsl::protobuf::TextFormat::ParseFromString(
-          collective_device_list_unparsed, &proto)) {
-    return IotaReplicaGroupList::FromProto(proto);
-  }
-  LOG(FATAL) << "Failed to parse collective device list: "
-             << collective_device_list_unparsed;
+  return *collective_device_list->iota_replica_group_list();
 }
 
 }  // namespace

@@ -62,7 +62,8 @@ DeviceHloInstructionProfiles TestProfiles(
   instr.set_channel_id(1);
   IotaReplicaGroupList iota(/*num_replica_groups=*/1,
                             /*num_devices_per_group=*/8);
-  *instr.mutable_iota_collective_device_list() = iota.ToProto();
+  CollectiveDeviceList collective_device_list(iota);
+  *instr.mutable_collective_device_list() = collective_device_list.ToProto();
 
   *profile_entry.mutable_instruction() = std::move(instr);
   profile_entry.set_network_throughput_bytes_per_sec(4 * 1024);

@@ -270,7 +270,15 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
     replica_groups_ = ToReplicaGroupVector(replica_groups);
   };
 
+  explicit CollectiveDeviceList(
+      const IotaReplicaGroupList& iota_replica_group_list)
+      : iota_replica_group_list_(iota_replica_group_list) {}
+
   bool operator==(const CollectiveDeviceList& other) const {
+    if (iota_replica_group_list_.has_value() &&
+        other.iota_replica_group_list_.has_value()) {
+      return *iota_replica_group_list_ == *other.iota_replica_group_list_;
+    }
     const auto& this_groups = replica_groups();
     const auto& other_groups = other.replica_groups();
     if (this_groups.size() != other_groups.size()) {
@@ -299,14 +307,19 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   // Overrides
   const std::vector<ReplicaGroup>& replica_groups() const override;
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
+  const std::optional<IotaReplicaGroupList>& iota_replica_group_list() const {
+    return iota_replica_group_list_;
+  }
 
   int64_t num_replica_groups() const override {
-    return replica_groups_->size();
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_replica_groups()
+               : replica_groups_->size();
   }
 
   int64_t num_devices_per_group() const override {
-    return replica_groups_->empty()
-               ? 0
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_devices_per_group()
                : replica_groups_->begin()->replica_ids_size();
   }
 
@@ -317,6 +330,9 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   std::string ToString(bool print_full_replica_group_list) const override;
 
   CollectiveDeviceListVersion version() const override {
+    if (iota_replica_group_list_.has_value()) {
+      return CollectiveDeviceListVersion::kIota;
+    }
     return CollectiveDeviceListVersion::kListOfLists;
   }
 
@@ -353,6 +369,8 @@ class CollectiveDeviceList : public CollectiveDeviceListBase {
   }
 
   void MaybeMaterializeFullReplicaGroupList() const;
+
+  std::optional<IotaReplicaGroupList> iota_replica_group_list_;
 };
 
 std::string ReplicaGroupsToString(
