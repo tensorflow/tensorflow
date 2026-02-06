@@ -182,9 +182,8 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
 absl::Status CollectivePermuteStartThunk::Initialize(
     const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
-  CHECK_GT(device_count_, 0);
-  VLOG(5) << "Local device count: " << device_count_;
+  CHECK_GT(params.local_device_count, 0);
+  VLOG(5) << "Local device count: " << params.local_device_count;
 
   if (p2p_memcpy_enabled_) {
     TF_ASSIGN_OR_RETURN(
@@ -340,8 +339,8 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
 
   const P2PConfig::SourceTargetMapEntry source_target =
       P2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
-  bool is_local_peer =
-      IsLocalPeerTransfer(source_target, current_id, device_count_);
+  bool is_local_peer = IsLocalPeerTransfer(
+      source_target, current_id, params.collective_params->local_device_count);
   VLOG(5) << "Is local peer : " << (is_local_peer ? "true" : "false");
 
   bool use_memcpy = is_local_peer && recv_ptr_map_.IsInitialized(current_id) &&

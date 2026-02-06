@@ -376,7 +376,6 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
 absl::Status RaggedAllToAllStartThunk::Initialize(
     const InitializeParams& params) {
   RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
 
   se::StreamExecutor* executor = params.executor;
 
@@ -416,12 +415,14 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
-  if (is_local() && !use_multi_gpu_barrier_in_one_shot_kernel_) {
+  if (is_local(params.local_device_count) &&
+      !use_multi_gpu_barrier_in_one_shot_kernel_) {
     ASSIGN_OR_RETURN(state->start_event, executor->CreateEvent());
     ASSIGN_OR_RETURN(state->end_event, executor->CreateEvent());
   }
 
-  if (is_local() && use_multi_gpu_barrier_in_one_shot_kernel_) {
+  if (is_local(params.local_device_count) &&
+      use_multi_gpu_barrier_in_one_shot_kernel_) {
     using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
     // 1. Allocate Signal Buffer (Array of uint32_t)
@@ -461,13 +462,12 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   return absl::OkStatus();
 }
 
-bool RaggedAllToAllStartThunk::is_local() const {
-  CHECK_NE(device_count_, -1);
+bool RaggedAllToAllStartThunk::is_local(int device_count) const {
   for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
+    const int64_t node_id = replica_group.replica_ids().at(0) / device_count;
     if (!absl::c_all_of(replica_group.replica_ids(),
-                        [this, node_id](const int64_t rank) {
-                          return rank / device_count_ == node_id;
+                        [this, node_id, device_count](const int64_t rank) {
+                          return rank / device_count == node_id;
                         })) {
       return false;
     }
@@ -559,7 +559,8 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
   }
 
   bool should_use_one_shot_kernel =
-      is_local() && one_shot_kernel_enabled_ && peer_access_enabled &&
+      is_local(params.collective_params->local_device_count) &&
+      one_shot_kernel_enabled_ && peer_access_enabled &&
       IsRaggedAllToAllKernelSupported(num_ranks,
                                       device_buffers[0].element_type);
 
