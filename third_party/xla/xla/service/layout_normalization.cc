@@ -717,6 +717,102 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return DefaultAction(hlo);
   }
 
+  absl::Status HandleConvolution(HloInstruction* hlo) override {
+    const ConvolutionDimensionNumbers& dim_numbers =
+        hlo->convolution_dimension_numbers();
+
+    const Shape& input_shape = hlo->mutable_operand(0)->shape();
+    const Shape& filter_shape = hlo->mutable_operand(1)->shape();
+    const Shape& output_shape = hlo->shape();
+
+    auto MaybeBitcast = [](HloInstruction* hlo,
+                           const Shape& original_shape) -> HloInstruction* {
+      return hlo->shape() == original_shape
+                 ? hlo
+                 : MakeBitcastHlo(hlo, original_shape);
+    };
+
+    bool performed_normalization = false;
+    // Normalize fusion instruction shape if needed
+    Shape normalized_shape =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+            hlo->shape());
+
+    performed_normalization |= normalized_shape != hlo->shape();
+
+    // Normalize fusion instruction operand shape if needed
+    std::vector<HloInstruction*> normalized_operands;
+    for (int idx = 0; idx < hlo->operand_count(); idx++) {
+      HloInstruction* operand = hlo->mutable_operand(idx);
+      Shape normalized_operand_shape =
+          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+              operand->shape());
+      performed_normalization |= normalized_operand_shape != operand->shape();
+      normalized_operands.emplace_back(
+          MaybeBitcast(operand, normalized_operand_shape));
+    }
+    // No normalization required, don't do anything
+    if (!performed_normalization) {
+      return absl::OkStatus();
+    }
+
+    // Dimension number needs to change accordingly after layout normalization
+    auto transpose_dim = [&](int64_t dim, const Shape& unnormalized_shape) {
+      return unnormalized_shape.dimensions().size() -
+             FindIndex(unnormalized_shape.layout().minor_to_major(), dim) - 1;
+    };
+
+    auto transpose_dims = [&](tsl::protobuf::RepeatedField<int64_t>& dims,
+                              const Shape& unnormalized_shape) {
+      for (auto& dim : dims) {
+        dim = transpose_dim(dim, unnormalized_shape);
+      }
+    };
+    ConvolutionDimensionNumbers new_dim_numbers = dim_numbers;
+    new_dim_numbers.set_input_batch_dimension(
+        transpose_dim(dim_numbers.input_batch_dimension(), input_shape));
+    new_dim_numbers.set_input_feature_dimension(
+        transpose_dim(dim_numbers.input_feature_dimension(), input_shape));
+    transpose_dims(*new_dim_numbers.mutable_input_spatial_dimensions(),
+                   input_shape);
+
+    new_dim_numbers.set_kernel_input_feature_dimension(transpose_dim(
+        dim_numbers.kernel_input_feature_dimension(), filter_shape));
+    new_dim_numbers.set_kernel_output_feature_dimension(transpose_dim(
+        dim_numbers.kernel_output_feature_dimension(), filter_shape));
+    transpose_dims(*new_dim_numbers.mutable_kernel_spatial_dimensions(),
+                   filter_shape);
+
+    new_dim_numbers.set_output_batch_dimension(
+        transpose_dim(dim_numbers.output_batch_dimension(), output_shape));
+    new_dim_numbers.set_output_feature_dimension(
+        transpose_dim(dim_numbers.output_feature_dimension(), output_shape));
+    transpose_dims(*new_dim_numbers.mutable_output_spatial_dimensions(),
+                   output_shape);
+    hlo->set_convolution_dimension_numbers(new_dim_numbers);
+
+    HloInstruction* normalized_hlo = hlo->parent()->AddInstruction(
+        hlo->CloneWithNewOperands(normalized_shape, normalized_operands));
+
+    HloInstruction* bc_to_orig;
+    if (normalized_hlo->shape().IsTuple()) {
+      std::vector<HloInstruction*> tuple_elements(
+          normalized_hlo->shape().tuple_shapes().size());
+
+      for (int i = 0; i < normalized_hlo->shape().tuple_shapes().size(); ++i) {
+        TF_ASSIGN_OR_RETURN(HloInstruction * normalized_out,
+                            MakeGetTupleElementHlo(normalized_hlo, i));
+        tuple_elements[i] =
+            MaybeBitcast(normalized_out, hlo->shape().tuple_shapes(i));
+      }
+      bc_to_orig = MaybeMakeTuple(tuple_elements);
+    } else {
+      bc_to_orig = MaybeBitcast(normalized_hlo, hlo->shape());
+    }
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return absl::OkStatus();
+  }
+
   // Pushes down bitcast across the ternary select operation: same logic as
   // HandleElementwiseBinary.
   absl::Status HandleSelect(HloInstruction* hlo) override {

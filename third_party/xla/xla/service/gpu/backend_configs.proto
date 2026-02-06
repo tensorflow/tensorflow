@@ -178,14 +178,6 @@ message CustomFusionConfig {
 
 message CuDnnFusionConfig {
   int64 plan_id = 1;
-
-  // Conv type.
-  enum Kind {
-    CONV_FPROP = 0;
-    CONV_WGRAD = 1;
-    CONV_DGRAD = 2;
-  }
-  optional Kind kind = 2;
 }
 
 // Output tile sizes for a fusion root.

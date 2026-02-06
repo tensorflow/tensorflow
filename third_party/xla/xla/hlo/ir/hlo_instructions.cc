@@ -3200,10 +3200,13 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
-  return std::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], feature_group_count_,
-      batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config_);
+  std::unique_ptr<HloConvolutionInstruction> clone =
+      std::make_unique<HloConvolutionInstruction>(
+          shape, new_operands[0], new_operands[1], feature_group_count_,
+          batch_group_count_, window(), convolution_dimension_numbers_,
+          precision_config_);
+  clone->set_conv_kind(conv_kind_);
+  return clone;
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

@@ -2580,10 +2580,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         Cast<HloConvolutionInstruction>(convolution)->set_conv_kind(*conv_kind);
       }
       return convolution;
-      return builder->AddInstruction(HloInstruction::CreateConvolve(
-          *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), batch_group_count.value(), *window,
-          *dnums, precision_config));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;

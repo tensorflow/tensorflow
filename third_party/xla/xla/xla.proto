@@ -697,6 +697,9 @@ message DebugOptions {
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
 
+  // Experimentally enable rewriting conv as fusion in GPU compiler passes.
+  optional bool xla_gpu_experimental_enable_conv_fusion = 450;
+
   // If true, enable autotuning between the native & triton fusion emitters.
   optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
