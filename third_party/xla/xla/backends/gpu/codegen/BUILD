@@ -259,6 +259,7 @@ cc_library(
     hdrs = ["fusion_emitter.h"],
     visibility = [
         "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends/gpu/cost_model:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [
@@ -297,6 +298,7 @@ cc_library(
     hdrs = ["fusions.h"],
     visibility = [
         "//xla/backends/gpu/codegen:__subpackages__",
+        "//xla/backends/gpu/cost_model:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     deps = [

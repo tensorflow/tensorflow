@@ -20,7 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
-#include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/tests/hlo_test_base.h"
 

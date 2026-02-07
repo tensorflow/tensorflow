@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
-#include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
+#include "xla/backends/gpu/cost_model/hlo_op_profiles.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"

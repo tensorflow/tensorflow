@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
 #include "xla/tools/matmul_perf_table_gen.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"

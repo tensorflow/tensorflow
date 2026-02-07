@@ -21,7 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
-#include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/backends/gpu/cost_model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
