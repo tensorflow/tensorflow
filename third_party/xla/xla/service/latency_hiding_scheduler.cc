@@ -1291,6 +1291,29 @@ class ReadySetLt {
     return std::nullopt;
   }
 
+  inline std::optional<bool> DelayAsyncStartCandidateCondition(
+      DefaultSchedulerCore::ScheduleCandidate& a,
+      DefaultSchedulerCore::ScheduleCandidate& b, const HloGraphNode* a_node,
+      const HloGraphNode* b_node, const char** reason) const {
+    bool a_has_async_resource =
+        a_node->DoesReleaseAnyResource() && !IsResourceConstrained(a, a_node);
+    bool b_has_async_resource =
+        b_node->DoesReleaseAnyResource() && !IsResourceConstrained(b, b_node);
+
+    CMP_EXPLICIT(!a_has_async_resource, !b_has_async_resource,
+                 "kDelayAsyncStartForCompute");
+    if (a_has_async_resource && b_has_async_resource) {
+      // If 2 nodes are both async nodes, we prioritize the one
+      // with more depth to free up more computes to overlap
+      // with the one with less depth which can be launched
+      // early
+      CMP_EXPLICIT(a_node->GetDepth() > b_node->GetDepth(),
+                   b_node->GetDepth() > a_node->GetDepth(),
+                   "kDelayAsyncStartForDepth");
+    }
+    return std::nullopt;
+  }
+
   // The comparison here implements the priority for the nodes in the ready
   // set. The function compares a and b in a series of prioritized
   // comparisons. As soon as it finds one that is not equal, it stops.  If
@@ -1398,6 +1421,16 @@ class ReadySetLt {
       // loop, the async-start will be pushed to the beginning of the loop.
       CMP_EXPLICIT(AsyncDepth0CandidateCondition(a, an),
                    AsyncDepth0CandidateCondition(b, bn), "kStartAtZeroDepth");
+    }
+
+    if (sched_state_.config.aggressive_scheduling_policies &&
+        sched_state_.config.prioritize_compute_over_async_start) {
+      // If an instruction releasing a resource is not resource constrained,
+      // delay it as much as possible.
+      if (auto value =
+              DelayAsyncStartCandidateCondition(a, b, an, bn, reason)) {
+        return *value;
+      }
     }
 
     auto a_readytime = an->GetReadyTime();
