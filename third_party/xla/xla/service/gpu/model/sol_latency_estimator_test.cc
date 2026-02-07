@@ -657,7 +657,7 @@ INSTANTIATE_TEST_SUITE_P(SolLatencyEstimatorTests, SolLatencyEstimatorTest,
 
 TEST_F(HloHardwareIndependentTestBase, CollectiveCostModelDispatching) {
   const auto shape_size_fn = HloCostAnalysis::DefaultShapeSize;
-  const auto gpu_info = TestGpuDeviceInfo::RTXH100SXMDeviceInfo();
+  const auto gpu_info = TestGpuDeviceInfo::H100SXMDeviceInfo();
   const SolGPUCostModel::Config sol_flags = {
       absl::Microseconds(100), 100, absl::Microseconds(100),
       absl::Microseconds(100), 8,   4 * 1024 * 1024};

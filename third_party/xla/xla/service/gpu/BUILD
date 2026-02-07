@@ -2984,7 +2984,6 @@ xla_cc_test(
         "//xla/service:copy_insertion",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@tsl//tsl/platform:statusor",
     ],

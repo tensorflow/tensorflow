@@ -89,7 +89,7 @@ struct ModuleWithEmitter : public ModuleWithFusion {
 class CollectiveBlockLevelConfigTest : public HloHardwareIndependentTestBase {
  public:
   CollectiveBlockLevelConfigTest()
-      : device_info_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()} {}
+      : device_info_{TestGpuDeviceInfo::H100SXMDeviceInfo()} {}
 
   absl::StatusOr<ModuleWithFusion> BuildModuleWithFusion(
       std::string module_str) const {

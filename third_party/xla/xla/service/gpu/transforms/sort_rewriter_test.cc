@@ -468,7 +468,7 @@ ENTRY %main {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
     GTEST_SKIP() << "Skipping CUDA-specific test";
   }
-  auto pass = SortRewriter(TestGpuDeviceInfo::RTXH100SXMDeviceInfo());
+  auto pass = SortRewriter(TestGpuDeviceInfo::H100SXMDeviceInfo());
 
   // Batch 1
   std::string hlo = absl::Substitute(kHloTmpl, "1");
@@ -610,7 +610,7 @@ ENTRY %main {
   auto device_list = [is_cuda]() -> std::vector<se::DeviceDescription> {
     if (is_cuda) {
       return {TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-              TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+              TestGpuDeviceInfo::H100SXMDeviceInfo()};
     } else {
       return {TestGpuDeviceInfo::AMDMI210DeviceInfo(),
               TestGpuDeviceInfo::AMDRX7900DeviceInfo()};

@@ -50,7 +50,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   return b;
 }
 
-stream_executor::DeviceDescription TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
+stream_executor::DeviceDescription TestGpuDeviceInfo::H100SXMDeviceInfo(
     stream_executor::GpuComputeCapability cc) {
   stream_executor::DeviceDescription b;
   b.set_gpu_compute_capability(cc);
@@ -80,7 +80,7 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
   return b;
 }
 
-stream_executor::DeviceDescription TestGpuDeviceInfo::RTXB200SXMDeviceInfo(
+stream_executor::DeviceDescription TestGpuDeviceInfo::B200SXMDeviceInfo(
     stream_executor::GpuComputeCapability cc) {
   stream_executor::DeviceDescription b;
   b.set_gpu_compute_capability(cc);

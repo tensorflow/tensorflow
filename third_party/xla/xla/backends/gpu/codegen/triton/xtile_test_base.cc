@@ -122,7 +122,7 @@ absl::Status XTileTestBase::LowerXTileIrToTritonAndFileCheck(
           fusion_backend_config.block_level_fusion_config());
   TF_RETURN_IF_ERROR(ir_emitter_triton_internal::LowerXTileToTriton(
       xtile_dialect_module, *mlir_context(), fusion,
-      TestGpuDeviceInfo::RTXH100SXMDeviceInfo(), block_level_parameters));
+      TestGpuDeviceInfo::H100SXMDeviceInfo(), block_level_parameters));
 
   std::string out;
   llvm::raw_string_ostream os(out);
