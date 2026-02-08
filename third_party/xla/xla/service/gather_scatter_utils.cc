@@ -270,4 +270,64 @@ GetStartIndicesDimToOutputDimForExplicitBatchingDims(
   return explicit_batching_dims_start_indices_dim_to_output_dim;
 }
 
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputBatchIndices(
+    const Shape& output_shape, const GatherDimensionNumbers& dim_numbers) {
+  int64_t output_rank = output_shape.dimensions().size();
+  std::vector<int64_t> index_base(output_rank, 0);
+  std::vector<int64_t> index_count;
+  index_count.reserve(output_rank);
+  for (int64_t i = 0; i < output_rank; i++) {
+    bool is_output_batch_dim =
+        !absl::c_binary_search(dim_numbers.offset_dims(), i);
+    index_count.push_back(is_output_batch_dim ? output_shape.dimensions(i) : 1);
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64_t>(output_rank, 1)};
+}
+
+ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
+    int64_t output_rank, absl::Span<const int64_t> slice_sizes,
+    const GatherDimensionNumbers& dim_numbers) {
+  std::vector<int64_t> index_base(output_rank, 0);
+  std::vector<int64_t> index_count(output_rank, 1);
+  int64_t slice_sizes_idx = 0;
+  for (int64_t i = 0; i < output_rank; i++) {
+    bool is_output_window_dim =
+        absl::c_binary_search(dim_numbers.offset_dims(), i);
+    if (is_output_window_dim) {
+      while (absl::c_binary_search(dim_numbers.collapsed_slice_dims(),
+                                   slice_sizes_idx)) {
+        slice_sizes_idx++;
+      }
+      index_count[i] = slice_sizes[slice_sizes_idx++];
+    }
+  }
+
+  return {std::move(index_base), std::move(index_count),
+          std::vector<int64_t>(output_rank, 1)};
+}
+
+absl::StatusOr<std::reference_wrapper<const Literal>> ReshapedGatherIndices(
+    int64_t index_vector_dim, const Literal& start_indices,
+    Literal* reshaped_start_indices) {
+  if (start_indices.shape().dimensions().size() != index_vector_dim) {
+    return std::cref(start_indices);
+  }
+
+  std::vector<int64_t> new_shape(start_indices.shape().dimensions().begin(),
+                                 start_indices.shape().dimensions().end());
+  new_shape.push_back(1);
+  if (start_indices.shape().is_dynamic()) {
+    // TODO(b/243182930): If we add support for dynamic reshape, remove this
+    // check and the call to ToStatic().
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.ToStatic().Reshape(new_shape));
+  } else {
+    TF_ASSIGN_OR_RETURN(*reshaped_start_indices,
+                        start_indices.Reshape(new_shape));
+  }
+  return std::cref(*reshaped_start_indices);
+}
+
 }  // namespace xla
