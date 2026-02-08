@@ -879,6 +879,53 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_rematerialization_options",
+    hdrs = ["hlo_rematerialization_options.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/service:hlo_cost_analysis",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_rematerialization_data_structures_test",
+    srcs = ["hlo_rematerialization_data_structures_test.cc"],
+    deps = [
+        ":hlo_rematerialization_data_structures",
+        "//xla/hlo/ir:hlo",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_rematerialization_memory_tracker",
+    srcs = ["hlo_rematerialization_memory_tracker.cc"],
+    hdrs = ["hlo_rematerialization_memory_tracker.h"],
+    deps = [
+        ":hlo_rematerialization_data_structures",
+        ":hlo_rematerialization_options",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla/hlo/analysis:tuple_points_to_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:call_graph",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization_test_utils",
     testonly = 1,
     hdrs = ["hlo_rematerialization_test_utils.h"],
@@ -909,6 +956,8 @@ cc_library(
     deps = [
         ":hlo_dce",
         ":hlo_rematerialization_data_structures",
+        ":hlo_rematerialization_memory_tracker",
+        ":hlo_rematerialization_options",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -947,14 +996,18 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -966,6 +1019,7 @@ xla_cc_test(
         ":hlo_dce",
         ":hlo_memory_scheduler",
         ":hlo_rematerialization",
+        ":hlo_rematerialization_options",
         ":hlo_rematerialization_test_utils",
         "//xla:shape_util",
         "//xla:util",
