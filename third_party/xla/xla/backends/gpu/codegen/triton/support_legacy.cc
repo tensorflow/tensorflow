@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

@@ -797,6 +797,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/model:block_level_parameters",
@@ -818,6 +819,7 @@ cc_library(
     hdrs = ["tma_utils.h"],
     deps = [
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/platform:statusor",
