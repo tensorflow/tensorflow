@@ -39,7 +39,7 @@ namespace functor {
 template <int NDIM, typename TIndex>
 __global__ void PropagateWhereIndicesKernel(
     const TIndex output_rows, const typename Eigen::array<TIndex, NDIM> strides,
-    int64* __restrict__ output) {
+    int64_t* __restrict__ output) {
   // TODO(ebrevdo): Use a multi-dimensional loop, increasing the
   // dimensions of individual indices manually, instead of relying on
   // a scalar loop variable and using integer division.
@@ -133,7 +133,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
 
 template <typename T, typename TIndex>
 struct NumTrue<GPUDevice, T, TIndex> {
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::UnalignedScalar num_true) {
@@ -165,7 +165,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
         &temp_storage));
 
     auto second_success = reducer(
-        /*temp_storage*/ temp_storage.flat<int8>().data(), temp_storage_bytes,
+        /*temp_storage*/ temp_storage.flat<int8_t>().data(), temp_storage_bytes,
         /*d_in*/ input_data,
         /*d_out*/ num_true_data,
         /*num_items*/ input.size(),
@@ -178,7 +178,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -205,7 +205,7 @@ class WhereOutputIterator {
   typedef std::ptrdiff_t difference_type;
   typedef void value_type;
   typedef void pointer;
-  typedef int64& reference;
+  typedef int64_t& reference;
 
 #if (THRUST_VERSION >= 100700)
   // Use Thrust's iterator categories so we can use these iterators in Thrust
@@ -220,10 +220,10 @@ class WhereOutputIterator {
 #endif  // THRUST_VERSION
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-  WhereOutputIterator(int64* ptr, const Eigen::DenseIndex max_row)
+  WhereOutputIterator(int64_t* ptr, const Eigen::DenseIndex max_row)
       : ptr_(ptr), max_row_(max_row) {}
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int64& operator[](int n) const {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE int64_t& operator[](int n) const {
     // If the selection mechanism finds too many true values (because
     // the input tensor changed between allocation of output and now),
     // we may accidentally try to write past the allowable memory.  If
@@ -245,7 +245,7 @@ class WhereOutputIterator {
   }
 
  private:
-  int64* ptr_;
+  int64_t* ptr_;
   const Eigen::DenseIndex max_row_;
 };
 
@@ -266,13 +266,13 @@ Eigen::array<TIndex, NDIM> CalculateStrides(
 
 template <int NDIM, typename T, typename TIndex>
 struct Where<GPUDevice, NDIM, T, TIndex> {
-  EIGEN_ALWAYS_INLINE static Status Compute(
+  EIGEN_ALWAYS_INLINE static absl::Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T, NDIM>::ConstTensor input,
       typename TTypes<int64_t>::Matrix output, TIndex* found_true_host) {
     if (output.dimension(0) == 0) {
       // Nothing to do.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     const auto& cu_stream = GetGpuStream(ctx);
@@ -313,7 +313,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         &temp_storage));
 
     auto second_success = counter(
-        /*temp_storage*/ temp_storage.flat<int8>().data(), temp_storage_bytes,
+        /*temp_storage*/ temp_storage.flat<int8_t>().data(), temp_storage_bytes,
         /*d_flags*/ input.data(),
         /*d_out*/ output_iterator,
         /*d_num_selected_out*/ found_true_device,
@@ -339,7 +339,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                 d.stream(), output_rows, strides,
                                 output.data()));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
