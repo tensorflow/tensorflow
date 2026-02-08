@@ -473,7 +473,7 @@ nanobind_pywrap_extension(
     name = "_gpu_ondevice_tracing",
     srcs = ["gpu_ondevice_tracing.cc"],
     pytype_srcs = ["_gpu_ondevice_tracing.pyi"],
-    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    visibility = internal_visibility([":friends"] + XLA_PYTHON_PROFILER_USERS),
     deps = [
         "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
