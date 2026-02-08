@@ -18,7 +18,7 @@ import abc
 import inspect
 import sys
 import textwrap
-from typing import Union
+from typing import Any, Optional, Tuple, Union
 
 import numpy as np
 
@@ -38,7 +38,7 @@ else:
 # pylint:enable=g-import-not-at-top
 
 # TODO(mdan): Consider adding ABC once the dependence on isinstance is reduced.
-# TODO(mdan): Add type annotations.
+# Type annotations added to improve code clarity and IDE support.
 
 
 # TODO(b/178822082): Revisit this API when tf.types gets more resource.
@@ -49,14 +49,30 @@ class Tensor(object):
   A dense tensor has a static data type (dtype), and may have a static rank and
   shape. Tensor objects are immutable. Mutable objects may be backed by a Tensor
   which holds the unique handle that identifies the mutable object.
+
+  Attributes:
+    dtype: The data type of the tensor elements (e.g., tf.float32, tf.int64).
+    shape: The static shape of the tensor as a TensorShape object, or None if
+      the shape is not fully defined.
   """
 
   @property
-  def dtype(self):
+  def dtype(self) -> Any:
+    """Returns the data type of this tensor's elements.
+
+    Returns:
+      A DType object representing the element type (e.g., tf.float32, tf.int64).
+    """
     pass
 
   @property
-  def shape(self):
+  def shape(self) -> Any:
+    """Returns the static shape of this tensor.
+
+    Returns:
+      A TensorShape object representing the tensor's shape, or None if the
+      shape cannot be determined statically.
+    """
     pass
 
 
@@ -71,7 +87,21 @@ class Symbol(Tensor):
   """Symbolic "graph" Tensor.
 
   These objects represent the output of an op definition and do not carry a
-  value.
+  value. Symbolic tensors are used in TensorFlow's graph execution mode,
+  where operations define a computational graph that is executed later.
+
+  In graph mode, operations don't immediately execute - instead they build
+  a graph of operations. Symbol tensors represent nodes in this graph and
+  only carry metadata (shape, dtype) without actual numerical values.
+
+  Example:
+    In graph mode (TensorFlow 1.x style or within @tf.function):
+    ```python
+    @tf.function
+    def f(x):
+      y = x + 1  # y is a Symbol tensor
+      return y
+    ```
   """
   pass
 
@@ -80,10 +110,39 @@ class Value(Tensor):
   """Tensor that can be associated with a value (aka "eager tensor").
 
   These objects represent the (usually future) output of executing an op
-  immediately.
+  immediately. Value tensors are used in TensorFlow's eager execution mode,
+  where operations execute immediately and return concrete values.
+
+  Unlike Symbol tensors, Value tensors carry actual numerical data that can
+  be accessed via the numpy() method.
+
+  Example:
+    In eager mode (default in TensorFlow 2.x):
+    ```python
+    x = tf.constant([1, 2, 3])  # x is a Value tensor
+    print(x.numpy())  # Can access the actual values: [1 2 3]
+    ```
   """
 
-  def numpy(self):
+  def numpy(self) -> np.ndarray:
+    """Returns the tensor value as a NumPy ndarray.
+
+    This method allows direct access to the tensor's underlying data by
+    converting it to a NumPy array. Only available for eager tensors.
+
+    Returns:
+      A NumPy ndarray with the same shape and data as the tensor.
+
+    Raises:
+      RuntimeError: If called on a symbolic tensor (graph mode) or if the
+        tensor is not yet evaluated.
+
+    Example:
+      ```python
+      tensor = tf.constant([[1.0, 2.0], [3.0, 4.0]])
+      array = tensor.numpy()  # Returns: np.array([[1.0, 2.0], [3.0, 4.0]])
+      ```
+    """
     pass
 
 
@@ -153,16 +212,42 @@ class AtomicFunction(Callable):
   `ConcreteFunction` if you need gradient support.
   """
 
-  def call_with_captures(self, args, kwargs, captures):
+  def call_with_captures(
+      self,
+      args: Tuple[Any, ...],
+      kwargs: dict[str, Any],
+      captures: Tuple[Any, ...]
+  ) -> Any:
     """Calls this AtomicFunction with captures as defined by its FunctionType.
 
+    This method is used when the function requires captured variables (closures)
+    that are not part of the explicit function signature. Captures are variables
+    from the enclosing scope that the function needs to access.
+
     Args:
-      args: Tuple containing positional arguments
-      kwargs: Dict containing keyword arguments
-      captures: Tuple of tensors supplying captured tensor values.
+      args: Tuple containing positional arguments for the function.
+      kwargs: Dict containing keyword arguments for the function.
+      captures: Tuple of tensors supplying captured tensor values, representing
+        variables from the enclosing scope (e.g., variables defined outside
+        the function that are referenced inside).
 
     Returns:
-      A structured output value based on the inputs.
+      A structured output value based on the inputs. The return type depends
+      on the function's implementation and may be a single tensor, a tuple of
+      tensors, or a nested structure.
+
+    Example:
+      ```python
+      # Function with a captured variable
+      outer_var = tf.constant(10)
+
+      @tf.function
+      def f(x):
+        return x + outer_var  # outer_var is captured
+
+      # When calling with captures, outer_var is passed as a capture
+      concrete_fn = f.get_concrete_function(tf.constant(5))
+      ```
     """
 
 
@@ -373,16 +458,63 @@ class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):
 
 @runtime_checkable
 class TensorProtocol(Protocol):
-  """Protocol type for objects that can be converted to Tensor."""
+  """Protocol type for objects that can be converted to Tensor.
 
-  def __tf_tensor__(self, dtype=None, name=None):
+  This protocol defines the interface for custom objects that can be
+  implicitly converted to TensorFlow tensors. Any class implementing
+  the `__tf_tensor__` method can be used where tensors are expected.
+
+  The protocol is runtime_checkable, meaning isinstance() checks will
+  work to verify if an object implements this protocol.
+
+  Example:
+    Implementing a custom tensor-like class:
+    ```python
+    class MyTensorLike:
+      def __init__(self, data):
+        self._data = data
+
+      def __tf_tensor__(self, dtype=None, name=None):
+        return tf.constant(self._data, dtype=dtype, name=name)
+
+    # This can now be used where tensors are expected:
+    obj = MyTensorLike([1, 2, 3])
+    result = tf.add(obj, 10)  # Automatically converts via __tf_tensor__
+    ```
+  """
+
+  def __tf_tensor__(
+      self,
+      dtype: Optional[Any] = None,
+      name: Optional[str] = None
+  ) -> Tensor:
     """Converts this object to a Tensor.
 
+    This method is called automatically when the object is used in contexts
+    that expect a tensor, such as being passed to TensorFlow operations.
+
     Args:
-      dtype: data type for the returned Tensor
-      name: a name for the operations which create the Tensor
+      dtype: Optional data type for the returned Tensor (e.g., tf.float32,
+        tf.int32). If None, TensorFlow will infer the dtype from the data.
+      name: Optional name for the operations which create the Tensor. This
+        is useful for debugging and visualization in TensorBoard.
+
     Returns:
-      A Tensor.
+      A Tensor representation of this object.
+
+    Example:
+      ```python
+      class Point:
+        def __init__(self, x, y):
+          self.x = x
+          self.y = y
+
+        def __tf_tensor__(self, dtype=None, name=None):
+          return tf.constant([self.x, self.y], dtype=dtype, name=name)
+
+      p = Point(3.0, 4.0)
+      tensor = tf.convert_to_tensor(p)  # Calls __tf_tensor__
+      ```
     """
     pass
 
