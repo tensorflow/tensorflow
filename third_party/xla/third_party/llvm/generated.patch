@@ -1,268 +1,751 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
---- a/clang/lib/Driver/ToolChains/Darwin.cpp
-+++ b/clang/lib/Driver/ToolChains/Darwin.cpp
-@@ -2076,7 +2076,8 @@
-                                   std::to_string(TargetEnvironment) +
-                                   "' is unsupported when inferring SDK Info.");
-     }
--    Components.push_back(Version.getAsString());
-+    std::string VersionString = Version.getAsString();
-+    Components.push_back(VersionString);
-     return join(Components, " ");
-   }
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+@@ -169,8 +169,16 @@
+         break;
  
-diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
---- a/libcxx/include/any
-+++ b/libcxx/include/any
-@@ -89,6 +89,7 @@
- #  include <__type_traits/add_cv_quals.h>
- #  include <__type_traits/add_pointer.h>
- #  include <__type_traits/conditional.h>
-+#  include <__type_traits/conjunction.h>
- #  include <__type_traits/decay.h>
- #  include <__type_traits/enable_if.h>
- #  include <__type_traits/is_constructible.h>
-@@ -97,6 +98,7 @@
- #  include <__type_traits/is_reference.h>
- #  include <__type_traits/is_same.h>
- #  include <__type_traits/is_void.h>
-+#  include <__type_traits/negation.h>
- #  include <__type_traits/remove_cv.h>
- #  include <__type_traits/remove_cvref.h>
- #  include <__type_traits/remove_reference.h>
-@@ -201,10 +203,11 @@
-       __other.__call(_Action::_Move, this);
-   }
+       auto *RHSVal = Env.getValue(*RHS);
+-      if (RHSVal == nullptr)
++      if (RHSVal == nullptr) {
+         RHSVal = Env.createValue(LHS->getType());
++        if (RHSVal == nullptr) {
++          // At least make sure the old value is gone. It's unlikely to be there
++          // in the first place given that we don't even know how to create
++          // a basic unknown value of that type.
++          Env.clearValue(*LHSLoc);
++          break;
++        }
++      }
  
--  template <class _ValueType,
--            class _Tp        = decay_t<_ValueType>,
--            enable_if_t<!is_same_v<_Tp, any> && !__is_inplace_type<_ValueType>::value && is_copy_constructible_v<_Tp>,
--                        int> = 0>
-+  template <
-+      class _ValueType,
-+      class _Tp        = decay_t<_ValueType>,
-+      enable_if_t<_And<_Not<is_same<_Tp, any>>, _Not<__is_inplace_type<_ValueType>>, is_copy_constructible<_Tp>>::value,
-+                  int> = 0>
-   _LIBCPP_HIDE_FROM_ABI any(_ValueType&& __value) : __h_(nullptr) {
-     __any_imp::_Handler<_Tp>::__create(*this, std::forward<_ValueType>(__value));
-   }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
---- a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
-+++ b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
-@@ -21,6 +21,7 @@
- 
- #include <any>
- #include <cassert>
-+#include <type_traits>
- 
- #include "any_helpers.h"
- #include "count_new.h"
-@@ -140,6 +141,24 @@
-     }
+       // Assign a value to the storage location of the left-hand side.
+       Env.setValue(*LHSLoc, *RHSVal);
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+@@ -1011,6 +1011,54 @@
+       });
  }
  
-+// https://llvm.org/PR176877
-+// Avoid constraint meta-recursion for a type both convertible from and to std::any.
-+template <class T, bool = std::is_copy_constructible<T>::value>
-+void test_default_template_argument_is_copy_constructible(T) {}
++TEST(TransferTest, BinaryOperatorAssignFloat) {
++  using ast_matchers::binaryOperator;
++  using ast_matchers::hasOperatorName;
++  using ast_matchers::match;
++  using ast_matchers::selectFirst;
 +
-+template <class T, bool = std::is_copy_constructible_v<T>>
-+void test_default_template_argument_is_copy_constructible_v(T) {}
++  // This was crashing.
++  std::string Code = R"(
++    void target() {
++      double Foo = 0.0f;
++      double FooAtA = Foo;
++      Foo = 1.0f;
++      double FooAtB = Foo;
++      bool check = (FooAtA == FooAtB);
++      // [[p]]
++    }
++  )";
++  runDataflow(
++      Code,
++      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
++         ASTContext &ASTCtx) {
++        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
 +
-+void test_no_constraint_recursion() {
-+  struct ConvertibleFromAndToAny {
-+    ConvertibleFromAndToAny(std::any) {}
-+  };
++        const Environment &EnvP = getEnvironmentAtAnnotation(Results, "p");
 +
-+  ConvertibleFromAndToAny src = std::any{};
-+  test_default_template_argument_is_copy_constructible(src);
-+  test_default_template_argument_is_copy_constructible_v(src);
++        const ValueDecl *FooAtADecl = findValueDecl(ASTCtx, "FooAtA");
++        ASSERT_THAT(FooAtADecl, NotNull());
++        const Value *FooAtAVal = EnvP.getValue(*FooAtADecl);
++        // FIXME: Should be non-null. Floats aren't modeled at all.
++        EXPECT_THAT(FooAtAVal, IsNull());
++
++        const ValueDecl *FooAtBDecl = findValueDecl(ASTCtx, "FooAtB");
++        ASSERT_THAT(FooAtBDecl, NotNull());
++        const Value *FooAtBVal = EnvP.getValue(*FooAtBDecl);
++        // FIXME: Should be non-null. Floats aren't modeled at all.
++        EXPECT_THAT(FooAtBVal, IsNull());
++
++        // See if the storage location is correctly propagated.
++        auto MatchResult =
++            match(binaryOperator(hasOperatorName("=")).bind("bo"), ASTCtx);
++        const auto *BO = selectFirst<BinaryOperator>("bo", MatchResult);
++        ASSERT_THAT(BO, NotNull());
++        const StorageLocation *BOLoc = EnvP.getStorageLocation(*BO);
++        // FIXME: Should be non-null.
++        EXPECT_THAT(BOLoc, IsNull());
++      });
 +}
 +
- int main(int, char**) {
-     test_copy_move_value<small>();
-     test_copy_move_value<large>();
-@@ -147,6 +166,7 @@
-     test_copy_value_throws<large_throws_on_copy>();
-     test_move_value_throws();
-     test_sfinae_constraints();
-+    test_no_constraint_recursion();
+ TEST(TransferTest, VarDeclInitAssign) {
+   std::string Code = R"(
+     void target() {
+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/VectorUtils.cpp b/llvm/lib/Analysis/VectorUtils.cpp
+--- a/llvm/lib/Analysis/VectorUtils.cpp
++++ b/llvm/lib/Analysis/VectorUtils.cpp
+@@ -65,12 +65,6 @@
+   case Intrinsic::smul_fix_sat:
+   case Intrinsic::umul_fix:
+   case Intrinsic::umul_fix_sat:
+-  case Intrinsic::uadd_with_overflow:
+-  case Intrinsic::sadd_with_overflow:
+-  case Intrinsic::usub_with_overflow:
+-  case Intrinsic::ssub_with_overflow:
+-  case Intrinsic::umul_with_overflow:
+-  case Intrinsic::smul_with_overflow:
+   case Intrinsic::sqrt: // Begin floating-point.
+   case Intrinsic::asin:
+   case Intrinsic::acos:
+@@ -136,6 +130,15 @@
+   if (TTI && Intrinsic::isTargetIntrinsic(ID))
+     return TTI->isTargetIntrinsicTriviallyScalarizable(ID);
  
--  return 0;
-+    return 0;
++  switch (ID) {
++  case Intrinsic::uadd_with_overflow:
++  case Intrinsic::sadd_with_overflow:
++  case Intrinsic::ssub_with_overflow:
++  case Intrinsic::usub_with_overflow:
++  case Intrinsic::umul_with_overflow:
++  case Intrinsic::smul_with_overflow:
++    return true;
++  }
+   return false;
  }
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
---- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-@@ -1852,6 +1852,11 @@
-         !isDispSafeForFrameIndexOrRegBase((uint32_t)Val) &&
-         !AM.hasBaseOrIndexReg())
-       return true;
-+  } else if (Subtarget->is16Bit()) {
-+    // In 16-bit mode, displacements are limited to [-65535,65535] for FK_Data_2
-+    // fixups of unknown signedness. See X86AsmBackend::applyFixup.
-+    if (Val < -(int64_t)UINT16_MAX || Val > (int64_t)UINT16_MAX)
-+      return true;
-   } else if (AM.hasBaseOrIndexReg() && !isDispSafeForFrameIndexOrRegBase(Val))
-     // For 32-bit X86, make sure the displacement still isn't close to the
-     // expressible limit.
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/dag-large-offset.ll b/llvm/test/CodeGen/X86/dag-large-offset.ll
---- a/llvm/test/CodeGen/X86/dag-large-offset.ll
-+++ b/llvm/test/CodeGen/X86/dag-large-offset.ll
-@@ -1,47 +0,0 @@
--; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
--; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+--- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
++++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+@@ -1834,12 +1834,7 @@
+   if (isVectorIntrinsicWithOverloadTypeAtArg(VectorIntrinsicID, -1,
+                                              State.TTI)) {
+     Type *RetTy = toVectorizedTy(getResultType(), State.VF);
+-    ArrayRef<Type *> ContainedTys = getContainedTypes(RetTy);
+-    for (auto [Idx, Ty] : enumerate(ContainedTys)) {
+-      if (isVectorIntrinsicWithStructReturnOverloadAtField(VectorIntrinsicID,
+-                                                           Idx, State.TTI))
+-        TysForDecl.push_back(Ty);
+-    }
++    append_range(TysForDecl, getContainedTypes(RetTy));
+   }
+   SmallVector<Value *, 4> Args;
+   for (const auto &I : enumerate(operands())) {
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
+@@ -1,4 +1,4 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store|with\.overflow)" --version 5
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store)" --version 5
+ ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve < %s -S -o - -debug-only=loop-vectorize 2>%t.1 | FileCheck %s --check-prefix=CHECK
+ ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve -vector-library=ArmPL < %s -S -o - -debug-only=loop-vectorize 2>%t.2 | FileCheck %s --check-prefix=CHECK-ARMPL
+ ; RUN: FileCheck --input-file=%t.1 --check-prefix=CHECK-COST %s
+@@ -522,78 +522,6 @@
+   %iv.next = add nuw nsw i64 %iv, 1
+   %exitcond.not = icmp eq i64 %iv.next, 1024
+   br i1 %exitcond.not, label %exit, label %for.body
 -
--; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
--; want to do that if the offset is very close to the expressible limit because the final frame
--; layout may push it over/under the limit.
--
--define i32 @foo(i1 %b) #0 {
--; CHECK-LABEL: foo:
--; CHECK:       # %bb.0: # %entry
--; CHECK-NEXT:    pushl %ebp
--; CHECK-NEXT:    .cfi_def_cfa_offset 8
--; CHECK-NEXT:    .cfi_offset %ebp, -8
--; CHECK-NEXT:    movl %esp, %ebp
--; CHECK-NEXT:    .cfi_def_cfa_register %ebp
--; CHECK-NEXT:    subl $8, %esp
--; CHECK-NEXT:    movl __stack_chk_guard, %eax
--; CHECK-NEXT:    movl %eax, -4(%ebp)
--; CHECK-NEXT:    testb $1, 8(%ebp)
--; CHECK-NEXT:    jne .LBB0_1
--; CHECK-NEXT:  # %bb.2: # %entry
--; CHECK-NEXT:    xorl %eax, %eax
--; CHECK-NEXT:    jmp .LBB0_3
--; CHECK-NEXT:  .LBB0_1:
--; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
--; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
--; CHECK-NEXT:  .LBB0_3: # %entry
--; CHECK-NEXT:    movl __stack_chk_guard, %ecx
--; CHECK-NEXT:    cmpl -4(%ebp), %ecx
--; CHECK-NEXT:    jne .LBB0_5
--; CHECK-NEXT:  # %bb.4: # %entry
--; CHECK-NEXT:    addl $8, %esp
--; CHECK-NEXT:    popl %ebp
--; CHECK-NEXT:    .cfi_def_cfa %esp, 4
--; CHECK-NEXT:    retl
--; CHECK-NEXT:  .LBB0_5: # %entry
--; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
--; CHECK-NEXT:    calll __stack_chk_fail
--entry:
--  %a = alloca i8, align 1
--  %0 = ptrtoint ptr %a to i32
--  %sub = add i32 %0, -2147483647
--  %retval.0 = select i1 %b, i32 %sub, i32 0
--  ret i32 %retval.0
+-exit:
+-  ret void
 -}
 -
--attributes #0 = { sspreq }
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-16.ll b/llvm/test/CodeGen/X86/fold-add-16.ll
---- a/llvm/test/CodeGen/X86/fold-add-16.ll
-+++ b/llvm/test/CodeGen/X86/fold-add-16.ll
-@@ -0,0 +1,45 @@
-+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
-+; RUN: llc -mtriple=i386-unknown-code16 < %s | FileCheck %s
-+
-+;; In 16-bit mode, displacements are limited to [-65535,65535] (R_386_16).
-+;; Test boundary conditions for offset folding.
-+
-+@X = external global i32, align 4
-+
-+;; -65535 is within range, should fold
-+define i32 @neg_65535() {
-+; CHECK-LABEL: neg_65535:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    leal X+65535, %eax
-+; CHECK-NEXT:    retl
-+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65535)
-+}
-+
-+;; 65535 is within range, should fold
-+define i32 @pos_65535() {
-+; CHECK-LABEL: pos_65535:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    leal X-65535, %eax
-+; CHECK-NEXT:    retl
-+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65535)
-+}
-+
-+;; -65536 is outside range, should NOT fold
-+define i32 @neg_65536() {
-+; CHECK-LABEL: neg_65536:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    movl $65536, %eax # imm = 0x10000
-+; CHECK-NEXT:    leal X(%eax), %eax
-+; CHECK-NEXT:    retl
-+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65536)
-+}
-+
-+;; 65536 is outside range, should NOT fold
-+define i32 @pos_65536() {
-+; CHECK-LABEL: pos_65536:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    movl $-65536, %eax # imm = 0xFFFF0000
-+; CHECK-NEXT:    leal X(%eax), %eax
-+; CHECK-NEXT:    retl
-+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65536)
-+}
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-32.ll b/llvm/test/CodeGen/X86/fold-add-32.ll
---- a/llvm/test/CodeGen/X86/fold-add-32.ll
-+++ b/llvm/test/CodeGen/X86/fold-add-32.ll
-@@ -0,0 +1,47 @@
-+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
-+; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
-+
-+; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
-+; want to do that if the offset is very close to the expressible limit because the final frame
-+; layout may push it over/under the limit.
-+
-+define i32 @foo(i1 %b) #0 {
-+; CHECK-LABEL: foo:
-+; CHECK:       # %bb.0: # %entry
-+; CHECK-NEXT:    pushl %ebp
-+; CHECK-NEXT:    .cfi_def_cfa_offset 8
-+; CHECK-NEXT:    .cfi_offset %ebp, -8
-+; CHECK-NEXT:    movl %esp, %ebp
-+; CHECK-NEXT:    .cfi_def_cfa_register %ebp
-+; CHECK-NEXT:    subl $8, %esp
-+; CHECK-NEXT:    movl __stack_chk_guard, %eax
-+; CHECK-NEXT:    movl %eax, -4(%ebp)
-+; CHECK-NEXT:    testb $1, 8(%ebp)
-+; CHECK-NEXT:    jne .LBB0_1
-+; CHECK-NEXT:  # %bb.2: # %entry
-+; CHECK-NEXT:    xorl %eax, %eax
-+; CHECK-NEXT:    jmp .LBB0_3
-+; CHECK-NEXT:  .LBB0_1:
-+; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
-+; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
-+; CHECK-NEXT:  .LBB0_3: # %entry
-+; CHECK-NEXT:    movl __stack_chk_guard, %ecx
-+; CHECK-NEXT:    cmpl -4(%ebp), %ecx
-+; CHECK-NEXT:    jne .LBB0_5
-+; CHECK-NEXT:  # %bb.4: # %entry
-+; CHECK-NEXT:    addl $8, %esp
-+; CHECK-NEXT:    popl %ebp
-+; CHECK-NEXT:    .cfi_def_cfa %esp, 4
-+; CHECK-NEXT:    retl
-+; CHECK-NEXT:  .LBB0_5: # %entry
-+; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
-+; CHECK-NEXT:    calll __stack_chk_fail
-+entry:
-+  %a = alloca i8, align 1
-+  %0 = ptrtoint ptr %a to i32
-+  %sub = add i32 %0, -2147483647
-+  %retval.0 = select i1 %b, i32 %sub, i32 0
-+  ret i32 %retval.0
-+}
-+
-+attributes #0 = { sspreq }
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
---- a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
-+++ b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
-@@ -1,3 +1,4 @@
-+; REQUIRES: asserts
- ; RUN: opt -passes=vector-combine -debug-only=vector-combine -disable-output < %s 2>&1 | FileCheck %s
- target triple = "x86_64-unknown-linux-gnu"
+-; CHECK-COST-LABEL: sadd_with_overflow_i32
+-; CHECK-COST: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+-; CHECK-COST: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-
+-; CHECK-COST-ARMPL-LABEL: sadd_with_overflow_i32
+-; CHECK-COST-ARMPL: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+-; CHECK-COST-ARMPL: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+-
+-define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @sadd_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
+-; CHECK:  [[ENTRY:.*:]]
+-; CHECK:  [[VECTOR_PH:.*:]]
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
+-; CHECK:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
+-; CHECK:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
+-; CHECK:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
+-; CHECK:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
+-; CHECK:  [[MIDDLE_BLOCK:.*:]]
+-; CHECK:  [[EXIT:.*:]]
+-;
+-; CHECK-ARMPL-LABEL: define void @sadd_with_overflow_i32(
+-; CHECK-ARMPL-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
+-; CHECK-ARMPL:  [[ENTRY:.*:]]
+-; CHECK-ARMPL:  [[VECTOR_PH:.*:]]
+-; CHECK-ARMPL:  [[VECTOR_BODY:.*:]]
+-; CHECK-ARMPL:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
+-; CHECK-ARMPL:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
+-; CHECK-ARMPL:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
+-; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
+-; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
+-; CHECK-ARMPL:  [[MIDDLE_BLOCK:.*:]]
+-; CHECK-ARMPL:  [[EXIT:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
  
+ exit:
+   ret void
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
+--- a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
++++ b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
+@@ -1,4 +1,4 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store|with\.overflow)" --version 5
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store)" --version 5
+ ; RUN: opt -passes=loop-vectorize -force-vector-interleave=1 -force-vector-width=2 < %s -S -o - | FileCheck %s
+ 
+ define void @sincos_f32(ptr noalias %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
+@@ -344,474 +344,6 @@
+   %iv.next = add nuw nsw i64 %iv, 1
+   %exitcond.not = icmp eq i64 %iv.next, 1024
+   br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @uadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @uadd_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.uadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @uadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @uadd_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.uadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.uadd.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @sadd_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @sadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @sadd_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.sadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @usub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @usub_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.usub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @usub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @usub_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.usub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.usub.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @ssub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @ssub_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.ssub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @ssub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @ssub_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.ssub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.ssub.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @umul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @umul_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.umul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @umul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @umul_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.umul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.umul.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @smul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @smul_with_overflow_i32(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.smul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+-  %val_a = load i32, ptr %arrayidx_a, align 4
+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+-  %val_b = load i32, ptr %arrayidx_b, align 4
+-  %call = tail call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %val_a, i32 %val_b)
+-  %result = extractvalue { i32, i1 } %call, 0
+-  %overflow = extractvalue { i32, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+-  store i32 %result, ptr %arrayidx_result, align 4
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+-
+-exit:
+-  ret void
+-}
+-
+-define void @smul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+-; CHECK-LABEL: define void @smul_with_overflow_i64(
+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+-; CHECK:  [[VECTOR_BODY:.*:]]
+-; CHECK:  [[FOR_BODY:.*:]]
+-; CHECK:  [[VECTOR_BODY1:.*:]]
+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.smul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+-; CHECK:  [[EXIT:.*:]]
+-; CHECK:  [[EXIT1:.*:]]
+-;
+-entry:
+-  br label %for.body
+-
+-for.body:
+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+-  %val_a = load i64, ptr %arrayidx_a, align 8
+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+-  %val_b = load i64, ptr %arrayidx_b, align 8
+-  %call = tail call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %val_a, i64 %val_b)
+-  %result = extractvalue { i64, i1 } %call, 0
+-  %overflow = extractvalue { i64, i1 } %call, 1
+-  %zext_overflow = zext i1 %overflow to i8
+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+-  store i64 %result, ptr %arrayidx_result, align 8
+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+-  %iv.next = add nuw nsw i64 %iv, 1
+-  %exitcond.not = icmp eq i64 %iv.next, 1024
+-  br i1 %exitcond.not, label %exit, label %for.body
+ 
+ exit:
+   ret void
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/struct-return.ll b/llvm/test/Transforms/LoopVectorize/struct-return.ll
+--- a/llvm/test/Transforms/LoopVectorize/struct-return.ll
++++ b/llvm/test/Transforms/LoopVectorize/struct-return.ll
+@@ -166,31 +166,28 @@
+   ret void
+ }
+ 
+-; CHECK-REMARKS:	 remark: {{.*}} vectorized loop
++; TODO: Allow mixed-struct type vectorization and mark overflow intrinsics as trivially vectorizable.
++; CHECK-REMARKS:         remark: {{.*}} loop not vectorized: call instruction cannot be vectorized
+ define void @test_overflow_intrinsic(ptr noalias readonly %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
+ ; CHECK-LABEL: define void @test_overflow_intrinsic(
+ ; CHECK-SAME: ptr noalias readonly [[IN:%.*]], ptr noalias writeonly [[OUT_A:%.*]], ptr noalias writeonly [[OUT_B:%.*]]) {
+-; CHECK-NEXT:  [[ENTRY:.*:]]
+-; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
+-; CHECK:       [[VECTOR_PH]]:
+-; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+-; CHECK:       [[VECTOR_BODY]]:
+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[IV_NEXT:%.*]], %[[VECTOR_BODY]] ]
++; CHECK-NEXT:  [[ENTRY:.*]]:
++; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
++; CHECK:       [[FOR_BODY]]:
++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[FOR_BODY]] ]
+ ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds float, ptr [[IN]], i64 [[IV]]
+-; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x i32>, ptr [[ARRAYIDX]], align 4
+-; CHECK-NEXT:    [[TMP1:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD]], <2 x i32> [[WIDE_LOAD]])
+-; CHECK-NEXT:    [[TMP2:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 0
+-; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 1
+-; CHECK-NEXT:    [[TMP4:%.*]] = zext <2 x i1> [[TMP3]] to <2 x i8>
++; CHECK-NEXT:    [[IN_VAL:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
++; CHECK-NEXT:    [[CALL:%.*]] = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 [[IN_VAL]], i32 [[IN_VAL]])
++; CHECK-NEXT:    [[EXTRACT_RET:%.*]] = extractvalue { i32, i1 } [[CALL]], 0
++; CHECK-NEXT:    [[EXTRACT_OVERFLOW:%.*]] = extractvalue { i32, i1 } [[CALL]], 1
++; CHECK-NEXT:    [[ZEXT_OVERFLOW:%.*]] = zext i1 [[EXTRACT_OVERFLOW]] to i8
+ ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr [[OUT_A]], i64 [[IV]]
+-; CHECK-NEXT:    store <2 x i32> [[TMP2]], ptr [[ARRAYIDX2]], align 4
++; CHECK-NEXT:    store i32 [[EXTRACT_RET]], ptr [[ARRAYIDX2]], align 4
+ ; CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr inbounds i8, ptr [[OUT_B]], i64 [[IV]]
+-; CHECK-NEXT:    store <2 x i8> [[TMP4]], ptr [[ARRAYIDX4]], align 4
+-; CHECK-NEXT:    [[IV_NEXT]] = add nuw i64 [[IV]], 2
++; CHECK-NEXT:    store i8 [[ZEXT_OVERFLOW]], ptr [[ARRAYIDX4]], align 4
++; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
+ ; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[IV_NEXT]], 1024
+-; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
+-; CHECK:       [[MIDDLE_BLOCK]]:
+-; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[EXIT:.*]], label %[[FOR_BODY]]
+ ; CHECK:       [[EXIT]]:
+ ; CHECK-NEXT:    ret void
+ ;
