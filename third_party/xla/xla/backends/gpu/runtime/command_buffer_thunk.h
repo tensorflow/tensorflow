@@ -40,7 +40,7 @@ namespace xla::gpu {
 
 class CommandBufferThunk : public Thunk {
  public:
-  CommandBufferThunk(CommandBufferCmdExecutor commands, ThunkInfo thunk_info,
+  CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
                      bool enable_command_buffers_during_profiling = false);
 
@@ -73,8 +73,7 @@ class CommandBufferThunk : public Thunk {
     // changed since the last update. Returned buffer allocations are sorted by
     // the buffer allocation index.
     std::vector<BufferAllocation::Index> UpdateBufferAllocations(
-        const CommandBufferCmdExecutor& commands,
-        const Thunk::ExecuteParams& params)
+        const CommandExecutor& commands, const Thunk::ExecuteParams& params)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to
@@ -141,7 +140,7 @@ class CommandBufferThunk : public Thunk {
   static void EvictCommandBuffers();
 
   // Commands executor that initializes command buffers on each stream executor.
-  CommandBufferCmdExecutor commands_;
+  CommandExecutor commands_;
 
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI

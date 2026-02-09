@@ -293,7 +293,7 @@ class Memset32Cmd : public Command {
 
 class ChildCmd : public Command {
  public:
-  explicit ChildCmd(CommandBufferCmdExecutor child_commands);
+  explicit ChildCmd(CommandExecutor child_commands);
 
   absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
@@ -311,7 +311,7 @@ class ChildCmd : public Command {
   BufferUses buffer_uses() const override;
 
  private:
-  CommandBufferCmdExecutor child_commands_;
+  CommandExecutor child_commands_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -320,7 +320,7 @@ class ChildCmd : public Command {
 
 class CaseCmd : public Command {
  public:
-  CaseCmd(ShapedSlice index, std::vector<CommandBufferCmdExecutor> branches);
+  CaseCmd(ShapedSlice index, std::vector<CommandExecutor> branches);
 
   absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
@@ -340,7 +340,7 @@ class CaseCmd : public Command {
  private:
   ShapedSlice index_;
   bool index_is_bool_;
-  std::vector<CommandBufferCmdExecutor> branches_;
+  std::vector<CommandExecutor> branches_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -349,8 +349,8 @@ class CaseCmd : public Command {
 
 class WhileCmd : public Command {
  public:
-  WhileCmd(BufferAllocation::Slice pred, CommandBufferCmdExecutor cond_commands,
-           CommandBufferCmdExecutor body_commands,
+  WhileCmd(BufferAllocation::Slice pred, CommandExecutor cond_commands,
+           CommandExecutor body_commands,
            std::optional<int64_t> trip_count = std::nullopt,
            bool enable_loop_unroll = false);
 
@@ -376,8 +376,8 @@ class WhileCmd : public Command {
  private:
   BufferAllocation::Slice pred_;
 
-  CommandBufferCmdExecutor cond_commands_;
-  CommandBufferCmdExecutor body_commands_;
+  CommandExecutor cond_commands_;
+  CommandExecutor body_commands_;
 
   std::optional<int64_t> trip_count_;
   bool enable_loop_unroll_ = false;
@@ -787,7 +787,7 @@ class SendCmd : public CollectiveCmd {
 class DynamicSliceFusionCmd : public Command {
  public:
   DynamicSliceFusionCmd(
-      CommandBufferCmdExecutor embedded_commands,
+      CommandExecutor embedded_commands,
       std::vector<std::optional<BufferAllocation::Slice>> arguments,
       std::vector<BufferAllocation> fake_allocations,
       std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>>
@@ -819,7 +819,7 @@ class DynamicSliceFusionCmd : public Command {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
-  CommandBufferCmdExecutor embedded_commands_;
+  CommandExecutor embedded_commands_;
   std::vector<DynamicSliceThunk::SliceDef> slices_;
   std::vector<BufferAllocation> fake_allocations_;
 

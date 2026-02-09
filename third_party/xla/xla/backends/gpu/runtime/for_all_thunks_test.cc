@@ -89,8 +89,7 @@ TEST(ForAllThunksTest, CommandBufferThunk) {
       Thunk::ThunkInfo(), std::move(thunk_sequence));
   Thunk* sequential_thunk_ptr = sequential_thunk.get();
 
-  CommandBufferThunk command_buffer_thunk(CommandBufferCmdExecutor(),
-                                          Thunk::ThunkInfo(),
+  CommandBufferThunk command_buffer_thunk(CommandExecutor(), Thunk::ThunkInfo(),
                                           std::move(sequential_thunk));
   EXPECT_THAT(GetAllThunks(&command_buffer_thunk),
               UnorderedElementsAre(thunk_ptr, &command_buffer_thunk,

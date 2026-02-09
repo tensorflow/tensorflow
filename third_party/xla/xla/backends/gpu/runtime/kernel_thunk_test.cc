@@ -482,7 +482,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     thunk_sequence.push_back(std::move(kernel_thunk));
 
     TF_ASSERT_OK_AND_ASSIGN(
-        CommandBufferCmdExecutor cmds,
+        CommandExecutor cmds,
         ConvertToCommands(thunk_sequence, ConvertToCommandsOptions()));
     auto sequential_thunk = std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo(), std::move(thunk_sequence));
