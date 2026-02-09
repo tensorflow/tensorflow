@@ -18,13 +18,15 @@ limitations under the License.
 #include <stdio.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"

@@ -17,16 +17,23 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
