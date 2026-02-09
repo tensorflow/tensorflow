@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
