@@ -26,7 +26,7 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #endif
 
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 
 namespace xla {
 namespace gpu {

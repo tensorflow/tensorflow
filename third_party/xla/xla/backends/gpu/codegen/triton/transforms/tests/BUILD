@@ -20,7 +20,7 @@ package_group(
 #     cfg = "//xla:lit.cfg.py",
 #     tools = [
 #         "@llvm-project//llvm:FileCheck",
-#         "//xla/service/gpu/tests:xla-opt",
+#         "//xla/backends/gpu/tests:xla-opt",
 #         "@triton//:triton-opt",
 #     ],
 # )

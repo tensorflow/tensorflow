@@ -1687,7 +1687,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/service/gpu/tests:__pkg__",
+        "//xla/backends/gpu/tests:__pkg__",
         "//third_party/pathways/configuration:__subpackages__",
     ]),
     deps = [
@@ -6432,7 +6432,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:__subpackages__",
         ":__subpackages__",
         "//xla/tools:__subpackages__",
-        "//xla/backends/gpu/autotuner:__subpackages__",
+        "//xla/backends/gpu:__subpackages__",
     ]),
     deps = [
         ":gpu_topology_proto_cc",

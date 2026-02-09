@@ -163,12 +163,12 @@ xla_test(
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
+        "//xla/backends/gpu/tests:gpu_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
