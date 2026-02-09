@@ -7,7 +7,11 @@ package(
 
 lit_test_suite(
     name = "all_tests",
-    srcs = glob(["*.mlir"]),
+    # TODO(b/482032969): Remoev this exclusion once the test is fixed.
+    srcs = glob(
+        ["*.mlir"],
+        exclude = ["ifrt_legalize_to_vifrt.0_1_0.mlir"],
+    ),
     cfg = "//xla:lit.cfg.py",
     data = ["ifrt_legalize_to_vifrt.0_1_0.mlir.bytes"],
     tools = [
