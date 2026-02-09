@@ -853,6 +853,7 @@ cc_binary(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",

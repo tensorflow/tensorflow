@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
@@ -77,6 +78,9 @@ int main(int argc, char** argv) {
   mlir::registerInliner();
   xla::emitters::registerTransformsPasses();
   xla::emitters::registerTransformsLLVMGPUPasses();
+  registry.addExtension(+[](mlir::MLIRContext* ctx, xla::XlaDialect* dialect) {
+    xla::RegisterSymbolicExprStorage(ctx);
+  });
   xla::gpu::registerGpuFusionTransformsPasses();
   xla::cpu::registerXlaCpuTransformsPasses();
   xla::cpu::registerXTileCpuTransformsPasses();

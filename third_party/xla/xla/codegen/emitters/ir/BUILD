@@ -93,7 +93,6 @@ cc_library(
         ":xla_ops_inc_gen",
         "//xla/codegen/emitters:type_util",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

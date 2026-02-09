@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
@@ -95,6 +96,9 @@ int main(int argc, char** argv) {
                   mlir::memref::MemRefDialect>();
   mlir::triton::xla::registerTritonXlaTransformsPasses();
   xla::emitters::registerTransformsPasses();
+  registry.addExtension(+[](mlir::MLIRContext* ctx, xla::XlaDialect* dialect) {
+    xla::RegisterSymbolicExprStorage(ctx);
+  });
   xla::gpu::registerGpuFusionTransformsPasses();
 
   return mlir::asMainReturnCode(mlir::MlirOptMain(

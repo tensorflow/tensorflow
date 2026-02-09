@@ -35,6 +35,7 @@ xla_cc_binary(
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
+        "//xla/hlo/analysis:symbolic_expr",
         "//xla/mlir_hlo",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "@llvm-project//llvm:Support",
