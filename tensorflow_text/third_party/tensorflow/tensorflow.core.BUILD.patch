@@ -1,0 +1,13 @@
+diff --git a/tensorflow/core/BUILD b/tensorflow/core/BUILD
+index 69a2c5fcaad..7e790302036 100644
+--- a/tensorflow/core/BUILD
++++ b/tensorflow/core/BUILD
+@@ -1639,7 +1639,7 @@ tf_cuda_library(
+         "@eigen_archive//:eigen3",
+     ] + if_static(
+         extra_deps = [
+-            ":framework_internal_impl",
++            # ":framework_internal_impl",
+             "@com_google_protobuf//:protobuf",
+         ],
+         otherwise = [

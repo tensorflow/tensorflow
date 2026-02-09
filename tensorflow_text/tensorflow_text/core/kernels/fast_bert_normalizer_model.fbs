@@ -1,0 +1,20 @@
+namespace tensorflow.text;
+
+table FastBertNormalizerModel {
+  // If true, a preprocessing step is added to lowercase the text, apply NFD
+  // normalization, and strip accents characters.
+  lower_case_nfd_strip_accents: bool;
+
+  // The trie data, in the format of darts_clone trie, for input normalization.
+  trie_array: [uint32];
+
+  // The encoded data for the special codepoint '\0'. Darts_clone trie cannot
+  // encode the empty string, so we store this value separately.
+  data_for_codepoint_zero: int32;
+
+  // The string pool of normalized strings. Each normalized string is a
+  // substring denoted by (offset and length).
+  normalized_string_pool: [ubyte];
+}
+
+root_type FastBertNormalizerModel;

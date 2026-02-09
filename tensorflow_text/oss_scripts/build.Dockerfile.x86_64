@@ -1,0 +1,32 @@
+# Constructs the environment within which we will build the tensorflow-text
+# pip wheels.
+
+ARG PYTHON_VERSION
+FROM tensorflow/build:2.18-python${PYTHON_VERSION}
+LABEL maintainer="TensorFlow-Text team <tf-text-team@google.com>"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install supplementary Python interpreters
+RUN mkdir /tmp/python
+RUN --mount=type=cache,target=/var/cache/apt \
+  apt update && \
+  apt install -yqq \
+    apt-utils \
+    build-essential \
+    checkinstall \
+    libffi-dev
+
+# Install pip dependencies needed for tensorflow text.
+RUN --mount=type=cache,target=/root/.cache \
+  python${PYTHON_VERSION} -m pip install -U pip && \
+  python${PYTHON_VERSION} -m pip install -U \
+    absl-py \
+    auditwheel \
+    etils[epath] \
+    patchelf \
+    setuptools \
+    twine \
+    wheel;
+
+WORKDIR "/tmp/tensorflow_text"

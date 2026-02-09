@@ -1,0 +1,49 @@
+toc:
+- title: "Overview"
+  path: /text/tutorials
+
+- heading: Keras NLP
+  style: divider
+- title: Get started with KerasNLP
+  path: https://keras.io/guides/keras_nlp/getting_started/
+  status: external
+
+- heading: Text Generation
+  style: divider
+- title: "Generate Text with RNNs"
+  path: /text/tutorials/text_generation
+- title: "Translate text with seq2seq models"
+  path: /text/tutorials/nmt_with_attention
+- title: "Translate text with transformer models"
+  path: /text/tutorials/transformer
+- title: "Image captioning"
+  path: /text/tutorials/image_captioning
+
+- heading: Text Classification
+  style: divider
+- title: "Text classification with BERT"
+  path: /text/tutorials/classify_text_with_bert
+- title: "Text classification with RNNs"
+  path: /text/tutorials/text_classification_rnn
+- title: "Compute Similarity Metrics"
+  path: /text/tutorials/text_similarity
+
+- heading: NLP with BERT
+  style: divider
+
+- title: "Fine Tune Bert on GLUE tasks"
+  path: /text/tutorials/bert_glue
+- title: "Fine tune BERT"
+  path: /tfmodels/nlp/fine_tune_bert
+- title: "Quantify uncertainty with BERT"
+  path: /text/tutorials/uncertainty_quantification_with_sngp_bert
+
+- heading: Embeddings
+  style: divider
+
+- title: "Word embeddings"
+  path: /text/tutorials/word_embeddings
+- title: "Warmstarting embeddings"
+  path: /text/tutorials/warmstart_embedding_matrix
+- title: "Word2Vec"
+  path: /text/tutorials/word2vec

@@ -1,0 +1,5 @@
+# https://help.github.com/articles/about-codeowners/
+# Last matching pattern takes precedence.
+
+# Automatically request reviews from tensorflow docs team.
+docs/  @tensorflow/docs-team

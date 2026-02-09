@@ -1,0 +1,37 @@
+# Constructs the environment within which we will build the tensorflow-text
+# pip wheels.
+
+FROM linaro/tensorflow-arm64-build:2.16-multipython
+LABEL maintainer="TensorFlow-Text team <tf-text-team@google.com>"
+
+ARG PYTHON_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHON_BIN_PATH=/usr/bin/python${PYTHON_VERSION}
+
+# Install supplementary Python interpreters
+RUN ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python && \
+    ln -s ${PYTHON_BIN_PATH} /usr/local/bin/python3 && \
+    ln -s ${PYTHON_BIN_PATH} /usr/bin/python
+
+RUN --mount=type=cache,target=/var/cache/apt \
+  apt update && \
+  apt install -yqq \
+    apt-utils \
+    build-essential \
+    checkinstall \
+    libffi-dev
+
+# Install pip dependencies needed for tensorflow-text
+RUN --mount=type=cache,target=/root/.cache \
+  ${PYTHON_BIN_PATH} -m pip install -U pip && \
+  ${PYTHON_BIN_PATH} -m pip install -U \
+    absl-py \
+    auditwheel \
+    etils[epath] \
+    patchelf \
+    setuptools \
+    twine \
+    wheel;
+
+WORKDIR "/tmp/tensorflow_text"

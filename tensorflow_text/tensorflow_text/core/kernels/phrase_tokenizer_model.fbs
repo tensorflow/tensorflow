@@ -1,0 +1,38 @@
+namespace tensorflow.text;
+
+table Trie {
+  nodes: [uint32];
+}
+
+
+table PhraseTokenizerConfig {
+  // Probability of emitting a phrase when there is a match.
+  // The larger value means preferring shorter phrases over longer ones.
+  // I.e. 0 means always emit the longest possible phrase.
+  prob: int;
+
+  // The unknown token string.
+  unk_token: string;
+
+  // The unkown token id.
+  unk_token_id: int;
+
+  // Whether the tokenizer supports detokenization function.
+  support_detokenization: bool;
+
+  // Phrases Vocabulary array, this is for storting the phrase tokens in order,
+  // mainly used for detokenization.
+  vocab_array: [string];
+
+  // The trie is used to construct DoubleArrayTrie to do efficient prefix
+  // matching during tokenization.
+  vocab_trie: Trie;
+
+  // whilte space config used to initalize the whitespace tokenzier.
+  whitespace_config: string;
+
+  // Whether to split the end_puctualtion for each token.
+  split_end_punctuation: bool;
+}
+
+root_type PhraseTokenizerConfig;

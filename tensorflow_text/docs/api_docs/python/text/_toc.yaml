@@ -1,0 +1,182 @@
+toc:
+- title: text
+  section:
+  - title: Overview
+    path: /text/api_docs/python/text
+  - title: BertTokenizer
+    path: /text/api_docs/python/text/BertTokenizer
+  - title: ByteSplitter
+    path: /text/api_docs/python/text/ByteSplitter
+  - title: Detokenizer
+    path: /text/api_docs/python/text/Detokenizer
+  - title: FastBertNormalizer
+    path: /text/api_docs/python/text/FastBertNormalizer
+  - title: FastBertTokenizer
+    path: /text/api_docs/python/text/FastBertTokenizer
+  - title: FastSentencepieceTokenizer
+    path: /text/api_docs/python/text/FastSentencepieceTokenizer
+  - title: FastWordpieceTokenizer
+    path: /text/api_docs/python/text/FastWordpieceTokenizer
+  - title: FirstNItemSelector
+    path: /text/api_docs/python/text/FirstNItemSelector
+  - title: HubModuleSplitter
+    path: /text/api_docs/python/text/HubModuleSplitter
+  - title: HubModuleTokenizer
+    path: /text/api_docs/python/text/HubModuleTokenizer
+  - title: LastNItemSelector
+    path: /text/api_docs/python/text/LastNItemSelector
+  - title: MaskValuesChooser
+    path: /text/api_docs/python/text/MaskValuesChooser
+  - title: PhraseTokenizer
+    path: /text/api_docs/python/text/PhraseTokenizer
+  - title: RandomItemSelector
+    path: /text/api_docs/python/text/RandomItemSelector
+  - title: Reduction
+    path: /text/api_docs/python/text/Reduction
+  - title: RegexSplitter
+    path: /text/api_docs/python/text/RegexSplitter
+  - title: RoundRobinTrimmer
+    path: /text/api_docs/python/text/RoundRobinTrimmer
+  - title: SentencepieceTokenizer
+    path: /text/api_docs/python/text/SentencepieceTokenizer
+  - title: ShrinkLongestTrimmer
+    path: /text/api_docs/python/text/ShrinkLongestTrimmer
+  - title: SplitMergeFromLogitsTokenizer
+    path: /text/api_docs/python/text/SplitMergeFromLogitsTokenizer
+  - title: SplitMergeTokenizer
+    path: /text/api_docs/python/text/SplitMergeTokenizer
+  - title: Splitter
+    path: /text/api_docs/python/text/Splitter
+  - title: SplitterWithOffsets
+    path: /text/api_docs/python/text/SplitterWithOffsets
+  - title: StateBasedSentenceBreaker
+    path: /text/api_docs/python/text/StateBasedSentenceBreaker
+  - title: Tokenizer
+    path: /text/api_docs/python/text/Tokenizer
+  - title: TokenizerWithOffsets
+    path: /text/api_docs/python/text/TokenizerWithOffsets
+  - title: Trimmer
+    path: /text/api_docs/python/text/Trimmer
+  - title: UnicodeCharTokenizer
+    path: /text/api_docs/python/text/UnicodeCharTokenizer
+  - title: UnicodeScriptTokenizer
+    path: /text/api_docs/python/text/UnicodeScriptTokenizer
+  - title: WaterfallTrimmer
+    path: /text/api_docs/python/text/WaterfallTrimmer
+  - title: WhitespaceTokenizer
+    path: /text/api_docs/python/text/WhitespaceTokenizer
+  - title: WordShape
+    path: /text/api_docs/python/text/WordShape
+  - title: WordpieceTokenizer
+    path: /text/api_docs/python/text/WordpieceTokenizer
+  - title: boise_tags_to_offsets
+    path: /text/api_docs/python/text/boise_tags_to_offsets
+  - title: build_fast_bert_normalizer_model
+    path: /text/api_docs/python/text/build_fast_bert_normalizer_model
+  - title: build_fast_wordpiece_model
+    path: /text/api_docs/python/text/build_fast_wordpiece_model
+  - title: case_fold_utf8
+    path: /text/api_docs/python/text/case_fold_utf8
+  - title: coerce_to_structurally_valid_utf8
+    path: /text/api_docs/python/text/coerce_to_structurally_valid_utf8
+  - title: combine_segments
+    path: /text/api_docs/python/text/combine_segments
+  - title: concatenate_segments
+    path: /text/api_docs/python/text/concatenate_segments
+  - title: find_source_offsets
+    path: /text/api_docs/python/text/find_source_offsets
+  - title: gather_with_default
+    path: /text/api_docs/python/text/gather_with_default
+  - title: greedy_constrained_sequence
+    path: /text/api_docs/python/text/greedy_constrained_sequence
+  - title: mask_language_model
+    path: /text/api_docs/python/text/mask_language_model
+  - title: max_spanning_tree
+    path: /text/api_docs/python/text/max_spanning_tree
+  - title: max_spanning_tree_gradient
+    path: /text/api_docs/python/text/max_spanning_tree_gradient
+  - title: ngrams
+    path: /text/api_docs/python/text/ngrams
+  - title: normalize_utf8
+    path: /text/api_docs/python/text/normalize_utf8
+  - title: normalize_utf8_with_offsets_map
+    path: /text/api_docs/python/text/normalize_utf8_with_offsets_map
+  - title: offsets_to_boise_tags
+    path: /text/api_docs/python/text/offsets_to_boise_tags
+  - title: pad_along_dimension
+    path: /text/api_docs/python/text/pad_along_dimension
+  - title: pad_model_inputs
+    path: /text/api_docs/python/text/pad_model_inputs
+  - title: regex_split
+    path: /text/api_docs/python/text/regex_split
+  - title: regex_split_with_offsets
+    path: /text/api_docs/python/text/regex_split_with_offsets
+  - title: sentence_fragments
+    status: deprecated
+    path: /text/api_docs/python/text/sentence_fragments
+  - title: sliding_window
+    path: /text/api_docs/python/text/sliding_window
+  - title: span_alignment
+    path: /text/api_docs/python/text/span_alignment
+  - title: span_overlaps
+    path: /text/api_docs/python/text/span_overlaps
+  - title: utf8_binarize
+    path: /text/api_docs/python/text/utf8_binarize
+  - title: viterbi_constrained_sequence
+    path: /text/api_docs/python/text/viterbi_constrained_sequence
+  - title: wordshape
+    path: /text/api_docs/python/text/wordshape
+- title: text.keras
+  section:
+  - title: Overview
+    path: /text/api_docs/python/text/keras
+  - title: layers
+    section:
+    - title: Overview
+      path: /text/api_docs/python/text/keras/layers
+    - title: ToDense
+      path: /text/api_docs/python/text/keras/layers/ToDense
+    - title: UnicodeScriptTokenizer
+      path: /text/api_docs/python/text/keras/layers/UnicodeScriptTokenizer
+    - title: WhitespaceTokenizer
+      path: /text/api_docs/python/text/keras/layers/WhitespaceTokenizer
+    - title: WordpieceTokenizer
+      path: /text/api_docs/python/text/keras/layers/WordpieceTokenizer
+- title: text.metrics
+  section:
+  - title: Overview
+    path: /text/api_docs/python/text/metrics
+  - title: rouge_l
+    path: /text/api_docs/python/text/metrics/rouge_l
+- title: text.tflite_registrar
+  section:
+  - title: Overview
+    path: /text/api_docs/python/text/tflite_registrar
+  - title: AddByteSplit
+    path: /text/api_docs/python/text/tflite_registrar/AddByteSplit
+  - title: AddByteSplitByOffsets
+    path: /text/api_docs/python/text/tflite_registrar/AddByteSplitByOffsets
+  - title: AddFastBertNormalize
+    path: /text/api_docs/python/text/tflite_registrar/AddFastBertNormalize
+  - title: AddFastSentencepieceDetokenize
+    path: /text/api_docs/python/text/tflite_registrar/AddFastSentencepieceDetokenize
+  - title: AddFastSentencepieceTokenize
+    path: /text/api_docs/python/text/tflite_registrar/AddFastSentencepieceTokenize
+  - title: AddFastWordpieceDetokenize
+    path: /text/api_docs/python/text/tflite_registrar/AddFastWordpieceDetokenize
+  - title: AddFastWordpieceTokenize
+    path: /text/api_docs/python/text/tflite_registrar/AddFastWordpieceTokenize
+  - title: AddNgramsStringJoin
+    path: /text/api_docs/python/text/tflite_registrar/AddNgramsStringJoin
+  - title: AddRaggedTensorToTensor
+    path: /text/api_docs/python/text/tflite_registrar/AddRaggedTensorToTensor
+  - title: AddRoundRobinGenerateMasks
+    path: /text/api_docs/python/text/tflite_registrar/AddRoundRobinGenerateMasks
+  - title: AddRoundRobinTrim
+    path: /text/api_docs/python/text/tflite_registrar/AddRoundRobinTrim
+  - title: AddSentenceFragmenterV2
+    path: /text/api_docs/python/text/tflite_registrar/AddSentenceFragmenterV2
+  - title: AddUtf8Binarize
+    path: /text/api_docs/python/text/tflite_registrar/AddUtf8Binarize
+  - title: AddWhitespaceTokenize
+    path: /text/api_docs/python/text/tflite_registrar/AddWhitespaceTokenize

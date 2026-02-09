@@ -1,0 +1,6 @@
+{
+  "strategy": "additive",
+  "featureFilters": {
+    "normalization": "include"
+  }
+}

@@ -1,0 +1,68 @@
+namespace tensorflow.text;
+
+struct FailureStruct {
+  // The failure link of node v, denoted as f(v).
+  failure_link: uint32;
+
+  // The failure pops of node v, denoted as F(v). It is an encoded value of
+  // (offset, length) that represents a consecutive subarray in
+  // 'failure_pops_pool' (see FastWordpieceTokenizerConfig).
+  failure_pops_offset_length: uint32;
+}
+
+table FastWordpieceTokenizerConfig {
+  // The trie data, in the format of darts_clone trie, as accepted by
+  // DartsCloneTrieWrapper::Create().
+  trie_array: [uint32];
+
+  // The array of the failure structures.
+  failure_struct_array: [FailureStruct];
+
+  // The array holding the failure pops.
+  failure_pops_pool: [int];
+
+  // The trie suffix root node id.
+  trie_suffix_root: uint32;
+
+  // Max size of the input token. If the input length is longer than this, it
+  // will be mapped to unk_token.
+  max_bytes_per_token: int;
+
+  // Characters prepended to a wordpiece to indicate that it is a suffix to
+  // another subword, such as "##".
+  suffix_indicator: string;
+
+  // The unknown token string.
+  unk_token: string;
+
+  // The unkown token id.
+  unk_token_id: int;
+
+  // The precomputed result for the input being the suffix indicator itself.
+  precomputed_result_for_suffix_indicator: [int];
+
+  // The node id of every punctuation's failure link. It is only used when
+  // end_to_end=true.
+  trie_punct_failure_link_node: uint32;
+
+  // Whether to build end-to-end tokenizer for tokenizing general texts (as
+  // opposed to splitted single words). When it is true, the input text is first
+  // split into words on "punctuation"/whitespaces, and each word is further
+  // tokenized into subwords.
+  // Note that our definition of "punctuation" includes some special Chinese
+  // characters for compatibility with Bert. More details are available in
+  // `fast_wordpiece_tokenizer_utils::IsPunctuationOrChineseChar`.
+  end_to_end: bool;
+
+  // Whether the tokenizer supports detokenization function.
+  support_detokenization: bool;
+
+  // WordPiece Vocabulary. Note that we remove suffix indicator from suffix
+  // tokens for saving space.
+  vocab_array: [string];
+
+  // Whether the corresponding token in the vocab_array is a suffix token.
+  vocab_is_suffix_array: [bool];
+}
+
+root_type FastWordpieceTokenizerConfig;
