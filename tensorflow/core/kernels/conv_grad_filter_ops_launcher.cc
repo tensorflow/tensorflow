@@ -500,7 +500,7 @@ void LaunchConv2DBackpropFilterOpImpl(
   auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
-  Status cudnn_launch_status = LaunchAutotunedConv(
+  absl::Status cudnn_launch_status = LaunchAutotunedConv(
       autotune_entry, &scratch_allocator,
       se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc, input_ptr,
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,

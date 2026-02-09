@@ -49,7 +49,7 @@ void NcclReducer::Run(StatusCallback done) {
         break;
       case DT_INT32:
         group_size_val =
-            Tensor(static_cast<int32>(col_params_->group.group_size));
+            Tensor(static_cast<int32_t>(col_params_->group.group_size));
         break;
       case DT_INT64:
         group_size_val =

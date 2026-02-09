@@ -217,7 +217,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
   bool IsOnCpu(PjRtMemorySpace* memory_space) override { return true; }
 
   tsl::AsyncValueRef<CpuEvent> GetCollectiveLaunchEvent(
-      RunId run_id, size_t num_addressable_devices,
+      RunId run_id, uint64_t executable_id, size_t num_addressable_devices,
       tsl::AsyncValueRef<CpuEvent> execute_event);
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
@@ -342,7 +342,8 @@ class PjRtCpuClient final : public CommonPjRtClient {
     tsl::CountDownAsyncValueRef<CpuEvent> countdown_event;
     size_t num_left_in_barrier;
   };
-  absl::flat_hash_map<RunId, CollectiveLaunchEventState> launch_events_;
+  absl::flat_hash_map<std::pair<RunId, uint64_t>, CollectiveLaunchEventState>
+      launch_events_;
   tsl::AsyncValueRef<CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
@@ -603,10 +604,6 @@ class PjRtCpuLoadedExecutable final : public PjRtLoadedExecutable {
   // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
   // unique_ptrs to play well with the Python bindings (see xla.cc).
   std::vector<PjRtDevice*> addressable_devices_;
-
-  // Cached result of comparing HloCostAnalysis FLOP estimate for execute
-  // critical path.
-  bool cheap_computation_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(

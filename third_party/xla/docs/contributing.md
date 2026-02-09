@@ -83,13 +83,13 @@ In that case, it should be replaced with a proper fusion pass.
 Contributions to horizontal scaling encompass HLO optimizations, cost model
 improvements, library updates, and various infrastructure modifications. Due to
 the difficulty of reproducing the performance gains and the limited need for the
-multi-GPU configurations internally, we adhere to strict acceptance criteria:
+multi-host configurations internally, we adhere to strict acceptance criteria:
 
 We prioritize minimally invasive changes that carry low risk.
 
 ##### What we generally accept:
 
-* Updates to libraries handling inter-GPU communication.
+* Updates to libraries handling inter-GPU or interhost communication.
 
 * Performance table updates for new platforms.
 
@@ -100,7 +100,9 @@ We prioritize minimally invasive changes that carry low risk.
 * Infrastructure changes that introduce new flags, technical debt or regressions.
 
 #### Backends & Autotuning
-Backends for the unnested ops, e.g. custom calls and fusions, should implement [GpuCodegenBackend](https://github.com/openxla/xla/blob/main/xla/backends/gpu/autotuner/gpu_codegen_backend.h) interface.
+Backends for the unnested ops, e.g. custom calls and fusions, should implement
+[CodegenBackend](https://github.com/openxla/xla/blob/main/xla/backends/autotuner/codegen_backend.h)
+interface.
 
 This interface is necessary to enable optimal backend selection, because it
 provides the methods to include the parameters for the given HLO instructions
@@ -117,13 +119,14 @@ virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
 ```
 
 #### Runtime
-The end result of the XLA:GPU compilation pipeline is a thunk sequence that can
-be serialized.
+The end result of the XLA compilation pipeline is a thunk sequence that can be
+serialized.
 
-All of the new thunk types should be serializable, i.e. `GpuCompiler` should be
-able to compile the program, serialize it, so that later the XLA runner could
-load and execute the program. That means that there should be no pointers to
-`HloInstruction` or to other parts of the `GpuCompiler` or the `StreamExecutor`.
+All of the new thunk types should be serializable, i.e. `GpuCompiler` or
+`CpuCompiler` should be able to compile the program, serialize it, so that later
+the XLA runner could load and execute the program. That means that there should
+be no pointers to `HloInstruction` or to other parts of the compiler or the
+`StreamExecutor`.
 
 ### Code standards
 

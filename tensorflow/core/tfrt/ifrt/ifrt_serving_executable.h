@@ -67,6 +67,10 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// Encodes the layout of `xla_input_shapes` to the module.
+absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
+                          mlir::ModuleOp module);
+
 class IfrtServingExecutable {
  public:
   static absl::StatusOr<std::unique_ptr<IfrtServingExecutable>> Create(
@@ -139,7 +143,7 @@ class IfrtServingExecutable {
     // executable.
     // TODO(b/477700609): Currently `xla_input_layouts` and `xla_input_shapes`
     // are not used. We should use them to generate ifrt arrays.
-    std::optional<std::vector<xla::Shape>> xla_input_shapes;
+    std::optional<std::vector<std::shared_ptr<xla::Shape>>> xla_input_shapes;
     std::optional<std::vector<xla::ifrt::LayoutRef>> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;

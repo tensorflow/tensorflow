@@ -479,8 +479,7 @@ TEST_F(TfrtGpuClientTest, AcquireDonation) {
 
   // Create TfrtGpuBuffer.
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
-  TfrtGpuClient* tfrt_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+  TfrtGpuClient* tfrt_client = absl::down_cast<TfrtGpuClient*>(client_.get());
   TfrtGpuDevice* device =
       absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
@@ -550,7 +549,7 @@ TEST(TfrtGpuClientWithOptionsTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   options_staging.should_stage_host_to_device_transfers = true;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
-  auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
+  auto* staging_client = absl::down_cast<TfrtGpuClient*>(client.get());
   TfrtGpuThreadChecker thread_checker;
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
@@ -577,7 +576,7 @@ TEST(TfrtGpuClientWithOptionsTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   options_staging.should_stage_host_to_device_transfers = false;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
-  auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
+  auto* staging_client = absl::down_cast<TfrtGpuClient*>(client.get());
   TfrtGpuThreadChecker thread_checker;
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
@@ -1124,7 +1123,7 @@ TEST_F(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
 TEST_F(TfrtGpuClientTest, LookupDevice) {
   ASSERT_GE(client_->devices().size(), 2);
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   TF_ASSERT_OK_AND_ASSIGN(
       auto* looked_up_device,
       client_->LookupDevice(PjRtGlobalDeviceId(device->id())));
@@ -1665,7 +1664,7 @@ TEST(TfrtGpuClientWithOptionsTest, DeviceAttributes) {
 
   for (int device_index = 0;
        device_index < client->addressable_devices().size(); ++device_index) {
-    TfrtGpuDevice* device = tensorflow::down_cast<TfrtGpuDevice*>(
+    TfrtGpuDevice* device = absl::down_cast<TfrtGpuDevice*>(
         client->addressable_devices()[device_index]);
 
     // Attribute `compute_capability`.
@@ -1704,7 +1703,7 @@ TEST(TfrtGpuClientWithOptionsTest, DeviceAttributes) {
 }
 
 TEST_F(TfrtGpuClientTest, DmaMapUnmap) {
-  auto client = tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+  auto client = absl::down_cast<TfrtGpuClient*>(client_.get());
   size_t dma_size = 8192;
   size_t alignment = 4096;
   auto host_dma_ptr = tsl::port::AlignedMalloc(

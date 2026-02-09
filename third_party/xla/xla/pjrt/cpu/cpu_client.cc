@@ -1538,14 +1538,15 @@ PjRtCpuLoadedExecutable::ExecuteHelper(
 }
 
 tsl::AsyncValueRef<CpuEvent> PjRtCpuClient::GetCollectiveLaunchEvent(
-    RunId run_id, size_t num_addressable_devices,
+    RunId run_id, uint64_t executabe_id, size_t num_addressable_devices,
     tsl::AsyncValueRef<CpuEvent> execute_event) {
   mu_.lock();
-  auto it = launch_events_.find(run_id);
+  auto key = std::make_pair(run_id, executabe_id);
+  auto it = launch_events_.find(key);
   if (it == launch_events_.end()) {
     tsl::CountDownAsyncValueRef<CpuEvent> count_down(num_addressable_devices);
     it = launch_events_
-             .emplace(run_id,
+             .emplace(key,
                       CollectiveLaunchEventState{
                           std::move(last_collective_launch_event_), count_down,
                           num_addressable_devices})
@@ -1684,7 +1685,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     // The next collective launch will not be scheduled onto threadpool until
     // this one completes.
     input_deps.AddEvent(client_->GetCollectiveLaunchEvent(
-        run_id_, num_addressable_devices_, execute_event));
+        run_id_, reinterpret_cast<uint64_t>(executable_),
+        num_addressable_devices_, execute_event));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.

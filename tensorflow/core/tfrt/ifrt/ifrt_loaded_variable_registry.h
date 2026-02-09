@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -50,21 +52,34 @@ class IfrtLoadedVariableRegistry {
     std::vector<int> device_ids;
     std::string input_name;
     xla::HloSharding hlo_sharding;
+    // Use pointer instead of value to avoid copy when building the key.
+    std::shared_ptr<xla::Shape> shape_on_device;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
       h = H::combine(std::move(h), key.input_name, key.device_ids,
                      key.hlo_sharding);
+      if (key.shape_on_device != nullptr) {
+        h = H::combine(std::move(h), *key.shape_on_device);
+      }
       return h;
     }
 
     friend bool operator==(const Key& x, const Key& y) {
+      bool xla_shape_equal = false;
+      if (x.shape_on_device == nullptr && y.shape_on_device == nullptr) {
+        xla_shape_equal = true;
+      } else if (x.shape_on_device != nullptr && y.shape_on_device != nullptr) {
+        xla_shape_equal = *x.shape_on_device == *y.shape_on_device;
+      }
       return x.input_name == y.input_name && x.device_ids == y.device_ids &&
-             x.hlo_sharding == y.hlo_sharding;
+             x.hlo_sharding == y.hlo_sharding && xla_shape_equal;
     }
 
     std::string ToString() const {
-      return absl::StrCat(input_name, ":", absl::StrJoin(device_ids, ","), ":",
-                          hlo_sharding.ToString());
+      return absl::StrCat(
+          input_name, ":", absl::StrJoin(device_ids, ","), ":",
+          hlo_sharding.ToString(), ":",
+          (shape_on_device ? shape_on_device->ToString() : "nullptr"));
     }
   };
 

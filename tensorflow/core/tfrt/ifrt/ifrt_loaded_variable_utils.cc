@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -95,11 +96,13 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     ifrt_serving::IfrtLoadedVariableRegistry& loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config,
-    const xla::ifrt::LayoutRef& xla_input_layout) {
+    const xla::ifrt::LayoutRef& xla_input_layout,
+    std::shared_ptr<xla::Shape> shape_on_device) {
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = sharding_config.device_ids,
       .input_name = std::string(tensor_name),
       .hlo_sharding = sharding_config.hlo_sharding,
+      .shape_on_device = std::move(shape_on_device),
   };
 
   if (loaded_variable_registry.GetLoadedVariable(key).ok()) {

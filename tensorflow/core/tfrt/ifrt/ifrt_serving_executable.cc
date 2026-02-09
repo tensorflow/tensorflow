@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -406,6 +407,30 @@ absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
   return host_callbacks;
 }
 
+absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
+                          mlir::ModuleOp module) {
+  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!op) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  if (op.getNumArguments() != xla_input_shapes.size()) {
+    return absl::InternalError(
+        absl::StrCat("Argument count mismatch: ", op.getNumArguments(), " vs ",
+                     xla_input_shapes.size()));
+  }
+
+  mlir::OpBuilder builder(op.getContext());
+  for (int i = 0; i < xla_input_shapes.size(); ++i) {
+    const auto& shape = xla_input_shapes[i];
+    if (shape.has_layout()) {
+      auto attr = builder.getStringAttr(shape.layout().ToString());
+      op.setArgAttr(i, "mhlo.layout_mode", attr);
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
@@ -456,6 +481,16 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                  mlir_hlo_module.get());
   }
 
+  if (!tf2hlo_result.xla_input_shapes.empty()) {
+    TF_RETURN_IF_ERROR(
+        EncodeLayout(tf2hlo_result.xla_input_shapes, mlir_hlo_module.get()));
+  }
+
+  if (VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("ifrt_after_layout_encoding_layout_mode",
+                                 mlir_hlo_module.get());
+  }
+
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
@@ -470,6 +505,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
+
   if (std::holds_alternative<tsl::protobuf::Message*>(
           compilation_env_or_overrides_)) {
     tsl::protobuf::Message* compilation_environment_proto_ =
@@ -552,6 +588,10 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla_input_layouts.reserve(tf2hlo_result.xla_input_shapes.size());
     for (const auto& shape : tf2hlo_result.xla_input_shapes) {
+      // Make a copy the xla::Shape and store it in the executable bundle as a
+      // shared_ptr.
+      executable_bundle->xla_input_shapes->push_back(
+          std::make_shared<xla::Shape>(shape));
       if (!shape.has_layout()) {
         xla_input_layouts.push_back(nullptr);
       } else {
@@ -559,8 +599,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
             std::make_shared<xla::PjRtLayout>(shape.layout())));
       }
     }
-    executable_bundle->xla_input_shapes =
-        std::move(tf2hlo_result.xla_input_shapes);
     executable_bundle->xla_input_layouts = std::move(xla_input_layouts);
   }
 
@@ -605,6 +643,9 @@ absl::Status IfrtServingExecutable::LoadAndRegisterVariableOnExecutable(
         .device_ids = device_ids,
         .input_name = tensor_name,
         .hlo_sharding = std::move(hlo_sharding),
+        .shape_on_device = executable_bundle->xla_input_shapes.has_value()
+                               ? executable_bundle->xla_input_shapes->at(i)
+                               : nullptr,
     };
     TF_ASSIGN_OR_RETURN(auto loaded_variable,
                         ifrt_loaded_variable_registry_.GetLoadedVariable(key));
@@ -798,24 +839,23 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
               : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
   TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
 
-  std::vector<xla::Shape>* xla_input_shapes = nullptr;
+  std::vector<std::shared_ptr<xla::Shape>>* xla_input_shapes = nullptr;
   if (executable_bundle->xla_input_shapes.has_value()) {
     xla_input_shapes = &(*executable_bundle->xla_input_shapes);
   }
-  {
-    // Sanity check that the number of XLA input shapes and arguments matches
-    // the number of inputs.
-    if (xla_input_shapes != nullptr &&
-        xla_input_shapes->size() != inputs.size()) {
-      return absl::InternalError(absl::StrCat("Expected ", inputs.size(),
-                                              " XLA input shapes but got ",
-                                              xla_input_shapes->size()));
-    }
-    if (inputs.size() != executable_bundle->compile_metadata.args().size()) {
-      return absl::InternalError(absl::StrCat(
-          "Expected ", inputs.size(), " arguments but got ",
-          executable_bundle->compile_metadata.args().size(), " args"));
-    }
+
+  // Sanity check that the number of XLA input shapes and arguments matches
+  // the number of inputs.
+  if (xla_input_shapes != nullptr &&
+      xla_input_shapes->size() != inputs.size()) {
+    return absl::InternalError(absl::StrCat("Expected ", inputs.size(),
+                                            " XLA input shapes but got ",
+                                            xla_input_shapes->size()));
+  }
+  if (inputs.size() != executable_bundle->compile_metadata.args().size()) {
+    return absl::InternalError(absl::StrCat(
+        "Expected ", inputs.size(), " arguments but got ",
+        executable_bundle->compile_metadata.args().size(), " args"));
   }
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
@@ -825,10 +865,16 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           xla::HloSharding hlo_sharding,
           xla::HloSharding::FromProto(
               executable_bundle->compile_metadata.args()[i].sharding()));
+
+      std::shared_ptr<xla::Shape> shape_ptr = nullptr;
+      if (executable_bundle->xla_input_shapes.has_value()) {
+        shape_ptr = (*executable_bundle->xla_input_shapes)[i];
+      }
       IfrtLoadedVariableRegistry::Key key{
           .device_ids = device_ids,
           .input_name = inputs[i].scalar<tsl::tstring>()(),
           .hlo_sharding = std::move(hlo_sharding),
+          .shape_on_device = std::move(shape_ptr),
       };
       auto it = executable_bundle->variable_arrays.find(key);
       if (it == executable_bundle->variable_arrays.end()) {
@@ -850,17 +896,19 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
         return absl::InternalError("Failed to reshape tensor");
       }
-      // TODO(b/477700609): Support custom layout
+      xla::ifrt::LayoutRef layout_ref =
+          executable_bundle->xla_input_layouts.has_value()
+              ? (*executable_bundle->xla_input_layouts)[i]
+              : nullptr;
       const xla::Shape* xla_input_shape =
-          xla_input_shapes != nullptr ? &(*xla_input_shapes)[i] : nullptr;
-
+          xla_input_shapes != nullptr ? (*xla_input_shapes)[i].get() : nullptr;
       TF_ASSIGN_OR_RETURN(
           tsl::Future<xla::ifrt::ArrayRef> array_ref,
           (*user_inputs_h2d_transfer_executor)
               ->ScheduledH2DTransfer(
                   reshaped, xla_input_shape, device_list,
                   executable_bundle->compile_metadata.args()[i].sharding(),
-                  thread_pool_, /*xla_input_layout=*/nullptr));
+                  thread_pool_, std::move(layout_ref)));
       args.push_back(std::move(array_ref));
     }
   }
@@ -934,6 +982,13 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     absl::Span<const int> variable_arg_indices,
     const CachedExecutableBundle& executable_bundle,
     const xla::ifrt::DeviceListRef& devices) {
+  if (executable_bundle.xla_input_shapes.has_value() &&
+      !(*executable_bundle.xla_input_shapes).empty() &&
+      (*executable_bundle.xla_input_shapes).size() != inputs.size()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected ", (*executable_bundle.xla_input_shapes).size(),
+                     " input shapes, but got ", inputs.size(), " inputs"));
+  }
   for (const int i : variable_arg_indices) {
     if (inputs[i].dtype() != tensorflow::DT_STRING ||
         !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
@@ -949,19 +1004,30 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
         xla::HloSharding hlo_sharding,
         xla::HloSharding::FromProto(
             executable_bundle.compile_metadata.args()[i].sharding()));
+    std::shared_ptr<xla::Shape> shape_ptr = nullptr;
+    if (executable_bundle.xla_input_shapes.has_value()) {
+      shape_ptr = (*executable_bundle.xla_input_shapes)[i];
+    }
     VariableDeviceShardingConfig sharding_config{
         .hlo_sharding = std::move(hlo_sharding),
     };
     for (xla::ifrt::Device* device : devices->devices()) {
       sharding_config.device_ids.push_back(device->Id().value());
     }
-    // TODO(b/477700609): Support custom layout.
+    xla::ifrt::LayoutRef layout_ref =
+        executable_bundle.xla_input_layouts.has_value()
+            ? (*executable_bundle.xla_input_layouts)[i]
+            : nullptr;
+    std::shared_ptr<xla::Shape> shape_on_device =
+        executable_bundle.xla_input_shapes.has_value()
+            ? (*executable_bundle.xla_input_shapes)[i]
+            : nullptr;
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
-            checkpoint_loader_queue_, sharding_config,
-            /*xla_input_layout=*/nullptr));
+            checkpoint_loader_queue_, sharding_config, std::move(layout_ref),
+            std::move(shape_on_device)));
   }
   return absl::OkStatus();
 }
