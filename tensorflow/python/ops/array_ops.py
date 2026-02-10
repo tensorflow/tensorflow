@@ -6456,15 +6456,29 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
 
     
     # Handling inputs
+    if patches.shape.ndims != 4:
+        raise ValueError(
+            f"patches(input must be 4D (batch, height, width, patch_dim), "
+            f"got {patches.shape.ndims}D tensor with shape {patches.shape}"
+        )
+    
     if isinstance(kernel_size, int):
         kernel_h = kernel_w = kernel_size
+        if kernel_size < 1:
+            raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
     else:
         kernel_h, kernel_w = kernel_size
+        if kernel_h < 1 or kernel_w < 1:
+            raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
         
     if isinstance(stride, int):
         stride_h = stride_w = stride
+        if stride < 1:
+            raise ValueError(f"stride must be >= 1, got {stride}")
     else:
         stride_h, stride_w = stride
+        if stride_h < 1 or stride_w < 1:
+            raise ValueError(f"stride must be >= 1, got {stride}")
         
     if isinstance(dilation, int):
         if dilation < 1:
@@ -6473,13 +6487,16 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     else:
         dilation_h, dilation_w = dilation
         if dilation_h < 1 or dilation_w < 1:
-            raise ValueError(f"dilation values must be >= 1, got {dilation}")
-    
+            raise ValueError(f"dilation must be >= 1, got {dilation}")
+        
     # Get dimensions
     batch_size = shape_internal(patches)[0]
     out_h = shape_internal(patches)[1]
     out_w = shape_internal(patches)[2]
     patch_dim = shape_internal(patches)[3]
+
+    if patch_dim % (kernel_h * kernel_w) != 0:
+        raise ValueError(f"Expected size of input's dimension 3 should be divisble by the product of kernel_size, but input's dim 3 is {shape_internal(patches)[3]} and kernel_size is {kernel_size}")
     channels = patch_dim // (kernel_h * kernel_w)
     
     height, width = output_size
@@ -6494,6 +6511,9 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
           raise ValueError(f"padding must be 'VALID' or int got {padding}")
     elif isinstance(padding, int):
         pad_h = pad_w = padding
+        if padding<0:
+          raise ValueError("padding must be >= 0")
+
     else:
       raise ValueError(f"padding must be 'VALID' or int got {padding}")
     
@@ -6533,14 +6553,15 @@ def fold(patches, output_size, kernel_size, stride, padding='VALID',
     
     updates = reshape(patches_reshaped, [-1, channels])
     
-    # Scatter into padded output
+    # Scatter into output tensor
     output = gen_array_ops.scatter_nd(
         indices=indices,
         updates=updates,
         shape=[batch_size, padded_height, padded_width, channels]
     )
     
-    # Remove padding if VALID mode
+    # Crop to desired output_size if symmetric padding was applied
+    # No-op if padding='VALID' or 0
     if pad_h > 0 or pad_w > 0:
         output = output[:, pad_h:pad_h+height, pad_w:pad_w+width, :]
     
