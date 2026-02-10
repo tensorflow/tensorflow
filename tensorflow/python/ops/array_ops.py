@@ -202,7 +202,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 
 
 @dispatch.add_dispatch_support
-def reverse_v2(tensor, axis, name=None):
+def reverse_v2(tensor, axis, name=None):  # pylint: disable=redefined-outer-name
   """Reverses specific dimensions of a tensor.
 
   Given a `tensor`, and a `int32` or `int64` tensor `axis` representing the set
@@ -242,8 +242,8 @@ def reverse_v2(tensor, axis, name=None):
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: If the `axis` is out of range for the given tensor rank.
-    ValueError: If the `axis` contains duplicate entries.
+    InvalidArgumentError: If the `axis` is out of range for the given tensor rank.
+    InvalidArgumentError: If the `axis` contains duplicate entries.
   """
   tensor = ops.convert_to_tensor(tensor, name="tensor")
   rank = tensor.shape.rank
@@ -281,6 +281,7 @@ def reverse_v2(tensor, axis, name=None):
 
 # Alias reverse to reverse_v2 (they are the same operation).
 reverse = reverse_v2
+
 
 @tf_export("fill")
 @dispatch.add_dispatch_support
