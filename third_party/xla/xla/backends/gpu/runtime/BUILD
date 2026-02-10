@@ -1841,6 +1841,7 @@ cc_library(
     srcs = ["ragged_all_to_all_thunk.cc"],
     hdrs = ["ragged_all_to_all_thunk.h"],
     deps = [
+        ":collective_kernel_utils",
         ":collective_thunk",
         ":ragged_all_to_all",
         ":thunk",
@@ -2694,6 +2695,24 @@ cc_library(
 )
 
 cc_library(
+    name = "collective_kernel_utils",
+    srcs = ["collective_kernel_utils.cc"],
+    hdrs = ["collective_kernel_utils.h"],
+    deps = [
+        "//xla:status_macros",
+        "//xla/core/collectives:rank_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
     name = "collective_metadata_thunk",
     srcs = ["collective_metadata_thunk.cc"],
     hdrs = ["collective_metadata_thunk.h"],
@@ -2713,9 +2732,12 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:collective_kernel_metadata",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
