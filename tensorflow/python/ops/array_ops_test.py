@@ -27,6 +27,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import gradient_checker_v2 
 
 
 class ArrayOpTest(test.TestCase):
@@ -351,6 +352,60 @@ class TestFoldInputValidation(test.TestCase):
         array_ops.fold(patches, (4, 4),2,(1,-2))
         array_ops.fold(patches, (4, 4),2,2)
 
+class TestFoldGradients(test.TestCase):
+  """Verifies that fold is differentiable and produces numerically correct gradients 
+  when composed with extract_patches."""
+
+  def setUp(self):
+    super().setUp()
+    random_seed.set_seed(42)
+  
+  def _extract_patches(self,x, kernel, stride, padding="VALID", dilation=1):
+    """Helper that matches TensorFlow's _extract_patches API"""
+    return array_ops.extract_image_patches_v2(
+        images=x,
+        sizes=[1, kernel, kernel, 1],
+        strides=[1, stride, stride, 1],
+        rates=[1, dilation, dilation, 1],
+        padding=padding,
+    )
+  
+  def test_fold_gradient_exists(self):
+    """Verifies that fold produces non-zero gradients """
+    x = random_ops.random_normal([1, 4, 4, 1]) 
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+
+      patches = self._extract_patches(x,kernel=2,stride=1,padding="VALID")
+      y = array_ops.fold(patches,output_size=(4, 4),kernel_size=2,stride=1,padding="VALID")
+      loss = math_ops.reduce_sum(y)
+    
+    grad = tape.gradient(loss, x)
+
+    self.assertIsNotNone(grad)
+    self.assertGreater(self.evaluate(math_ops.reduce_sum(math_ops.abs(grad))), 0.0)
+
+  def test_fold_gradient_numerical_correctness(self):
+    """To check if autodiff matches numerical gradient """
+    x = random_ops.random_normal([1, 4, 4, 1]) 
+
+    def forward(x):
+      patches = self._extract_patches(x,kernel=2,stride=1,padding="VALID")
+      y = array_ops.fold(patches,output_size=(4, 4),kernel_size=2,stride=1,padding="VALID")
+      return math_ops.reduce_sum(y)
+
+    theoretical, numerical = gradient_checker_v2.compute_gradient(forward, [x])
+
+    self.assertAllClose(
+      theoretical[0],
+      numerical[0],
+      atol=1e-3,
+      rtol=1e-3,
+      msg="Autodiff and numerical gradients don't match",
+      )
+         
+  
 
 
 if __name__ == "__main__":
