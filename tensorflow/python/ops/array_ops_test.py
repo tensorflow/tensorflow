@@ -309,6 +309,48 @@ class TestFoldOverlapping(test.TestCase):
                 self.assertEqual(reconstructed.dtype, x.dtype)
                 self.assertAllClose(reconstructed, expected)
 
+class TestFoldInputValidation(test.TestCase):
+  """Also checks error handling"""
+
+  def setUp(self):
+    super().setUp()
+    random_seed.set_seed(42)
+    
+  def test_invalid_dilation_raises(self):
+    patches = random_ops.random_normal([1, 3, 3, 4])
+    with self.assertRaisesRegex(ValueError, "dilation must be >= 1"):
+        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2, dilation=-1)
+  
+  def test_invalid_padding_string_raises(self):
+    patches = random_ops.random_normal([1, 3, 3, 4])
+    
+    with self.assertRaisesRegex(ValueError, "padding must be"):
+      array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2, padding='INVALID_STRING')
+
+  def test_invalid_image_input_size(self):
+    patches = random_ops.random_normal([3, 3, 4])  
+    with self.assertRaisesRegex(ValueError, "input must be 4D"):
+        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
+
+  def test_patch_dim_not_divisible_by_kernel_raises(self):
+    patches = random_ops.random_normal([1, 3, 3, 5]) 
+    with self.assertRaisesRegex(ValueError, "input's dimension 3 should be divisble by the product of kernel_size"):        
+        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
+  
+  def test_invalid_kernel_size(self):
+    patches = random_ops.random_normal([1, 4, 4, 1]) 
+    with self.assertRaisesRegex(ValueError,"kernel_size must be >= 1"):
+        array_ops.fold(patches, (4, 4),(-1,1),2)
+        array_ops.fold(patches, (4, 4),(2,-1),2)
+        array_ops.fold(patches, (4, 4),2,2)
+  
+  def test_invalid_stride(self):
+    patches = random_ops.random_normal([1, 4, 4, 1]) 
+    with self.assertRaisesRegex(ValueError,"stride must be >= 1"):
+        array_ops.fold(patches, (4, 4),2,(-1,1))
+        array_ops.fold(patches, (4, 4),2,(1,-2))
+        array_ops.fold(patches, (4, 4),2,2)
+
 
 
 if __name__ == "__main__":
