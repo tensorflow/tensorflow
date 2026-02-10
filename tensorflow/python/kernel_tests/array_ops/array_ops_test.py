@@ -525,6 +525,28 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     v = array_ops.reverse_v2(x, axis=[1])
     self.assertAllEqual(self.evaluate(v), v)
 
+  def testScalarWithNonEmptyAxisRaises(self):
+    """Scalar tensor with axis=[0] should raise in both eager and graph."""
+    scalar = constant_op.constant(1)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "is out of.*range"):
+      array_ops.reverse_v2(scalar, [0])
+
+  def testScalarWithEmptyAxisSucceeds(self):
+    """Scalar tensor with empty axis should succeed (no-op)."""
+    scalar = constant_op.constant(42)
+    result = self.evaluate(array_ops.reverse_v2(scalar, []))
+    self.assertEqual(result, 42)
+
+  def testScalarWithNonEmptyAxisRaisesViaReverse(self):
+    """Same test via array_ops.reverse alias."""
+    scalar = constant_op.constant(1)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "is out of.*range"):
+      array_ops.reverse(scalar, [0])
+
 
 class MeshgridTest(test_util.TensorFlowTestCase):
 
