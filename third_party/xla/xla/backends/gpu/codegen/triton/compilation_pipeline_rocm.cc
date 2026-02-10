@@ -84,6 +84,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
       {rocm_cc.gfx_version()}));
   pm->addNestedPass<mlir::triton::FuncOp>(
       mlir::createTritonAMDGPUHoistLayoutConversions());
+  pm->addPass(mlir::createTritonAMDGPUSinkLayoutConversions());
 
   pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
   pm->addPass(mlir::createCanonicalizerPass());
