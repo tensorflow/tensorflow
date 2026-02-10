@@ -1,268 +1,41 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
---- a/clang/lib/Driver/ToolChains/Darwin.cpp
-+++ b/clang/lib/Driver/ToolChains/Darwin.cpp
-@@ -2076,7 +2076,8 @@
-                                   std::to_string(TargetEnvironment) +
-                                   "' is unsupported when inferring SDK Info.");
-     }
--    Components.push_back(Version.getAsString());
-+    std::string VersionString = Version.getAsString();
-+    Components.push_back(VersionString);
-     return join(Components, " ");
+diff -ruN --strip-trailing-cr a/clang/lib/AST/ItaniumMangle.cpp b/clang/lib/AST/ItaniumMangle.cpp
+--- a/clang/lib/AST/ItaniumMangle.cpp
++++ b/clang/lib/AST/ItaniumMangle.cpp
+@@ -4954,6 +4954,7 @@
+   case Expr::CXXReflectExprClass: {
+     // TODO(Reflection): implement this after introducing std::meta::info
+     assert(false && "unimplemented");
++    break;
    }
  
-diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
---- a/libcxx/include/any
-+++ b/libcxx/include/any
-@@ -89,6 +89,7 @@
- #  include <__type_traits/add_cv_quals.h>
- #  include <__type_traits/add_pointer.h>
- #  include <__type_traits/conditional.h>
-+#  include <__type_traits/conjunction.h>
- #  include <__type_traits/decay.h>
- #  include <__type_traits/enable_if.h>
- #  include <__type_traits/is_constructible.h>
-@@ -97,6 +98,7 @@
- #  include <__type_traits/is_reference.h>
- #  include <__type_traits/is_same.h>
- #  include <__type_traits/is_void.h>
-+#  include <__type_traits/negation.h>
- #  include <__type_traits/remove_cv.h>
- #  include <__type_traits/remove_cvref.h>
- #  include <__type_traits/remove_reference.h>
-@@ -201,10 +203,11 @@
-       __other.__call(_Action::_Move, this);
-   }
- 
--  template <class _ValueType,
--            class _Tp        = decay_t<_ValueType>,
--            enable_if_t<!is_same_v<_Tp, any> && !__is_inplace_type<_ValueType>::value && is_copy_constructible_v<_Tp>,
--                        int> = 0>
-+  template <
-+      class _ValueType,
-+      class _Tp        = decay_t<_ValueType>,
-+      enable_if_t<_And<_Not<is_same<_Tp, any>>, _Not<__is_inplace_type<_ValueType>>, is_copy_constructible<_Tp>>::value,
-+                  int> = 0>
-   _LIBCPP_HIDE_FROM_ABI any(_ValueType&& __value) : __h_(nullptr) {
-     __any_imp::_Handler<_Tp>::__create(*this, std::forward<_ValueType>(__value));
-   }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
---- a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
-+++ b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
-@@ -21,6 +21,7 @@
- 
- #include <any>
- #include <cassert>
-+#include <type_traits>
- 
- #include "any_helpers.h"
- #include "count_new.h"
-@@ -140,6 +141,24 @@
-     }
+   // FIXME: invent manglings for all these.
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
+--- a/clang/lib/Sema/TreeTransform.h
++++ b/clang/lib/Sema/TreeTransform.h
+@@ -13059,6 +13059,7 @@
+ ExprResult TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
+   // TODO(reflection): Implement its transform
+   assert(false && "not implemented yet");
++  return ExprError();
  }
  
-+// https://llvm.org/PR176877
-+// Avoid constraint meta-recursion for a type both convertible from and to std::any.
-+template <class T, bool = std::is_copy_constructible<T>::value>
-+void test_default_template_argument_is_copy_constructible(T) {}
-+
-+template <class T, bool = std::is_copy_constructible_v<T>>
-+void test_default_template_argument_is_copy_constructible_v(T) {}
-+
-+void test_no_constraint_recursion() {
-+  struct ConvertibleFromAndToAny {
-+    ConvertibleFromAndToAny(std::any) {}
-+  };
-+
-+  ConvertibleFromAndToAny src = std::any{};
-+  test_default_template_argument_is_copy_constructible(src);
-+  test_default_template_argument_is_copy_constructible_v(src);
-+}
-+
- int main(int, char**) {
-     test_copy_move_value<small>();
-     test_copy_move_value<large>();
-@@ -147,6 +166,7 @@
-     test_copy_value_throws<large_throws_on_copy>();
-     test_move_value_throws();
-     test_sfinae_constraints();
-+    test_no_constraint_recursion();
+ template<typename Derived>
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/reflection-mangle-itanium.cpp b/clang/test/CodeGenCXX/reflection-mangle-itanium.cpp
+--- a/clang/test/CodeGenCXX/reflection-mangle-itanium.cpp
++++ b/clang/test/CodeGenCXX/reflection-mangle-itanium.cpp
+@@ -3,4 +3,5 @@
  
--  return 0;
-+    return 0;
+ int main() {
+   (void)(^^int); // expected-error {{cannot compile this scalar expression yet}}
++  return 0;
  }
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
---- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
-@@ -1852,6 +1852,11 @@
-         !isDispSafeForFrameIndexOrRegBase((uint32_t)Val) &&
-         !AM.hasBaseOrIndexReg())
-       return true;
-+  } else if (Subtarget->is16Bit()) {
-+    // In 16-bit mode, displacements are limited to [-65535,65535] for FK_Data_2
-+    // fixups of unknown signedness. See X86AsmBackend::applyFixup.
-+    if (Val < -(int64_t)UINT16_MAX || Val > (int64_t)UINT16_MAX)
-+      return true;
-   } else if (AM.hasBaseOrIndexReg() && !isDispSafeForFrameIndexOrRegBase(Val))
-     // For 32-bit X86, make sure the displacement still isn't close to the
-     // expressible limit.
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/dag-large-offset.ll b/llvm/test/CodeGen/X86/dag-large-offset.ll
---- a/llvm/test/CodeGen/X86/dag-large-offset.ll
-+++ b/llvm/test/CodeGen/X86/dag-large-offset.ll
-@@ -1,47 +0,0 @@
--; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
--; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
--
--; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
--; want to do that if the offset is very close to the expressible limit because the final frame
--; layout may push it over/under the limit.
--
--define i32 @foo(i1 %b) #0 {
--; CHECK-LABEL: foo:
--; CHECK:       # %bb.0: # %entry
--; CHECK-NEXT:    pushl %ebp
--; CHECK-NEXT:    .cfi_def_cfa_offset 8
--; CHECK-NEXT:    .cfi_offset %ebp, -8
--; CHECK-NEXT:    movl %esp, %ebp
--; CHECK-NEXT:    .cfi_def_cfa_register %ebp
--; CHECK-NEXT:    subl $8, %esp
--; CHECK-NEXT:    movl __stack_chk_guard, %eax
--; CHECK-NEXT:    movl %eax, -4(%ebp)
--; CHECK-NEXT:    testb $1, 8(%ebp)
--; CHECK-NEXT:    jne .LBB0_1
--; CHECK-NEXT:  # %bb.2: # %entry
--; CHECK-NEXT:    xorl %eax, %eax
--; CHECK-NEXT:    jmp .LBB0_3
--; CHECK-NEXT:  .LBB0_1:
--; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
--; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
--; CHECK-NEXT:  .LBB0_3: # %entry
--; CHECK-NEXT:    movl __stack_chk_guard, %ecx
--; CHECK-NEXT:    cmpl -4(%ebp), %ecx
--; CHECK-NEXT:    jne .LBB0_5
--; CHECK-NEXT:  # %bb.4: # %entry
--; CHECK-NEXT:    addl $8, %esp
--; CHECK-NEXT:    popl %ebp
--; CHECK-NEXT:    .cfi_def_cfa %esp, 4
--; CHECK-NEXT:    retl
--; CHECK-NEXT:  .LBB0_5: # %entry
--; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
--; CHECK-NEXT:    calll __stack_chk_fail
--entry:
--  %a = alloca i8, align 1
--  %0 = ptrtoint ptr %a to i32
--  %sub = add i32 %0, -2147483647
--  %retval.0 = select i1 %b, i32 %sub, i32 0
--  ret i32 %retval.0
--}
--
--attributes #0 = { sspreq }
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-16.ll b/llvm/test/CodeGen/X86/fold-add-16.ll
---- a/llvm/test/CodeGen/X86/fold-add-16.ll
-+++ b/llvm/test/CodeGen/X86/fold-add-16.ll
-@@ -0,0 +1,45 @@
-+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
-+; RUN: llc -mtriple=i386-unknown-code16 < %s | FileCheck %s
-+
-+;; In 16-bit mode, displacements are limited to [-65535,65535] (R_386_16).
-+;; Test boundary conditions for offset folding.
-+
-+@X = external global i32, align 4
-+
-+;; -65535 is within range, should fold
-+define i32 @neg_65535() {
-+; CHECK-LABEL: neg_65535:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    leal X+65535, %eax
-+; CHECK-NEXT:    retl
-+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65535)
-+}
-+
-+;; 65535 is within range, should fold
-+define i32 @pos_65535() {
-+; CHECK-LABEL: pos_65535:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    leal X-65535, %eax
-+; CHECK-NEXT:    retl
-+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65535)
-+}
-+
-+;; -65536 is outside range, should NOT fold
-+define i32 @neg_65536() {
-+; CHECK-LABEL: neg_65536:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    movl $65536, %eax # imm = 0x10000
-+; CHECK-NEXT:    leal X(%eax), %eax
-+; CHECK-NEXT:    retl
-+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65536)
-+}
-+
-+;; 65536 is outside range, should NOT fold
-+define i32 @pos_65536() {
-+; CHECK-LABEL: pos_65536:
-+; CHECK:       # %bb.0:
-+; CHECK-NEXT:    movl $-65536, %eax # imm = 0xFFFF0000
-+; CHECK-NEXT:    leal X(%eax), %eax
-+; CHECK-NEXT:    retl
-+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65536)
-+}
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-32.ll b/llvm/test/CodeGen/X86/fold-add-32.ll
---- a/llvm/test/CodeGen/X86/fold-add-32.ll
-+++ b/llvm/test/CodeGen/X86/fold-add-32.ll
-@@ -0,0 +1,47 @@
-+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
-+; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
-+
-+; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
-+; want to do that if the offset is very close to the expressible limit because the final frame
-+; layout may push it over/under the limit.
-+
-+define i32 @foo(i1 %b) #0 {
-+; CHECK-LABEL: foo:
-+; CHECK:       # %bb.0: # %entry
-+; CHECK-NEXT:    pushl %ebp
-+; CHECK-NEXT:    .cfi_def_cfa_offset 8
-+; CHECK-NEXT:    .cfi_offset %ebp, -8
-+; CHECK-NEXT:    movl %esp, %ebp
-+; CHECK-NEXT:    .cfi_def_cfa_register %ebp
-+; CHECK-NEXT:    subl $8, %esp
-+; CHECK-NEXT:    movl __stack_chk_guard, %eax
-+; CHECK-NEXT:    movl %eax, -4(%ebp)
-+; CHECK-NEXT:    testb $1, 8(%ebp)
-+; CHECK-NEXT:    jne .LBB0_1
-+; CHECK-NEXT:  # %bb.2: # %entry
-+; CHECK-NEXT:    xorl %eax, %eax
-+; CHECK-NEXT:    jmp .LBB0_3
-+; CHECK-NEXT:  .LBB0_1:
-+; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
-+; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
-+; CHECK-NEXT:  .LBB0_3: # %entry
-+; CHECK-NEXT:    movl __stack_chk_guard, %ecx
-+; CHECK-NEXT:    cmpl -4(%ebp), %ecx
-+; CHECK-NEXT:    jne .LBB0_5
-+; CHECK-NEXT:  # %bb.4: # %entry
-+; CHECK-NEXT:    addl $8, %esp
-+; CHECK-NEXT:    popl %ebp
-+; CHECK-NEXT:    .cfi_def_cfa %esp, 4
-+; CHECK-NEXT:    retl
-+; CHECK-NEXT:  .LBB0_5: # %entry
-+; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
-+; CHECK-NEXT:    calll __stack_chk_fail
-+entry:
-+  %a = alloca i8, align 1
-+  %0 = ptrtoint ptr %a to i32
-+  %sub = add i32 %0, -2147483647
-+  %retval.0 = select i1 %b, i32 %sub, i32 0
-+  ret i32 %retval.0
-+}
-+
-+attributes #0 = { sspreq }
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
---- a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
-+++ b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
-@@ -1,3 +1,4 @@
-+; REQUIRES: asserts
- ; RUN: opt -passes=vector-combine -debug-only=vector-combine -disable-output < %s 2>&1 | FileCheck %s
- target triple = "x86_64-unknown-linux-gnu"
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/reflection-mangle-ms.cpp b/clang/test/CodeGenCXX/reflection-mangle-ms.cpp
+--- a/clang/test/CodeGenCXX/reflection-mangle-ms.cpp
++++ b/clang/test/CodeGenCXX/reflection-mangle-ms.cpp
+@@ -3,4 +3,5 @@
  
+ int main() {
+   (void)(^^int); // expected-error {{cannot compile this scalar expression yet}}
++  return 0;
+ }
