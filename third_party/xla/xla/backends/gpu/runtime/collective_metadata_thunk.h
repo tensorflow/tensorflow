@@ -39,6 +39,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// TODO(b/481948581) Move static methods to collective kernel utils file.
+// And remove this thunk with the custom call.
 class CollectiveMetadataThunk : public Thunk {
  public:
   struct Buffer {

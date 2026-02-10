@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 
-#include <algorithm>
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -39,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_kernel_utils.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -56,9 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -227,48 +224,18 @@ absl::Status RendezvousAfterKernelFinish(
 }
 
 // Helper to launch the MultiGpuBarrierKernel.
-//
-// This implements a decentralized peer-to-peer barrier synchronization:
-// 1. Each device maintains a signal buffer array (one slot per peer) and a
-//    local monotonic step counter.
-// 2. During execution, a device writes to its designated slot in *every*
-//    peer's signal buffer to indicate arrival.
-// 3. The device then waits locally for all slots in its own signal buffer to
-//    match the expected step value (confirming all peers have arrived).
 absl::Status LaunchMultiGpuBarrier(
     se::Stream* stream, RankId rank, int64_t num_ranks,
     const std::vector<RaggedAllToAllRendezvousValue>& participants,
     se::DeviceAddressBase local_barrier_signal_value) {
-  using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
-
-  TF_RET_CHECK(participants.size() <= MultiGpuBarrierKernel::kMaxPeers)
-      << "Number of participants exceeds MultiGpuBarrierKernel::kMaxPeers";
-  TF_RET_CHECK(num_ranks <= MultiGpuBarrierKernel::kMaxPeers)
-      << "Number of ranks exceeds MultiGpuBarrierKernel::kMaxPeers";
-
-  // 1. Prepare signal buffers (pointers to peers' signal buffer arrays)
-  std::array<void*, MultiGpuBarrierKernel::kMaxPeers> signal_buffers;
-  std::fill(signal_buffers.begin(), signal_buffers.end(), nullptr);
-
+  std::vector<se::DeviceAddressBase> barrier_peer_addresses;
+  barrier_peer_addresses.reserve(participants.size());
   for (const auto& participant : participants) {
-    // This points to the peer's signal buffer where we will write our signal.
-    signal_buffers[participant.rank.value()] =
-        participant.barrier_signal_buffer.opaque();
+    barrier_peer_addresses.push_back(participant.barrier_signal_buffer);
   }
-
-  // 2. Load and Launch Kernel
-  se::StreamExecutor* executor = stream->parent();
-  TF_ASSIGN_OR_RETURN(auto kernel,
-                      (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-                           .LoadKernel<MultiGpuBarrierKernel>(executor)));
-
-  // Cast local_barrier_signal_value void* pointer to uint32_t*
-  se::DeviceAddress<uint32_t> typed_sync_counter(local_barrier_signal_value);
-
-  return kernel.Launch(
-      se::ThreadDim(MultiGpuBarrierKernel::kMaxPeers, 1, 1),
-      se::BlockDim(1, 1, 1), stream, static_cast<int64_t>(rank.value()),
-      static_cast<int64_t>(num_ranks), signal_buffers, typed_sync_counter);
+  return CollectiveKernelUtils::LaunchMultiGpuBarrier(
+      stream, num_ranks, rank, std::move(barrier_peer_addresses),
+      local_barrier_signal_value);
 }
 
 }  // namespace
