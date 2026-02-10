@@ -82,14 +82,14 @@ static std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
       // devices on different partitions.
       return std::nullopt;
     }
-    return GlobalDeviceId{device_assignment(replica_id, /*computation_id=*/0)};
+    return GlobalDeviceId(device_assignment(replica_id, /*computation_id=*/0));
   }
   if (collective_group_mode ==
       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     int partition_count = device_assignment.computation_count();
     int64_t actual_replica_id = replica_id / partition_count;
     int64_t partition_id = replica_id % partition_count;
-    return GlobalDeviceId{device_assignment(actual_replica_id, partition_id)};
+    return GlobalDeviceId(device_assignment(actual_replica_id, partition_id));
   }
 
   // COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION and

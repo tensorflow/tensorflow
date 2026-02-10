@@ -33,8 +33,8 @@ namespace xla {
 // system. XLA doesn't have a strong opinion about what global numbering scheme
 // is applied to GPUs; the user must provide a local -> global mapping via
 // GpuExecutableRunOptions for the local GPUs.
-TSL_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int64_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(LocalDeviceId, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int32_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(LocalDeviceId, int32_t);
 
 using ::tsl::IncarnationId;  // NOLINT(misc-unused-using-decls)
 
@@ -48,7 +48,8 @@ void AbslStringify(Sink& sink, LocalDeviceId id) {
   absl::Format(&sink, "%d", id.value());
 }
 
-// StrJoin for global devices that shortens long list of devices for readbility.
+// StrJoin for global devices that shortens long list of devices for
+// readability.
 //
 // It is not uncommon to see in XLA a list of global devices with more than 1k
 // of entries. We don't need to print them all to get a human readable list

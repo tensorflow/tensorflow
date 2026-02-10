@@ -166,6 +166,17 @@ cc_library(
 )
 
 cc_library(
+    name = "chip_id",
+    hdrs = ["chip_id.h"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "process_id",
     hdrs = ["process_id.h"],
     deps = [

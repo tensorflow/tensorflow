@@ -554,7 +554,10 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/pjrt/proto:pjrt_value_type_proto_cc",
-        "//xla/tsl/lib/gtl:int_type",
+        "//xla/runtime:chip_id",
+        "//xla/runtime:device_id",
+        "//xla/runtime:process_id",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
