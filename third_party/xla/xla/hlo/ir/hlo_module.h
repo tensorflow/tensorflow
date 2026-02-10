@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -709,6 +710,45 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Base class for cached backend-specific data.
+  class CacheEntry {
+   public:
+    virtual ~CacheEntry() = default;
+    virtual tsl::Fprint128 GetCacheKey() const = 0;
+  };
+
+  // Returns a pointer to a cached entry of type T for the given fingerprint,
+  // or nullptr if not found. T must be a subclass of CacheEntry.
+  // The returned pointer is valid until the module is destroyed or the cache
+  // entry is overwritten.
+  template <typename T>
+  std::shared_ptr<T> GetCacheEntry(tsl::Fprint128 key) const {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    absl::MutexLock lock(cache_mutex_);
+    auto it = cache_.find(key);
+    return it == cache_.end() ? nullptr
+                              : std::dynamic_pointer_cast<T>(it->second);
+  }
+
+  // Sets a cached entry of type T for the given fingerprint. T must be a
+  // subclass of CacheEntry. If 'overwrite' is false (the default), this method
+  // will not overwrite an existing entry for the given key and will log a
+  // warning; this behavior is intended to detect fingerprint conflicts. If
+  // 'overwrite' is true, it will overwrite any existing entry, providing
+  // flexibility for users who intend to update cache entries.
+  // Returns true if the cache entry was set, false if it was not.
+  template <typename T>
+  bool SetCacheEntry(std::shared_ptr<T> entry, bool overwrite = false) {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    absl::MutexLock lock(cache_mutex_);
+    tsl::Fprint128 key = entry->GetCacheKey();
+    if (overwrite || cache_.find(key) == cache_.end()) {
+      cache_[key] = std::move(entry);
+      return true;
+    }
+    return false;
+  }
+
   // Describes a buffer to be used for cross program prefetching.
   struct CrossProgramPrefetchInfo {
     // The parameter to prefetch.
@@ -985,6 +1025,11 @@ class HloModule {
                   HloComputation::NeighborIterator,
                   &HloComputation::callees_begin, &HloComputation::callees_end>
       topological_sort_;
+
+  mutable absl::Mutex cache_mutex_;
+  absl::flat_hash_map<tsl::Fprint128, std::shared_ptr<CacheEntry>,
+                      tsl::Fprint128Hasher>
+      cache_ ABSL_GUARDED_BY(cache_mutex_);
 
  public:
   class OriginalValueRecoveryTable {
