@@ -18,7 +18,7 @@ The pseudo-code syntax used in this document is described below.
 ### Primitive Datatypes
 
 int8: signed 8-bit integer uint8: unsigned 8-bit integer int16: signed 16-bit
-integer int32: signed 32-bit integer int64: signed 32-bit integer uint32:
+integer int32: signed 32-bit integer int64: signed 64-bit integer uint32:
 unsigned 32-bit integer float32: IEEE-754 32-bit floating point format float64:
 IEEE-754 64-bit floating point format bool: boolean
 
@@ -80,7 +80,7 @@ output dimension or `K` for kernel dimensions.
 
 ## Common Legalization Functions
 
-The following pseudocode helper functions are used to cannonicalize arguments
+The following pseudocode helper functions are used to canonicalize arguments
 from different frameworks to the TOSA dialect.
 
 ### .as_constant(): Matched as Constant
@@ -92,7 +92,7 @@ will fail and be terminated.
 
 ## Common Legalization Functions
 
-The following pseudo-code helper functions are used to cannonicalize arguments
+The following pseudo-code helper functions are used to canonicalize arguments
 from different frameworks to the TOSA dialect.
 
 ### get_padding_values_from_explicit_pad_attr()
@@ -155,7 +155,7 @@ vector<int64> get_padding_values_from_pad_type(tensorflow::Padding padding, tens
 ### positive_axis()
 
 ```
-// Cannonicalize scalar axis attributes to a scalar positive axis attribute
+// Canonicalize scalar axis attributes to a scalar positive axis attribute
 int32 positive_axis(int32 axis, int32 rank)
 {
    if (axis < 0)

@@ -5,7 +5,7 @@ If you are a TensorFlow Python user, you can try this format by setting the
 `experimental_image_format` option:
 
 ```
-tf.savedmodel.save(
+tf.saved_model.save(
     model, path,
     options=tf.saved_model.SaveOptions(experimental_image_format=True)
 )

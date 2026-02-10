@@ -151,7 +151,7 @@ adb shell \
     -l /data/local/tmp/labels.txt -j 1"
 ```
 
-then you should see something like the followings:
+then you should see something like the following:
 
 ```
 Loaded model /data/local/tmp/mobilenet_v1_1.0_224_quant.tflite

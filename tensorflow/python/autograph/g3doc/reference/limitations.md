@@ -391,7 +391,7 @@ for i in tf.range(3):
 l()  # Prints 0!
 ```
 
-Note that none of these restrictions only apply to TensorFlow loops; Python
+Note that these restrictions only apply to TensorFlow loops; Python
 loops correctly handle closures in all cases.
 
 ### Python collections in TensorFlow control flow
@@ -460,7 +460,7 @@ for i in tf.range(10):
   l = l.write(l.size(), i)  # Okay
 ```
 
-#### Python collections of fixed structure are allowed TensorFlow control flow
+#### Python collections of fixed structure are allowed in TensorFlow control flow
 
 An exception to the previous rule is made by Python collections that are static,
 that is, they don't grow in size for the duration of the computation.

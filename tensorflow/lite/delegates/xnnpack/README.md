@@ -78,7 +78,7 @@ are using `InterpreterBuilder` to construct the interpreter:
 tflite::Model* model;
 ...
 
-// Construct the interprepter
+// Construct the interpreter
 tflite::ops::builtin::BuiltinOpResolver resolver;
 std::unique_ptr<tflite::Interpreter> interpreter;
 
@@ -152,13 +152,13 @@ copies of the same packed weights in each instance which can cause high memory
 usage.
 
 The weights cache can be used to store these packed weights to a file to avoid
-re-packing on every run and to share share packed weights between multiple
+re-packing on every run and to share packed weights between multiple
 TFLite instances. Depending on your use case, **this can lead to significant
-intialization speed-up and memory savings**.
+initialization speed-up and memory savings**.
 
 The initialization speed-up happens because the packing operations are only done
 once and read from the cache file for subsequent runs. We are skipping the most
-expensive part of XNNPack's initialization.
+expensive part of XNNPACK's initialization.
 
 The memory savings have multiple reasons, which don't all apply to all use
 cases:
@@ -189,13 +189,13 @@ Warning: The weight cache cannot be shared between models or hardware
 architectures, a different cache file must be used for each *(model,
 architecture)* pair.
 
-Warning: XNNPack does it's best to detect outdated cache files but cannot check
+Warning: XNNPack does its best to detect outdated cache files but cannot check
 for model changes. Checking that the model has been updated and deleting old
 cache files is left to the user.
 
 #### Saving the Cache to Disk
 
-Saving the cache to disk bring you the full list of advantages listed above.
+Saving the cache to disk brings you the full list of advantages listed above.
 
 ```c++
 std::unique_ptr<tflite::Interpreter> interpreter;
@@ -550,7 +550,7 @@ when the following conditions are met:
     ARMv8.2 FP16 arithmetics extension, and includes Android phones starting
     with Pixel 3, Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS
     devices with A11 or newer SoCs, all Apple Silicon Macs, and Windows ARM64
-    laptops based with Snapdragon 850 SoC or newer.
+    laptops based on Snapdragon 850 SoC or newer.
 
 *   The model's "reduced_precision_support" metadata indicates that the model is
     compatible with FP16 inference. The metadata can be added during model
@@ -566,7 +566,7 @@ converter.target_spec.supported_types = [tf.float16]
 converter.target_spec._experimental_supported_accumulation_type = tf.dtypes.float16
 ```
 
-When the above conditions are met, XNNPACK replace FP32 operators with their
+When the above conditions are met, XNNPACK replaces FP32 operators with their
 FP16 equivalents, and insert additional operators to convert model inputs from
 FP32 to FP16 and convert model outputs back from FP16 to FP32. If the above
 conditions are not met, XNNPACK will perform model inference with FP32

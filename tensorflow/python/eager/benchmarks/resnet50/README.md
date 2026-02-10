@@ -11,7 +11,7 @@ Contents:
 
 # Benchmarks
 
-Using a synthetic data, run:
+Using synthetic data, run:
 
 ```
 # Using eager execution

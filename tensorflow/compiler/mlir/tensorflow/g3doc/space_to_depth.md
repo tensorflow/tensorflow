@@ -69,7 +69,7 @@ transformation:
 
     Weight Transformation is similar to Input Transform. Weight transform is
     needed to apply space to depth optimization for a model that needs to load a
-    pre-train checkpoint. This transform can be done on the host or TPU device
+    pre-trained checkpoint. This transform can be done on the host or TPU device
     based on the cost. As the size of the kernel is relatively small, this won't
     add additional cost to TPU device time. Below is the logic to transform the
     kernel of shape [7, 7, 3, 64] to [4, 4, 12, 84].

@@ -81,7 +81,7 @@ Metadata in JSON format.
 `ValueError`<a id="ValueError"></a>
 </td>
 <td>
-error occured when parsing the metadata schema file.
+error occurred when parsing the metadata schema file.
 </td>
 </tr>
 </table>

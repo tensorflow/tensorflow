@@ -6,7 +6,7 @@ to detect objects in images in C++. For an alternate implementation see the
 
 ## Description
 
-This demo uses a model based on [Scalable Object Detection using Deep NeuralNetworks](https://arxiv.org/abs/1312.2249) to detect people in images passed in from
+This demo uses a model based on [Scalable Object Detection using Deep Neural Networks](https://arxiv.org/abs/1312.2249) to detect people in images passed in from
 the command line. This is the same model also used in the Android TensorFlow
 demo for real-time person detection and tracking in the camera preview.
 

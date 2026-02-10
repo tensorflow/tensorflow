@@ -1,6 +1,6 @@
 # Building TensorFlow Lite Standalone Pip
 
-Many users would like to deploy TensorFlow lite interpreter and use it from
+Many users would like to deploy TensorFlow Lite interpreter and use it from
 Python without requiring the rest of TensorFlow.
 
 ## Steps
@@ -136,7 +136,7 @@ CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true
 ## Usage
 
 Note, unlike tensorflow this will be installed to a `tflite_runtime` namespace.
-You can then use the Tensorflow Lite interpreter as.
+You can then use the TensorFlow Lite interpreter as.
 
 ```python
 from tflite_runtime.interpreter import Interpreter

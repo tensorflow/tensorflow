@@ -15,7 +15,7 @@ type of input.
 
 Optional Python wrappers can enable a variety of non-breaking future changes,
 though it is important to avoid any non-TensorFlow Python code in the
-implementation. This is because any non-Tensorflow Python code will only be used
+implementation. This is because any non-TensorFlow Python code will only be used
 in eager execution and not in
 [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function)
 execution.
@@ -176,7 +176,7 @@ a value of type `T`.
 #### Shape function
 
 Unlike dense tensors, which have a fixed shape, the shape of sparse tensors
-depend on the number of non-missing values in the output. Since this can not be
+depends on the number of non-missing values in the output. Since this can not be
 determined by the shape of the inputs, the shape function (`SetShapeFn`) uses
 `UnknownDim()`.
 
@@ -662,7 +662,7 @@ bazel build //third_party/tensorflow/examples/custom_ops_doc/multiplex_3:multipl
 
 ### Summary
 
-In this example, you learned how implement a new multiplexer kernel to handle
+In this example, you learned how to implement a new multiplexer kernel to handle
 special cases. With a Python wrapper that uses
 [dispatch decorators](https://www.tensorflow.org/guide/extension_type#tensor_api_dispatch)
 to override the default kernel, this custom op uses a new kernel to handle

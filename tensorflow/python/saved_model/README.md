@@ -163,14 +163,14 @@ SavedModel bundle. Both `SavedModelBuilder.add_meta_graph_and_variables` and
 `strip_default_attrs` that controls this behavior.
 
 If `strip_default_attrs` is `False`, the exported MetaGraphDef will have the
-default valued attributes in all it's NodeDef instances. This can break forward
+default valued attributes in all its NodeDef instances. This can break forward
 compatibility with a sequence of events such as the following:
 
 * An existing Op (`Foo`) is updated to include a new attribute (`T`) with a
   default (`bool`) at version 101.
 * A model producer (such as a Trainer) binary picks up this change
   (version 101) to the OpDef and re-exports an existing model that uses Op `Foo`.
-* A model consumer (such as Tensorflow Serving) running an older binary
+* A model consumer (such as TensorFlow Serving) running an older binary
   (version 100) doesn't have attribute `T` for Op `Foo`, but tries to import
   this model. The model consumer doesn't recognize attribute `T` in a NodeDef
   that uses Op `Foo` and therefore fails to load the model.

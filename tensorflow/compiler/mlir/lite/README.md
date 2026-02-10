@@ -27,7 +27,7 @@ proposed TFLite mechanism.
 size and high performance (among the core value proposition of
 TensorFlow Lite models).
 - The Export pass writes out TensorFlow Lite FlatBuffer format. This pass
-operates on MLIR TensorFlow Lite dialect and is simple/direct translation.
+operates on MLIR TensorFlow Lite dialect and is a simple/direct translation.
 
 See
 https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/mlir/lite/tf_tfl_passes.cc

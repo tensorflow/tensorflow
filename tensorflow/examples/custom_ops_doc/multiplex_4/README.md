@@ -19,7 +19,7 @@ adding custom ops to TensorFlow. For additional context, read the
 
 This example demonstrates how you can create a custom multiplexer,
 `multiplex_4`, to register a new kernel that is backward compatible with an
-existing multiplex_2` op.
+existing `multiplex_2` op.
 
 The new custom op registers a kernel
 (multiplex_4_kernel.cc) that takes lists of tensors as inputs, and is backwards
@@ -46,7 +46,7 @@ These snippets may be missing namespace declarations, imports, and test cases.
 This example uses a [`SavedModel`](https://www.tensorflow.org/guide/saved_model)
 from an existing `multiplex_2` custom op.
 
-The `muliplex_2_save.py` file uses `save` from `model_using_muliplex.py` to
+The `multiplex_2_save.py` file uses `save` from `model_using_multiplex.py` to
 create a `SavedModel` named `model_using_multiplex` in the current working
 directory.
 
@@ -103,7 +103,7 @@ REGISTER_OP("Examples>MultiplexDense")
     .Doc(R"doc(
 Return elements chosen from `a_values` or `b_values` depending on `cond`.
 
-When `a_values` and `cond` are tenors (i.e. N=1), this is similar to `np.where`
+When `a_values` and `cond` are tensors (i.e. N=1), this is similar to `np.where`
 and `tf.where`. When `a_values` and `cond` are lists of tensors (i.e. N>1),
 this is similar to `np.select`. In either case these are simplified to only
 handle dense tensors, no optional parameters, no broadcasting, etc..
@@ -350,7 +350,7 @@ def multiplex(cond, a, b, name=None):
       based on the first one encountered.
     a: tf.Tensor or list of tf.Tensor, each with the same type and shape as `b`.
     b: tf.Tensor or list of tf.Tensor with the same type and shape as `a`. Yield
-      `b` if all corresponding `cond` values is False.
+      `b` if all corresponding `cond` values are False.
     name: An optional name for the op.
 
   Returns:
@@ -568,7 +568,7 @@ result = multiplex_4_op.multiplex(cond, a, b)
 ```
 
 The `multiplex_4_load_use.py` file uses `load_and_use` from
-`model_using_muliplex.py` to load a saved model from a `multiplex_2` op. The
+`model_using_multiplex.py` to load a saved model from a `multiplex_2` op. The
 saved model can be executed using the new kernel, (`multiplex_4`), which
 supports both lists of tensors and single tensors for `cond` and `a` inputs.
 

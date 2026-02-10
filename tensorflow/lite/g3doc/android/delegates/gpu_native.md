@@ -119,7 +119,7 @@ add_compile_definitions(TFLITE_USE_OPAQUE_DELEGATE)
 
 The [FlatBuffers](https://flatbuffers.dev/) library is used to configure
 delegate plugins, so you need to add it to the dependencies of your native code.
-You can use the official `CMake` project configuration as follow:
+You can use the official `CMake` project configuration as follows:
 
 ```
 target_include_directories(tflite-jni PUBLIC

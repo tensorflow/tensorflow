@@ -8,7 +8,7 @@
 
 
 ### Times in TensorFlow and tfprof
-When we run a model, Tensorflow schedules and runs the nodes (operations)
+When we run a model, TensorFlow schedules and runs the nodes (operations)
 in the graph. An operation can be placed on an accelerator or on CPU.
 
 
@@ -165,7 +165,7 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 
 ### Profile by Name Scope
 
-Usually scope view allows you to pin point the problematic places if you
+Usually scope view allows you to pinpoint the problematic places if you
 have properly named your operations with tf.name_scope or tf.variable_scope.
 
 ```python

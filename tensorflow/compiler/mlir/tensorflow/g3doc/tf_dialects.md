@@ -34,7 +34,7 @@ have a specific handling by the executor. These operations don’t operate on de
 values, don’t have control dependencies, and execute conceptually in program
 order. The form used in this dialect aligns with the direction taken by
 TensorFlow 2.0 with tf.function and autograph, as well as with the needs of
-other frontends. This should ease the development of analyses and
+other front ends. This should ease the development of analyses and
 transformations: optimizations operate on a simpler semantics and local graph
 transformations can be validated in a local scope. Simple patterns like folding
 `x-x` into a constant 0 do not need to update any control dependencies. It
@@ -219,18 +219,18 @@ capture would be displayed as:
 ### `tf_executor.Switch` Operation
 
 [`tf_executor.Switch`](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/switch):
-takes two inputs,`predicate`and`data`and returns two regular
-outputs,`true_output`,`false_output`. The`data`input is copied
-to`true_output`if`predicate`evaluates to true otherwise it is copied
-to`false_output`. The other output is marked as dead. If one of the inputs or a
+takes two inputs, `predicate` and `data`, and returns two regular
+outputs, `true_output` and `false_output`. The `data` input is copied
+to `true_output` if `predicate` evaluates to true, otherwise it is copied
+to `false_output`. The other output is marked as dead. If one of the inputs or a
 control token is dead, then all of the outputs are marked as dead as well.
 
 ### `tf_executor.SwitchN` Operation
 
 [`tf_executor.SwitchN`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/ops/control_flow_ops.cc#L49-L53):
-takes two inputs,`data`and`index`and an integer attribute`num_outs`indicating
-the number of outputs. The`data`input is copied to output indicated by
-the`index` input. The other outputs are marked as dead. If one of the inputs or
+takes two inputs, `data` and `index`, and an integer attribute `num_outs` indicating
+the number of outputs. The `data` input is copied to the output indicated by
+the `index` input. The other outputs are marked as dead. If one of the inputs or
 a control token is dead, then all of the outputs are marked as dead as well.
 
 ### `tf_executor.Merge` Operation
@@ -247,12 +247,12 @@ The TensorFlow
 op is modeled using these two paired operations. Since _NextIteration_ is
 intended for modeling the loop back-edges, breaking it in two different
 operations allows to keep a structural
-DAG.`tf_executor.NextIteration.Source`does not take any operand and produces two
+DAG. `tf_executor.NextIteration.Source` does not take any operand and produces two
 results: one regular value corresponding to the TensorFlow graph, and a second
-value of type`tf_executor.loop_token`. This token is consumed by the
-paired`tf_executor.NextIteration.Sink`Operation alongside the value that is
+value of type `tf_executor.loop_token`. This token is consumed by the
+paired `tf_executor.NextIteration.Sink` operation alongside the value that is
 passed through the back-edge. No value is returned
-by`tf_executor.NextIteration.Sink`. The type of the result of the source must
+by `tf_executor.NextIteration.Sink`. The type of the result of the source must
 match the type of the value operand of the sink.
 
 `tf_executor.NextIteration.Source` is an exception in the executor model in the
@@ -263,12 +263,12 @@ though there is no data dependency between them.
 
 [`tf_executor.LoopCond`](https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/loop-cond):
 forwards its boolean input to its output,
-[it acts as`pivot` for marking the loop termination condition](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/control_flow_ops.h#L115-L118).
+[it acts as `pivot` for marking the loop termination condition](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/control_flow_ops.h#L115-L118).
 
 ### `tf_executor.Enter` Operation
 
 [`tf_executor.Enter`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/kernels/control_flow_ops.h##77-L79):
-takes a single input and a`name` string attribute that identifies the execution
+takes a single input and a `name` string attribute that identifies the execution
 frame. It forwards its input to its output in the new execution frame.
 
 ### `tf_executor.Exit` Operation

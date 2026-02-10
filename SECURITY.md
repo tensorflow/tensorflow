@@ -65,7 +65,7 @@ running the `tf.train.Server`.
 
 ## Untrusted inputs during training and prediction
 
-TensorFlow supports a wide range of input data formats. For example it can
+TensorFlow supports a wide range of input data formats. For example, it can
 process images, audio, videos, and text. There are several modules specialized
 in taking those formats, modifying them, and/or converting them to intermediate
 formats that can be processed by TensorFlow.

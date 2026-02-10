@@ -95,7 +95,7 @@ your deployment environment.
 
 ### Build with custom ops
 
-If you have developed Tensorflow Lite models with custom ops, you can build them
+If you have developed TensorFlow Lite models with custom ops, you can build them
 by adding the following flags to the build command:
 
 ```sh

@@ -1,5 +1,5 @@
 page_type: reference
-description: Different types of op resolvers for Tensorflow Lite.
+description: Different types of op resolvers for TensorFlow Lite.
 
 <link rel="stylesheet" href="/site-assets/css/style.css">
 
@@ -30,7 +30,7 @@ description: Different types of op resolvers for Tensorflow Lite.
 
 
 
-Different types of op resolvers for Tensorflow Lite.
+Different types of op resolvers for TensorFlow Lite.
 
 <!-- Placeholder for "Used in" -->
 

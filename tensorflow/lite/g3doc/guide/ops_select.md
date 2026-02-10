@@ -9,7 +9,7 @@ To allow conversion, users can enable the usage of
 However, running TensorFlow Lite models with TensorFlow ops requires pulling in
 the core TensorFlow runtime, which increases the TensorFlow Lite interpreter
 binary size. For Android, you can avoid this by selectively building only
-required Tensorflow ops. For the details, refer to
+required TensorFlow ops. For the details, refer to
 [reduce binary size](../guide/reduce_binary_size.md).
 
 This document outlines how to [convert](#convert_a_model) and
@@ -278,7 +278,7 @@ Built-in ops + TF ops (1) | 4.1 MB          | 1.8 MB
 
 (1) These libraries are selectively built for
 [i3d-kinetics-400 model](https://tfhub.dev/deepmind/i3d-kinetics-400/1) with 8
-TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
+TFLite builtin ops and 3 TensorFlow ops. For more details, please see the
 [Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
 
 ## Known limitations

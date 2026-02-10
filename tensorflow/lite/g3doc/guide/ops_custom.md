@@ -467,7 +467,7 @@ const TfLiteOperator* AtanOpRegistrationExternal() {
 </div>
 
 When initializing the `OpResolver`, add the custom op into the resolver (see
-below for an example). This will register the operator with Tensorflow Lite so
+below for an example). This will register the operator with TensorFlow Lite so
 that TensorFlow Lite can use the new implementation. Note that the last two
 arguments in `TfLiteRegistration` correspond to the `AtanPrepare` and `AtanEval`
 functions you defined for the custom op. If you used `AtanInit` and `AtanFree`

@@ -21,7 +21,7 @@ don’t yet have a DSP NNAPI driver).
 
 **Supported devices:**
 
-Currently the following Hexagon architecture are supported, including but not
+Currently the following Hexagon architectures are supported, including but not
 limited to:
 
 *   Hexagon 680
@@ -265,7 +265,7 @@ TfLiteHexagonTearDown();  // Needed once at end of app/DSP usage.
     architecture. For example,
     *   ARM 64-bit: `app/src/main/jniLibs/arm64-v8a`
     *   ARM 32-bit: `app/src/main/jniLibs/armeabi-v7a`
-*   Put your .so in the directory that match the architecture.
+*   Put your .so in the directory that matches the architecture.
 
 Note: If you're using App Bundle for publishing your Application, you might want
 to set android.bundle.enableUncompressedNativeLibs=false in the
@@ -304,9 +304,9 @@ ro.board.platform`).
     *   Some phone manufacturers use different SoCs for the same phone model.
         Therefore, Hexagon delegate may only work on some but not all devices of
         the same phone model.
-    *   Some phone manufactures intentionally restrict the use of Hexagon DSP
+    *   Some phone manufacturers intentionally restrict the use of Hexagon DSP
         from non-system Android apps, making the Hexagon delegate unable to
         work.
 *   My phone has locked DSP access. I rooted the phone and still can't run the
-    delegate, what to do ?
+    delegate, what to do?
     *   Make sure to disable SELinux enforce by running `adb shell setenforce 0`

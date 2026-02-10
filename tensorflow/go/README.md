@@ -12,6 +12,6 @@ Construct and execute TensorFlow graphs in Go.
 
 The TensorFlow team is not currently maintaining the Documentation for installing the Go bindings for TensorFlow.
 
-The instructions has been maintained by the third party contributor: @wamuir
+The instructions have been maintained by the third party contributor: @wamuir
 
-Please follow this [source](https://github.com/tensorflow/build/tree/master/golang_install_guide) by @wamuir for the installation of Golang with Tensorflow.
+Please follow this [source](https://github.com/tensorflow/build/tree/master/golang_install_guide) by @wamuir for the installation of Golang with TensorFlow.

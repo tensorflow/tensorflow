@@ -194,10 +194,10 @@ in C++.
 If true, then intermediate tensors used
 during computation are preserved for inspection, and if the passed op
 resolver type is AUTO or BUILTIN, the type will be changed to
-BUILTIN_WITHOUT_DEFAULT_DELEGATES so that no Tensorflow Lite default
+BUILTIN_WITHOUT_DEFAULT_DELEGATES so that no TensorFlow Lite default
 delegates are applied. If false, getting intermediate tensors could
 result in undefined values or None, especially when the graph is
-successfully modified by the Tensorflow Lite default delegate.
+successfully modified by the TensorFlow Lite default delegate.
 </td>
 </tr>
 </table>

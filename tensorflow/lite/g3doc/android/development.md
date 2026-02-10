@@ -178,7 +178,7 @@ To import a TensorFlow Lite (TFLite) model:
 
 You can return to the model information screen by double clicking the TensorFlow
 Lite model under the `ml` directory in Android Studio. For more information on
-using the Modle Binding feature of Android Studio, see the Android Studio
+using the Model Binding feature of Android Studio, see the Android Studio
 [release notes](https://developer.android.com/studio/releases#4.1-tensor-flow-lite-models).
 For an overview of using model binding in Android Studio, see the code example
 [instructions](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/README.md).

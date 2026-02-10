@@ -20,7 +20,7 @@ For example, feature processing especially for textual input in an ML model
 can involve operations that don't lend themselves well to vectorization and the
 code, if written as a C++ function, would be much shorter and more readable.
 
-However, Tensorflow and TFLite APIs for creating op kernels are, at the moment,
+However, TensorFlow and TFLite APIs for creating op kernels are, at the moment,
 not identical. This library offers a convenient way to write the kernel once and
 adapt it to both TF and TFLite with minimal binary and runtime overhead.
 

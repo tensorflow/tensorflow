@@ -396,7 +396,7 @@ A dict contains AP metrics.
 ) -> None
 </code></pre>
 
-Saves the model to Tensorflow SavedModel.
+Saves the model to TensorFlow SavedModel.
 
 
 <!-- Tabular view -->

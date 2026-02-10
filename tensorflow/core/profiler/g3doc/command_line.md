@@ -238,7 +238,7 @@ Users can [Define Customized Operation Type](#define-customized-operation-type)
 <b>Following example shows importance of defining customized operation type.</b>
 In this example, extra `Variables` are created by TensorFlow
 implicitly and “/Momentum” is appended to their names. They shouldn't be
-included in you “model capacity” calculation.
+included in your "model capacity" calculation.
 
 ```shell
 tfprof> scope -account_type_regexes VariableV2 -max_depth 4 -select params
@@ -258,10 +258,10 @@ _TFProfRoot (--/930.58k params)
 #### Profile Device Placement
 
 In this tutorial, a model is split
-on several gpus at workers and several parameter servers.
+on several GPUs at workers and several parameter servers.
 
 In tfprof, 'device' is an op_type. For example, if op1 and op2 are placed on
-gpu:0. They share an operation type.
+gpu:0, they share an operation type.
 
 ```shell
 bazel-bin/tensorflow/core/profiler/profiler \

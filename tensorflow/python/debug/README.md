@@ -33,7 +33,7 @@ V2](https://www.tensorflow.org/tensorboard/debugger_v2).
 
 1.  Using `tf.debugging.experimental.enable_dump_debug_info()` leads to
     performance penalty on your TensorFlow program. The amount of slowdown
-    varied depending on whether you are using TensorFlow on CPU, GPUs, or TPUs.
+    varies depending on whether you are using TensorFlow on CPU, GPUs, or TPUs.
     The performance penalty is the highest on TPUs, followed by GPUs, and lowest
     on CPU.
 2.  `tf.debugging.experimental.enable_dump_debug_info()` is currently

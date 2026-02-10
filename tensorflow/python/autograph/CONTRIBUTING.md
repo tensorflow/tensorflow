@@ -100,6 +100,6 @@ A short description of the modules:
 There are two additional modules, `pyct` and `utils`. These are independent of AutoGraph:
 
  * `pyct`: a general purpose Python source code transformation library
- * `utils`: the kitchen sync; deprecated
+ * `utils`: the kitchen sink; deprecated
 
 Note: we have a long term plan to factor out an implementation of `impl` and `converters` that is independent of autograph, into a general purpose Python operator overloading library.

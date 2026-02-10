@@ -1,7 +1,7 @@
 # Hexagon Delegate Testing
 
 This directory contains unit-tests for Op Builders for the hexagon delegate.
-To Run the all the tests use the run_tests.sh under directory and pass
+To run all the tests use the run_tests.sh under directory and pass
 the path to the directory containing libhexagon_nn_skel*.so files.
 The script will copy all files to the device and build all tests and execute
 them.

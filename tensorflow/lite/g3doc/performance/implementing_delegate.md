@@ -282,7 +282,7 @@ delegate as a shared library and requires you to expose the create/delete
 methods from the shared library.
 
 As a result, the external-delegate mechanism will work with TFLite’s
-[pre-built Tensorflow Lite tooling binaries](#download-links-for-nightly-pre-built-tflite-tooling-binaries).
+[pre-built TensorFlow Lite tooling binaries](#download-links-for-nightly-pre-built-tflite-tooling-binaries).
 But it is less explicit and it might be more complicated to set up in automated
 integration tests. Use the delegate registrar approach for better clarity.
 
@@ -292,7 +292,7 @@ The
 [delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)
 keeps a list of delegate providers, each of which provides an easy way to create
 TFLite delegates based on command-line flags, and are hence, convenient for
-tooling. To plug in the new delegate to all the Tensorflow Lite tools mentioned
+tooling. To plug in the new delegate to all the TensorFlow Lite tools mentioned
 above, you first create a new delegate provider like this
 [one](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/hexagon_delegate_provider.cc),
 and then makes only a few changes to the BUILD rules. A full example of this
@@ -531,10 +531,10 @@ external-delegate approach. You can use similar commands for the testing and
 evaluation tools mentioned earlier.
 
 It is worth noting the _external delegate_ is the corresponding C++
-implementation of the _delegate_ in Tensorflow Lite Python binding as shown
+implementation of the _delegate_ in TensorFlow Lite Python binding as shown
 [here](https://github.com/tensorflow/tensorflow/blob/7145fc0e49be01ef6943f4df386ce38567e37797/tensorflow/lite/python/interpreter.py#L42).
 Therefore, the dynamic external delegate adaptor library created here could be
-directly used with Tensorflow Lite Python APIs.
+directly used with TensorFlow Lite Python APIs.
 
 ## Resources
 

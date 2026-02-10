@@ -5,7 +5,7 @@ StableHLO kernels.
 
 ## Contributing
 
-Please review the [Tensorflow Contributing Guide] for the repository's
+Please review the [TensorFlow Contributing Guide] for the repository's
 contributing guidelines.
 
 The code makes use of C++17 and is built using Bazel.
@@ -226,5 +226,5 @@ TODO:
 [GoogleTest]: https://github.com/google/googletest
 [Google Benchmark]: https://github.com/google/benchmark
 [Google style guide]: https://google.github.io/styleguide/cppguide.html
-[Tensorflow Contributing Guide]: https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md
+[TensorFlow Contributing Guide]: https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md
 [Build for iOS]: https://www.tensorflow.org/lite/guide/build_ios

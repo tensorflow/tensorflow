@@ -32,7 +32,7 @@ invariant):
 
 ```
 x = 1
-y = tf.cond(x > 0, lambda: 3 * x, lambda 5 * x)
+y = tf.cond(x > 0, lambda: 3 * x, lambda: 5 * x)
 ```
 
 That is equivalent to the code below:
