@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <sstream>
-#include <string>
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
@@ -33,8 +32,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/analysis/symbolic_map.h"
-#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 
@@ -46,41 +43,6 @@ using mlir::AsmParser;
 using mlir::AsmPrinter;
 using mlir::failure;
 using mlir::success;
-
-//===----------------------------------------------------------------------===//
-// SymbolicMapAttr
-//===----------------------------------------------------------------------===//
-
-void SymbolicMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<\"" << getMap().ToString() << "\">";
-}
-
-mlir::Attribute SymbolicMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
-  if (parser.parseLess()) {
-    return {};
-  }
-  RegisterSymbolicExprStorage(parser.getContext());
-  std::string serialized_map;
-  if (parser.parseString(&serialized_map)) {
-    return {};
-  }
-  if (parser.parseGreater()) {
-    return {};
-  }
-
-  xla::SymbolicMap map = ParseSymbolicMap(serialized_map, parser.getContext());
-  if (!map) {
-    parser.emitError(parser.getNameLoc(),
-                     "failed to parse SymbolicMap from string: ")
-        << serialized_map;
-    return {};
-  }
-  return get(parser.getContext(), map);
-}
-
-//===----------------------------------------------------------------------===//
-// IndexingMapAttr
-//===----------------------------------------------------------------------===//
 
 mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   if (parser.parseLess()) {
