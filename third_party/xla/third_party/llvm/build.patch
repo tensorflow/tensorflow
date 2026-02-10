@@ -2,38 +2,6 @@ diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llv
 index e83a237a5397..462b6b60f5b2 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -232,19 +232,19 @@ write_file(
- config_setting(
-     name = "is_windows_clang_mingw",
-     constraint_values = ["@platforms//os:windows"],
--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
- )
- 
- config_setting(
-     name = "is_windows_clang_cl",
-     constraint_values = ["@platforms//os:windows"],
--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang-cl"},
-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang-cl"},
- )
- 
- config_setting(
-     name = "is_windows_msvc",
-     constraint_values = ["@platforms//os:windows"],
--    flag_values = {"@rules_cc//cc/compiler:compiler": "msvc-cl"},
-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "msvc-cl"},
- )
- 
- config_setting(
-@@ -253,7 +253,7 @@ config_setting(
-         "@platforms//cpu:x86_64",
-         "@platforms//os:windows",
-     ],
--    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
-+    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
- )
- 
- # TODO(zbarsky): Is there a better way to express this?
 @@ -327,12 +327,14 @@ cc_library(
              "lib/Support/BLAKE3/blake3_neon.c",
          ],
