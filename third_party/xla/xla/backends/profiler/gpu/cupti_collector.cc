@@ -44,6 +44,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
+#include "xla/backends/profiler/util/metadata_registry.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -901,9 +902,16 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     LOG(INFO) << " GpuTracer max callback_events: "
               << options_.max_callback_api_events
               << ", max activity events: " << options_.max_activity_api_events;
+    SetProfilerMetadata("gpu_tracer_max_callback_events",
+                        absl::StrCat(options_.max_callback_api_events));
+    SetProfilerMetadata("gpu_tracer_max_activity_events",
+                        absl::StrCat(options_.max_activity_api_events));
     if (std::string num_events_dropped_message = ReportNumEventsIfDropped();
         !num_events_dropped_message.empty()) {
       space->add_warnings(num_events_dropped_message);
+      for (const auto& dropped : dropped_events_) {
+        SetProfilerMetadata(dropped.first, absl::StrCat(dropped.second));
+      }
     }
     ExportScopeRangeIdTree(space);
     size_t num_events = 0;
