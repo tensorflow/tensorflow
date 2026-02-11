@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <ostream>
 #include <string>
 
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/StorageUniquer.h"
 
 namespace xla {
 
@@ -148,6 +147,11 @@ class SymbolicExpr {
 
   friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                                        const SymbolicExpr expr) {
+    os << expr.ToString();
+    return os;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const SymbolicExpr expr) {
     os << expr.ToString();
     return os;
   }
