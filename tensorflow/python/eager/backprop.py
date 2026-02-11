@@ -134,7 +134,7 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     The gradients with respect to the inputs of the function, as a list.
   """
   mock_op = _MockOp(attr_tuple, inputs, outputs, op_name, skip_input_indices)
-  grad_fn = ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
+  grad_fn = ops.gradient_registry.lookup(op_name)
   if grad_fn is None:
     return [None] * num_inputs
 

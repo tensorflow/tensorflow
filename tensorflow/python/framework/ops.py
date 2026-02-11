@@ -747,8 +747,6 @@ def convert_to_tensor(
     as_ref=False,
     preferred_dtype=None,
     dtype_hint=None,
-    # TODO(b/268347915): Remove argument.
-    ctx=None,  # pylint: disable=unused-argument
     accepted_result_types=(tensor_lib.Tensor,),
 ) -> Union[EagerTensor, SymbolicTensor]:
   """Implementation of the public convert_to_tensor."""
@@ -769,8 +767,7 @@ def internal_convert_n_to_tensor(
     name=None,
     as_ref=False,
     preferred_dtype=None,
-    # TODO(b/268347915): Remove argument.
-    ctx=None) -> list[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
+) -> list[Union[EagerTensor, SymbolicTensor]]:
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -1691,9 +1688,7 @@ class Operation(pywrap_tf_session.PyOperation):
     _run_using_default_session(self, feed_dict, self.graph, session)
 
 gradient_registry: registry.Registry
-_gradient_registry: registry.Registry
-# TODO(b/185395742): Clean up usages of _gradient_registry
-gradient_registry = _gradient_registry = registry.Registry("gradient")
+gradient_registry = registry.Registry("gradient")
 
 
 @tf_export("RegisterGradient")
@@ -1798,11 +1793,6 @@ def get_gradient_function(op):
   except ValueError:
     op_type = op.type
   return gradient_registry.lookup(op_type)
-
-
-def set_shape_and_handle_data_for_outputs(_) -> None:
-  """No op. TODO(b/74620627): Remove this."""
-  pass
 
 
 class OpStats(object):
@@ -6204,10 +6194,6 @@ def _get_enclosing_context(graph) -> Any:
 
   if graph.building_function and hasattr(graph, "outer_graph"):
     return _get_enclosing_context(graph.outer_graph)
-
-
-# TODO(b/271463878): Remove in favor of direct references to `handle_data_util`.
-get_resource_handle_data = handle_data_util.get_resource_handle_data
 
 
 def _copy_handle_data_to_arg_def(tensor, arg_def) -> None:
