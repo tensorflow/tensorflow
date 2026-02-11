@@ -4615,10 +4615,6 @@ def control_dependencies(
   else:
     return get_default_graph().control_dependencies(control_inputs)
 
-# TODO(b/271463878): Remove in favor of direct references to `stack`.
-get_default_session = stack.get_default_session
-
-
 def _run_using_default_session(
     operation, feed_dict, graph, session=None) -> None:
   """Uses the default session to run "operation".

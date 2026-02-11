@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
@@ -1202,7 +1203,7 @@ def convert_var_to_const_function_in_v1(func,
     ConcreteFunction containing a simplified version of the original.
   """
 
-  session = ops.get_default_session()
+  session = stack.get_default_session()
   if session is None:
     raise RuntimeError(
         "The conversion must be carried out in a Session context.")

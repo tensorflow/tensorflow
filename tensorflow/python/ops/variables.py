@@ -26,6 +26,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
@@ -963,7 +964,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     if context.executing_eagerly():
       self.assign(value)
     else:
-      session = session or ops.get_default_session()
+      session = session or stack.get_default_session()
       if session is None:
         raise ValueError(
             "Either session argument should be provided or default session "

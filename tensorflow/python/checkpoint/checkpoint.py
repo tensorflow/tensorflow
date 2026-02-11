@@ -44,6 +44,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
@@ -105,7 +106,7 @@ def register_session_provider(session_provider):
 
 def get_session():
   # Prefer TF's default session since get_session from Keras has side-effects.
-  session = ops.get_default_session()
+  session = stack.get_default_session()
   if session is None:
     global _SESSION_PROVIDER
     if _SESSION_PROVIDER is not None:

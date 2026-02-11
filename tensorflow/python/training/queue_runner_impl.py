@@ -22,6 +22,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -455,7 +456,7 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
   if context.executing_eagerly():
     raise RuntimeError("Queues are not compatible with eager execution.")
   if sess is None:
-    sess = ops.get_default_session()
+    sess = stack.get_default_session()
     if not sess:
       raise ValueError("Cannot start queue runners: No default session is "
                        "registered. Use `with sess.as_default()` or pass an "

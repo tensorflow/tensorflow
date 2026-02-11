@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -244,7 +245,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
           total_size = self._dtype_size = 0
         elif (self._dtype == dtypes.string
               and not context.executing_eagerly()
-              and ops.get_default_session() is None):
+              and stack.get_default_session() is None):
           # TODO(b/326287351): Get string tensor size in tf.function.
           total_size = self._dtype_size = 0
           if not string_size_warning_printed:
@@ -255,7 +256,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
         elif self._dtype == dtypes.string:
           with ops.device(self._device):
             if not context.executing_eagerly():
-              self._root_tensor = ops.get_default_session().run(
+              self._root_tensor = stack.get_default_session().run(
                   self._root_tensor)
 
             if self._root_shape.rank is None or self._root_shape.rank == 0:
@@ -268,7 +269,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
             if context.executing_eagerly():
               sizes = [size.numpy() for size in sizes]
             else:
-              sizes = ops.get_default_session().run(sizes)
+              sizes = stack.get_default_session().run(sizes)
 
           total_size = sum(sizes)
           self._dtype_size = max(sizes)
