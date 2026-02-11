@@ -1306,6 +1306,11 @@ message DebugOptions {
   // Whether to enable checks for Inf values in computations.
   optional DetectionMode xla_gpu_detect_inf = 428;
 
+  // Whether to log min/max values from buffers in computations.
+  //
+  // This will log the values for all thunks affected by float checks.
+  optional bool xla_gpu_log_minmax = 453;
+
   // If true, large constants will be printed out when dumping HLOs.
   optional bool xla_dump_large_constants = 290;
 
@@ -1394,7 +1399,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 453
+  // Next id: 454
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

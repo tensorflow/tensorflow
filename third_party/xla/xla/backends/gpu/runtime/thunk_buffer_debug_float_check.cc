@@ -202,6 +202,8 @@ struct EnabledChecks {
   bool check_infs = false;
   // Should crash on found Infs?
   bool check_infs_fatal = false;
+  // Should log min/max values from buffers?
+  bool log_minmax = false;
 };
 
 struct FloatCheckReportResult {
@@ -238,7 +240,8 @@ FloatCheckReportResult ReportFloatCheckResult(
   if (!(enabled_checks.check_nans && has_nans &&
         !absl::c_contains(reported_nans, metadata.profile_annotation)) &&
       !(enabled_checks.check_infs && has_infs &&
-        !absl::c_contains(reported_infs, metadata.profile_annotation))) {
+        !absl::c_contains(reported_infs, metadata.profile_annotation)) &&
+      !enabled_checks.log_minmax) {
     VLOG(2) << "No findings for enabled checks for entry ID " << entry.entry_id;
     return {};
   }
@@ -290,6 +293,8 @@ EnabledChecks GetEnabledChecks(const HloModule* absl_nonnull hlo_module) {
       /*check_infs=*/inf_detection_mode != DebugOptions::DETECTION_MODE_NONE,
       /*check_infs_fatal=*/inf_detection_mode ==
           DebugOptions::DETECTION_MODE_FAIL,
+      /*log_minmax=*/
+      hlo_module->config().debug_options().xla_gpu_log_minmax(),
   };
 }
 

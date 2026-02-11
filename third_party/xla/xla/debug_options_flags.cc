@@ -488,9 +488,10 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(false);
   opts.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(false);
 
-  // Disable NaN/Inf detection.
+  // Disable float checks.
   opts.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
   opts.set_xla_gpu_detect_inf(DebugOptions::DETECTION_MODE_NONE);
+  opts.set_xla_gpu_log_minmax(false);
 
   // maximum number of events to be traced, default to 4M
   opts.set_xla_gpu_rocm_max_trace_events(4 * 1024 * 1024);
@@ -2911,6 +2912,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "'warning', and 'fail'. 'none' is the default. If other than 'none' "
       "value is provided, additional thunks will be added to detect and "
       "warn or fail the execution if Infs are detected."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_log_minmax",
+                bool_setter_for(&DebugOptions::set_xla_gpu_log_minmax),
+                debug_options->xla_gpu_log_minmax(),
+                "If true, log min/max values from kernel outputs."));
+
   flag_list->push_back(tsl::Flag(
       "xla_early_exit_with_layouts",
       bool_setter_for(&DebugOptions::set_xla_early_exit_with_layouts),
