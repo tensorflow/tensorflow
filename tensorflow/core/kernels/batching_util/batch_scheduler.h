@@ -32,6 +32,7 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <memory>
@@ -39,15 +40,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/criticality.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -96,6 +96,11 @@ class BatchTask {
   // kCritical.
   virtual tsl::criticality::Criticality criticality() const {
     return tsl::criticality::Criticality::kCritical;
+  }
+
+  // Called when the task is finished, either successfully or with an error.
+  virtual void FinishTask(const absl::Status& status) {
+    // Default implementation does nothing. Subclasses should override.
   }
 };
 
