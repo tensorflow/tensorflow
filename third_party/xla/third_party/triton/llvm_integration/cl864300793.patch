@@ -1,0 +1,46 @@
+
+--- a/lib/Analysis/AxisInfo.cpp	2026-02-02 04:53:38.000000000 -0800
++++ b/lib/Analysis/AxisInfo.cpp	2026-02-02 04:54:26.000000000 -0800
+@@ -144,16 +144,13 @@
+                      AxisInfo::getPessimisticValueState(lattice->getAnchor())));
+   }
+ 
+-    void visitNonControlFlowArguments(Operation* op,
++  void visitNonControlFlowArguments(Operation* op,
+                                     const RegionSuccessor& successor,
+                                     ValueRange nonSuccessorInputs,
+                                     ArrayRef<dataflow::Lattice<AxisInfo>*>
+                                         nonSuccessorInputLattices) override {
+     if (auto forOp = dyn_cast<scf::ForOp>(op)) {
+       visitForOpInductionVar(forOp, nonSuccessorInputLattices);
+-    } else if (auto ws = dyn_cast<gpu::WarpSpecializePartitionsOp>(op)) {
+-      visitWarpSpecializeExplicitCaptures(ws, successor,
+-                                          nonSuccessorInputLattices);
+     } else {
+       setAllToEntryStates(nonSuccessorInputLattices);
+     }
+
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp	2026-02-02 04:53:38.000000000 -0800
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp	2026-02-02 04:54:31.000000000 -0800
+@@ -1111,7 +1111,7 @@
+   // of the partition regions.
+   if (src.isParent())
+     for (Region &region : getPartitionRegions())
+-      successors.emplace_back(&region, region.getArguments());
++      successors.emplace_back(&region);
+ }
+ 
+ OperandRange
+
+--- a/lib/Target/LLVMIR/LLVMDIUtils.cpp	2026-01-21 07:56:12.000000000 -0800
++++ b/lib/Target/LLVMIR/LLVMDIUtils.cpp	2026-02-02 04:54:38.000000000 -0800
+@@ -69,7 +69,8 @@
+   LLVM::DITypeAttr diTypeAttr = mlir::LLVM::DIDerivedTypeAttr::get(
+       context, llvm::dwarf::DW_TAG_pointer_type,
+       mlir::StringAttr::get(context, "pointer"), diElTypeAttr, sizeInBits,
+-      /*alignInBits=*/0, /*offset=*/0, addrSpace, /*extra data=*/nullptr);
++      /*alignInBits=*/0, /*offset=*/0, addrSpace, mlir::LLVM::DIFlags::Zero,
++      /*extra data=*/nullptr);
+   return diTypeAttr;
+ }
+ 
