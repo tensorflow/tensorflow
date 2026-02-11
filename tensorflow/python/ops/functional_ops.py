@@ -90,11 +90,10 @@ def foldl(fn,
     TypeError: if `fn` is not callable.
 
   Example:
-    ```python
-    elems = tf.constant([1, 2, 3, 4, 5, 6])
-    sum = foldl(lambda a, x: a + x, elems)
-    # sum == 21
-    ```
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.foldl(lambda a, x: a + x, elems).numpy()
+  21
   """
   if not callable(fn):
     raise TypeError(
@@ -219,11 +218,10 @@ def foldl_v2(fn,
     TypeError: if `fn` is not callable.
 
   Example:
-    ```python
-    elems = tf.constant([1, 2, 3, 4, 5, 6])
-    sum = tf.foldl(lambda a, x: a + x, elems)
-    # sum == 21
-    ```
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.foldl(lambda a, x: a + x, elems).numpy()
+  21
   """
   return foldl(
       fn=fn,
@@ -286,11 +284,10 @@ def foldr(fn,
     TypeError: if `fn` is not callable.
 
   Example:
-    ```python
-    elems = [1, 2, 3, 4, 5, 6]
-    sum = foldr(lambda a, x: a + x, elems)
-    # sum == 21
-    ```
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.foldr(lambda a, x: a + x, elems).numpy()
+  21
   """
   if not callable(fn):
     raise TypeError(
@@ -416,11 +413,10 @@ def foldr_v2(fn,
     TypeError: if `fn` is not callable.
 
   Example:
-    ```python
-    elems = [1, 2, 3, 4, 5, 6]
-    sum = tf.foldr(lambda a, x: a + x, elems)
-    # sum == 21
-    ```
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.foldr(lambda a, x: a + x, elems).numpy()
+  21
   """
   return foldr(
       fn=fn,
@@ -513,28 +509,30 @@ def scan(fn,
       do not match.
 
   Examples:
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    sum = scan(lambda a, x: a + x, elems)
-    # sum == [1, 3, 6, 10, 15, 21]
-    sum = scan(lambda a, x: a + x, elems, reverse=True)
-    # sum == [21, 20, 18, 15, 11, 6]
-    ```
 
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    initializer = np.array(0)
-    sum_one = scan(
-        lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
-    # sum_one == [1, 2, 3, 4, 5, 6]
-    ```
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.scan(lambda a, x: a + x, elems).numpy()
+  array([ 1,  3,  6, 10, 15, 21])
+  >>> tf.scan(lambda a, x: a + x, elems, reverse=True).numpy()
+  array([21, 20, 18, 15, 11,  6])
 
-    ```python
-    elems = np.array([1, 0, 0, 0, 0, 0])
-    initializer = (np.array(0), np.array(1))
-    fibonaccis = scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
-    # fibonaccis == ([1, 1, 2, 3, 5, 8], [1, 2, 3, 5, 8, 13])
-    ```
+  With a multi-arity `elems` and an explicit initializer:
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> initializer = tf.constant(0)
+  >>> tf.scan(lambda a, x: x[0] - x[1] + a,
+  ...         (elems + 1, elems), initializer).numpy()
+  array([1, 2, 3, 4, 5, 6])
+
+  Computing Fibonacci numbers with a tuple accumulator:
+
+  >>> elems = tf.constant([1, 0, 0, 0, 0, 0])
+  >>> initializer = (tf.constant(0), tf.constant(1))
+  >>> fib = tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
+  >>> fib[0].numpy()
+  array([1, 1, 2, 3, 5, 8])
+  >>> fib[1].numpy()
+  array([ 1,  2,  3,  5,  8, 13])
   """
   if not callable(fn):
     raise TypeError(
@@ -777,28 +775,30 @@ def scan_v2(fn,
       do not match.
 
   Examples:
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    sum = scan(lambda a, x: a + x, elems)
-    # sum == [1, 3, 6, 10, 15, 21]
-    sum = scan(lambda a, x: a + x, elems, reverse=True)
-    # sum == [21, 20, 18, 15, 11, 6]
-    ```
 
-    ```python
-    elems = np.array([1, 2, 3, 4, 5, 6])
-    initializer = np.array(0)
-    sum_one = scan(
-        lambda a, x: x[0] - x[1] + a, (elems + 1, elems), initializer)
-    # sum_one == [1, 2, 3, 4, 5, 6]
-    ```
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> tf.scan(lambda a, x: a + x, elems).numpy()
+  array([ 1,  3,  6, 10, 15, 21])
+  >>> tf.scan(lambda a, x: a + x, elems, reverse=True).numpy()
+  array([21, 20, 18, 15, 11,  6])
 
-    ```python
-    elems = np.array([1, 0, 0, 0, 0, 0])
-    initializer = (np.array(0), np.array(1))
-    fibonaccis = scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
-    # fibonaccis == ([1, 1, 2, 3, 5, 8], [1, 2, 3, 5, 8, 13])
-    ```
+  With a multi-arity `elems` and an explicit initializer:
+
+  >>> elems = tf.constant([1, 2, 3, 4, 5, 6])
+  >>> initializer = tf.constant(0)
+  >>> tf.scan(lambda a, x: x[0] - x[1] + a,
+  ...         (elems + 1, elems), initializer).numpy()
+  array([1, 2, 3, 4, 5, 6])
+
+  Computing Fibonacci numbers with a tuple accumulator:
+
+  >>> elems = tf.constant([1, 0, 0, 0, 0, 0])
+  >>> initializer = (tf.constant(0), tf.constant(1))
+  >>> fib = tf.scan(lambda a, _: (a[1], a[0] + a[1]), elems, initializer)
+  >>> fib[0].numpy()
+  array([1, 1, 2, 3, 5, 8])
+  >>> fib[1].numpy()
+  array([ 1,  2,  3,  5,  8, 13])
   """
   return scan(
       fn=fn,
