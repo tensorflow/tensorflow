@@ -362,6 +362,9 @@ class HloSharding {
   // Returns whether there is any partial replication. This can be using
   // ReplicateOnLastTileDim or subgroups with REPLICATED.
   bool HasPartialReplication() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->HasPartialReplication();
+    }
     return replicate_on_last_tile_dim_ ||
            absl::c_linear_search(subgroup_types_, OpSharding::REPLICATED);
   }

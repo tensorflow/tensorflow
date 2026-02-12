@@ -190,9 +190,7 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
     // Get the `dim_shards` from the tile assignment.
     std::vector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
                                     tile_assignment.dimensions().end());
-    if (hlo_sharding.ReplicateOnLastTileDim() ||
-        (hlo_sharding.subgroup_types().size() == 1 &&
-         hlo_sharding.subgroup_types()[0] == xla::OpSharding::REPLICATED)) {
+    if (hlo_sharding.HasPartialReplication()) {
       dim_shards.pop_back();
     }
     if (tile_assignment.iota()->reshape_dims().empty()) {

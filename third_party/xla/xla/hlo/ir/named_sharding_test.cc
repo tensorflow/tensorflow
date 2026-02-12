@@ -715,5 +715,90 @@ TEST(NamedShardingTest, NamedShardingProtoConversion) {
   EXPECT_EQ(sharding, from_proto);
 }
 
+TEST(NamedShardingPredicatesTest, HasPartialReplication_Maximal) {
+  EXPECT_FALSE(NamedSharding(Mesh(5)).HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest, HasPartialReplication_FullyReplicated) {
+  EXPECT_FALSE(NamedSharding::Replicate().HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_FullyReplicatedWithMesh) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_FALSE(NamedSharding(mesh).HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest, HasPartialReplication_ShardedOnAllAxes) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_FALSE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}, {"b"}})
+                   .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_ShardedOnOneImplicitOnOther) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_TRUE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}})
+                  .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest, HasPartialReplication_ExplicitReplicated) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_TRUE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}},
+                                        /*replicated_axes=*/{"b"})
+                  .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_UnreducedCoveringRemaining) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_FALSE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}},
+                                         /*replicated_axes=*/{},
+                                         /*unreduced_axes=*/{"b"})
+                   .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_ManualCoveringRemaining) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_FALSE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}},
+                                         /*replicated_axes=*/{},
+                                         /*unreduced_axes=*/{},
+                                         /*manual_axes=*/{"b"})
+                   .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_MixedExplicitAndSharded) {
+  Mesh mesh({2, 2}, {"a", "b"});
+  EXPECT_TRUE(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a"}},
+                                        /*replicated_axes=*/{"b"})
+                  .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_ImplicitReplicationWithSubAxes) {
+  // Mesh a=4. Sharding a:(2)2. Replicated on a:(1)2.
+  EXPECT_TRUE(test_utils::FromAxisNames(Mesh({4}, {"a"}),
+                                        /*dim_shardings=*/{{"a:(2)2"}})
+                  .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest,
+     HasPartialReplication_ExplicitReplicationWithSubAxes) {
+  EXPECT_TRUE(test_utils::FromAxisNames(Mesh({4}, {"a"}),
+                                        /*dim_shardings=*/{{"a:(2)2"}},
+                                        /*replicated_axes=*/{"a:(1)2"})
+                  .HasPartialReplication());
+}
+
+TEST(NamedShardingPredicatesTest, HasPartialReplication_UnreducedWithSubAxes) {
+  EXPECT_FALSE(test_utils::FromAxisNames(Mesh({4}, {"a"}),
+                                         /*dim_shardings=*/{{"a:(2)2"}},
+                                         /*replicated_axes=*/{},
+                                         /*unreduced_axes=*/{"a:(1)2"})
+                   .HasPartialReplication());
+}
+
 }  // namespace
 }  // namespace xla
