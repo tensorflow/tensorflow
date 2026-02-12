@@ -78,7 +78,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   if (cuda_cc.IsAmpere() || cuda_cc.IsHopper()) {
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mlir::createNVGPUWarpSpecialization({num_stages}));
@@ -88,7 +88,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   } else if (cuda_cc.IsAtLeastBlackwell()) {
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc({false}));
     pm->addPass(ttng::createTritonNvidiaGPUPromoteLHSToTMemPass());
@@ -102,7 +102,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc({true}));
     pm->addPass(ttng::createTritonNvidiaGPURemoveTMEMTokensPass());
   } else {
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
   }
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonLoopAwareCSE());
