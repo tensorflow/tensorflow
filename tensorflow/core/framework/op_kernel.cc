@@ -1264,10 +1264,25 @@ void LoadDynamicKernels() {
   absl::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
 }
 
-static std::string Key(absl::string_view op_type, const DeviceType& device_type,
-                       absl::string_view label) {
-  return strings::StrCat(op_type, ":", DeviceTypeString(device_type), ":",
-                         label);
+static inline void MakeKey(std::string& key, absl::string_view op_type,
+                           const DeviceType& device_type,
+                           absl::string_view label) {
+  auto device_type_size = strlen(device_type.type());
+  key.reserve(op_type.size() + device_type_size + label.size() + 2);
+
+  key.assign(op_type.data(), op_type.size());
+  key.append(1, ':');
+  key.append(device_type.type(), device_type_size);
+  key.append(1, ':');
+  key.append(label.data(), label.size());
+}
+
+static inline std::string Key(absl::string_view op_type,
+                              const DeviceType& device_type,
+                              absl::string_view label) {
+  std::string key;
+  MakeKey(key, op_type, device_type, label);
+  return key;
 }
 
 // Provide a way for users to disable JIT kernels for a transitional period.
@@ -1402,7 +1417,8 @@ absl::Status FindKernelRegistration(
 
   const std::string& label = GetKernelLabelAttr(node_attrs);
 
-  const std::string key = Key(node_op, device_type, label);
+  thread_local std::string key;
+  MakeKey(key, node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
   tf_shared_lock lock(typed_registry->mu);
   auto regs = typed_registry->registry.equal_range(key);
@@ -1435,8 +1451,8 @@ absl::Status FindKernelRegistration(
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const std::string default_key = Key(node_op, DEVICE_DEFAULT, label);
-    auto regs = typed_registry->registry.equal_range(default_key);
+    MakeKey(key, node_op, DEVICE_DEFAULT, label);
+    auto regs = typed_registry->registry.equal_range(key);
     for (auto iter = regs.first; iter != regs.second; ++iter) {
       // If there is a kernel registered for the op and device_type,
       // check that the attrs match.
