@@ -309,10 +309,18 @@ class _EagerTensorBase(
     return complex(self._numpy())
 
   def __int__(self) -> int:
-    return int(self._numpy())
+    x = self._numpy()
+    if isinstance(x, np.ndarray) and x.size == 1:
+      return int(x.item())
+    else:
+      return int(x)
 
   def __float__(self) -> float:
-    return float(self._numpy())
+    x = self._numpy()
+    if isinstance(x, np.ndarray) and x.size == 1:
+      return float(x.item())
+    else:
+      return float(x)
 
   def __index__(self) -> int:
     return cast(np.ndarray, self._numpy()).__index__()
