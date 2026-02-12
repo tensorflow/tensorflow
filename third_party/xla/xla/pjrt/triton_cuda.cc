@@ -93,7 +93,6 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   if (enable_fp_fusion) {
     opt.AllowFPOpFusion = llvm::FPOpFusion::Fast;
   }
-  opt.NoInfsFPMath = false;
   opt.NoNaNsFPMath = true;
   opt.TrapUnreachable = true;
   opt.MCOptions.AsmVerbose = true;
