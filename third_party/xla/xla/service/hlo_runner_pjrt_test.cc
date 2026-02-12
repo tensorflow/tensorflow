@@ -202,8 +202,7 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
       test::TestCompilationEnvironment1::GetDescriptor(),
       [](std::unique_ptr<tsl::protobuf::Message> msg) {
         std::unique_ptr<test::TestCompilationEnvironment1> env(
-            tensorflow::down_cast<test::TestCompilationEnvironment1*>(
-                msg.release()));
+            absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
         if (env == nullptr) {
           env = std::make_unique<test::TestCompilationEnvironment1>();
         }
