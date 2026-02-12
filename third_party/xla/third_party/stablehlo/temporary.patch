@@ -682,6 +682,28 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
    }
  
    OwningOpRef<ModuleOp> module = mb->build();
+diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
+--- stablehlo/stablehlo/integrations/python/ChloModule.cpp
++++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
+@@ -11,6 +11,7 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir-c/IR.h"
+ #include "mlir/Bindings/Python/NanobindAdaptors.h"
+ #include "nanobind/nanobind.h"
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -13,6 +13,7 @@
+ 
+ #include <vector>
+ 
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
+ #include "mlir/Bindings/Python/NanobindAdaptors.h"
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp
