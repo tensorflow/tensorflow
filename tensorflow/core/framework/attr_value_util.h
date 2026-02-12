@@ -118,6 +118,7 @@ uint64_t AttrValueHash(const AttrValue& a);
 // Small (less than 32mb) tensors with different TensorProto representations
 // hashed/compared by their tensor content.
 uint64_t FastAttrValueHash(const AttrValue& a);
+uint64_t FastAttrValueHashUnordered(const AttrValue& a);
 // Returns true if a and b have the same value. If false negatives are allowed,
 // then compares proto representation to avoid construction of large (> 32mb)
 // tensors.

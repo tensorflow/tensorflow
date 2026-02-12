@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -1163,6 +1164,115 @@ struct KernelRegistration {
   std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
+namespace {
+
+// Cache for FindKernelRegistration.
+struct KernelCacheKey {
+  std::string op_name;
+  std::string device_type;
+  std::string label;
+  // Use unordered_map for attributes for efficient lookups.
+  std::unordered_map<std::string, AttrValue> attrs;
+  uint64_t hash;
+
+  KernelCacheKey(const KernelCacheKeyView& view)
+      : op_name(view.op_name),
+        device_type(view.device_type),
+        label(view.label),
+        hash(view.hash) {
+    for (const auto& p : view.attrs) {
+      attrs.emplace(p.first, p.second);
+    }
+  }
+};
+
+// A lightweight version of KernelCacheKey that does not own its data.
+// Used for lookups in the kernel cache.
+struct KernelCacheKeyView {
+  absl::string_view op_name;
+  absl::string_view device_type;
+  absl::string_view label;
+  AttrSlice attrs;
+  uint64_t hash;
+
+  KernelCacheKeyView(absl::string_view op, absl::string_view device,
+                     absl::string_view lbl, AttrSlice node_attrs)
+      : op_name(op), device_type(device), label(lbl), attrs(node_attrs) {
+    // Calculate hash.
+    hash = Hash64(op_name);
+    hash = Hash64Combine(hash, Hash64(device_type));
+    hash = Hash64Combine(hash, Hash64(label));
+    uint64_t attrs_hash = 0;
+    for (const auto& p : attrs) {
+      uint64_t attr_hash = Hash64(p.first);
+      attr_hash =
+          Hash64Combine(attr_hash, FastAttrValueHashUnordered(p.second));
+      attrs_hash = Hash64CombineUnordered(attrs_hash, attr_hash);
+    }
+    hash = Hash64Combine(hash, attrs_hash);
+  }
+};
+
+struct KernelCacheKeyHash {
+  using is_transparent = void;
+
+  std::size_t operator()(const KernelCacheKey& k) const { return k.hash; }
+  std::size_t operator()(const KernelCacheKeyView& k) const { return k.hash; }
+};
+
+struct KernelCacheKeyEq {
+  using is_transparent = void;
+
+  bool operator()(const KernelCacheKey& a, const KernelCacheKey& b) const {
+    if (a.hash != b.hash) return false;
+    if (a.op_name != b.op_name) return false;
+    if (a.device_type != b.device_type) return false;
+    if (a.label != b.label) return false;
+    if (a.attrs.size() != b.attrs.size()) return false;
+    // Compare maps
+    for (const auto& a_attr_pair : a.attrs) {
+      auto b_it = b.attrs.find(a_attr_pair.first);
+      if (b_it == b.attrs.end()) {
+        return false;
+      }
+      if (!AreAttrValuesEqual(a_attr_pair.second, b_it->second)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool operator()(const KernelCacheKey& a, const KernelCacheKeyView& b) const {
+    if (a.hash != b.hash) return false;
+    if (a.op_name != b.op_name) return false;
+    if (a.device_type != b.device_type) return false;
+    if (a.label != b.label) return false;
+    if (a.attrs.size() != b.attrs.size()) return false;
+
+    // 'a.attrs' is a map. 'b.attrs' is an AttrSlice.
+    for (const auto& b_attr_pair : b.attrs) {
+      auto a_it = a.attrs.find(b_attr_pair.first);
+      if (a_it == a.attrs.end()) {
+        return false;
+      }
+      if (!AreAttrValuesEqual(a_it->second, b_attr_pair.second)) {
+        return false;
+      }
+    }
+    return true;
+  }
+};
+
+struct CachedKernelResult {
+  const KernelRegistration* reg;
+  bool was_attr_mismatch;
+};
+
+using KernelCache = std::unordered_map<KernelCacheKey, CachedKernelResult,
+                                       KernelCacheKeyHash, KernelCacheKeyEq>;
+
+}  // namespace
+
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
 // factory functions for instantiating the OpKernel that matches the
 // KernelDef.
@@ -1397,6 +1507,36 @@ absl::Status FindKernelRegistration(
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, AttrSlice node_attrs,
     const KernelRegistration** reg, bool* was_attr_mismatch) {
+  auto typed_registry = GlobalKernelRegistryTyped();
+  const std::string& label = GetKernelLabelAttr(node_attrs);
+  KernelCacheKeyView cache_key_view(node_op, device_type.type_string(), label,
+                                    node_attrs);
+
+  auto find_in_cache = [&](const KernelCacheKeyView& key) {
+    auto it = typed_registry->cache.find(key);
+    if (it != typed_registry->cache.end()) {
+      *reg = it->second.reg;
+      *was_attr_mismatch = it->second.was_attr_mismatch;
+      return true;
+    }
+    return false;
+  };
+
+  // Check cache.
+  {
+    tf_shared_lock lock(typed_registry->mu);
+    if (find_in_cache(cache_key_view)) {
+      return absl::OkStatus();
+    }
+  }
+
+  // Cache miss.
+  mutex_lock lock(typed_registry->mu);
+  // Check cache again in case another thread filled it.
+  if (find_in_cache(cache_key_view)) {
+    return absl::OkStatus();
+  }
+
   *reg = nullptr;
   *was_attr_mismatch = false;
 
@@ -1467,6 +1607,9 @@ absl::Status FindKernelRegistration(
     }
   }
 
+  // Update cache.
+  typed_registry->cache.emplace(cache_key_view,
+                                CachedKernelResult{*reg, *was_attr_mismatch});
   return absl::OkStatus();
 }
 

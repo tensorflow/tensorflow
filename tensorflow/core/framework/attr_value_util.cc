@@ -715,8 +715,34 @@ uint64_t AttrValueHash(const AttrValue& a) {
   return AttrValueHash(a, TensorProtoHash);
 }
 
+uint64_t AttrValueHashUnordered(const AttrValue& a,
+                                const TensorProtoHasher& tensor_hash) {
+  if (a.has_tensor()) return tensor_hash(a.tensor());
+
+  if (a.has_func()) {
+    const NameAttrList& func = a.func();
+    uint64_t h = Hash64(func.name());
+    uint64_t attrs_hash = 0;
+    for (const auto& pair : func.attr()) {
+      uint64_t attr_hash = Hash64(pair.first.data(), pair.first.size());
+      attr_hash = Hash64CombineUnordered(
+          AttrValueHashUnordered(pair.second, tensor_hash), attr_hash);
+      attrs_hash ^= attr_hash;
+    }
+    h = Hash64Combine(attrs_hash, h);
+    return h;
+  }
+
+  // If `a` is not a tensor or func, get a hash of serialized string.
+  return DeterministicProtoHash64(a);
+}
+
 uint64_t FastAttrValueHash(const AttrValue& a) {
   return AttrValueHash(a, FastTensorProtoHash);
+}
+
+uint64_t FastAttrValueHashUnordered(const AttrValue& a) {
+  return AttrValueHashUnordered(a, FastTensorProtoHash);
 }
 
 bool HasPlaceHolder(const AttrValue& val) {
