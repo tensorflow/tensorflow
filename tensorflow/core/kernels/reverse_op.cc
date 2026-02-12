@@ -172,24 +172,24 @@ class ReverseOp : public OpKernel {
     }
     const Tensor& dims = context->input(1);
 
+    const int input_dims = input.dims();
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(dims.shape()),
+                errors::InvalidArgument("'dims' must be 1-dimension, not ",
+                                        dims.dims()));
+
+    OP_REQUIRES(
+        context, input_dims == dims.dim_size(0),
+        errors::InvalidArgument(
+            "'dims' must have the same number of values as 'input' has "
+            "dimensions. 'input' has ",
+            input_dims, "'dims' has ", dims.dim_size(0), " values"));
+    OP_REQUIRES(context, input_dims <= 8,
+                errors::Unimplemented(
+                    "reverse is not implemented for tensors of rank > 8."));
+
     if (TensorShapeUtils::IsScalar(input.shape())) {
       context->set_output(0, input);
     } else {
-      const int input_dims = input.dims();
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(dims.shape()),
-                  errors::InvalidArgument("'dims' must be 1-dimension, not ",
-                                          dims.dims()));
-
-      OP_REQUIRES(
-          context, input_dims == dims.dim_size(0),
-          errors::InvalidArgument(
-              "'dims' must have the same number of values as 'input' has "
-              "dimensions. 'input' has ",
-              input_dims, "'dims' has ", dims.dim_size(0), " values"));
-      OP_REQUIRES(context, input_dims <= 8,
-                  errors::Unimplemented(
-                      "reverse is not implemented for tensors of rank > 8."));
-
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
@@ -249,34 +249,34 @@ class ReverseV2Op : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& sparse_dims = context->input(1);
 
+    const int input_dims = input.dims();
+    const TensorShape& sparse_dims_shape = sparse_dims.shape();
+    const auto& axes_sparse_flat = sparse_dims.flat<Tidx>();
+
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
+                errors::InvalidArgument("'dims' must be 1-dimension, not ",
+                                        sparse_dims.dims()));
+    absl::InlinedVector<bool, 8> axes_dense(input_dims, false);
+    for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
+      Tidx axis = internal::SubtleMustCopy<Tidx>(axes_sparse_flat(dummy));
+      Tidx canonical_axis = axis < 0 ? input_dims + axis : axis;
+      OP_REQUIRES(context, canonical_axis >= 0 && canonical_axis < input_dims,
+                  errors::InvalidArgument("'axis'[", dummy, "] = ", axis,
+                                          " is out of valid range [", 0, ", ",
+                                          input_dims - 1));
+      OP_REQUIRES(context, !axes_dense[canonical_axis],
+                  errors::InvalidArgument("axis ", canonical_axis,
+                                          " specified more than once."));
+      axes_dense[canonical_axis] = true;
+    }
+
+    OP_REQUIRES(context, input_dims <= 8,
+                errors::Unimplemented(
+                    "reverse is not implemented for tensors of rank > 8."));
+
     if (TensorShapeUtils::IsScalar(input.shape()) || input.NumElements() == 0) {
       context->set_output(0, input);
     } else {
-      const int input_dims = input.dims();
-      const TensorShape& sparse_dims_shape = sparse_dims.shape();
-      const auto& axes_sparse_flat = sparse_dims.flat<Tidx>();
-
-      OP_REQUIRES(context, TensorShapeUtils::IsVector(sparse_dims_shape),
-                  errors::InvalidArgument("'dims' must be 1-dimension, not ",
-                                          sparse_dims.dims()));
-      absl::InlinedVector<bool, 8> axes_dense(input_dims, false);
-      for (int dummy = 0; dummy < axes_sparse_flat.size(); dummy++) {
-        Tidx axis = internal::SubtleMustCopy<Tidx>(axes_sparse_flat(dummy));
-        Tidx canonical_axis = axis < 0 ? input_dims + axis : axis;
-        OP_REQUIRES(context, canonical_axis >= 0 && canonical_axis < input_dims,
-                    errors::InvalidArgument("'axis'[", dummy, "] = ", axis,
-                                            " is out of valid range [", 0, ", ",
-                                            input_dims - 1));
-        OP_REQUIRES(context, !axes_dense[canonical_axis],
-                    errors::InvalidArgument("axis ", canonical_axis,
-                                            " specified more than once."));
-        axes_dense[canonical_axis] = true;
-      }
-
-      OP_REQUIRES(context, input_dims <= 8,
-                  errors::Unimplemented(
-                      "reverse is not implemented for tensors of rank > 8."));
-
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
