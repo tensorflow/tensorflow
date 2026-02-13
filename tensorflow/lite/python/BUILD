@@ -404,7 +404,7 @@ py_strict_library(
         "//tensorflow/python/training:saver",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@flatbuffers//:runtime_py",
+        "@pypi_flatbuffers//:pkg",
     ],
 )
 

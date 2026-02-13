@@ -53,6 +53,11 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
             base_url = "",
             ignore_root_user_error = True,
             python_version = tool_version,
+            # NOTE: @rules_python//python/config_settings:py_freethreaded=yes/no
+            # isnt sufficient to configure freethreaded python toolchain.
+            # Because this happens in bazel's phase 2 (build/test) and can fail
+            # if init_toolchains runs pip parse during phase1 (fetch).
+            python_version_kind = "ft" if "ft" in HERMETIC_PYTHON_VERSION else HERMETIC_PYTHON_VERSION_KIND,
             tool_versions = {
                 tool_version: {
                     "url": HERMETIC_PYTHON_URL,

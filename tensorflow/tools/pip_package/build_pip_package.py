@@ -434,6 +434,13 @@ def build_wheel(
   if collab == "True":
     env["collaborator_build"] = True
 
+  # Note: (Required for rules_python >= 1.7.0)
+  # Modern rules_python no longer exports PYTHONPATH to subprocesses by default
+  # for stricter hermeticity (see release 1.7.0). We must explicitly propagate
+  # the current sys.path so spawned child processes can resolve external
+  # dependencies.
+  env["PYTHONPATH"] = os.pathsep.join([os.path.abspath(p) for p in sys.path])
+
   subprocess.run(
       [
           sys.executable,
