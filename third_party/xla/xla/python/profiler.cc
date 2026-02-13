@@ -28,7 +28,6 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "nanobind/stl/unique_ptr.h"  // IWYU pragma: keep
 #include "nanobind/stl/vector.h"  // IWYU pragma: keep
-#include "xla/backends/profiler/util/metadata_registry.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/exceptions.h"
 #include "xla/pjrt/status_casters.h"
@@ -360,10 +359,6 @@ NB_MODULE(_profiler, m) {
     std::string out = GetFdoProfile(std::string(xspace.c_str(), xspace.size()));
     return nb::bytes(out.data(), out.size());
   });
-
-  m.def("set_metadata", &xla::profiler::SetProfilerMetadata, nb::arg("key"),
-        nb::arg("value"));
-  m.def("clear_metadata", &xla::profiler::ClearProfilerMetadata);
 
   m.def(
       "aggregate_profiled_instructions",
