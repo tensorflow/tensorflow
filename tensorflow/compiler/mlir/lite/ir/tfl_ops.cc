@@ -4837,10 +4837,9 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
                      /*current_axis=*/0, raw_output, current_input_index,
                      input_tensor.getType());
 
-  bool detected_splat = false;
   const bool valid_output_buffer = DenseElementsAttr::isValidRawBuffer(
-      input_tensor.getType(), raw_output_arr, detected_splat);
-  if (!valid_output_buffer || detected_splat) return nullptr;
+      input_tensor.getType(), raw_output_arr);
+  if (!valid_output_buffer) return nullptr;
 
   auto result_type =
       RankedTensorType::get(output_shape, input_tensor.getElementType());
