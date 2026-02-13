@@ -1,5 +1,5 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index e83a237a5397..462b6b60f5b2 100644
+index 799df26..ac7ee2c 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 @@ -232,19 +232,19 @@ write_file(
@@ -33,10 +33,10 @@ index e83a237a5397..462b6b60f5b2 100644
 +    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
  )
  
- # TODO(zbarsky): Is there a better way to express this?
-@@ -327,12 +327,14 @@ cc_library(
-             "lib/Support/BLAKE3/blake3_neon.c",
-         ],
+ BLAKE3_x86_64_ASM_SOURCE_PATTERNS = [
+@@ -267,12 +267,14 @@ filegroup(
+     name = "blake3_x86_64_asm",
+     srcs = select({
          ":is_x86_64_windows_clang_mingw": [
 -            pattern % "windows_gnu"
 -            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
@@ -44,27 +44,25 @@ index e83a237a5397..462b6b60f5b2 100644
 +            # pattern % "windows_gnu"
 +            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
          ],
-         ":is_x86_64_non_windows": [
+         "//conditions:default": [
 -            pattern % "unix"
 -            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
 +            # TODO(b/234415414): temporary disabled
 +            # pattern % "unix"
 +            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
          ],
-         "//conditions:default": [
-         ],
-@@ -358,14 +360,16 @@ cc_library(
+     }),
+ )
+@@ -330,12 +332,14 @@ cc_library(
      ],
      copts = llvm_copts,
      defines = select({
 -        "@platforms//cpu:aarch64": [
 -        ],
 +        # TODO(b/234415414): temporary disabled
-+        #"@platforms//cpu:aarch64": [
-+        #],
-         "//conditions:default": [
-             "BLAKE3_USE_NEON=0",
-         ],
++        # "@platforms//cpu:aarch64": [
++        # ],
+         "//conditions:default": ["BLAKE3_USE_NEON=0"],
      }) + select({
 -        "@platforms//cpu:x86_64": [
 -        ],
