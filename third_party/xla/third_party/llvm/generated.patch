@@ -1,808 +1,1003 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
---- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-+++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-@@ -169,8 +169,16 @@
-         break;
- 
-       auto *RHSVal = Env.getValue(*RHS);
--      if (RHSVal == nullptr)
-+      if (RHSVal == nullptr) {
-         RHSVal = Env.createValue(LHS->getType());
-+        if (RHSVal == nullptr) {
-+          // At least make sure the old value is gone. It's unlikely to be there
-+          // in the first place given that we don't even know how to create
-+          // a basic unknown value of that type.
-+          Env.clearValue(*LHSLoc);
-+          break;
-+        }
-+      }
- 
-       // Assign a value to the storage location of the left-hand side.
-       Env.setValue(*LHSLoc, *RHSVal);
-diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
---- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-+++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-@@ -1011,6 +1011,54 @@
-       });
+diff -ruN --strip-trailing-cr a/lldb/source/Target/Process.cpp b/lldb/source/Target/Process.cpp
+--- a/lldb/source/Target/Process.cpp
++++ b/lldb/source/Target/Process.cpp
+@@ -525,6 +525,8 @@
+   // explicitly clear the thread list here to ensure that the mutex is not
+   // destroyed before the thread list.
+   m_thread_list.Clear();
++  delete m_current_private_state_thread;
++  m_current_private_state_thread = nullptr;
  }
  
-+TEST(TransferTest, BinaryOperatorAssignFloat) {
-+  using ast_matchers::binaryOperator;
-+  using ast_matchers::hasOperatorName;
-+  using ast_matchers::match;
-+  using ast_matchers::selectFirst;
-+
-+  // This was crashing.
-+  std::string Code = R"(
-+    void target() {
-+      double Foo = 0.0f;
-+      double FooAtA = Foo;
-+      Foo = 1.0f;
-+      double FooAtB = Foo;
-+      bool check = (FooAtA == FooAtB);
-+      // [[p]]
-+    }
-+  )";
-+  runDataflow(
-+      Code,
-+      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
-+         ASTContext &ASTCtx) {
-+        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
-+
-+        const Environment &EnvP = getEnvironmentAtAnnotation(Results, "p");
-+
-+        const ValueDecl *FooAtADecl = findValueDecl(ASTCtx, "FooAtA");
-+        ASSERT_THAT(FooAtADecl, NotNull());
-+        const Value *FooAtAVal = EnvP.getValue(*FooAtADecl);
-+        // FIXME: Should be non-null. Floats aren't modeled at all.
-+        EXPECT_THAT(FooAtAVal, IsNull());
-+
-+        const ValueDecl *FooAtBDecl = findValueDecl(ASTCtx, "FooAtB");
-+        ASSERT_THAT(FooAtBDecl, NotNull());
-+        const Value *FooAtBVal = EnvP.getValue(*FooAtBDecl);
-+        // FIXME: Should be non-null. Floats aren't modeled at all.
-+        EXPECT_THAT(FooAtBVal, IsNull());
-+
-+        // See if the storage location is correctly propagated.
-+        auto MatchResult =
-+            match(binaryOperator(hasOperatorName("=")).bind("bo"), ASTCtx);
-+        const auto *BO = selectFirst<BinaryOperator>("bo", MatchResult);
-+        ASSERT_THAT(BO, NotNull());
-+        const StorageLocation *BOLoc = EnvP.getStorageLocation(*BO);
-+        // FIXME: Should be non-null.
-+        EXPECT_THAT(BOLoc, IsNull());
-+      });
-+}
-+
- TEST(TransferTest, VarDeclInitAssign) {
-   std::string Code = R"(
-     void target() {
-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/VectorUtils.cpp b/llvm/lib/Analysis/VectorUtils.cpp
---- a/llvm/lib/Analysis/VectorUtils.cpp
-+++ b/llvm/lib/Analysis/VectorUtils.cpp
-@@ -65,12 +65,6 @@
-   case Intrinsic::smul_fix_sat:
-   case Intrinsic::umul_fix:
-   case Intrinsic::umul_fix_sat:
--  case Intrinsic::uadd_with_overflow:
--  case Intrinsic::sadd_with_overflow:
--  case Intrinsic::usub_with_overflow:
--  case Intrinsic::ssub_with_overflow:
--  case Intrinsic::umul_with_overflow:
--  case Intrinsic::smul_with_overflow:
-   case Intrinsic::sqrt: // Begin floating-point.
-   case Intrinsic::asin:
-   case Intrinsic::acos:
-@@ -136,6 +130,15 @@
-   if (TTI && Intrinsic::isTargetIntrinsic(ID))
-     return TTI->isTargetIntrinsicTriviallyScalarizable(ID);
- 
-+  switch (ID) {
-+  case Intrinsic::uadd_with_overflow:
-+  case Intrinsic::sadd_with_overflow:
-+  case Intrinsic::ssub_with_overflow:
-+  case Intrinsic::usub_with_overflow:
-+  case Intrinsic::umul_with_overflow:
-+  case Intrinsic::smul_with_overflow:
-+    return true;
-+  }
-   return false;
- }
- 
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
---- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
-+++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
-@@ -1834,12 +1834,7 @@
-   if (isVectorIntrinsicWithOverloadTypeAtArg(VectorIntrinsicID, -1,
-                                              State.TTI)) {
-     Type *RetTy = toVectorizedTy(getResultType(), State.VF);
--    ArrayRef<Type *> ContainedTys = getContainedTypes(RetTy);
--    for (auto [Idx, Ty] : enumerate(ContainedTys)) {
--      if (isVectorIntrinsicWithStructReturnOverloadAtField(VectorIntrinsicID,
--                                                           Idx, State.TTI))
--        TysForDecl.push_back(Ty);
--    }
-+    append_range(TysForDecl, getContainedTypes(RetTy));
+ ProcessProperties &Process::GetGlobalProperties() {
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -17042,6 +17042,8 @@
+       NodesCosts.erase(TE.get());
+       GatheredLoadsToDelete.insert(TE.get());
+     }
++    if (GatheredLoadsToDelete.contains(TE.get()))
++      DeletedNodes.insert(TE.get());
    }
-   SmallVector<Value *, 4> Args;
-   for (const auto &I : enumerate(operands())) {
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
---- a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
-+++ b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
-@@ -1,4 +1,4 @@
--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store|with\.overflow)" --version 5
-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store)" --version 5
- ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve < %s -S -o - -debug-only=loop-vectorize 2>%t.1 | FileCheck %s --check-prefix=CHECK
- ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve -vector-library=ArmPL < %s -S -o - -debug-only=loop-vectorize 2>%t.2 | FileCheck %s --check-prefix=CHECK-ARMPL
- ; RUN: FileCheck --input-file=%t.1 --check-prefix=CHECK-COST %s
-@@ -522,78 +522,6 @@
-   %iv.next = add nuw nsw i64 %iv, 1
-   %exitcond.not = icmp eq i64 %iv.next, 1024
-   br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--; CHECK-COST-LABEL: sadd_with_overflow_i32
--; CHECK-COST: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
--; CHECK-COST: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--
--; CHECK-COST-ARMPL-LABEL: sadd_with_overflow_i32
--; CHECK-COST-ARMPL: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
--; CHECK-COST-ARMPL: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
--
--define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @sadd_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
--; CHECK:  [[ENTRY:.*:]]
--; CHECK:  [[VECTOR_PH:.*:]]
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
--; CHECK:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
--; CHECK:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
--; CHECK:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
--; CHECK:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
--; CHECK:  [[MIDDLE_BLOCK:.*:]]
--; CHECK:  [[EXIT:.*:]]
--;
--; CHECK-ARMPL-LABEL: define void @sadd_with_overflow_i32(
--; CHECK-ARMPL-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
--; CHECK-ARMPL:  [[ENTRY:.*:]]
--; CHECK-ARMPL:  [[VECTOR_PH:.*:]]
--; CHECK-ARMPL:  [[VECTOR_BODY:.*:]]
--; CHECK-ARMPL:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
--; CHECK-ARMPL:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
--; CHECK-ARMPL:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
--; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
--; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
--; CHECK-ARMPL:  [[MIDDLE_BLOCK:.*:]]
--; CHECK-ARMPL:  [[EXIT:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
  
- exit:
-   ret void
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
---- a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
-+++ b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
-@@ -1,4 +1,4 @@
--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store|with\.overflow)" --version 5
-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store)" --version 5
- ; RUN: opt -passes=loop-vectorize -force-vector-interleave=1 -force-vector-width=2 < %s -S -o - | FileCheck %s
- 
- define void @sincos_f32(ptr noalias %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
-@@ -344,474 +344,6 @@
-   %iv.next = add nuw nsw i64 %iv, 1
-   %exitcond.not = icmp eq i64 %iv.next, 1024
-   br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @uadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @uadd_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.uadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @uadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @uadd_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.uadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.uadd.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @sadd_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @sadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @sadd_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.sadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @usub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @usub_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.usub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @usub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @usub_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.usub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.usub.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @ssub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @ssub_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.ssub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @ssub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @ssub_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.ssub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.ssub.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @umul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @umul_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.umul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @umul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @umul_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.umul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.umul.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @smul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @smul_with_overflow_i32(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.smul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
--  %val_a = load i32, ptr %arrayidx_a, align 4
--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
--  %val_b = load i32, ptr %arrayidx_b, align 4
--  %call = tail call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %val_a, i32 %val_b)
--  %result = extractvalue { i32, i1 } %call, 0
--  %overflow = extractvalue { i32, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
--  store i32 %result, ptr %arrayidx_result, align 4
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
--
--exit:
--  ret void
--}
--
--define void @smul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
--; CHECK-LABEL: define void @smul_with_overflow_i64(
--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
--; CHECK:  [[VECTOR_BODY:.*:]]
--; CHECK:  [[FOR_BODY:.*:]]
--; CHECK:  [[VECTOR_BODY1:.*:]]
--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.smul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
--; CHECK:  [[EXIT:.*:]]
--; CHECK:  [[EXIT1:.*:]]
--;
--entry:
--  br label %for.body
--
--for.body:
--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
--  %val_a = load i64, ptr %arrayidx_a, align 8
--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
--  %val_b = load i64, ptr %arrayidx_b, align 8
--  %call = tail call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %val_a, i64 %val_b)
--  %result = extractvalue { i64, i1 } %call, 0
--  %overflow = extractvalue { i64, i1 } %call, 1
--  %zext_overflow = zext i1 %overflow to i8
--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
--  store i64 %result, ptr %arrayidx_result, align 8
--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
--  %iv.next = add nuw nsw i64 %iv, 1
--  %exitcond.not = icmp eq i64 %iv.next, 1024
--  br i1 %exitcond.not, label %exit, label %for.body
- 
- exit:
-   ret void
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/struct-return.ll b/llvm/test/Transforms/LoopVectorize/struct-return.ll
---- a/llvm/test/Transforms/LoopVectorize/struct-return.ll
-+++ b/llvm/test/Transforms/LoopVectorize/struct-return.ll
-@@ -166,31 +166,28 @@
-   ret void
+   for (std::unique_ptr<TreeEntry> &TE : VectorizableTree) {
+@@ -17071,6 +17073,22 @@
+     DeletedNodes.clear();
+     TransformedToGatherNodes.clear();
+     NewCost = Cost;
++  } else {
++    // If the remaining tree is just a buildvector - exit, it will cause
++    // endless attempts to vectorize.
++    if (VectorizableTree.size()>= 2 && VectorizableTree.front()->hasState() &&
++        VectorizableTree.front()->getOpcode() == Instruction::InsertElement &&
++       TransformedToGatherNodes.contains(VectorizableTree[1].get()))
++      return InstructionCost::getInvalid();
++    if (VectorizableTree.size() >= 3 && VectorizableTree.front()->hasState() &&
++        VectorizableTree.front()->getOpcode() == Instruction::InsertElement &&
++        VectorizableTree[1]->hasState() &&
++        VectorizableTree[1]->State == TreeEntry::Vectorize &&
++        (VectorizableTree[1]->getOpcode() == Instruction::ZExt ||
++         VectorizableTree[1]->getOpcode() == Instruction::SExt ||
++         VectorizableTree[1]->getOpcode() == Instruction::Trunc) &&
++        TransformedToGatherNodes.contains(VectorizableTree[2].get()))
++      return InstructionCost::getInvalid();
+   }
+   return NewCost;
  }
- 
--; CHECK-REMARKS:	 remark: {{.*}} vectorized loop
-+; TODO: Allow mixed-struct type vectorization and mark overflow intrinsics as trivially vectorizable.
-+; CHECK-REMARKS:         remark: {{.*}} loop not vectorized: call instruction cannot be vectorized
- define void @test_overflow_intrinsic(ptr noalias readonly %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
- ; CHECK-LABEL: define void @test_overflow_intrinsic(
- ; CHECK-SAME: ptr noalias readonly [[IN:%.*]], ptr noalias writeonly [[OUT_A:%.*]], ptr noalias writeonly [[OUT_B:%.*]]) {
--; CHECK-NEXT:  [[ENTRY:.*:]]
--; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
--; CHECK:       [[VECTOR_PH]]:
--; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
--; CHECK:       [[VECTOR_BODY]]:
--; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[IV_NEXT:%.*]], %[[VECTOR_BODY]] ]
-+; CHECK-NEXT:  [[ENTRY:.*]]:
-+; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
-+; CHECK:       [[FOR_BODY]]:
-+; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[FOR_BODY]] ]
- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds float, ptr [[IN]], i64 [[IV]]
--; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x i32>, ptr [[ARRAYIDX]], align 4
--; CHECK-NEXT:    [[TMP1:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD]], <2 x i32> [[WIDE_LOAD]])
--; CHECK-NEXT:    [[TMP2:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 0
--; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 1
--; CHECK-NEXT:    [[TMP4:%.*]] = zext <2 x i1> [[TMP3]] to <2 x i8>
-+; CHECK-NEXT:    [[IN_VAL:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-+; CHECK-NEXT:    [[CALL:%.*]] = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 [[IN_VAL]], i32 [[IN_VAL]])
-+; CHECK-NEXT:    [[EXTRACT_RET:%.*]] = extractvalue { i32, i1 } [[CALL]], 0
-+; CHECK-NEXT:    [[EXTRACT_OVERFLOW:%.*]] = extractvalue { i32, i1 } [[CALL]], 1
-+; CHECK-NEXT:    [[ZEXT_OVERFLOW:%.*]] = zext i1 [[EXTRACT_OVERFLOW]] to i8
- ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr [[OUT_A]], i64 [[IV]]
--; CHECK-NEXT:    store <2 x i32> [[TMP2]], ptr [[ARRAYIDX2]], align 4
-+; CHECK-NEXT:    store i32 [[EXTRACT_RET]], ptr [[ARRAYIDX2]], align 4
- ; CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr inbounds i8, ptr [[OUT_B]], i64 [[IV]]
--; CHECK-NEXT:    store <2 x i8> [[TMP4]], ptr [[ARRAYIDX4]], align 4
--; CHECK-NEXT:    [[IV_NEXT]] = add nuw i64 [[IV]], 2
-+; CHECK-NEXT:    store i8 [[ZEXT_OVERFLOW]], ptr [[ARRAYIDX4]], align 4
-+; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
- ; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[IV_NEXT]], 1024
--; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
--; CHECK:       [[MIDDLE_BLOCK]]:
--; CHECK-NEXT:    br label %[[EXIT:.*]]
-+; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[EXIT:.*]], label %[[FOR_BODY]]
- ; CHECK:       [[EXIT]]:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/RISCV/complex-loads.ll b/llvm/test/Transforms/SLPVectorizer/RISCV/complex-loads.ll
+--- a/llvm/test/Transforms/SLPVectorizer/RISCV/complex-loads.ll
++++ b/llvm/test/Transforms/SLPVectorizer/RISCV/complex-loads.ll
+@@ -277,414 +277,357 @@
+ ; UNALIGNED_VEC_MEM-LABEL: define i32 @test(
+ ; UNALIGNED_VEC_MEM-SAME: ptr [[PIX1:%.*]], ptr [[PIX2:%.*]], i64 [[IDX_EXT:%.*]], i64 [[IDX_EXT63:%.*]], ptr [[ADD_PTR:%.*]], ptr [[ADD_PTR64:%.*]]) #[[ATTR0:[0-9]+]] {
+ ; UNALIGNED_VEC_MEM-NEXT:  entry:
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP54:%.*]] = load i8, ptr [[PIX1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV:%.*]] = zext i8 [[TMP54]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP58:%.*]] = load i8, ptr [[PIX2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV2:%.*]] = zext i8 [[TMP58]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB:%.*]] = sub i32 [[CONV]], [[CONV2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX3:%.*]] = getelementptr i8, ptr [[PIX1]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP2:%.*]] = load i8, ptr [[ARRAYIDX3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV4:%.*]] = zext i8 [[TMP2]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX5:%.*]] = getelementptr i8, ptr [[PIX2]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP3:%.*]] = load i8, ptr [[ARRAYIDX5]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV6:%.*]] = zext i8 [[TMP3]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB7:%.*]] = sub i32 [[CONV4]], [[CONV6]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL:%.*]] = shl i32 [[SUB7]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD:%.*]] = add i32 [[SHL]], [[SUB]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr i8, ptr [[PIX1]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP4:%.*]] = load i8, ptr [[ARRAYIDX8]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV9:%.*]] = zext i8 [[TMP4]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX10:%.*]] = getelementptr i8, ptr [[PIX2]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP5:%.*]] = load i8, ptr [[ARRAYIDX10]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV11:%.*]] = zext i8 [[TMP5]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB12:%.*]] = sub i32 [[CONV9]], [[CONV11]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX13:%.*]] = getelementptr i8, ptr [[PIX1]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP6:%.*]] = load i8, ptr [[ARRAYIDX13]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV14:%.*]] = zext i8 [[TMP6]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX15:%.*]] = getelementptr i8, ptr [[PIX2]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX15]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV16:%.*]] = zext i8 [[TMP7]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB17:%.*]] = sub i32 [[CONV14]], [[CONV16]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL18:%.*]] = shl i32 [[SUB17]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD19:%.*]] = add i32 [[SHL18]], [[SUB12]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX20:%.*]] = getelementptr i8, ptr [[PIX1]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX20]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV21:%.*]] = zext i8 [[TMP8]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX22:%.*]] = getelementptr i8, ptr [[PIX2]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX22]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV23:%.*]] = zext i8 [[TMP9]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB24:%.*]] = sub i32 [[CONV21]], [[CONV23]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX25:%.*]] = getelementptr i8, ptr [[PIX1]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP10:%.*]] = load i8, ptr [[ARRAYIDX25]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV26:%.*]] = zext i8 [[TMP10]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX27:%.*]] = getelementptr i8, ptr [[PIX2]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP11:%.*]] = load i8, ptr [[ARRAYIDX27]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV28:%.*]] = zext i8 [[TMP11]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB29:%.*]] = sub i32 [[CONV26]], [[CONV28]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL30:%.*]] = shl i32 [[SUB29]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD31:%.*]] = add i32 [[SHL30]], [[SUB24]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX32:%.*]] = getelementptr i8, ptr [[PIX1]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP12:%.*]] = load i8, ptr [[ARRAYIDX32]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV33:%.*]] = zext i8 [[TMP12]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX34:%.*]] = getelementptr i8, ptr [[PIX2]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP13:%.*]] = load i8, ptr [[ARRAYIDX34]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV35:%.*]] = zext i8 [[TMP13]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB36:%.*]] = sub i32 [[CONV33]], [[CONV35]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX37:%.*]] = getelementptr i8, ptr [[PIX1]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP14:%.*]] = load i8, ptr [[ARRAYIDX37]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV38:%.*]] = zext i8 [[TMP14]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX39:%.*]] = getelementptr i8, ptr [[PIX2]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP15:%.*]] = load i8, ptr [[ARRAYIDX39]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV40:%.*]] = zext i8 [[TMP15]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB41:%.*]] = sub i32 [[CONV38]], [[CONV40]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL42:%.*]] = shl i32 [[SUB41]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD43:%.*]] = add i32 [[SHL42]], [[SUB36]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD44:%.*]] = add i32 [[ADD19]], [[ADD]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB45:%.*]] = sub i32 [[ADD]], [[ADD19]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD46:%.*]] = add i32 [[ADD43]], [[ADD31]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB47:%.*]] = sub i32 [[ADD31]], [[ADD43]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD48:%.*]] = add i32 [[ADD46]], [[ADD44]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB51:%.*]] = sub i32 [[ADD44]], [[ADD46]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD55:%.*]] = add i32 [[SUB47]], [[SUB45]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB59:%.*]] = sub i32 [[SUB45]], [[SUB47]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD_PTR3:%.*]] = getelementptr i8, ptr [[PIX1]], i64 [[IDX_EXT]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD_PTR644:%.*]] = getelementptr i8, ptr [[PIX2]], i64 [[IDX_EXT63]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ADD_PTR3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV_1:%.*]] = zext i8 [[TMP16]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ADD_PTR644]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_1:%.*]] = zext i8 [[TMP17]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB_1:%.*]] = sub i32 [[CONV_1]], [[CONV2_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX3_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX3_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_1:%.*]] = zext i8 [[TMP18]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX5_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX5_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_1:%.*]] = zext i8 [[TMP19]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_1:%.*]] = sub i32 [[CONV4_1]], [[CONV6_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL_1:%.*]] = shl i32 [[SUB7_1]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_1:%.*]] = add i32 [[SHL_1]], [[SUB_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX8_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX8_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_1:%.*]] = zext i8 [[TMP20]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX10_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP21:%.*]] = load i8, ptr [[ARRAYIDX10_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_1:%.*]] = zext i8 [[TMP21]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_1:%.*]] = sub i32 [[CONV9_1]], [[CONV11_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX13_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP22:%.*]] = load i8, ptr [[ARRAYIDX13_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_1:%.*]] = zext i8 [[TMP22]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX15_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP23:%.*]] = load i8, ptr [[ARRAYIDX15_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_1:%.*]] = zext i8 [[TMP23]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_1:%.*]] = sub i32 [[CONV14_1]], [[CONV16_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_1:%.*]] = shl i32 [[SUB17_1]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_1:%.*]] = add i32 [[SHL18_1]], [[SUB12_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX20_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP24:%.*]] = load i8, ptr [[ARRAYIDX20_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_1:%.*]] = zext i8 [[TMP24]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX22_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP25:%.*]] = load i8, ptr [[ARRAYIDX22_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_1:%.*]] = zext i8 [[TMP25]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_1:%.*]] = sub i32 [[CONV21_1]], [[CONV23_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX25_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP26:%.*]] = load i8, ptr [[ARRAYIDX25_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_1:%.*]] = zext i8 [[TMP26]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX27_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP27:%.*]] = load i8, ptr [[ARRAYIDX27_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_1:%.*]] = zext i8 [[TMP27]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_1:%.*]] = sub i32 [[CONV26_1]], [[CONV28_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_1:%.*]] = shl i32 [[SUB29_1]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_1:%.*]] = add i32 [[SHL30_1]], [[SUB24_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX32_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP28:%.*]] = load i8, ptr [[ARRAYIDX32_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_1:%.*]] = zext i8 [[TMP28]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX34_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP29:%.*]] = load i8, ptr [[ARRAYIDX34_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_1:%.*]] = zext i8 [[TMP29]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_1:%.*]] = sub i32 [[CONV33_1]], [[CONV35_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX37_1:%.*]] = getelementptr i8, ptr [[ADD_PTR3]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP30:%.*]] = load i8, ptr [[ARRAYIDX37_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_1:%.*]] = zext i8 [[TMP30]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX39_1:%.*]] = getelementptr i8, ptr [[ADD_PTR644]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP31:%.*]] = load i8, ptr [[ARRAYIDX39_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_1:%.*]] = zext i8 [[TMP31]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_1:%.*]] = sub i32 [[CONV38_1]], [[CONV40_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_1:%.*]] = shl i32 [[SUB41_1]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_1:%.*]] = add i32 [[SHL42_1]], [[SUB36_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_1:%.*]] = add i32 [[ADD19_1]], [[ADD_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB45_1:%.*]] = sub i32 [[ADD_1]], [[ADD19_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_1:%.*]] = add i32 [[ADD43_1]], [[ADD31_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_1:%.*]] = sub i32 [[ADD31_1]], [[ADD43_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_1:%.*]] = add i32 [[ADD46_1]], [[ADD44_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB51_1:%.*]] = sub i32 [[ADD44_1]], [[ADD46_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD55_1:%.*]] = add i32 [[SUB47_1]], [[SUB45_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_1:%.*]] = sub i32 [[SUB45_1]], [[SUB47_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD_PTR_1:%.*]] = getelementptr i8, ptr [[ADD_PTR]], i64 [[IDX_EXT]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD_PTR64_1:%.*]] = getelementptr i8, ptr [[ADD_PTR64]], i64 [[IDX_EXT63]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP32:%.*]] = load i8, ptr [[ADD_PTR_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV_2:%.*]] = zext i8 [[TMP32]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP33:%.*]] = load i8, ptr [[ADD_PTR64_1]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_2:%.*]] = zext i8 [[TMP33]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB_2:%.*]] = sub i32 [[CONV_2]], [[CONV2_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX3_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP34:%.*]] = load i8, ptr [[ARRAYIDX3_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_2:%.*]] = zext i8 [[TMP34]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX5_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP35:%.*]] = load i8, ptr [[ARRAYIDX5_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_2:%.*]] = zext i8 [[TMP35]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_2:%.*]] = sub i32 [[CONV4_2]], [[CONV6_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL_2:%.*]] = shl i32 [[SUB7_2]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_2:%.*]] = add i32 [[SHL_2]], [[SUB_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX8_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP36:%.*]] = load i8, ptr [[ARRAYIDX8_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_2:%.*]] = zext i8 [[TMP36]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX10_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP37:%.*]] = load i8, ptr [[ARRAYIDX10_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_2:%.*]] = zext i8 [[TMP37]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_2:%.*]] = sub i32 [[CONV9_2]], [[CONV11_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX13_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP38:%.*]] = load i8, ptr [[ARRAYIDX13_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_2:%.*]] = zext i8 [[TMP38]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX15_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP39:%.*]] = load i8, ptr [[ARRAYIDX15_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_2:%.*]] = zext i8 [[TMP39]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_2:%.*]] = sub i32 [[CONV14_2]], [[CONV16_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_2:%.*]] = shl i32 [[SUB17_2]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_2:%.*]] = add i32 [[SHL18_2]], [[SUB12_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX20_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP40:%.*]] = load i8, ptr [[ARRAYIDX20_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_2:%.*]] = zext i8 [[TMP40]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX22_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP41:%.*]] = load i8, ptr [[ARRAYIDX22_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_2:%.*]] = zext i8 [[TMP41]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_2:%.*]] = sub i32 [[CONV21_2]], [[CONV23_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX25_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP42:%.*]] = load i8, ptr [[ARRAYIDX25_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_2:%.*]] = zext i8 [[TMP42]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX27_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP43:%.*]] = load i8, ptr [[ARRAYIDX27_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_2:%.*]] = zext i8 [[TMP43]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_2:%.*]] = sub i32 [[CONV26_2]], [[CONV28_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_2:%.*]] = shl i32 [[SUB29_2]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_2:%.*]] = add i32 [[SHL30_2]], [[SUB24_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX32_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP44:%.*]] = load i8, ptr [[ARRAYIDX32_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_2:%.*]] = zext i8 [[TMP44]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX34_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP45:%.*]] = load i8, ptr [[ARRAYIDX34_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_2:%.*]] = zext i8 [[TMP45]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_2:%.*]] = sub i32 [[CONV33_2]], [[CONV35_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX37_2:%.*]] = getelementptr i8, ptr [[ADD_PTR_1]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP46:%.*]] = load i8, ptr [[ARRAYIDX37_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_2:%.*]] = zext i8 [[TMP46]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX39_2:%.*]] = getelementptr i8, ptr [[ADD_PTR64_1]], i64 7
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP47:%.*]] = load i8, ptr [[ARRAYIDX39_2]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_2:%.*]] = zext i8 [[TMP47]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_2:%.*]] = sub i32 [[CONV38_2]], [[CONV40_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_2:%.*]] = shl i32 [[SUB41_2]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_2:%.*]] = add i32 [[SHL42_2]], [[SUB36_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_2:%.*]] = add i32 [[ADD19_2]], [[ADD_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB45_2:%.*]] = sub i32 [[ADD_2]], [[ADD19_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_2:%.*]] = add i32 [[ADD43_2]], [[ADD31_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_2:%.*]] = sub i32 [[ADD31_2]], [[ADD43_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_2:%.*]] = add i32 [[ADD46_2]], [[ADD44_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB51_2:%.*]] = sub i32 [[ADD44_2]], [[ADD46_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD55_2:%.*]] = add i32 [[SUB47_2]], [[SUB45_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_2:%.*]] = sub i32 [[SUB45_2]], [[SUB47_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP48:%.*]] = load i8, ptr null, align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV_3:%.*]] = zext i8 [[TMP48]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP49:%.*]] = load i8, ptr null, align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_3:%.*]] = zext i8 [[TMP49]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB_3:%.*]] = sub i32 [[CONV_3]], [[CONV2_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX5_3:%.*]] = getelementptr i8, ptr null, i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP50:%.*]] = load i8, ptr [[ARRAYIDX5_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_3:%.*]] = zext i8 [[TMP50]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX5_4:%.*]] = getelementptr i8, ptr null, i64 4
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP51:%.*]] = load i8, ptr [[ARRAYIDX5_4]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_3:%.*]] = zext i8 [[TMP51]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_3:%.*]] = sub i32 [[CONV4_3]], [[CONV6_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL_3:%.*]] = shl i32 [[SUB7_3]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_3:%.*]] = add i32 [[SHL_3]], [[SUB_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX8_3:%.*]] = getelementptr i8, ptr null, i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP52:%.*]] = load i8, ptr [[ARRAYIDX8_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_3:%.*]] = zext i8 [[TMP52]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX10_3:%.*]] = getelementptr i8, ptr null, i64 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP53:%.*]] = load i8, ptr [[ARRAYIDX10_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_3:%.*]] = zext i8 [[TMP53]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_3:%.*]] = sub i32 [[CONV9_3]], [[CONV11_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[TMP0:%.*]] = load i8, ptr null, align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_3:%.*]] = zext i8 [[TMP0]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX15_3:%.*]] = getelementptr i8, ptr null, i64 5
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP55:%.*]] = load i8, ptr [[ARRAYIDX15_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_3:%.*]] = zext i8 [[TMP55]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_3:%.*]] = sub i32 [[CONV14_3]], [[CONV16_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_3:%.*]] = shl i32 [[SUB17_3]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_3:%.*]] = add i32 [[SHL18_3]], [[SUB12_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX20_3:%.*]] = getelementptr i8, ptr null, i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP56:%.*]] = load i8, ptr [[ARRAYIDX20_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_3:%.*]] = zext i8 [[TMP56]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX22_3:%.*]] = getelementptr i8, ptr null, i64 2
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP57:%.*]] = load i8, ptr [[ARRAYIDX22_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_3:%.*]] = zext i8 [[TMP57]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_3:%.*]] = sub i32 [[CONV21_3]], [[CONV23_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[TMP1:%.*]] = load i8, ptr null, align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_3:%.*]] = zext i8 [[TMP1]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX27_3:%.*]] = getelementptr i8, ptr null, i64 6
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP59:%.*]] = load i8, ptr [[ARRAYIDX27_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_3:%.*]] = zext i8 [[TMP59]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_3:%.*]] = sub i32 [[CONV26_3]], [[CONV28_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_3:%.*]] = shl i32 [[SUB29_3]], 16
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_3:%.*]] = add i32 [[SHL30_3]], [[SUB24_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX32_3:%.*]] = getelementptr i8, ptr null, i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP60:%.*]] = load i8, ptr [[ARRAYIDX32_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_3:%.*]] = zext i8 [[TMP60]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX34_3:%.*]] = getelementptr i8, ptr null, i64 3
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP61:%.*]] = load i8, ptr [[ARRAYIDX34_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_3:%.*]] = zext i8 [[TMP61]] to i32
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_3:%.*]] = sub i32 [[CONV33_3]], [[CONV35_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP62:%.*]] = load i8, ptr null, align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_3:%.*]] = zext i8 [[TMP62]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ARRAYIDX39_3:%.*]] = getelementptr i8, ptr null, i64 7
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP2:%.*]] = load i8, ptr [[ARRAYIDX34]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP3:%.*]] = load i8, ptr [[ARRAYIDX22]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP4:%.*]] = load i8, ptr [[ARRAYIDX10]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP5:%.*]] = load i8, ptr [[PIX2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP6:%.*]] = load i8, ptr [[ARRAYIDX37]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP7:%.*]] = load i8, ptr [[ARRAYIDX25]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP8:%.*]] = load i8, ptr [[ARRAYIDX13]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP9:%.*]] = load i8, ptr [[ARRAYIDX3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP10:%.*]] = load i8, ptr [[ARRAYIDX39]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP11:%.*]] = load i8, ptr [[ARRAYIDX27]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP12:%.*]] = load i8, ptr [[ARRAYIDX15]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP13:%.*]] = load i8, ptr [[ARRAYIDX5]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP14:%.*]] = load i8, ptr [[ARRAYIDX32_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP15:%.*]] = load i8, ptr [[ARRAYIDX20_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP16:%.*]] = load i8, ptr [[ARRAYIDX8_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP17:%.*]] = load i8, ptr [[ADD_PTR3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP18:%.*]] = load i8, ptr [[ARRAYIDX34_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP19:%.*]] = load i8, ptr [[ARRAYIDX22_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP20:%.*]] = load i8, ptr [[ARRAYIDX10_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP21:%.*]] = load i8, ptr [[ADD_PTR644]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP22:%.*]] = load i8, ptr [[ARRAYIDX37_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP23:%.*]] = load i8, ptr [[ARRAYIDX25_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP24:%.*]] = load i8, ptr [[ARRAYIDX13_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP25:%.*]] = load i8, ptr [[ARRAYIDX3_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP26:%.*]] = load i8, ptr [[ARRAYIDX39_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP27:%.*]] = load i8, ptr [[ARRAYIDX27_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP28:%.*]] = load i8, ptr [[ARRAYIDX15_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP29:%.*]] = load i8, ptr [[ARRAYIDX5_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP30:%.*]] = load i8, ptr [[ARRAYIDX32_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP31:%.*]] = load i8, ptr [[ARRAYIDX20_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP32:%.*]] = load i8, ptr [[ARRAYIDX8_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP33:%.*]] = load i8, ptr [[ADD_PTR_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP34:%.*]] = load i8, ptr [[ARRAYIDX34_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP35:%.*]] = load i8, ptr [[ARRAYIDX22_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP36:%.*]] = load i8, ptr [[ARRAYIDX10_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP37:%.*]] = load i8, ptr [[ADD_PTR64_1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP38:%.*]] = load i8, ptr [[ARRAYIDX37_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP39:%.*]] = load i8, ptr [[ARRAYIDX25_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP40:%.*]] = load i8, ptr [[ARRAYIDX13_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP41:%.*]] = load i8, ptr [[ARRAYIDX3_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP42:%.*]] = load i8, ptr [[ARRAYIDX39_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP43:%.*]] = load i8, ptr [[ARRAYIDX27_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP44:%.*]] = load i8, ptr [[ARRAYIDX15_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP45:%.*]] = load i8, ptr [[ARRAYIDX5_2]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP46:%.*]] = load i8, ptr [[ARRAYIDX32_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP47:%.*]] = load i8, ptr [[ARRAYIDX20_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP48:%.*]] = load i8, ptr [[ARRAYIDX8_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP49:%.*]] = load i8, ptr null, align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV_1:%.*]] = zext i8 [[TMP17]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV_3:%.*]] = zext i8 [[TMP49]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV_2:%.*]] = zext i8 [[TMP33]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_1:%.*]] = zext i8 [[TMP16]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_3:%.*]] = zext i8 [[TMP48]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV9_2:%.*]] = zext i8 [[TMP32]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_1:%.*]] = zext i8 [[TMP15]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_3:%.*]] = zext i8 [[TMP47]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV21_2:%.*]] = zext i8 [[TMP31]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP50:%.*]] = load i8, ptr [[ARRAYIDX32]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP51:%.*]] = load <4 x i8>, ptr [[PIX1]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP52:%.*]] = load i8, ptr [[ARRAYIDX20]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP53:%.*]] = load i8, ptr [[ARRAYIDX8]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV33:%.*]] = zext i8 [[TMP50]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV21:%.*]] = zext i8 [[TMP52]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV9:%.*]] = zext i8 [[TMP53]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_1:%.*]] = zext i8 [[TMP14]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_3:%.*]] = zext i8 [[TMP46]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV33_2:%.*]] = zext i8 [[TMP30]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP54:%.*]] = load i8, ptr [[ARRAYIDX34_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP55:%.*]] = load i8, ptr [[ARRAYIDX22_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP56:%.*]] = load i8, ptr [[ARRAYIDX10_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP57:%.*]] = load i8, ptr null, align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV2:%.*]] = zext i8 [[TMP5]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_1:%.*]] = zext i8 [[TMP21]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_3:%.*]] = zext i8 [[TMP57]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV2_2:%.*]] = zext i8 [[TMP37]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV11:%.*]] = zext i8 [[TMP4]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_1:%.*]] = zext i8 [[TMP20]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_3:%.*]] = zext i8 [[TMP56]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV11_2:%.*]] = zext i8 [[TMP36]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV23:%.*]] = zext i8 [[TMP3]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_1:%.*]] = zext i8 [[TMP19]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_3:%.*]] = zext i8 [[TMP55]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV23_2:%.*]] = zext i8 [[TMP35]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV35:%.*]] = zext i8 [[TMP2]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_1:%.*]] = zext i8 [[TMP18]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_3:%.*]] = zext i8 [[TMP54]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV35_2:%.*]] = zext i8 [[TMP34]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP58:%.*]] = extractelement <4 x i8> [[TMP51]], i32 0
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP59:%.*]] = zext i8 [[TMP58]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_3:%.*]] = sub i32 [[TMP59]], [[CONV2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB_1:%.*]] = sub i32 [[CONV_1]], [[CONV2_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB_3:%.*]] = sub i32 [[CONV_3]], [[CONV2_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB_2:%.*]] = sub i32 [[CONV_2]], [[CONV2_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB12:%.*]] = sub i32 [[CONV9]], [[CONV11]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_1:%.*]] = sub i32 [[CONV9_1]], [[CONV11_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_3:%.*]] = sub i32 [[CONV9_3]], [[CONV11_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB12_2:%.*]] = sub i32 [[CONV9_2]], [[CONV11_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB24:%.*]] = sub i32 [[CONV21]], [[CONV23]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_1:%.*]] = sub i32 [[CONV21_1]], [[CONV23_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_3:%.*]] = sub i32 [[CONV21_3]], [[CONV23_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB24_2:%.*]] = sub i32 [[CONV21_2]], [[CONV23_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB36:%.*]] = sub i32 [[CONV33]], [[CONV35]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_1:%.*]] = sub i32 [[CONV33_1]], [[CONV35_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_4:%.*]] = sub i32 [[CONV33_3]], [[CONV35_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB36_2:%.*]] = sub i32 [[CONV33_2]], [[CONV35_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP60:%.*]] = load i8, ptr [[ARRAYIDX5_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP61:%.*]] = load i8, ptr null, align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_3:%.*]] = zext i8 [[TMP9]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_1:%.*]] = zext i8 [[TMP25]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_3:%.*]] = zext i8 [[TMP60]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV4_2:%.*]] = zext i8 [[TMP41]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV14:%.*]] = zext i8 [[TMP8]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_1:%.*]] = zext i8 [[TMP24]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_3:%.*]] = zext i8 [[TMP0]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV14_2:%.*]] = zext i8 [[TMP40]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV26:%.*]] = zext i8 [[TMP7]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_1:%.*]] = zext i8 [[TMP23]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_3:%.*]] = zext i8 [[TMP1]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV26_2:%.*]] = zext i8 [[TMP39]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV38:%.*]] = zext i8 [[TMP6]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_1:%.*]] = zext i8 [[TMP22]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_4:%.*]] = zext i8 [[TMP61]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV38_2:%.*]] = zext i8 [[TMP38]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[TMP63:%.*]] = load i8, ptr [[ARRAYIDX39_3]], align 1
+-; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_3:%.*]] = zext i8 [[TMP63]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP102:%.*]] = load i8, ptr [[ARRAYIDX27_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP64:%.*]] = load i8, ptr [[ARRAYIDX15_3]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP65:%.*]] = load i8, ptr [[ARRAYIDX5_4]], align 1
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_3:%.*]] = zext i8 [[TMP13]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_1:%.*]] = zext i8 [[TMP29]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_3:%.*]] = zext i8 [[TMP65]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV6_2:%.*]] = zext i8 [[TMP45]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV16:%.*]] = zext i8 [[TMP12]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_1:%.*]] = zext i8 [[TMP28]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_3:%.*]] = zext i8 [[TMP64]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV16_2:%.*]] = zext i8 [[TMP44]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV28:%.*]] = zext i8 [[TMP11]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_1:%.*]] = zext i8 [[TMP27]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_3:%.*]] = zext i8 [[TMP102]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV28_2:%.*]] = zext i8 [[TMP43]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV40:%.*]] = zext i8 [[TMP10]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_1:%.*]] = zext i8 [[TMP26]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_4:%.*]] = zext i8 [[TMP63]] to i32
++; UNALIGNED_VEC_MEM-NEXT:    [[CONV40_2:%.*]] = zext i8 [[TMP42]] to i32
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_3:%.*]] = sub i32 [[CONV38_3]], [[CONV40_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_1:%.*]] = sub i32 [[CONV4_1]], [[CONV6_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_3:%.*]] = sub i32 [[CONV4_3]], [[CONV6_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB7_2:%.*]] = sub i32 [[CONV4_2]], [[CONV6_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB17:%.*]] = sub i32 [[CONV14]], [[CONV16]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_1:%.*]] = sub i32 [[CONV14_1]], [[CONV16_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_3:%.*]] = sub i32 [[CONV14_3]], [[CONV16_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB17_2:%.*]] = sub i32 [[CONV14_2]], [[CONV16_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB29:%.*]] = sub i32 [[CONV26]], [[CONV28]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_1:%.*]] = sub i32 [[CONV26_1]], [[CONV28_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_3:%.*]] = sub i32 [[CONV26_3]], [[CONV28_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB29_2:%.*]] = sub i32 [[CONV26_2]], [[CONV28_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB41:%.*]] = sub i32 [[CONV38]], [[CONV40]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_1:%.*]] = sub i32 [[CONV38_1]], [[CONV40_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_4:%.*]] = sub i32 [[CONV38_4]], [[CONV40_4]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB41_2:%.*]] = sub i32 [[CONV38_2]], [[CONV40_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_3:%.*]] = shl i32 [[SUB41_3]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL_1:%.*]] = shl i32 [[SUB7_1]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL_3:%.*]] = shl i32 [[SUB7_3]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL_2:%.*]] = shl i32 [[SUB7_2]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL18:%.*]] = shl i32 [[SUB17]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_1:%.*]] = shl i32 [[SUB17_1]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_3:%.*]] = shl i32 [[SUB17_3]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL18_2:%.*]] = shl i32 [[SUB17_2]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL30:%.*]] = shl i32 [[SUB29]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_1:%.*]] = shl i32 [[SUB29_1]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_3:%.*]] = shl i32 [[SUB29_3]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL30_2:%.*]] = shl i32 [[SUB29_2]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL42:%.*]] = shl i32 [[SUB41]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_1:%.*]] = shl i32 [[SUB41_1]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_4:%.*]] = shl i32 [[SUB41_4]], 16
++; UNALIGNED_VEC_MEM-NEXT:    [[SHL42_2:%.*]] = shl i32 [[SUB41_2]], 16
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_3:%.*]] = add i32 [[SHL42_3]], [[SUB36_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_3:%.*]] = add i32 [[ADD19_3]], [[ADD_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD_1:%.*]] = add i32 [[SHL_1]], [[SUB_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD_3:%.*]] = add i32 [[SHL_3]], [[SUB_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD_2:%.*]] = add i32 [[SHL_2]], [[SUB_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD19:%.*]] = add i32 [[SHL18]], [[SUB12]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_1:%.*]] = add i32 [[SHL18_1]], [[SUB12_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_3:%.*]] = add i32 [[SHL18_3]], [[SUB12_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD19_2:%.*]] = add i32 [[SHL18_2]], [[SUB12_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD31:%.*]] = add i32 [[SHL30]], [[SUB24]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_1:%.*]] = add i32 [[SHL30_1]], [[SUB24_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_3:%.*]] = add i32 [[SHL30_3]], [[SUB24_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD31_2:%.*]] = add i32 [[SHL30_2]], [[SUB24_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD43:%.*]] = add i32 [[SHL42]], [[SUB36]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_1:%.*]] = add i32 [[SHL42_1]], [[SUB36_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_4:%.*]] = add i32 [[SHL42_4]], [[SUB36_4]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD43_2:%.*]] = add i32 [[SHL42_2]], [[SUB36_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB45:%.*]] = sub i32 [[ADD43_3]], [[ADD19]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB45_1:%.*]] = sub i32 [[ADD_1]], [[ADD19_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB45_3:%.*]] = sub i32 [[ADD_3]], [[ADD19_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_3:%.*]] = add i32 [[ADD43_3]], [[ADD31_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_3:%.*]] = sub i32 [[ADD31_3]], [[ADD43_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_3:%.*]] = add i32 [[ADD46_3]], [[ADD44_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB45_2:%.*]] = sub i32 [[ADD_2]], [[ADD19_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD44:%.*]] = add i32 [[ADD19]], [[ADD43_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_1:%.*]] = add i32 [[ADD19_1]], [[ADD_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_3:%.*]] = add i32 [[ADD19_3]], [[ADD_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD44_2:%.*]] = add i32 [[ADD19_2]], [[ADD_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB47:%.*]] = sub i32 [[ADD31]], [[ADD43]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_1:%.*]] = sub i32 [[ADD31_1]], [[ADD43_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_3:%.*]] = sub i32 [[ADD31_3]], [[ADD43_4]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB47_2:%.*]] = sub i32 [[ADD31_2]], [[ADD43_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD46:%.*]] = add i32 [[ADD43]], [[ADD31]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_1:%.*]] = add i32 [[ADD43_1]], [[ADD31_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_3:%.*]] = add i32 [[ADD43_4]], [[ADD31_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD46_2:%.*]] = add i32 [[ADD43_2]], [[ADD31_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB59:%.*]] = sub i32 [[SUB45]], [[SUB47]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_1:%.*]] = sub i32 [[SUB45_1]], [[SUB47_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_3:%.*]] = sub i32 [[SUB45_3]], [[SUB47_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_2:%.*]] = sub i32 [[SUB45_2]], [[SUB47_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB51:%.*]] = sub i32 [[ADD44]], [[ADD46]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB51_1:%.*]] = sub i32 [[ADD44_1]], [[ADD46_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB51_3:%.*]] = sub i32 [[ADD44_3]], [[ADD46_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB51_2:%.*]] = sub i32 [[ADD44_2]], [[ADD46_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD55:%.*]] = add i32 [[SUB47]], [[SUB45]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD55_1:%.*]] = add i32 [[SUB47_1]], [[SUB45_1]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD55_3:%.*]] = add i32 [[SUB47_3]], [[SUB45_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB59_3:%.*]] = sub i32 [[SUB45_3]], [[SUB47_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD78:%.*]] = add i32 [[ADD48_1]], [[ADD48]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB86:%.*]] = sub i32 [[ADD48]], [[ADD48_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD94:%.*]] = add i32 [[ADD48_3]], [[ADD48_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB102:%.*]] = sub i32 [[ADD48_2]], [[ADD48_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD103:%.*]] = add i32 [[ADD94]], [[ADD78]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB104:%.*]] = sub i32 [[ADD78]], [[ADD94]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD105:%.*]] = add i32 [[SUB102]], [[SUB86]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB106:%.*]] = sub i32 [[SUB86]], [[SUB102]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I:%.*]] = lshr i32 [[CONV_3]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I:%.*]] = and i32 [[SHR_I]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I:%.*]] = mul i32 [[AND_I]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I:%.*]] = add i32 [[MUL_I]], [[ADD103]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I:%.*]] = xor i32 [[ADD_I]], [[CONV_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I49:%.*]] = lshr i32 [[ADD46_2]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I50:%.*]] = and i32 [[SHR_I49]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I51:%.*]] = mul i32 [[AND_I50]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I52:%.*]] = add i32 [[MUL_I51]], [[ADD105]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I53:%.*]] = xor i32 [[ADD_I52]], [[ADD46_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I54:%.*]] = lshr i32 [[ADD46_1]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I55:%.*]] = and i32 [[SHR_I54]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I56:%.*]] = mul i32 [[AND_I55]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I57:%.*]] = add i32 [[MUL_I56]], [[SUB104]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I58:%.*]] = xor i32 [[ADD_I57]], [[ADD46_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I59:%.*]] = lshr i32 [[ADD46]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I60:%.*]] = and i32 [[SHR_I59]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I61:%.*]] = mul i32 [[AND_I60]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I62:%.*]] = add i32 [[MUL_I61]], [[SUB106]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I63:%.*]] = xor i32 [[ADD_I62]], [[ADD46]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD110:%.*]] = add i32 [[XOR_I53]], [[XOR_I]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD112:%.*]] = add i32 [[ADD110]], [[XOR_I58]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD113:%.*]] = add i32 [[ADD112]], [[XOR_I63]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_1:%.*]] = add i32 [[ADD55_1]], [[ADD55]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB86_1:%.*]] = sub i32 [[ADD55]], [[ADD55_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD94_1:%.*]] = add i32 [[ADD55_3]], [[ADD55_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB102_1:%.*]] = sub i32 [[ADD55_2]], [[ADD55_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_1:%.*]] = add i32 [[ADD94_1]], [[ADD78_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB104_1:%.*]] = sub i32 [[ADD78_1]], [[ADD94_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD105_1:%.*]] = add i32 [[SUB102_1]], [[SUB86_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_1:%.*]] = sub i32 [[SUB86_1]], [[SUB102_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I_1:%.*]] = lshr i32 [[CONV9_2]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I_1:%.*]] = and i32 [[SHR_I_1]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I_1:%.*]] = mul i32 [[AND_I_1]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I_1:%.*]] = add i32 [[MUL_I_1]], [[ADD103_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I_1:%.*]] = xor i32 [[ADD_I_1]], [[CONV9_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I49_1:%.*]] = lshr i32 [[CONV_2]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I50_1:%.*]] = and i32 [[SHR_I49_1]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I51_1:%.*]] = mul i32 [[AND_I50_1]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I52_1:%.*]] = add i32 [[MUL_I51_1]], [[ADD105_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I53_1:%.*]] = xor i32 [[ADD_I52_1]], [[CONV_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I54_1:%.*]] = lshr i32 [[SUB47_1]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I55_1:%.*]] = and i32 [[SHR_I54_1]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I56_1:%.*]] = mul i32 [[AND_I55_1]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I57_1:%.*]] = add i32 [[MUL_I56_1]], [[SUB104_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I58_1:%.*]] = xor i32 [[ADD_I57_1]], [[SUB47_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I59_1:%.*]] = lshr i32 [[SUB47]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I60_1:%.*]] = and i32 [[SHR_I59_1]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I61_1:%.*]] = mul i32 [[AND_I60_1]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I62_1:%.*]] = add i32 [[MUL_I61_1]], [[SUB106_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I63_1:%.*]] = xor i32 [[ADD_I62_1]], [[SUB47]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD108_1:%.*]] = add i32 [[XOR_I53_1]], [[ADD113]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD110_1:%.*]] = add i32 [[ADD108_1]], [[XOR_I_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD112_1:%.*]] = add i32 [[ADD110_1]], [[XOR_I58_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD113_1:%.*]] = add i32 [[ADD112_1]], [[XOR_I63_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_2:%.*]] = add i32 [[SUB51_1]], [[SUB51]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB86_2:%.*]] = sub i32 [[SUB51]], [[SUB51_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD94_2:%.*]] = add i32 [[SUB51_3]], [[SUB51_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB102_2:%.*]] = sub i32 [[SUB51_2]], [[SUB51_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_2:%.*]] = add i32 [[ADD94_2]], [[ADD78_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB104_2:%.*]] = sub i32 [[ADD78_2]], [[ADD94_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD105_2:%.*]] = add i32 [[SUB102_2]], [[SUB86_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_2:%.*]] = sub i32 [[SUB86_2]], [[SUB102_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I_2:%.*]] = lshr i32 [[CONV9_1]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I_2:%.*]] = and i32 [[SHR_I_2]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I_2:%.*]] = mul i32 [[AND_I_2]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I_2:%.*]] = add i32 [[MUL_I_2]], [[ADD103_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I_2:%.*]] = xor i32 [[ADD_I_2]], [[CONV9_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I49_2:%.*]] = lshr i32 [[CONV_1]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I50_2:%.*]] = and i32 [[SHR_I49_2]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I51_2:%.*]] = mul i32 [[AND_I50_2]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I52_2:%.*]] = add i32 [[MUL_I51_2]], [[ADD105_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I53_2:%.*]] = xor i32 [[ADD_I52_2]], [[CONV_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I54_2:%.*]] = lshr i32 [[CONV21_1]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I55_2:%.*]] = and i32 [[SHR_I54_2]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I56_2:%.*]] = mul i32 [[AND_I55_2]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I57_2:%.*]] = add i32 [[MUL_I56_2]], [[SUB104_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I58_2:%.*]] = xor i32 [[ADD_I57_2]], [[CONV21_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I59_2:%.*]] = lshr i32 [[ADD44]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I60_2:%.*]] = and i32 [[SHR_I59_2]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I61_2:%.*]] = mul i32 [[AND_I60_2]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I62_2:%.*]] = add i32 [[MUL_I61_2]], [[SUB106_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I63_2:%.*]] = xor i32 [[ADD_I62_2]], [[ADD44]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD108_2:%.*]] = add i32 [[XOR_I53_2]], [[ADD113_1]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD110_2:%.*]] = add i32 [[ADD108_2]], [[XOR_I_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD112_2:%.*]] = add i32 [[ADD110_2]], [[XOR_I58_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD113_2:%.*]] = add i32 [[ADD112_2]], [[XOR_I63_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_3:%.*]] = add i32 [[SUB59_1]], [[SUB59]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD55_2:%.*]] = add i32 [[SUB47_2]], [[SUB45_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD48:%.*]] = add i32 [[ADD46]], [[ADD44]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_1:%.*]] = add i32 [[ADD46_1]], [[ADD44_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_3:%.*]] = add i32 [[ADD46_3]], [[ADD44_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD48_2:%.*]] = add i32 [[ADD46_2]], [[ADD44_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB86_3:%.*]] = sub i32 [[SUB59]], [[SUB59_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_3:%.*]] = add i32 [[SUB59_1]], [[SUB59]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD94_3:%.*]] = add i32 [[SUB59_3]], [[SUB59_2]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB102_3:%.*]] = sub i32 [[SUB59_2]], [[SUB59_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_3:%.*]] = add i32 [[ADD94_3]], [[ADD78_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB86_2:%.*]] = sub i32 [[SUB51]], [[SUB51_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_2:%.*]] = add i32 [[SUB51_1]], [[SUB51]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD94_2:%.*]] = add i32 [[SUB51_3]], [[SUB51_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB102_2:%.*]] = sub i32 [[SUB51_2]], [[SUB51_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB86_1:%.*]] = sub i32 [[ADD55]], [[ADD55_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD78_1:%.*]] = add i32 [[ADD55_1]], [[ADD55]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD94_1:%.*]] = add i32 [[ADD55_3]], [[ADD55_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB102_1:%.*]] = sub i32 [[ADD55_2]], [[ADD55_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB86:%.*]] = sub i32 [[ADD48]], [[ADD48_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD78:%.*]] = add i32 [[ADD48_1]], [[ADD48]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD94:%.*]] = add i32 [[ADD48_3]], [[ADD48_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB102:%.*]] = sub i32 [[ADD48_2]], [[ADD48_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_3:%.*]] = sub i32 [[SUB86_3]], [[SUB102_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[SUB104_3:%.*]] = sub i32 [[ADD78_3]], [[ADD94_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_3:%.*]] = add i32 [[ADD94_3]], [[ADD78_3]]
+ ; UNALIGNED_VEC_MEM-NEXT:    [[ADD105_3:%.*]] = add i32 [[SUB102_3]], [[SUB86_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_3:%.*]] = sub i32 [[SUB86_3]], [[SUB102_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I_3:%.*]] = lshr i32 [[CONV9]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I_3:%.*]] = and i32 [[SHR_I_3]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I_3:%.*]] = mul i32 [[AND_I_3]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I_3:%.*]] = add i32 [[MUL_I_3]], [[ADD103_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I_3:%.*]] = xor i32 [[ADD_I_3]], [[CONV9]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I49_3:%.*]] = lshr i32 [[CONV]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I50_3:%.*]] = and i32 [[SHR_I49_3]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I51_3:%.*]] = mul i32 [[AND_I50_3]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I52_3:%.*]] = add i32 [[MUL_I51_3]], [[ADD105_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I53_3:%.*]] = xor i32 [[ADD_I52_3]], [[CONV]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I54_3:%.*]] = lshr i32 [[CONV21]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I55_3:%.*]] = and i32 [[SHR_I54_3]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I56_3:%.*]] = mul i32 [[AND_I55_3]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I57_3:%.*]] = add i32 [[MUL_I56_3]], [[SUB104_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I58_3:%.*]] = xor i32 [[ADD_I57_3]], [[CONV21]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[SHR_I59_3:%.*]] = lshr i32 [[CONV33]], 15
+-; UNALIGNED_VEC_MEM-NEXT:    [[AND_I60_3:%.*]] = and i32 [[SHR_I59_3]], 65537
+-; UNALIGNED_VEC_MEM-NEXT:    [[MUL_I61_3:%.*]] = mul i32 [[AND_I60_3]], 65535
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD_I62_3:%.*]] = add i32 [[MUL_I61_3]], [[SUB106_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[XOR_I63_3:%.*]] = xor i32 [[ADD_I62_3]], [[CONV33]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD108_3:%.*]] = add i32 [[XOR_I53_3]], [[ADD113_2]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD110_3:%.*]] = add i32 [[ADD108_3]], [[XOR_I_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[ADD112_3:%.*]] = add i32 [[ADD110_3]], [[XOR_I58_3]]
+-; UNALIGNED_VEC_MEM-NEXT:    [[TMP117:%.*]] = add i32 [[ADD112_3]], [[XOR_I63_3]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_2:%.*]] = sub i32 [[SUB86_2]], [[SUB102_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB104_2:%.*]] = sub i32 [[ADD78_2]], [[ADD94_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_2:%.*]] = add i32 [[ADD94_2]], [[ADD78_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD105_2:%.*]] = add i32 [[SUB102_2]], [[SUB86_2]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB106_1:%.*]] = sub i32 [[SUB86_1]], [[SUB102_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB104_1:%.*]] = sub i32 [[ADD78_1]], [[ADD94_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD103_1:%.*]] = add i32 [[ADD94_1]], [[ADD78_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD105_1:%.*]] = add i32 [[SUB102_1]], [[SUB86_1]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB106:%.*]] = sub i32 [[SUB86]], [[SUB102]]
++; UNALIGNED_VEC_MEM-NEXT:    [[SUB104:%.*]] = sub i32 [[ADD78]], [[ADD94]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD103:%.*]] = add i32 [[ADD94]], [[ADD78]]
++; UNALIGNED_VEC_MEM-NEXT:    [[ADD105:%.*]] = add i32 [[SUB102]], [[SUB86]]
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP66:%.*]] = insertelement <16 x i32> poison, i32 [[ADD46_2]], i32 0
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP67:%.*]] = insertelement <16 x i32> [[TMP66]], i32 [[CONV_3]], i32 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP68:%.*]] = insertelement <16 x i32> [[TMP67]], i32 [[ADD46_1]], i32 2
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP69:%.*]] = insertelement <16 x i32> [[TMP68]], i32 [[ADD46]], i32 3
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP70:%.*]] = insertelement <16 x i32> [[TMP69]], i32 [[CONV_2]], i32 4
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP71:%.*]] = insertelement <16 x i32> [[TMP70]], i32 [[CONV9_2]], i32 5
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP72:%.*]] = insertelement <16 x i32> [[TMP71]], i32 [[SUB47_1]], i32 6
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP73:%.*]] = insertelement <16 x i32> [[TMP72]], i32 [[SUB47]], i32 7
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP74:%.*]] = insertelement <16 x i32> [[TMP73]], i32 [[CONV_1]], i32 8
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP75:%.*]] = insertelement <16 x i32> [[TMP74]], i32 [[CONV9_1]], i32 9
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP76:%.*]] = insertelement <16 x i32> [[TMP75]], i32 [[CONV21_1]], i32 10
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP77:%.*]] = insertelement <16 x i32> [[TMP76]], i32 [[ADD44]], i32 11
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP78:%.*]] = zext <4 x i8> [[TMP51]] to <4 x i32>
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP79:%.*]] = shufflevector <4 x i32> [[TMP78]], <4 x i32> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP80:%.*]] = shufflevector <16 x i32> [[TMP77]], <16 x i32> [[TMP79]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 16, i32 17, i32 18, i32 19>
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP81:%.*]] = lshr <16 x i32> [[TMP80]], splat (i32 15)
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP82:%.*]] = and <16 x i32> [[TMP81]], splat (i32 65537)
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP83:%.*]] = mul <16 x i32> [[TMP82]], splat (i32 65535)
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP84:%.*]] = insertelement <16 x i32> poison, i32 [[ADD105]], i32 0
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP85:%.*]] = insertelement <16 x i32> [[TMP84]], i32 [[ADD103]], i32 1
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP86:%.*]] = insertelement <16 x i32> [[TMP85]], i32 [[SUB104]], i32 2
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP87:%.*]] = insertelement <16 x i32> [[TMP86]], i32 [[SUB106]], i32 3
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP88:%.*]] = insertelement <16 x i32> [[TMP87]], i32 [[ADD105_1]], i32 4
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP89:%.*]] = insertelement <16 x i32> [[TMP88]], i32 [[ADD103_1]], i32 5
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP90:%.*]] = insertelement <16 x i32> [[TMP89]], i32 [[SUB104_1]], i32 6
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP91:%.*]] = insertelement <16 x i32> [[TMP90]], i32 [[SUB106_1]], i32 7
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP92:%.*]] = insertelement <16 x i32> [[TMP91]], i32 [[ADD105_2]], i32 8
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP93:%.*]] = insertelement <16 x i32> [[TMP92]], i32 [[ADD103_2]], i32 9
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP94:%.*]] = insertelement <16 x i32> [[TMP93]], i32 [[SUB104_2]], i32 10
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP95:%.*]] = insertelement <16 x i32> [[TMP94]], i32 [[SUB106_2]], i32 11
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP96:%.*]] = insertelement <16 x i32> [[TMP95]], i32 [[ADD105_3]], i32 12
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP97:%.*]] = insertelement <16 x i32> [[TMP96]], i32 [[ADD103_3]], i32 13
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP98:%.*]] = insertelement <16 x i32> [[TMP97]], i32 [[SUB104_3]], i32 14
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP99:%.*]] = insertelement <16 x i32> [[TMP98]], i32 [[SUB106_3]], i32 15
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP100:%.*]] = add <16 x i32> [[TMP83]], [[TMP99]]
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP101:%.*]] = xor <16 x i32> [[TMP100]], [[TMP80]]
++; UNALIGNED_VEC_MEM-NEXT:    [[TMP117:%.*]] = call i32 @llvm.vector.reduce.add.v16i32(<16 x i32> [[TMP101]])
+ ; UNALIGNED_VEC_MEM-NEXT:    ret i32 [[TMP117]]
+ ;
+ entry:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/gathered-loads-non-full-reg.ll b/llvm/test/Transforms/SLPVectorizer/X86/gathered-loads-non-full-reg.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/gathered-loads-non-full-reg.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/gathered-loads-non-full-reg.ll
+@@ -21,55 +21,54 @@
+ ; CHECK-NEXT:    [[TMP12:%.*]] = getelementptr i8, ptr [[TMP0]], i64 504
+ ; CHECK-NEXT:    [[TMP13:%.*]] = getelementptr i8, ptr [[TMP0]], i64 632
+ ; CHECK-NEXT:    [[TMP14:%.*]] = getelementptr i8, ptr [[TMP0]], i64 720
+-; CHECK-NEXT:    [[TMP15:%.*]] = load double, ptr [[TMP1]], align 8
+-; CHECK-NEXT:    [[TMP16:%.*]] = load double, ptr [[TMP2]], align 8
+-; CHECK-NEXT:    [[TMP17:%.*]] = fadd double [[TMP16]], [[TMP15]]
+ ; CHECK-NEXT:    [[TMP18:%.*]] = load double, ptr [[TMP3]], align 8
+-; CHECK-NEXT:    [[TMP19:%.*]] = load double, ptr [[TMP4]], align 8
+-; CHECK-NEXT:    [[TMP20:%.*]] = load double, ptr [[TMP5]], align 8
+-; CHECK-NEXT:    [[TMP21:%.*]] = load double, ptr [[TMP6]], align 8
+-; CHECK-NEXT:    [[TMP22:%.*]] = fadd double [[TMP21]], [[TMP20]]
+-; CHECK-NEXT:    [[TMP23:%.*]] = load double, ptr [[TMP7]], align 8
+-; CHECK-NEXT:    [[TMP24:%.*]] = load double, ptr [[TMP8]], align 8
+-; CHECK-NEXT:    [[TMP25:%.*]] = load double, ptr [[TMP9]], align 8
+-; CHECK-NEXT:    [[TMP26:%.*]] = load double, ptr [[TMP10]], align 8
+-; CHECK-NEXT:    [[TMP27:%.*]] = load double, ptr [[TMP11]], align 8
+-; CHECK-NEXT:    [[TMP28:%.*]] = load double, ptr [[TMP12]], align 8
++; CHECK-NEXT:    [[TMP27:%.*]] = load double, ptr [[TMP5]], align 8
++; CHECK-NEXT:    [[TMP28:%.*]] = load double, ptr [[TMP6]], align 8
+ ; CHECK-NEXT:    [[TMP29:%.*]] = fadd double [[TMP28]], [[TMP27]]
+-; CHECK-NEXT:    [[TMP30:%.*]] = fmul double [[TMP22]], [[TMP18]]
++; CHECK-NEXT:    [[TMP25:%.*]] = load double, ptr [[TMP9]], align 8
++; CHECK-NEXT:    [[TMP20:%.*]] = load double, ptr [[TMP12]], align 8
++; CHECK-NEXT:    [[TMP30:%.*]] = fmul double [[TMP29]], [[TMP18]]
+ ; CHECK-NEXT:    [[TMP31:%.*]] = fmul double [[TMP30]], 0.000000e+00
+ ; CHECK-NEXT:    [[TMP32:%.*]] = fsub double 0.000000e+00, [[TMP25]]
+ ; CHECK-NEXT:    [[TMP33:%.*]] = fmul double [[TMP32]], 0.000000e+00
+ ; CHECK-NEXT:    [[TMP34:%.*]] = fadd double [[TMP33]], 0.000000e+00
+ ; CHECK-NEXT:    [[TMP35:%.*]] = fmul double [[TMP34]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP36:%.*]] = fmul double [[TMP29]], [[TMP26]]
+-; CHECK-NEXT:    [[TMP37:%.*]] = fmul double [[TMP36]], 0.000000e+00
++; CHECK-NEXT:    [[TMP36:%.*]] = load double, ptr [[TMP13]], align 8
++; CHECK-NEXT:    [[TMP37:%.*]] = fmul double [[TMP36]], [[TMP31]]
++; CHECK-NEXT:    [[TMP40:%.*]] = load double, ptr [[TMP14]], align 8
++; CHECK-NEXT:    [[TMP41:%.*]] = fmul double [[TMP35]], 0.000000e+00
+ ; CHECK-NEXT:    [[TMP38:%.*]] = fadd double [[TMP37]], 0.000000e+00
++; CHECK-NEXT:    store double [[TMP41]], ptr getelementptr inbounds (i8, ptr @solid_, i64 384), align 8
++; CHECK-NEXT:    store double [[TMP38]], ptr getelementptr inbounds (i8, ptr @solid_, i64 408), align 8
++; CHECK-NEXT:    [[TMP42:%.*]] = load double, ptr [[TMP11]], align 8
++; CHECK-NEXT:    [[TMP24:%.*]] = load double, ptr [[TMP10]], align 8
++; CHECK-NEXT:    [[TMP43:%.*]] = load double, ptr [[TMP8]], align 8
++; CHECK-NEXT:    [[TMP44:%.*]] = load double, ptr [[TMP7]], align 8
++; CHECK-NEXT:    [[TMP19:%.*]] = load double, ptr [[TMP4]], align 8
++; CHECK-NEXT:    [[TMP46:%.*]] = load double, ptr [[TMP2]], align 8
++; CHECK-NEXT:    [[TMP59:%.*]] = load double, ptr [[TMP1]], align 8
++; CHECK-NEXT:    [[TMP60:%.*]] = load double, ptr [[TMP0]], align 8
++; CHECK-NEXT:    [[TMP17:%.*]] = fadd double [[TMP46]], [[TMP59]]
++; CHECK-NEXT:    [[TMP48:%.*]] = fadd double [[TMP20]], [[TMP42]]
+ ; CHECK-NEXT:    [[TMP39:%.*]] = fsub double [[TMP17]], [[TMP19]]
+-; CHECK-NEXT:    [[TMP40:%.*]] = fmul double [[TMP39]], [[TMP23]]
+-; CHECK-NEXT:    [[TMP41:%.*]] = fmul double [[TMP40]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP42:%.*]] = load double, ptr [[TMP0]], align 8
+-; CHECK-NEXT:    [[TMP43:%.*]] = load double, ptr [[TMP13]], align 8
+-; CHECK-NEXT:    [[TMP44:%.*]] = fmul double [[TMP43]], [[TMP31]]
+-; CHECK-NEXT:    [[TMP45:%.*]] = load double, ptr [[TMP14]], align 8
+-; CHECK-NEXT:    [[TMP46:%.*]] = fmul double [[TMP35]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP47:%.*]] = fadd double [[TMP44]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP48:%.*]] = fmul double [[TMP45]], [[TMP38]]
+-; CHECK-NEXT:    [[TMP49:%.*]] = fmul double [[TMP45]], [[TMP41]]
+-; CHECK-NEXT:    store double [[TMP46]], ptr getelementptr inbounds (i8, ptr @solid_, i64 384), align 8
+-; CHECK-NEXT:    store double [[TMP47]], ptr getelementptr inbounds (i8, ptr @solid_, i64 408), align 8
+-; CHECK-NEXT:    store double [[TMP48]], ptr getelementptr inbounds (i8, ptr @solid_, i64 392), align 8
+-; CHECK-NEXT:    store double [[TMP49]], ptr getelementptr inbounds (i8, ptr @solid_, i64 400), align 8
+ ; CHECK-NEXT:    [[DOTNEG965:%.*]] = fmul double [[TMP48]], [[TMP24]]
+-; CHECK-NEXT:    [[REASS_ADD993:%.*]] = fadd double [[DOTNEG965]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP50:%.*]] = fadd double [[TMP42]], [[REASS_ADD993]]
+-; CHECK-NEXT:    [[TMP51:%.*]] = fsub double 0.000000e+00, [[TMP50]]
+-; CHECK-NEXT:    store double [[TMP51]], ptr getelementptr inbounds (i8, ptr @solid_, i64 296), align 8
++; CHECK-NEXT:    [[TMP49:%.*]] = fmul double [[TMP39]], [[TMP44]]
++; CHECK-NEXT:    [[TMP45:%.*]] = fmul double [[DOTNEG965]], 0.000000e+00
+ ; CHECK-NEXT:    [[DOTNEG969:%.*]] = fmul double [[TMP49]], 0.000000e+00
+-; CHECK-NEXT:    [[REASS_ADD996:%.*]] = fadd double [[DOTNEG969]], 0.000000e+00
+-; CHECK-NEXT:    [[TMP52:%.*]] = fadd double [[TMP45]], [[REASS_ADD996]]
+-; CHECK-NEXT:    [[TMP53:%.*]] = fsub double 0.000000e+00, [[TMP52]]
+-; CHECK-NEXT:    store double [[TMP53]], ptr getelementptr inbounds (i8, ptr @solid_, i64 304), align 8
++; CHECK-NEXT:    [[TMP47:%.*]] = fadd double [[TMP45]], 0.000000e+00
++; CHECK-NEXT:    [[TMP61:%.*]] = insertelement <2 x double> poison, double [[TMP40]], i32 0
++; CHECK-NEXT:    [[TMP62:%.*]] = shufflevector <2 x double> [[TMP61]], <2 x double> poison, <2 x i32> zeroinitializer
++; CHECK-NEXT:    [[TMP50:%.*]] = insertelement <2 x double> poison, double [[TMP47]], i32 0
++; CHECK-NEXT:    [[TMP51:%.*]] = insertelement <2 x double> [[TMP50]], double [[DOTNEG969]], i32 1
++; CHECK-NEXT:    [[TMP52:%.*]] = fmul <2 x double> [[TMP62]], [[TMP51]]
++; CHECK-NEXT:    store <2 x double> [[TMP52]], ptr getelementptr inbounds (i8, ptr @solid_, i64 392), align 8
++; CHECK-NEXT:    [[TMP53:%.*]] = insertelement <2 x double> <double poison, double 0.000000e+00>, double [[TMP43]], i32 0
++; CHECK-NEXT:    [[TMP54:%.*]] = fmul <2 x double> [[TMP52]], [[TMP53]]
++; CHECK-NEXT:    [[TMP55:%.*]] = fadd <2 x double> [[TMP54]], zeroinitializer
++; CHECK-NEXT:    [[TMP56:%.*]] = insertelement <2 x double> [[TMP62]], double [[TMP60]], i32 0
++; CHECK-NEXT:    [[TMP57:%.*]] = fadd <2 x double> [[TMP56]], [[TMP55]]
++; CHECK-NEXT:    [[TMP58:%.*]] = fsub <2 x double> zeroinitializer, [[TMP57]]
++; CHECK-NEXT:    store <2 x double> [[TMP58]], ptr getelementptr inbounds (i8, ptr @solid_, i64 296), align 8
  ; CHECK-NEXT:    ret void
  ;
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
---- a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
-+++ b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
-@@ -186,12 +186,11 @@
-   }
-   OwningMemRef(const OwningMemRef &) = delete;
-   OwningMemRef &operator=(const OwningMemRef &) = delete;
--  OwningMemRef &operator=(OwningMemRef &&other) {
-+  OwningMemRef &operator=(const OwningMemRef &&other) {
-     freeFunc = other.freeFunc;
-     descriptor = other.descriptor;
-     other.freeFunc = nullptr;
-     memset(&other.descriptor, 0, sizeof(other.descriptor));
--    return *this;
-   }
-   OwningMemRef(OwningMemRef &&other) { *this = std::move(other); }
+ .lr.ph1019:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/reordered-masked-loads.ll b/llvm/test/Transforms/SLPVectorizer/X86/reordered-masked-loads.ll
+--- a/llvm/test/Transforms/SLPVectorizer/X86/reordered-masked-loads.ll
++++ b/llvm/test/Transforms/SLPVectorizer/X86/reordered-masked-loads.ll
+@@ -9,17 +9,20 @@
+ ; CHECK-SAME: ) #[[ATTR0:[0-9]+]] {
+ ; CHECK-NEXT:  [[ENTRY:.*:]]
+ ; CHECK-NEXT:    [[M1:%.*]] = alloca [[STRUCT_AE:%.*]], align 8
+-; CHECK-NEXT:    [[ARRAYIDX_I5_I:%.*]] = getelementptr i8, ptr [[M1]], i64 48
++; CHECK-NEXT:    [[ARRAYIDX_I1:%.*]] = getelementptr i8, ptr [[M1]], i64 24
+ ; CHECK-NEXT:    [[ARRAYIDX_I4:%.*]] = getelementptr i8, ptr null, i64 16
+-; CHECK-NEXT:    [[TMP1:%.*]] = load <5 x double>, ptr [[M1]], align 8
+-; CHECK-NEXT:    [[TMP2:%.*]] = shufflevector <5 x double> [[TMP1]], <5 x double> poison, <4 x i32> <i32 0, i32 1, i32 3, i32 4>
+-; CHECK-NEXT:    [[TMP4:%.*]] = load <6 x double>, ptr [[M1]], align 8
+-; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <6 x double> [[TMP4]], <6 x double> poison, <4 x i32> <i32 0, i32 3, i32 4, i32 5>
++; CHECK-NEXT:    [[ARRAYIDX_I5_I:%.*]] = getelementptr i8, ptr [[M1]], i64 32
+ ; CHECK-NEXT:    [[TMP3:%.*]] = load <2 x double>, ptr [[ARRAYIDX_I5_I]], align 8
+-; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <2 x double> [[TMP3]], <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 poison, i32 poison>
+-; CHECK-NEXT:    [[TMP7:%.*]] = shufflevector <2 x double> [[TMP3]], <2 x double> poison, <5 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison>
+-; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <5 x double> [[TMP7]], <5 x double> [[TMP1]], <4 x i32> <i32 0, i32 6, i32 9, i32 1>
+-; CHECK-NEXT:    [[TMP9:%.*]] = fadd <4 x double> [[TMP8]], [[TMP5]]
++; CHECK-NEXT:    [[TMP1:%.*]] = load <4 x double>, ptr [[ARRAYIDX_I5_I]], align 8
++; CHECK-NEXT:    [[TMP2:%.*]] = shufflevector <4 x double> [[TMP1]], <4 x double> poison, <2 x i32> <i32 0, i32 3>
++; CHECK-NEXT:    [[TMP12:%.*]] = fadd <2 x double> [[TMP3]], [[TMP2]]
++; CHECK-NEXT:    [[TMP4:%.*]] = load <2 x double>, ptr [[M1]], align 8
++; CHECK-NEXT:    [[TMP5:%.*]] = load <4 x double>, ptr [[ARRAYIDX_I1]], align 8
++; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <4 x double> [[TMP5]], <4 x double> poison, <2 x i32> <i32 3, i32 0>
++; CHECK-NEXT:    [[TMP7:%.*]] = fadd <2 x double> [[TMP4]], [[TMP6]]
++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <2 x double> [[TMP7]], <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP13:%.*]] = shufflevector <2 x double> [[TMP12]], <2 x double> poison, <4 x i32> <i32 0, i32 1, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP9:%.*]] = shufflevector <4 x double> [[TMP8]], <4 x double> [[TMP13]], <4 x i32> <i32 0, i32 1, i32 4, i32 5>
+ ; CHECK-NEXT:    [[TMP10:%.*]] = fptosi <4 x double> [[TMP9]] to <4 x i32>
+ ; CHECK-NEXT:    [[TMP11:%.*]] = sitofp <4 x i32> [[TMP10]] to <4 x double>
+ ; CHECK-NEXT:    store <4 x double> [[TMP11]], ptr [[ARRAYIDX_I4]], align 8
+diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/stubgen_runner.py b/mlir/lib/Bindings/Python/stubgen_runner.py
+--- a/mlir/lib/Bindings/Python/stubgen_runner.py
++++ b/mlir/lib/Bindings/Python/stubgen_runner.py
+@@ -0,0 +1,54 @@
++#!/usr/bin/env python3
++"""Generates .pyi stubs for nanobind extensions using nanobind's stubgen."""
++
++import argparse
++import ctypes
++import importlib.util
++import sys
++from pathlib import Path
++
++from python.runfiles import Runfiles
++
++
++def load_extension(path: Path):
++    """Load an extension module from a .so file with RTLD_GLOBAL."""
++    module_name = path.stem.removesuffix(".abi3")
++
++    # Load with RTLD_GLOBAL so symbols are available to dependent extensions.
++    ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
++
++    spec = importlib.util.spec_from_file_location(module_name, path)
++    if spec is None or spec.loader is None:
++        sys.exit(f"Failed to load extension from {path}")
++
++    module = importlib.util.module_from_spec(spec)
++    sys.modules[module_name] = module
++    spec.loader.exec_module(module)
++    return module_name
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument(
++        "--module", required=True, help="Module name to generate stubs for"
++    )
++    parser.add_argument(
++        "--deps", required=True, help="Comma-separated .so files to load"
++    )
++    parser.add_argument("-o", "--output", required=True, help="Output directory")
++    args = parser.parse_args()
++
++    for dep_path in args.deps.split(","):
++        load_extension(Path(dep_path).resolve())
++
++    runfiles = Runfiles.Create()
++    stubgen_path = runfiles.Rlocation("+llvm_repos_extension+nanobind/src/stubgen.py")
++    spec = importlib.util.spec_from_file_location("stubgen", stubgen_path)
++    stubgen = importlib.util.module_from_spec(spec)
++    sys.modules["stubgen"] = stubgen
++    spec.loader.exec_module(stubgen)
++    stubgen.main(["-m", args.module, "-r", "-O", args.output])
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -1317,7 +1317,7 @@
  
-diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/CMakeLists.txt b/mlir/unittests/ExecutionEngine/CMakeLists.txt
---- a/mlir/unittests/ExecutionEngine/CMakeLists.txt
-+++ b/mlir/unittests/ExecutionEngine/CMakeLists.txt
-@@ -9,7 +9,6 @@
-   DynamicMemRef.cpp
-   StridedMemRef.cpp
-   Invoke.cpp
--  OwningMemRef.cpp
+ py_binary(
+     name = "stubgen_runner",
+-    srcs = ["stubgen_runner.py"],
++    srcs = ["lib/Bindings/Python/stubgen_runner.py"],
+     data = ["@nanobind//:src/stubgen.py"],
+     deps = ["@rules_python//python/runfiles"],
  )
- 
- mlir_target_link_libraries(MLIRExecutionEngineTests
-diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
---- a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
-+++ b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
-@@ -1,25 +0,0 @@
--//===- StridedMemRef.cpp ----------------------------------------*- C++ -*-===//
--//
--// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
--// See https://llvm.org/LICENSE.txt for license information.
--// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--//
--//===----------------------------------------------------------------------===//
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py b/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
+--- a/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
++++ b/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
+@@ -1,54 +0,0 @@
+-#!/usr/bin/env python3
+-"""Generates .pyi stubs for nanobind extensions using nanobind's stubgen."""
 -
--#include "mlir/ExecutionEngine/MemRefUtils.h"
+-import argparse
+-import ctypes
+-import importlib.util
+-import sys
+-from pathlib import Path
 -
--#include "gmock/gmock.h"
+-from python.runfiles import Runfiles
 -
--using namespace ::mlir;
--using namespace ::testing;
 -
--TEST(OwningMemRef, assignOverloadChaining) {
--  int64_t mem1Shape[] = {3};
--  int64_t mem2Shape[] = {4};
+-def load_extension(path: Path):
+-    """Load an extension module from a .so file with RTLD_GLOBAL."""
+-    module_name = path.stem.removesuffix(".abi3")
 -
--  OwningMemRef<float, 1> mem1(mem1Shape);
--  OwningMemRef<float, 1> mem2(mem2Shape);
--  OwningMemRef<float, 1> &ref = (mem1 = std::move(mem2));
+-    # Load with RTLD_GLOBAL so symbols are available to dependent extensions.
+-    ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
 -
--  EXPECT_EQ(&ref, &mem1);
--}
+-    spec = importlib.util.spec_from_file_location(module_name, path)
+-    if spec is None or spec.loader is None:
+-        sys.exit(f"Failed to load extension from {path}")
+-
+-    module = importlib.util.module_from_spec(spec)
+-    sys.modules[module_name] = module
+-    spec.loader.exec_module(module)
+-    return module_name
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument(
+-        "--module", required=True, help="Module name to generate stubs for"
+-    )
+-    parser.add_argument(
+-        "--deps", required=True, help="Comma-separated .so files to load"
+-    )
+-    parser.add_argument("-o", "--output", required=True, help="Output directory")
+-    args = parser.parse_args()
+-
+-    for dep_path in args.deps.split(","):
+-        load_extension(Path(dep_path).resolve())
+-
+-    runfiles = Runfiles.Create()
+-    stubgen_path = runfiles.Rlocation("+llvm_repos_extension+nanobind/src/stubgen.py")
+-    spec = importlib.util.spec_from_file_location("stubgen", stubgen_path)
+-    stubgen = importlib.util.module_from_spec(spec)
+-    sys.modules["stubgen"] = stubgen
+-    spec.loader.exec_module(stubgen)
+-    stubgen.main(["-m", args.module, "-r", "-O", args.output])
+-
+-
+-if __name__ == "__main__":
+-    main()
