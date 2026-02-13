@@ -1,1080 +1,1029 @@
+diff --git a/shardy/integrations/python/ir/sdy_module.cc b/shardy/integrations/python/ir/sdy_module.cc
+index da451fa..cd7fdc8 100644
+--- a/shardy/integrations/python/ir/sdy_module.cc
++++ b/shardy/integrations/python/ir/sdy_module.cc
+@@ -19,6 +19,7 @@ limitations under the License.
+ #include <variant>
+ #include <vector>
+ 
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir-c/BuiltinAttributes.h"
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 2bba895..2fdb8b1 100644
+index 2fdb8b1..d82effe 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,268 +1,808 @@
+@@ -1,808 +1,153 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
----- a/clang/lib/Driver/ToolChains/Darwin.cpp
--+++ b/clang/lib/Driver/ToolChains/Darwin.cpp
--@@ -2076,7 +2076,8 @@
--                                   std::to_string(TargetEnvironment) +
--                                   "' is unsupported when inferring SDK Info.");
--     }
---    Components.push_back(Version.getAsString());
--+    std::string VersionString = Version.getAsString();
--+    Components.push_back(VersionString);
--     return join(Components, " ");
--   }
+-diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+---- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+-+++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+-@@ -169,8 +169,16 @@
+-         break;
 - 
--diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
----- a/libcxx/include/any
--+++ b/libcxx/include/any
--@@ -89,6 +89,7 @@
-- #  include <__type_traits/add_cv_quals.h>
-- #  include <__type_traits/add_pointer.h>
-- #  include <__type_traits/conditional.h>
--+#  include <__type_traits/conjunction.h>
-- #  include <__type_traits/decay.h>
-- #  include <__type_traits/enable_if.h>
-- #  include <__type_traits/is_constructible.h>
--@@ -97,6 +98,7 @@
-- #  include <__type_traits/is_reference.h>
-- #  include <__type_traits/is_same.h>
-- #  include <__type_traits/is_void.h>
--+#  include <__type_traits/negation.h>
-- #  include <__type_traits/remove_cv.h>
-- #  include <__type_traits/remove_cvref.h>
-- #  include <__type_traits/remove_reference.h>
--@@ -201,10 +203,11 @@
--       __other.__call(_Action::_Move, this);
--   }
-+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-+--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-+@@ -169,8 +169,16 @@
-+         break;
-  
---  template <class _ValueType,
---            class _Tp        = decay_t<_ValueType>,
---            enable_if_t<!is_same_v<_Tp, any> && !__is_inplace_type<_ValueType>::value && is_copy_constructible_v<_Tp>,
---                        int> = 0>
--+  template <
--+      class _ValueType,
--+      class _Tp        = decay_t<_ValueType>,
--+      enable_if_t<_And<_Not<is_same<_Tp, any>>, _Not<__is_inplace_type<_ValueType>>, is_copy_constructible<_Tp>>::value,
--+                  int> = 0>
--   _LIBCPP_HIDE_FROM_ABI any(_ValueType&& __value) : __h_(nullptr) {
--     __any_imp::_Handler<_Tp>::__create(*this, std::forward<_ValueType>(__value));
--   }
--diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
----- a/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
--+++ b/libcxx/test/std/utilities/any/any.class/any.cons/value.pass.cpp
--@@ -21,6 +21,7 @@
-+       auto *RHSVal = Env.getValue(*RHS);
-+-      if (RHSVal == nullptr)
-++      if (RHSVal == nullptr) {
-+         RHSVal = Env.createValue(LHS->getType());
-++        if (RHSVal == nullptr) {
-++          // At least make sure the old value is gone. It's unlikely to be there
-++          // in the first place given that we don't even know how to create
-++          // a basic unknown value of that type.
-++          Env.clearValue(*LHSLoc);
-++          break;
-++        }
-++      }
-  
-- #include <any>
-- #include <cassert>
--+#include <type_traits>
+-       auto *RHSVal = Env.getValue(*RHS);
+--      if (RHSVal == nullptr)
+-+      if (RHSVal == nullptr) {
+-         RHSVal = Env.createValue(LHS->getType());
+-+        if (RHSVal == nullptr) {
+-+          // At least make sure the old value is gone. It's unlikely to be there
+-+          // in the first place given that we don't even know how to create
+-+          // a basic unknown value of that type.
+-+          Env.clearValue(*LHSLoc);
+-+          break;
+-+        }
+-+      }
 - 
-- #include "any_helpers.h"
-- #include "count_new.h"
--@@ -140,6 +141,24 @@
--     }
-+       // Assign a value to the storage location of the left-hand side.
-+       Env.setValue(*LHSLoc, *RHSVal);
-+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-+--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-+@@ -1011,6 +1011,54 @@
-+       });
-  }
-  
--+// https://llvm.org/PR176877
--+// Avoid constraint meta-recursion for a type both convertible from and to std::any.
--+template <class T, bool = std::is_copy_constructible<T>::value>
--+void test_default_template_argument_is_copy_constructible(T) {}
-++TEST(TransferTest, BinaryOperatorAssignFloat) {
-++  using ast_matchers::binaryOperator;
-++  using ast_matchers::hasOperatorName;
-++  using ast_matchers::match;
-++  using ast_matchers::selectFirst;
-++
-++  // This was crashing.
-++  std::string Code = R"(
-++    void target() {
-++      double Foo = 0.0f;
-++      double FooAtA = Foo;
-++      Foo = 1.0f;
-++      double FooAtB = Foo;
-++      bool check = (FooAtA == FooAtB);
-++      // [[p]]
-++    }
-++  )";
-++  runDataflow(
-++      Code,
-++      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
-++         ASTContext &ASTCtx) {
-++        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
-++
-++        const Environment &EnvP = getEnvironmentAtAnnotation(Results, "p");
+-       // Assign a value to the storage location of the left-hand side.
+-       Env.setValue(*LHSLoc, *RHSVal);
+-diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+---- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+-+++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+-@@ -1011,6 +1011,54 @@
+-       });
+- }
+- 
+-+TEST(TransferTest, BinaryOperatorAssignFloat) {
+-+  using ast_matchers::binaryOperator;
+-+  using ast_matchers::hasOperatorName;
+-+  using ast_matchers::match;
+-+  using ast_matchers::selectFirst;
++diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/stubgen_runner.py b/mlir/lib/Bindings/Python/stubgen_runner.py
++--- a/mlir/lib/Bindings/Python/stubgen_runner.py
+++++ b/mlir/lib/Bindings/Python/stubgen_runner.py
++@@ -0,0 +1,54 @@
+++#!/usr/bin/env python3
+++"""Generates .pyi stubs for nanobind extensions using nanobind's stubgen."""
  +
--+template <class T, bool = std::is_copy_constructible_v<T>>
--+void test_default_template_argument_is_copy_constructible_v(T) {}
-++        const ValueDecl *FooAtADecl = findValueDecl(ASTCtx, "FooAtA");
-++        ASSERT_THAT(FooAtADecl, NotNull());
-++        const Value *FooAtAVal = EnvP.getValue(*FooAtADecl);
-++        // FIXME: Should be non-null. Floats aren't modeled at all.
-++        EXPECT_THAT(FooAtAVal, IsNull());
+-+  // This was crashing.
+-+  std::string Code = R"(
+-+    void target() {
+-+      double Foo = 0.0f;
+-+      double FooAtA = Foo;
+-+      Foo = 1.0f;
+-+      double FooAtB = Foo;
+-+      bool check = (FooAtA == FooAtB);
+-+      // [[p]]
+-+    }
+-+  )";
+-+  runDataflow(
+-+      Code,
+-+      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-+         ASTContext &ASTCtx) {
+-+        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+++import argparse
+++import ctypes
+++import importlib.util
+++import sys
+++from pathlib import Path
  +
--+void test_no_constraint_recursion() {
--+  struct ConvertibleFromAndToAny {
--+    ConvertibleFromAndToAny(std::any) {}
--+  };
-++        const ValueDecl *FooAtBDecl = findValueDecl(ASTCtx, "FooAtB");
-++        ASSERT_THAT(FooAtBDecl, NotNull());
-++        const Value *FooAtBVal = EnvP.getValue(*FooAtBDecl);
-++        // FIXME: Should be non-null. Floats aren't modeled at all.
-++        EXPECT_THAT(FooAtBVal, IsNull());
+-+        const Environment &EnvP = getEnvironmentAtAnnotation(Results, "p");
+++from python.runfiles import Runfiles
  +
--+  ConvertibleFromAndToAny src = std::any{};
--+  test_default_template_argument_is_copy_constructible(src);
--+  test_default_template_argument_is_copy_constructible_v(src);
-++        // See if the storage location is correctly propagated.
-++        auto MatchResult =
-++            match(binaryOperator(hasOperatorName("=")).bind("bo"), ASTCtx);
-++        const auto *BO = selectFirst<BinaryOperator>("bo", MatchResult);
-++        ASSERT_THAT(BO, NotNull());
-++        const StorageLocation *BOLoc = EnvP.getStorageLocation(*BO);
-++        // FIXME: Should be non-null.
-++        EXPECT_THAT(BOLoc, IsNull());
-++      });
- +}
+-+        const ValueDecl *FooAtADecl = findValueDecl(ASTCtx, "FooAtA");
+-+        ASSERT_THAT(FooAtADecl, NotNull());
+-+        const Value *FooAtAVal = EnvP.getValue(*FooAtADecl);
+-+        // FIXME: Should be non-null. Floats aren't modeled at all.
+-+        EXPECT_THAT(FooAtAVal, IsNull());
  +
-- int main(int, char**) {
--     test_copy_move_value<small>();
--     test_copy_move_value<large>();
--@@ -147,6 +166,7 @@
--     test_copy_value_throws<large_throws_on_copy>();
--     test_move_value_throws();
--     test_sfinae_constraints();
--+    test_no_constraint_recursion();
-+ TEST(TransferTest, VarDeclInitAssign) {
-+   std::string Code = R"(
-+     void target() {
-+diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/VectorUtils.cpp b/llvm/lib/Analysis/VectorUtils.cpp
-+--- a/llvm/lib/Analysis/VectorUtils.cpp
-++++ b/llvm/lib/Analysis/VectorUtils.cpp
-+@@ -65,12 +65,6 @@
-+   case Intrinsic::smul_fix_sat:
-+   case Intrinsic::umul_fix:
-+   case Intrinsic::umul_fix_sat:
-+-  case Intrinsic::uadd_with_overflow:
-+-  case Intrinsic::sadd_with_overflow:
-+-  case Intrinsic::usub_with_overflow:
-+-  case Intrinsic::ssub_with_overflow:
-+-  case Intrinsic::umul_with_overflow:
-+-  case Intrinsic::smul_with_overflow:
-+   case Intrinsic::sqrt: // Begin floating-point.
-+   case Intrinsic::asin:
-+   case Intrinsic::acos:
-+@@ -136,6 +130,15 @@
-+   if (TTI && Intrinsic::isTargetIntrinsic(ID))
-+     return TTI->isTargetIntrinsicTriviallyScalarizable(ID);
-  
---  return 0;
--+    return 0;
-++  switch (ID) {
-++  case Intrinsic::uadd_with_overflow:
-++  case Intrinsic::sadd_with_overflow:
-++  case Intrinsic::ssub_with_overflow:
-++  case Intrinsic::usub_with_overflow:
-++  case Intrinsic::umul_with_overflow:
-++  case Intrinsic::smul_with_overflow:
-++    return true;
-++  }
-+   return false;
-  }
--diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
----- a/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
--+++ b/llvm/lib/Target/X86/X86ISelDAGToDAG.cpp
--@@ -1852,6 +1852,11 @@
--         !isDispSafeForFrameIndexOrRegBase((uint32_t)Val) &&
--         !AM.hasBaseOrIndexReg())
--       return true;
--+  } else if (Subtarget->is16Bit()) {
--+    // In 16-bit mode, displacements are limited to [-65535,65535] for FK_Data_2
--+    // fixups of unknown signedness. See X86AsmBackend::applyFixup.
--+    if (Val < -(int64_t)UINT16_MAX || Val > (int64_t)UINT16_MAX)
--+      return true;
--   } else if (AM.hasBaseOrIndexReg() && !isDispSafeForFrameIndexOrRegBase(Val))
--     // For 32-bit X86, make sure the displacement still isn't close to the
--     // expressible limit.
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/dag-large-offset.ll b/llvm/test/CodeGen/X86/dag-large-offset.ll
----- a/llvm/test/CodeGen/X86/dag-large-offset.ll
--+++ b/llvm/test/CodeGen/X86/dag-large-offset.ll
--@@ -1,47 +0,0 @@
---; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
---; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
+-+        const ValueDecl *FooAtBDecl = findValueDecl(ASTCtx, "FooAtB");
+-+        ASSERT_THAT(FooAtBDecl, NotNull());
+-+        const Value *FooAtBVal = EnvP.getValue(*FooAtBDecl);
+-+        // FIXME: Should be non-null. Floats aren't modeled at all.
+-+        EXPECT_THAT(FooAtBVal, IsNull());
+++def load_extension(path: Path):
+++    """Load an extension module from a .so file with RTLD_GLOBAL."""
+++    module_name = path.stem.removesuffix(".abi3")
+ +
+-+        // See if the storage location is correctly propagated.
+-+        auto MatchResult =
+-+            match(binaryOperator(hasOperatorName("=")).bind("bo"), ASTCtx);
+-+        const auto *BO = selectFirst<BinaryOperator>("bo", MatchResult);
+-+        ASSERT_THAT(BO, NotNull());
+-+        const StorageLocation *BOLoc = EnvP.getStorageLocation(*BO);
+-+        // FIXME: Should be non-null.
+-+        EXPECT_THAT(BOLoc, IsNull());
+-+      });
+-+}
+++    # Load with RTLD_GLOBAL so symbols are available to dependent extensions.
+++    ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+ +
+- TEST(TransferTest, VarDeclInitAssign) {
+-   std::string Code = R"(
+-     void target() {
+-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/VectorUtils.cpp b/llvm/lib/Analysis/VectorUtils.cpp
+---- a/llvm/lib/Analysis/VectorUtils.cpp
+-+++ b/llvm/lib/Analysis/VectorUtils.cpp
+-@@ -65,12 +65,6 @@
+-   case Intrinsic::smul_fix_sat:
+-   case Intrinsic::umul_fix:
+-   case Intrinsic::umul_fix_sat:
+--  case Intrinsic::uadd_with_overflow:
+--  case Intrinsic::sadd_with_overflow:
+--  case Intrinsic::usub_with_overflow:
+--  case Intrinsic::ssub_with_overflow:
+--  case Intrinsic::umul_with_overflow:
+--  case Intrinsic::smul_with_overflow:
+-   case Intrinsic::sqrt: // Begin floating-point.
+-   case Intrinsic::asin:
+-   case Intrinsic::acos:
+-@@ -136,6 +130,15 @@
+-   if (TTI && Intrinsic::isTargetIntrinsic(ID))
+-     return TTI->isTargetIntrinsicTriviallyScalarizable(ID);
+- 
+-+  switch (ID) {
+-+  case Intrinsic::uadd_with_overflow:
+-+  case Intrinsic::sadd_with_overflow:
+-+  case Intrinsic::ssub_with_overflow:
+-+  case Intrinsic::usub_with_overflow:
+-+  case Intrinsic::umul_with_overflow:
+-+  case Intrinsic::smul_with_overflow:
+-+    return true;
+-+  }
+-   return false;
+- }
+- 
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+---- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
+-@@ -1834,12 +1834,7 @@
+-   if (isVectorIntrinsicWithOverloadTypeAtArg(VectorIntrinsicID, -1,
+-                                              State.TTI)) {
+-     Type *RetTy = toVectorizedTy(getResultType(), State.VF);
+--    ArrayRef<Type *> ContainedTys = getContainedTypes(RetTy);
+--    for (auto [Idx, Ty] : enumerate(ContainedTys)) {
+--      if (isVectorIntrinsicWithStructReturnOverloadAtField(VectorIntrinsicID,
+--                                                           Idx, State.TTI))
+--        TysForDecl.push_back(Ty);
+--    }
+-+    append_range(TysForDecl, getContainedTypes(RetTy));
+-   }
+-   SmallVector<Value *, 4> Args;
+-   for (const auto &I : enumerate(operands())) {
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
+---- a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
+-@@ -1,4 +1,4 @@
+--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store|with\.overflow)" --version 5
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store)" --version 5
+- ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve < %s -S -o - -debug-only=loop-vectorize 2>%t.1 | FileCheck %s --check-prefix=CHECK
+- ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve -vector-library=ArmPL < %s -S -o - -debug-only=loop-vectorize 2>%t.2 | FileCheck %s --check-prefix=CHECK-ARMPL
+- ; RUN: FileCheck --input-file=%t.1 --check-prefix=CHECK-COST %s
+-@@ -522,78 +522,6 @@
+-   %iv.next = add nuw nsw i64 %iv, 1
+-   %exitcond.not = icmp eq i64 %iv.next, 1024
+-   br i1 %exitcond.not, label %exit, label %for.body
 --
---; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
---; want to do that if the offset is very close to the expressible limit because the final frame
---; layout may push it over/under the limit.
+--exit:
+--  ret void
+--}
 --
---define i32 @foo(i1 %b) #0 {
---; CHECK-LABEL: foo:
---; CHECK:       # %bb.0: # %entry
---; CHECK-NEXT:    pushl %ebp
---; CHECK-NEXT:    .cfi_def_cfa_offset 8
---; CHECK-NEXT:    .cfi_offset %ebp, -8
---; CHECK-NEXT:    movl %esp, %ebp
---; CHECK-NEXT:    .cfi_def_cfa_register %ebp
---; CHECK-NEXT:    subl $8, %esp
---; CHECK-NEXT:    movl __stack_chk_guard, %eax
---; CHECK-NEXT:    movl %eax, -4(%ebp)
---; CHECK-NEXT:    testb $1, 8(%ebp)
---; CHECK-NEXT:    jne .LBB0_1
---; CHECK-NEXT:  # %bb.2: # %entry
---; CHECK-NEXT:    xorl %eax, %eax
---; CHECK-NEXT:    jmp .LBB0_3
---; CHECK-NEXT:  .LBB0_1:
---; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
---; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
---; CHECK-NEXT:  .LBB0_3: # %entry
---; CHECK-NEXT:    movl __stack_chk_guard, %ecx
---; CHECK-NEXT:    cmpl -4(%ebp), %ecx
---; CHECK-NEXT:    jne .LBB0_5
---; CHECK-NEXT:  # %bb.4: # %entry
---; CHECK-NEXT:    addl $8, %esp
---; CHECK-NEXT:    popl %ebp
---; CHECK-NEXT:    .cfi_def_cfa %esp, 4
---; CHECK-NEXT:    retl
---; CHECK-NEXT:  .LBB0_5: # %entry
---; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
---; CHECK-NEXT:    calll __stack_chk_fail
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
-+--- a/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
-++++ b/llvm/lib/Transforms/Vectorize/VPlanRecipes.cpp
-+@@ -1834,12 +1834,7 @@
-+   if (isVectorIntrinsicWithOverloadTypeAtArg(VectorIntrinsicID, -1,
-+                                              State.TTI)) {
-+     Type *RetTy = toVectorizedTy(getResultType(), State.VF);
-+-    ArrayRef<Type *> ContainedTys = getContainedTypes(RetTy);
-+-    for (auto [Idx, Ty] : enumerate(ContainedTys)) {
-+-      if (isVectorIntrinsicWithStructReturnOverloadAtField(VectorIntrinsicID,
-+-                                                           Idx, State.TTI))
-+-        TysForDecl.push_back(Ty);
-+-    }
-++    append_range(TysForDecl, getContainedTypes(RetTy));
-+   }
-+   SmallVector<Value *, 4> Args;
-+   for (const auto &I : enumerate(operands())) {
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
-+--- a/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
-++++ b/llvm/test/Transforms/LoopVectorize/AArch64/multiple-result-intrinsics.ll
-+@@ -1,4 +1,4 @@
-+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store|with\.overflow)" --version 5
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|modf|extractvalue|store)" --version 5
-+ ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve < %s -S -o - -debug-only=loop-vectorize 2>%t.1 | FileCheck %s --check-prefix=CHECK
-+ ; RUN: opt -passes=loop-vectorize -mtriple=aarch64-gnu-linux -mcpu=neoverse-v1 -mattr=+sve -vector-library=ArmPL < %s -S -o - -debug-only=loop-vectorize 2>%t.2 | FileCheck %s --check-prefix=CHECK-ARMPL
-+ ; RUN: FileCheck --input-file=%t.1 --check-prefix=CHECK-COST %s
-+@@ -522,78 +522,6 @@
-+   %iv.next = add nuw nsw i64 %iv, 1
-+   %exitcond.not = icmp eq i64 %iv.next, 1024
-+   br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-; CHECK-COST-LABEL: sadd_with_overflow_i32
-+-; CHECK-COST: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-; CHECK-COST: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-
-+-; CHECK-COST-ARMPL-LABEL: sadd_with_overflow_i32
-+-; CHECK-COST-ARMPL: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-; CHECK-COST-ARMPL: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
-+-
-+-define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @sadd_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
-+-; CHECK:  [[ENTRY:.*:]]
-+-; CHECK:  [[VECTOR_PH:.*:]]
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
-+-; CHECK:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
-+-; CHECK:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
-+-; CHECK:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
-+-; CHECK:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
-+-; CHECK:  [[MIDDLE_BLOCK:.*:]]
-+-; CHECK:  [[EXIT:.*:]]
-+-;
-+-; CHECK-ARMPL-LABEL: define void @sadd_with_overflow_i32(
-+-; CHECK-ARMPL-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
-+-; CHECK-ARMPL:  [[ENTRY:.*:]]
-+-; CHECK-ARMPL:  [[VECTOR_PH:.*:]]
-+-; CHECK-ARMPL:  [[VECTOR_BODY:.*:]]
-+-; CHECK-ARMPL:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
-+-; CHECK-ARMPL:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
-+-; CHECK-ARMPL:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
-+-; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
-+-; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
-+-; CHECK-ARMPL:  [[MIDDLE_BLOCK:.*:]]
-+-; CHECK-ARMPL:  [[EXIT:.*:]]
-+-;
- -entry:
---  %a = alloca i8, align 1
---  %0 = ptrtoint ptr %a to i32
---  %sub = add i32 %0, -2147483647
---  %retval.0 = select i1 %b, i32 %sub, i32 0
---  ret i32 %retval.0
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+ 
-+ exit:
-+   ret void
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
-+--- a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
-++++ b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
-+@@ -1,4 +1,4 @@
-+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store|with\.overflow)" --version 5
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store)" --version 5
-+ ; RUN: opt -passes=loop-vectorize -force-vector-interleave=1 -force-vector-width=2 < %s -S -o - | FileCheck %s
-+ 
-+ define void @sincos_f32(ptr noalias %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
-+@@ -344,474 +344,6 @@
-+   %iv.next = add nuw nsw i64 %iv, 1
-+   %exitcond.not = icmp eq i64 %iv.next, 1024
-+   br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
- -}
- -
---attributes #0 = { sspreq }
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-16.ll b/llvm/test/CodeGen/X86/fold-add-16.ll
----- a/llvm/test/CodeGen/X86/fold-add-16.ll
--+++ b/llvm/test/CodeGen/X86/fold-add-16.ll
--@@ -0,0 +1,45 @@
--+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 6
--+; RUN: llc -mtriple=i386-unknown-code16 < %s | FileCheck %s
--+
--+;; In 16-bit mode, displacements are limited to [-65535,65535] (R_386_16).
--+;; Test boundary conditions for offset folding.
--+
--+@X = external global i32, align 4
--+
--+;; -65535 is within range, should fold
--+define i32 @neg_65535() {
--+; CHECK-LABEL: neg_65535:
--+; CHECK:       # %bb.0:
--+; CHECK-NEXT:    leal X+65535, %eax
--+; CHECK-NEXT:    retl
--+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65535)
--+}
--+
--+;; 65535 is within range, should fold
--+define i32 @pos_65535() {
--+; CHECK-LABEL: pos_65535:
--+; CHECK:       # %bb.0:
--+; CHECK-NEXT:    leal X-65535, %eax
--+; CHECK-NEXT:    retl
--+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65535)
--+}
--+
--+;; -65536 is outside range, should NOT fold
--+define i32 @neg_65536() {
--+; CHECK-LABEL: neg_65536:
--+; CHECK:       # %bb.0:
--+; CHECK-NEXT:    movl $65536, %eax # imm = 0x10000
--+; CHECK-NEXT:    leal X(%eax), %eax
--+; CHECK-NEXT:    retl
--+  ret i32 add (i32 ptrtoint (ptr @X to i32), i32 65536)
--+}
--+
--+;; 65536 is outside range, should NOT fold
--+define i32 @pos_65536() {
--+; CHECK-LABEL: pos_65536:
--+; CHECK:       # %bb.0:
--+; CHECK-NEXT:    movl $-65536, %eax # imm = 0xFFFF0000
--+; CHECK-NEXT:    leal X(%eax), %eax
--+; CHECK-NEXT:    retl
--+  ret i32 sub (i32 ptrtoint (ptr @X to i32), i32 65536)
--+}
--diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fold-add-32.ll b/llvm/test/CodeGen/X86/fold-add-32.ll
----- a/llvm/test/CodeGen/X86/fold-add-32.ll
--+++ b/llvm/test/CodeGen/X86/fold-add-32.ll
--@@ -0,0 +1,47 @@
--+; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py UTC_ARGS: --version 5
--+; RUN: llc < %s -mtriple=i386 --frame-pointer=all | FileCheck %s
--+
--+; ISel will try to fold pointer arithmetic into the address displacement. However, we don't
--+; want to do that if the offset is very close to the expressible limit because the final frame
--+; layout may push it over/under the limit.
--+
--+define i32 @foo(i1 %b) #0 {
--+; CHECK-LABEL: foo:
--+; CHECK:       # %bb.0: # %entry
--+; CHECK-NEXT:    pushl %ebp
--+; CHECK-NEXT:    .cfi_def_cfa_offset 8
--+; CHECK-NEXT:    .cfi_offset %ebp, -8
--+; CHECK-NEXT:    movl %esp, %ebp
--+; CHECK-NEXT:    .cfi_def_cfa_register %ebp
--+; CHECK-NEXT:    subl $8, %esp
--+; CHECK-NEXT:    movl __stack_chk_guard, %eax
--+; CHECK-NEXT:    movl %eax, -4(%ebp)
--+; CHECK-NEXT:    testb $1, 8(%ebp)
--+; CHECK-NEXT:    jne .LBB0_1
--+; CHECK-NEXT:  # %bb.2: # %entry
--+; CHECK-NEXT:    xorl %eax, %eax
--+; CHECK-NEXT:    jmp .LBB0_3
--+; CHECK-NEXT:  .LBB0_1:
--+; CHECK-NEXT:    movl $-2147483647, %eax # imm = 0x80000001
--+; CHECK-NEXT:    leal -5(%ebp,%eax), %eax
--+; CHECK-NEXT:  .LBB0_3: # %entry
--+; CHECK-NEXT:    movl __stack_chk_guard, %ecx
--+; CHECK-NEXT:    cmpl -4(%ebp), %ecx
--+; CHECK-NEXT:    jne .LBB0_5
--+; CHECK-NEXT:  # %bb.4: # %entry
--+; CHECK-NEXT:    addl $8, %esp
--+; CHECK-NEXT:    popl %ebp
--+; CHECK-NEXT:    .cfi_def_cfa %esp, 4
--+; CHECK-NEXT:    retl
--+; CHECK-NEXT:  .LBB0_5: # %entry
--+; CHECK-NEXT:    .cfi_def_cfa %ebp, 8
--+; CHECK-NEXT:    calll __stack_chk_fail
--+entry:
--+  %a = alloca i8, align 1
--+  %0 = ptrtoint ptr %a to i32
--+  %sub = add i32 %0, -2147483647
--+  %retval.0 = select i1 %b, i32 %sub, i32 0
--+  ret i32 %retval.0
--+}
--+
--+attributes #0 = { sspreq }
--diff -ruN --strip-trailing-cr a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
----- a/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
--+++ b/llvm/test/Transforms/VectorCombine/X86/binop-shuffle-mask1-cm.ll
--@@ -1,3 +1,4 @@
--+; REQUIRES: asserts
-- ; RUN: opt -passes=vector-combine -debug-only=vector-combine -disable-output < %s 2>&1 | FileCheck %s
-- target triple = "x86_64-unknown-linux-gnu"
-+-define void @uadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @uadd_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.uadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @uadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @uadd_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.uadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.uadd.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @sadd_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @sadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @sadd_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.sadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @usub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @usub_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.usub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @usub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @usub_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.usub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.usub.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @ssub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @ssub_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.ssub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @ssub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @ssub_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.ssub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.ssub.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @umul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @umul_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.umul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @umul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @umul_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.umul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.umul.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @smul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @smul_with_overflow_i32(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.smul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
-+-  %val_a = load i32, ptr %arrayidx_a, align 4
-+-  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
-+-  %val_b = load i32, ptr %arrayidx_b, align 4
-+-  %call = tail call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %val_a, i32 %val_b)
-+-  %result = extractvalue { i32, i1 } %call, 0
-+-  %overflow = extractvalue { i32, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
-+-  store i32 %result, ptr %arrayidx_result, align 4
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
-+-
-+-exit:
-+-  ret void
-+-}
-+-
-+-define void @smul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
-+-; CHECK-LABEL: define void @smul_with_overflow_i64(
-+-; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
-+-; CHECK:  [[VECTOR_BODY:.*:]]
-+-; CHECK:  [[FOR_BODY:.*:]]
-+-; CHECK:  [[VECTOR_BODY1:.*:]]
-+-; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.smul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
-+-; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
-+-; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
-+-; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
-+-; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
-+-; CHECK:  [[EXIT:.*:]]
-+-; CHECK:  [[EXIT1:.*:]]
-+-;
-+-entry:
-+-  br label %for.body
-+-
-+-for.body:
-+-  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
-+-  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
-+-  %val_a = load i64, ptr %arrayidx_a, align 8
-+-  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
-+-  %val_b = load i64, ptr %arrayidx_b, align 8
-+-  %call = tail call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %val_a, i64 %val_b)
-+-  %result = extractvalue { i64, i1 } %call, 0
-+-  %overflow = extractvalue { i64, i1 } %call, 1
-+-  %zext_overflow = zext i1 %overflow to i8
-+-  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
-+-  store i64 %result, ptr %arrayidx_result, align 8
-+-  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
-+-  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
-+-  %iv.next = add nuw nsw i64 %iv, 1
-+-  %exitcond.not = icmp eq i64 %iv.next, 1024
-+-  br i1 %exitcond.not, label %exit, label %for.body
+--; CHECK-COST-LABEL: sadd_with_overflow_i32
+--; CHECK-COST: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+--; CHECK-COST: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--
+--; CHECK-COST-ARMPL-LABEL: sadd_with_overflow_i32
+--; CHECK-COST-ARMPL: LV: Found an estimated cost of 1 for VF 1 For instruction:   %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+--; CHECK-COST-ARMPL: Cost of 4 for VF 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of 4 for VF 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of 7 for VF 8: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of 13 for VF 16: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of Invalid for VF vscale x 1: REPLICATE ir<%call> = call @llvm.sadd.with.overflow.i32(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 2: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--; CHECK-COST-ARMPL: Cost of 4 for VF vscale x 4: WIDEN-INTRINSIC ir<%call> = call llvm.sadd.with.overflow(ir<%val_a>, ir<%val_b>)
+--
+--define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @sadd_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
+--; CHECK:  [[ENTRY:.*:]]
+--; CHECK:  [[VECTOR_PH:.*:]]
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
+--; CHECK:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
+--; CHECK:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
+--; CHECK:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
+--; CHECK:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
+--; CHECK:  [[MIDDLE_BLOCK:.*:]]
+--; CHECK:  [[EXIT:.*:]]
+--;
+--; CHECK-ARMPL-LABEL: define void @sadd_with_overflow_i32(
+--; CHECK-ARMPL-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) #[[ATTR0]] {
+--; CHECK-ARMPL:  [[ENTRY:.*:]]
+--; CHECK-ARMPL:  [[VECTOR_PH:.*:]]
+--; CHECK-ARMPL:  [[VECTOR_BODY:.*:]]
+--; CHECK-ARMPL:    [[TMP9:%.*]] = call { <vscale x 4 x i32>, <vscale x 4 x i1> } @llvm.sadd.with.overflow.nxv4i32(<vscale x 4 x i32> [[WIDE_MASKED_LOAD:%.*]], <vscale x 4 x i32> [[WIDE_MASKED_LOAD1:%.*]])
+--; CHECK-ARMPL:    [[TMP10:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 0
+--; CHECK-ARMPL:    [[TMP11:%.*]] = extractvalue { <vscale x 4 x i32>, <vscale x 4 x i1> } [[TMP9]], 1
+--; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i32.p0(<vscale x 4 x i32> [[TMP10]], ptr align 4 [[TMP13:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK:%.*]])
+--; CHECK-ARMPL:    call void @llvm.masked.store.nxv4i8.p0(<vscale x 4 x i8> [[TMP12:%.*]], ptr align 1 [[TMP14:%.*]], <vscale x 4 x i1> [[ACTIVE_LANE_MASK]])
+--; CHECK-ARMPL:  [[MIDDLE_BLOCK:.*:]]
+--; CHECK-ARMPL:  [[EXIT:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+- 
+- exit:
+-   ret void
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
+---- a/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/multiple-result-intrinsics.ll
+-@@ -1,4 +1,4 @@
+--; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store|with\.overflow)" --version 5
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter "(:|sincos|frexp|modf|extract|store)" --version 5
+- ; RUN: opt -passes=loop-vectorize -force-vector-interleave=1 -force-vector-width=2 < %s -S -o - | FileCheck %s
+- 
+- define void @sincos_f32(ptr noalias %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
+-@@ -344,474 +344,6 @@
+-   %iv.next = add nuw nsw i64 %iv, 1
+-   %exitcond.not = icmp eq i64 %iv.next, 1024
+-   br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @uadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @uadd_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.uadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.uadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @uadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @uadd_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.uadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.uadd.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @sadd_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @sadd_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @sadd_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @sadd_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.sadd.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @usub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @usub_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.usub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.usub.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @usub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @usub_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.usub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.usub.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @ssub_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @ssub_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.ssub.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.ssub.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @ssub_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @ssub_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.ssub.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.ssub.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @umul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @umul_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.umul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.umul.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @umul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @umul_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.umul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.umul.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @smul_with_overflow_i32(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @smul_with_overflow_i32(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.smul.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD:%.*]], <2 x i32> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i32> [[TMP5]], ptr [[TMP9:%.*]], align 4
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i32, ptr %in_a, i64 %iv
+--  %val_a = load i32, ptr %arrayidx_a, align 4
+--  %arrayidx_b = getelementptr inbounds i32, ptr %in_b, i64 %iv
+--  %val_b = load i32, ptr %arrayidx_b, align 4
+--  %call = tail call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %val_a, i32 %val_b)
+--  %result = extractvalue { i32, i1 } %call, 0
+--  %overflow = extractvalue { i32, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i32, ptr %out_result, i64 %iv
+--  store i32 %result, ptr %arrayidx_result, align 4
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+--
+--exit:
+--  ret void
+--}
+--
+--define void @smul_with_overflow_i64(ptr noalias %in_a, ptr noalias %in_b, ptr noalias writeonly %out_result, ptr noalias writeonly %out_overflow) {
+--; CHECK-LABEL: define void @smul_with_overflow_i64(
+--; CHECK-SAME: ptr noalias [[IN_A:%.*]], ptr noalias [[IN_B:%.*]], ptr noalias writeonly [[OUT_RESULT:%.*]], ptr noalias writeonly [[OUT_OVERFLOW:%.*]]) {
+--; CHECK:  [[VECTOR_BODY:.*:]]
+--; CHECK:  [[FOR_BODY:.*:]]
+--; CHECK:  [[VECTOR_BODY1:.*:]]
+--; CHECK:    [[TMP4:%.*]] = call { <2 x i64>, <2 x i1> } @llvm.smul.with.overflow.v2i64(<2 x i64> [[WIDE_LOAD:%.*]], <2 x i64> [[WIDE_LOAD1:%.*]])
+--; CHECK:    [[TMP5:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 0
+--; CHECK:    [[TMP6:%.*]] = extractvalue { <2 x i64>, <2 x i1> } [[TMP4]], 1
+--; CHECK:    store <2 x i64> [[TMP5]], ptr [[TMP9:%.*]], align 8
+--; CHECK:    store <2 x i8> [[TMP8:%.*]], ptr [[TMP7:%.*]], align 1
+--; CHECK:  [[EXIT:.*:]]
+--; CHECK:  [[EXIT1:.*:]]
+--;
+--entry:
+--  br label %for.body
+--
+--for.body:
+--  %iv = phi i64 [ 0, %entry ], [ %iv.next, %for.body ]
+--  %arrayidx_a = getelementptr inbounds i64, ptr %in_a, i64 %iv
+--  %val_a = load i64, ptr %arrayidx_a, align 8
+--  %arrayidx_b = getelementptr inbounds i64, ptr %in_b, i64 %iv
+--  %val_b = load i64, ptr %arrayidx_b, align 8
+--  %call = tail call { i64, i1 } @llvm.smul.with.overflow.i64(i64 %val_a, i64 %val_b)
+--  %result = extractvalue { i64, i1 } %call, 0
+--  %overflow = extractvalue { i64, i1 } %call, 1
+--  %zext_overflow = zext i1 %overflow to i8
+--  %arrayidx_result = getelementptr inbounds i64, ptr %out_result, i64 %iv
+--  store i64 %result, ptr %arrayidx_result, align 8
+--  %arrayidx_overflow = getelementptr inbounds i8, ptr %out_overflow, i64 %iv
+--  store i8 %zext_overflow, ptr %arrayidx_overflow, align 1
+--  %iv.next = add nuw nsw i64 %iv, 1
+--  %exitcond.not = icmp eq i64 %iv.next, 1024
+--  br i1 %exitcond.not, label %exit, label %for.body
+- 
+- exit:
+-   ret void
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/struct-return.ll b/llvm/test/Transforms/LoopVectorize/struct-return.ll
+---- a/llvm/test/Transforms/LoopVectorize/struct-return.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/struct-return.ll
+-@@ -166,31 +166,28 @@
+-   ret void
+- }
+- 
+--; CHECK-REMARKS:	 remark: {{.*}} vectorized loop
+-+; TODO: Allow mixed-struct type vectorization and mark overflow intrinsics as trivially vectorizable.
+-+; CHECK-REMARKS:         remark: {{.*}} loop not vectorized: call instruction cannot be vectorized
+- define void @test_overflow_intrinsic(ptr noalias readonly %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
+- ; CHECK-LABEL: define void @test_overflow_intrinsic(
+- ; CHECK-SAME: ptr noalias readonly [[IN:%.*]], ptr noalias writeonly [[OUT_A:%.*]], ptr noalias writeonly [[OUT_B:%.*]]) {
+--; CHECK-NEXT:  [[ENTRY:.*:]]
+--; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
+--; CHECK:       [[VECTOR_PH]]:
+--; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+--; CHECK:       [[VECTOR_BODY]]:
+--; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[IV_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-+; CHECK-NEXT:  [[ENTRY:.*]]:
+-+; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
+-+; CHECK:       [[FOR_BODY]]:
+-+; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[FOR_BODY]] ]
+- ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds float, ptr [[IN]], i64 [[IV]]
+--; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x i32>, ptr [[ARRAYIDX]], align 4
+--; CHECK-NEXT:    [[TMP1:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD]], <2 x i32> [[WIDE_LOAD]])
+--; CHECK-NEXT:    [[TMP2:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 0
+--; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 1
+--; CHECK-NEXT:    [[TMP4:%.*]] = zext <2 x i1> [[TMP3]] to <2 x i8>
+-+; CHECK-NEXT:    [[IN_VAL:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
+-+; CHECK-NEXT:    [[CALL:%.*]] = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 [[IN_VAL]], i32 [[IN_VAL]])
+-+; CHECK-NEXT:    [[EXTRACT_RET:%.*]] = extractvalue { i32, i1 } [[CALL]], 0
+-+; CHECK-NEXT:    [[EXTRACT_OVERFLOW:%.*]] = extractvalue { i32, i1 } [[CALL]], 1
+-+; CHECK-NEXT:    [[ZEXT_OVERFLOW:%.*]] = zext i1 [[EXTRACT_OVERFLOW]] to i8
+- ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr [[OUT_A]], i64 [[IV]]
+--; CHECK-NEXT:    store <2 x i32> [[TMP2]], ptr [[ARRAYIDX2]], align 4
+-+; CHECK-NEXT:    store i32 [[EXTRACT_RET]], ptr [[ARRAYIDX2]], align 4
+- ; CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr inbounds i8, ptr [[OUT_B]], i64 [[IV]]
+--; CHECK-NEXT:    store <2 x i8> [[TMP4]], ptr [[ARRAYIDX4]], align 4
+--; CHECK-NEXT:    [[IV_NEXT]] = add nuw i64 [[IV]], 2
+-+; CHECK-NEXT:    store i8 [[ZEXT_OVERFLOW]], ptr [[ARRAYIDX4]], align 4
+-+; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
+- ; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[IV_NEXT]], 1024
+--; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
+--; CHECK:       [[MIDDLE_BLOCK]]:
+--; CHECK-NEXT:    br label %[[EXIT:.*]]
+-+; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[EXIT:.*]], label %[[FOR_BODY]]
+- ; CHECK:       [[EXIT]]:
+- ; CHECK-NEXT:    ret void
+- ;
+-diff -ruN --strip-trailing-cr a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
+---- a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
+-+++ b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
+-@@ -186,12 +186,11 @@
+-   }
+-   OwningMemRef(const OwningMemRef &) = delete;
+-   OwningMemRef &operator=(const OwningMemRef &) = delete;
+--  OwningMemRef &operator=(OwningMemRef &&other) {
+-+  OwningMemRef &operator=(const OwningMemRef &&other) {
+-     freeFunc = other.freeFunc;
+-     descriptor = other.descriptor;
+-     other.freeFunc = nullptr;
+-     memset(&other.descriptor, 0, sizeof(other.descriptor));
+--    return *this;
+-   }
+-   OwningMemRef(OwningMemRef &&other) { *this = std::move(other); }
+++    spec = importlib.util.spec_from_file_location(module_name, path)
+++    if spec is None or spec.loader is None:
+++        sys.exit(f"Failed to load extension from {path}")
+++
+++    module = importlib.util.module_from_spec(spec)
+++    sys.modules[module_name] = module
+++    spec.loader.exec_module(module)
+++    return module_name
+++
+++
+++def main():
+++    parser = argparse.ArgumentParser()
+++    parser.add_argument(
+++        "--module", required=True, help="Module name to generate stubs for"
+++    )
+++    parser.add_argument(
+++        "--deps", required=True, help="Comma-separated .so files to load"
+++    )
+++    parser.add_argument("-o", "--output", required=True, help="Output directory")
+++    args = parser.parse_args()
+++
+++    for dep_path in args.deps.split(","):
+++        load_extension(Path(dep_path).resolve())
+++
+++    runfiles = Runfiles.Create()
+++    stubgen_path = runfiles.Rlocation("+llvm_repos_extension+nanobind/src/stubgen.py")
+++    spec = importlib.util.spec_from_file_location("stubgen", stubgen_path)
+++    stubgen = importlib.util.module_from_spec(spec)
+++    sys.modules["stubgen"] = stubgen
+++    spec.loader.exec_module(stubgen)
+++    stubgen.main(["-m", args.module, "-r", "-O", args.output])
+++
+++
+++if __name__ == "__main__":
+++    main()
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -1317,7 +1317,7 @@
   
-+ exit:
-+   ret void
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/struct-return.ll b/llvm/test/Transforms/LoopVectorize/struct-return.ll
-+--- a/llvm/test/Transforms/LoopVectorize/struct-return.ll
-++++ b/llvm/test/Transforms/LoopVectorize/struct-return.ll
-+@@ -166,31 +166,28 @@
-+   ret void
-+ }
-+ 
-+-; CHECK-REMARKS:	 remark: {{.*}} vectorized loop
-++; TODO: Allow mixed-struct type vectorization and mark overflow intrinsics as trivially vectorizable.
-++; CHECK-REMARKS:         remark: {{.*}} loop not vectorized: call instruction cannot be vectorized
-+ define void @test_overflow_intrinsic(ptr noalias readonly %in, ptr noalias writeonly %out_a, ptr noalias writeonly %out_b) {
-+ ; CHECK-LABEL: define void @test_overflow_intrinsic(
-+ ; CHECK-SAME: ptr noalias readonly [[IN:%.*]], ptr noalias writeonly [[OUT_A:%.*]], ptr noalias writeonly [[OUT_B:%.*]]) {
-+-; CHECK-NEXT:  [[ENTRY:.*:]]
-+-; CHECK-NEXT:    br label %[[VECTOR_PH:.*]]
-+-; CHECK:       [[VECTOR_PH]]:
-+-; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-+-; CHECK:       [[VECTOR_BODY]]:
-+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[IV_NEXT:%.*]], %[[VECTOR_BODY]] ]
-++; CHECK-NEXT:  [[ENTRY:.*]]:
-++; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
-++; CHECK:       [[FOR_BODY]]:
-++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[FOR_BODY]] ]
-+ ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds float, ptr [[IN]], i64 [[IV]]
-+-; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <2 x i32>, ptr [[ARRAYIDX]], align 4
-+-; CHECK-NEXT:    [[TMP1:%.*]] = call { <2 x i32>, <2 x i1> } @llvm.sadd.with.overflow.v2i32(<2 x i32> [[WIDE_LOAD]], <2 x i32> [[WIDE_LOAD]])
-+-; CHECK-NEXT:    [[TMP2:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 0
-+-; CHECK-NEXT:    [[TMP3:%.*]] = extractvalue { <2 x i32>, <2 x i1> } [[TMP1]], 1
-+-; CHECK-NEXT:    [[TMP4:%.*]] = zext <2 x i1> [[TMP3]] to <2 x i8>
-++; CHECK-NEXT:    [[IN_VAL:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-++; CHECK-NEXT:    [[CALL:%.*]] = tail call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 [[IN_VAL]], i32 [[IN_VAL]])
-++; CHECK-NEXT:    [[EXTRACT_RET:%.*]] = extractvalue { i32, i1 } [[CALL]], 0
-++; CHECK-NEXT:    [[EXTRACT_OVERFLOW:%.*]] = extractvalue { i32, i1 } [[CALL]], 1
-++; CHECK-NEXT:    [[ZEXT_OVERFLOW:%.*]] = zext i1 [[EXTRACT_OVERFLOW]] to i8
-+ ; CHECK-NEXT:    [[ARRAYIDX2:%.*]] = getelementptr inbounds i32, ptr [[OUT_A]], i64 [[IV]]
-+-; CHECK-NEXT:    store <2 x i32> [[TMP2]], ptr [[ARRAYIDX2]], align 4
-++; CHECK-NEXT:    store i32 [[EXTRACT_RET]], ptr [[ARRAYIDX2]], align 4
-+ ; CHECK-NEXT:    [[ARRAYIDX4:%.*]] = getelementptr inbounds i8, ptr [[OUT_B]], i64 [[IV]]
-+-; CHECK-NEXT:    store <2 x i8> [[TMP4]], ptr [[ARRAYIDX4]], align 4
-+-; CHECK-NEXT:    [[IV_NEXT]] = add nuw i64 [[IV]], 2
-++; CHECK-NEXT:    store i8 [[ZEXT_OVERFLOW]], ptr [[ARRAYIDX4]], align 4
-++; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
-+ ; CHECK-NEXT:    [[EXITCOND_NOT:%.*]] = icmp eq i64 [[IV_NEXT]], 1024
-+-; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP6:![0-9]+]]
-+-; CHECK:       [[MIDDLE_BLOCK]]:
-+-; CHECK-NEXT:    br label %[[EXIT:.*]]
-++; CHECK-NEXT:    br i1 [[EXITCOND_NOT]], label %[[EXIT:.*]], label %[[FOR_BODY]]
-+ ; CHECK:       [[EXIT]]:
-+ ; CHECK-NEXT:    ret void
-+ ;
-+diff -ruN --strip-trailing-cr a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
-+--- a/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
-++++ b/mlir/include/mlir/ExecutionEngine/MemRefUtils.h
-+@@ -186,12 +186,11 @@
-+   }
-+   OwningMemRef(const OwningMemRef &) = delete;
-+   OwningMemRef &operator=(const OwningMemRef &) = delete;
-+-  OwningMemRef &operator=(OwningMemRef &&other) {
-++  OwningMemRef &operator=(const OwningMemRef &&other) {
-+     freeFunc = other.freeFunc;
-+     descriptor = other.descriptor;
-+     other.freeFunc = nullptr;
-+     memset(&other.descriptor, 0, sizeof(other.descriptor));
-+-    return *this;
-+   }
-+   OwningMemRef(OwningMemRef &&other) { *this = std::move(other); }
-+ 
-+diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/CMakeLists.txt b/mlir/unittests/ExecutionEngine/CMakeLists.txt
-+--- a/mlir/unittests/ExecutionEngine/CMakeLists.txt
-++++ b/mlir/unittests/ExecutionEngine/CMakeLists.txt
-+@@ -9,7 +9,6 @@
-+   DynamicMemRef.cpp
-+   StridedMemRef.cpp
-+   Invoke.cpp
-+-  OwningMemRef.cpp
-+ )
-+ 
-+ mlir_target_link_libraries(MLIRExecutionEngineTests
-+diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
-+--- a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
-++++ b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
-+@@ -1,25 +0,0 @@
-+-//===- StridedMemRef.cpp ----------------------------------------*- C++ -*-===//
-+-//
-+-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-+-// See https://llvm.org/LICENSE.txt for license information.
-+-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+-//
-+-//===----------------------------------------------------------------------===//
+-diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/CMakeLists.txt b/mlir/unittests/ExecutionEngine/CMakeLists.txt
+---- a/mlir/unittests/ExecutionEngine/CMakeLists.txt
+-+++ b/mlir/unittests/ExecutionEngine/CMakeLists.txt
+-@@ -9,7 +9,6 @@
+-   DynamicMemRef.cpp
+-   StridedMemRef.cpp
+-   Invoke.cpp
+--  OwningMemRef.cpp
++ py_binary(
++     name = "stubgen_runner",
++-    srcs = ["stubgen_runner.py"],
+++    srcs = ["lib/Bindings/Python/stubgen_runner.py"],
++     data = ["@nanobind//:src/stubgen.py"],
++     deps = ["@rules_python//python/runfiles"],
+  )
+- 
+- mlir_target_link_libraries(MLIRExecutionEngineTests
+-diff -ruN --strip-trailing-cr a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
+---- a/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
+-+++ b/mlir/unittests/ExecutionEngine/OwningMemRef.cpp
+-@@ -1,25 +0,0 @@
+--//===- StridedMemRef.cpp ----------------------------------------*- C++ -*-===//
+--//
+--// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+--// See https://llvm.org/LICENSE.txt for license information.
+--// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+--//
+--//===----------------------------------------------------------------------===//
+--
+--#include "mlir/ExecutionEngine/MemRefUtils.h"
+--
+--#include "gmock/gmock.h"
+--
+--using namespace ::mlir;
+--using namespace ::testing;
+--
+--TEST(OwningMemRef, assignOverloadChaining) {
+--  int64_t mem1Shape[] = {3};
+--  int64_t mem2Shape[] = {4};
+--
+--  OwningMemRef<float, 1> mem1(mem1Shape);
+--  OwningMemRef<float, 1> mem2(mem2Shape);
+--  OwningMemRef<float, 1> &ref = (mem1 = std::move(mem2));
+--
+--  EXPECT_EQ(&ref, &mem1);
+--}
++@@ -10336,6 +10336,7 @@
++         ":AtomicInterfacesIncGen",
++         ":BytecodeOpInterface",
++         ":ControlFlowInterfaces",
+++        ":DataLayoutInterfaces",
++         ":GPUDialect",
++         ":IR",
++         ":LLVMDialect",
++@@ -10374,6 +10375,7 @@
++     hdrs = glob(["include/mlir/Dialect/OpenACC/Analysis/*.h"]),
++     includes = ["include"],
++     deps = [
+++        ":GPUDialect",
++         ":IR",
++         ":OpenACCDialect",
++         ":OpenACCUtils",
++@@ -10391,6 +10393,7 @@
++     deps = [
++         ":ArithDialect",
++         ":ArithUtils",
+++        ":DataLayoutInterfaces",
++         ":DialectUtils",
++         ":FunctionInterfaces",
++         ":IR",
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py b/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
++--- a/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
+++++ b/utils/bazel/llvm-project-overlay/mlir/stubgen_runner.py
++@@ -1,54 +0,0 @@
++-#!/usr/bin/env python3
++-"""Generates .pyi stubs for nanobind extensions using nanobind's stubgen."""
 +-
-+-#include "mlir/ExecutionEngine/MemRefUtils.h"
++-import argparse
++-import ctypes
++-import importlib.util
++-import sys
++-from pathlib import Path
 +-
-+-#include "gmock/gmock.h"
++-from python.runfiles import Runfiles
 +-
-+-using namespace ::mlir;
-+-using namespace ::testing;
 +-
-+-TEST(OwningMemRef, assignOverloadChaining) {
-+-  int64_t mem1Shape[] = {3};
-+-  int64_t mem2Shape[] = {4};
++-def load_extension(path: Path):
++-    """Load an extension module from a .so file with RTLD_GLOBAL."""
++-    module_name = path.stem.removesuffix(".abi3")
 +-
-+-  OwningMemRef<float, 1> mem1(mem1Shape);
-+-  OwningMemRef<float, 1> mem2(mem2Shape);
-+-  OwningMemRef<float, 1> &ref = (mem1 = std::move(mem2));
++-    # Load with RTLD_GLOBAL so symbols are available to dependent extensions.
++-    ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
 +-
-+-  EXPECT_EQ(&ref, &mem1);
-+-}
++-    spec = importlib.util.spec_from_file_location(module_name, path)
++-    if spec is None or spec.loader is None:
++-        sys.exit(f"Failed to load extension from {path}")
++-
++-    module = importlib.util.module_from_spec(spec)
++-    sys.modules[module_name] = module
++-    spec.loader.exec_module(module)
++-    return module_name
++-
++-
++-def main():
++-    parser = argparse.ArgumentParser()
++-    parser.add_argument(
++-        "--module", required=True, help="Module name to generate stubs for"
++-    )
++-    parser.add_argument(
++-        "--deps", required=True, help="Comma-separated .so files to load"
++-    )
++-    parser.add_argument("-o", "--output", required=True, help="Output directory")
++-    args = parser.parse_args()
++-
++-    for dep_path in args.deps.split(","):
++-        load_extension(Path(dep_path).resolve())
++-
++-    runfiles = Runfiles.Create()
++-    stubgen_path = runfiles.Rlocation("+llvm_repos_extension+nanobind/src/stubgen.py")
++-    spec = importlib.util.spec_from_file_location("stubgen", stubgen_path)
++-    stubgen = importlib.util.module_from_spec(spec)
++-    sys.modules["stubgen"] = stubgen
++-    spec.loader.exec_module(stubgen)
++-    stubgen.main(["-m", args.module, "-r", "-O", args.output])
++-
++-
++-if __name__ == "__main__":
++-    main()
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 02ddb9d..9a80074 100644
+index 9a80074..25d2a46 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "b4b8d4e5d062438289c60a832ec783d34cc31fa4"
--    LLVM_SHA256 = "8c217784e4fde58a82d2fb30eb2b78f3553bc4f4c705ece58b6ed2ceaa4d023f"
-+    LLVM_COMMIT = "17eac111712bf7ce90f2c4cf577f97b9aab2799b"
-+    LLVM_SHA256 = "480cdb49869dbd2339b1b63181a56106203ec6f8296b211d535e078b57ae8838"
+-    LLVM_COMMIT = "17eac111712bf7ce90f2c4cf577f97b9aab2799b"
+-    LLVM_SHA256 = "480cdb49869dbd2339b1b63181a56106203ec6f8296b211d535e078b57ae8838"
++    LLVM_COMMIT = "d518d495315621bc751927069dbf609866f98b90"
++    LLVM_SHA256 = "2dc7b4680866e414488b0680f2763008ce154a581a029ed83824323c2b805773"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index f720484..660ad55 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -682,6 +682,40 @@ diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.c
+    }
+  
+    OwningOpRef<ModuleOp> module = mb->build();
++diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
++--- stablehlo/stablehlo/integrations/python/ChloModule.cpp
+++++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
++@@ -11,6 +11,7 @@
++ limitations under the License.
++ ==============================================================================*/
++ 
+++#include "llvm/ADT/STLExtras.h"
++ #include "mlir-c/IR.h"
++ #include "mlir/Bindings/Python/NanobindAdaptors.h"
++ #include "nanobind/nanobind.h"
++diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++@@ -13,6 +13,7 @@
++ 
++ #include <vector>
++ 
+++#include "llvm/ADT/STLExtras.h"
++ #include "mlir-c/IR.h"
++ #include "mlir-c/Support.h"
++ #include "mlir/Bindings/Python/NanobindAdaptors.h"
++diff --ruN a/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir b/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
++--- stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
+++++ stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
++@@ -19,7 +19,7 @@
++     return %c : tensor<100x100xi8>
++   }
++   func.func private @expected() -> (tensor<100x100xi1> {mhlo.layout_mode = "default"}) {
++-    %c = stablehlo.constant dense<"0xEEEEADDFEBFDEAEFCEBC8EFE377BF3B7F3455BBEFFFE7EFB9FBE75F9EEE767FFFF5FEF678EF77FEE9FE95DEDDBD9EFF3FAFBC7D7FDB797AFF5F8AB8AAFA6FFFFF3FF7FF9F6EF7FBE7FFFBFBE79D18F3F6EF7BBFEB97FBFF5DE634FDDE7BF7FF7E6FFF7FEDFF6FFFEF8CDFE7CCF7EAF7BEFE7FFEF37FB3E7ECDDBFB6EBF372EAAFFF3BD7B73FF7BB353FDCADEFFFF4F1FFABEFFDEFF7F972AEEB7C1EF7ED0E3FBB4DDAD1AFF9CB2FFEEFDFF3A3ED6EBFB5FFAA3CFE7AF6E722FE3BFF119FFF6FCB7BE8FD52DFFF3A572FAFFFDFAB9557BFEDEF5EFC52C2AFBFDFB7FBE5BB9ADBCF97B119E2AFDBFB3FF73BFFFBCA3BBB5FAEB87EDF49A6FEFEFF9FFF17A7FFFA77EF3D9FEDFFBFAFFB7FFDCF43EBD5E6FDD16FF5A73BFFFFDBCFBAEFFDFDEDFBE7CDF7FDD3FF7F81CDCA5D6E9E72FF3BF3FF9FFD67BEAFFDD9F6DE76BFDF77F6FD7FDF5517F7FF8FFF9E3F7EC3FFFEB4FE97EFEEEBFFF35FF8CF5BE7DEFBFCB97FEF9F7EF70DBDBAFFFDD57747FFFCDFDF3EF2BDD5DDFFAFFDDCDFD3FDDBB49F5F616E9E57D6FFFD3FD7ED31ADEFF7DF53FFD79FF6CEFFDDEBFBFBF6753EEBDCB356CF6E4FFFFDA8DA47FEBEFF5CE01E919DE4CF6F5F3A7DA2BAFAFFEDBABD6D7D7FEE8FEBFEF5F6F1FF6FB5BFBF6B7EEFFFF7BAFF07EBDCFFFB7FBCF73CBEF5FF4EF7ECEDBDFB0DF9FFDABF26E5B5D7AEEEFDDFCFF6FF7D7AFBE7FFFE3F7F5EB73B3EFDF7DDFDFE7E2EE39BFDFE177C3B587BFF5F5D33DD6FCAD63DBBA2777EBFFFB9FEFF78E5EFED0DFBD5FBBDF77F7AF7FBBDEFF1DF17FDF63EFE90B55FDCEADF6FB6FE6BECDFEFF7EFFFBF9FFD7D6E1FFFF9FEA7FAACEFBD6FDB6EEFF6E97CF7E767E61F7FEF227D3DEE7BD5DF9DE3FDDF7F6C5B799AFCBAFE7EF6DFFFFFBDEFFFFBEFFFB755F8F7D97BEF9DF79377EFB49BE5FEF5F6FBFFDFFEFFEDF7F5FA6B5CEFD7F3FFBFF07FFB5D6FAC7EDF79397F7FEFAFDD96FBF7FE7BD982D9CEDAFBDDF8F92FB5BF31FEDBE5C7FFF5FBFD7CB7F7FFDF2EFFE6FFFEF5F8FAF56FFFFFDAE527FD6F777D67AEE77FA7EEEFFF6DAE3B69FE7ECD7C77D7E9ADFC7FFF7838FBDD7DA465FDF3F3D9DBFD2EDFFDDCD7FFFFF497FF4F7FFD27FDD6A9F07FBFBF65FF345DB7FDFA7D77FFECDD969DFDD2BFADFDF66AEBBE3DEB3DE9BCEF6F16FFFF379AFD9F7FFF3AFF2FEFBB7EFFEF9F6077F77E9FBC7997F7FF47DBA6FFBBCFEFDD7FFAFBBBBE797FFDFF75FF4CFEBDA57EBFFFDFDFD3EB5DF9BF33B97DBFBBF3B9DEEDC6BFF4EECFFE955F4F3DB87AF9FFF3EDF29A9FDFF79DF465FFE9BFFBFF7337E6D4BE5F78CFFBD41FDBDABFF5EB3EFDF5BBF6FD3FAF9CBBC99FF7BF3FEFFFFEF2F3E7D6AFFFFFC4FFDFDFF3E2C7DFEAF7AFFFF61DBEEDBEFFFFADDF9FF5BFD71F97E7FB87EFBFFFF6F16997F77FB7996FFDF77CFF3CBFFFFE078E73FFBDFFF0EE7BAF9F9FAFEFBD7DEE4FBC76CBBFBDFFAFEDEEB3B7DDBBFF77FFFFD5D29DFFD5EFB3BFFCCEBFBEFD7FFF37BD5CF5DFFFCBE6BCDDFDFDF9CFD5CAA7FEFDBFBFD36CFFFEEEFBBEDFFF53EE7FA6FB9EFD5F797FAFB77AFFF3EF0BBE6FFFFABF27CFFFF9BFDF96BEE56DFFBBFDD6B66F396F79F7B7FA63FEEEDFD6D7F7AD0F9DEDFF7FEFBFF3FEF9BFED595FDF9A6FD337FF4BF6DDBBF6FFFAD76CF7FE9EE2FFEBF73BDD582EFFDF75E7B9DFAAFE3FEFB557BFEBAEFF5F7FB6CDFDEFCAEE1F3EDBFDFB7FD3DF5F1DE3B7FE4F54BFAADCAB7FF7DCEDA5EB6FAFB6FBFECFFFF"> : tensor<100x100xi1>
+++    %c = stablehlo.constant dense<"0x00010101000101010001010100010101010001010001000101010101010001010101000100010101010001010101010100010001000101010101010100010101000101010000010100000101010100010001010100000001000101010101010101010100010100000101000101010100010100000101010101010100010100010101000001010101010001000000010001010001010001000001010101010001010101010101010100010101010101010001010101010100010100010101010101010101010000010001010101010001010001000101010001000001010101010001010100010101010101000001010101010100000101000101010101010101010101010101010101010101010001000101010100010101010101000001010000010101000000010101010001010101010101010101010000010101000101010101010101000001010000010001010101000101010001000100010100010101010100010100010101000001010001010101010100010101010100000101010100010001010101010101000101010101010101000000010101010100010001010100010101010101010101000101000101010100010000010101010100010001010001000101010100000001010101010101000100010001000100010000000101010101000100010001010000010001010101010101010101010101010101010101000001010101010101010101010101010101010101000100000101010101000101000101010101010101000101010101010101010100000101010101000101010101010101000101010101010101010101010101000100010101010100010100000101010100010000000100010101010101000000010101010101010000000101010001010001010100010101010101000101010001000101010101010101000001010100010101010101010100010101010101000101000100010101010001010101000101010100000001010001010101000001000100010101000101010101000001010101010101010100010101010101010100010101000101010100010100000101010101010101010101010101000101010100010101010101010101010101000101000101000101010101010101010101010001010101010101000000010101010101000101000001010001010101010101000001010101010001010101000001010001010101010100010101010001000101010001010101000101010100010101010101000001010101010101010101010101010100010101010101000101000001010001010101010001010101010000000101010101010001000101000001010101000101000101010100010101010100010101000101000101010101010001010101000101000000010101000100000001000100010001010101010101010101010000010101010100010101010001010100010101010001010000010101000101010101010101010100010101010001010000010100010101000001000100010001010101010100010001000001010001010101000101010101010101010101010101010101010101010100000100010101010100000000010001010101010001010101010001010101010101010100010101010001010101010101010101010101010101010001010100010000010001000100010000000101010001010101010100010100010100000000000101010101010001010100010101010101000000000001000101010100000001010101010001010101010000010001010001010001010100010101000101000100010001000101000000010101010101010100000101010000010001000001010001010101010101010100010101000101010100010101010101010101010101010100010001010100000001010101010000000101000100010101010001000101010101000101010101010101010100010000010001010101010101000000010001010101010000010101010100000101010101010100010001000101010001010000010000010101000101010100010000010100000001010101010101010100010100000001010101010000010100000001010101010101010001010001010101000001010101010101010100010100010001010101010001010101010000000101000100010001010100010100010000010101010101010101010000010101010100010000010001000100000101010000010001010101010101010101010101010001010101010100010001010101010100000101010001010001000100010001010001010101000001010101010101000101010100010101000100010101010101010100010101010001000000010100000101000100000001000100010000010100010101010101000101010101010101000101010101010101010101010000010101010100010101000101000100010000010101000101000101000100010000010101010001010000010101010101010001010101000100000001000000000101010100000100010001000100000100010101010101010101010101000101010000010100010101010101010101010100000101010001010101010100010101010101010101000001010101000101010000000100010101000101010001010001000101000100010001010101010101000100010101010101000000000101000101000101010000010001010101000100010100000101010101000101000101010100010101010101010001010101000001010101010101010101010101010000000101010100010001010101000101010101010100010101010101010101010100000100010001010101010100010100000101010101000001010001010001010101010101010101010100010101010001010101010001000101010101010101010101010101010100010100010101010101010101000001010100010100000100010101010001010101010000010001010101000100010101010001000101010100010100010001010100010100010100010000000101010101010101000100010100010001010000010101000101010101010001010101010101010101000101010101010000010101010001010100010101010100010101000100010101010101010101010101010100010100010101010001010101010101000101000101010101000100000101010101000101010101000101010101010101010001000101010001010101010101010000010101000101010100000001010101010000010101000000000001010100010101000100000100010001010001000101010000010001010101010100000101010101010100010000010100000101010101010101010100010101010101010000010000010101010101010101010101010001010001000101010100010101010000010001000101010101010101010101010001010100010101010101010000010100010100010100010101000001010101010001000101000100010101010101010101000101010101010101010101000101010100010100010101000100010101000101010101010100010001010101010000000100010001010101010101000101010101010100000000010101010101010101010101010100000101010101010100000001010101010100010101010000010100010101010101010101000001010101010101010101000100010101010101010000010001000001000101010001010101010100000101010101010100010101000101010101010101010001010101010101010101000100010100000101010101010101000001010000000101000100010101010001010101010001010001010101010001010101000101010101010101010001010100010000010101010100010000010001010101010101010000010101010101010100010101010101010100010101000000000101010001010001010001010101000101000101010101010001000101010101010101010100010101000101010101000100010000000100010101000101010101010100010101010101010101000101000001010100010101010101010100000101010101010101000101010101000100010000010001010100010101000101010001000101010101000101000100010101010101010101010101010100010101000101010001010000010101000101010101010101010101010000010001010100010101010001010100010100000100000100010001000101010100010100010101010001010001000000010000010001010101000100000101010100010101010100010101010001010001010101010101010101000001000101010001010101010100010101010101000101000001000101000100010100000000010101010001010101010101010101010001010101010001000100010101010101010101010000010001010101010101000001010101000101010101010101000001010001010001010101000101010100010101010101000101010100010101010101010100010101010101010001010101010101000101010100000101000101000001000100000101010001010101000101010100010101000100000101010001000101000000000101000101000001010001010101000001000001010101010101010101010101010101010101000100010100010101000101000000010000010000010001010101010101010001010001000101010101010100010101010001000101010100010101000001010100000000000000010000010001010101000001010000000001010101000101000001010000010000010100010101010100010001010101010100000101010101010100000100010001000101000101010100010001000001010101000100010101010100010001000101010101010101010001010001010101000100010001000101000100010101010100010001010101010001000101000101010101010100000001000101010001010101010101010101010101000101010101000101010101010101000100010101010001010001010101010000000001010001010101010100010101010101010001010001000101000101010101000101000101010101010100010100010001010100010101010101010101010101010101010101010101000101010100010101010001000100000000010101010001010101010100010001010101000101010101000001010101010101010101010101000101000101010001010101010101010100000101010100000101010001010001000001010101010100010101010101010100010000000100010101010101010100010101000101010101010000010101000001010101000101000101010101010100010100000000010100010101010101000101010101010100000101000101010101010101000100010001000100000101010100010101000101000101000101000100010001010100010000010001010101000001010100010101010101010001010101000101010001010000010101010101010101010101010101010101000101000101010001010101010101000100010101010101000100010001010101010001010101010101010001010101010101010101000000010101010101000101010101000100010101010101000100010101010100000101010001010000010100010101010100010101010101010100010101000101010101000101010101000101010101010100010101010100000101010001000000010101000101010001010101000001010100000101010101010001010101010100010101000000000101010101010001010100010100000000010101000100010100010101010000000001010101010101000101000100010101010100010001010101010100000100010101000101010100000001010001000101000001010101010101000101000100010101000000010100010100010100010100010001010100010101010000010000010101000101010001010001000101010101010101010101010100010101010101010101010000010101010100010101010101000101010100010101000000010001010101000100000101010101010100000000010001010101010101000101010001010101000101010101010001000101000101010001010101010100010101010100010101000101010001010101010101010001000101010101010101000101000101010001000101010100010101010101010101010100010101000000010000000101010101010101010101000101010101000101010100000001010001010101000101010100000100010101010100010000000001000100010001000100010101010101000101010000010101000101000100010001010001010101010100010101010101010101000101000001010000010101000101010101000101000101000001010001010101010101010101010101010100010101010101000101010101010101010100010101010101000001010101010101010101010101010101000100010100010100010001010100000000010101010101010101010101010101010101010101010101000001000100010001010101010101010101000001000100010001000101010000010101010001010101010001010001000101010001010101010100010100010100010001010100010101010101010101010100010101000101000101010001000001010101010000010100010101010101000001010001010100000101010101010001000000000101000101010001010101000101010101010100010000010101010101010000010000010100000100010100010101010001010101010000010101010001010101000101000101010001000100000101010101000101010100010101010101010100000100010101000101010101000101010100010100010101010100010000000101010101000101000101000001010000010101010100010001010100010000010101010101000100010101010000010101010101010001010101000101000101000101010101010101010101010101010101010001010101010001010101000101010101010101010101010101010101010001010101010001010101010101010101010001010101010100010001010100010101010100010001010101000000010100010101010100010101000100000100010101010100010100000101010101010101010100010101000001010101000101010001010000000101010101010001010001010101010100000100000100000101010101000101010101010001000101010100010101010101010100010001010101000101000101010101010001010001010101010101010101010101010101010100010101000101010101010101010101010001010101010101010100010101010100010000010100000100010100010001010001000101010000010101000101010101010101010101010100010101010101000001010001010101010101010101010101010101000000000001010101010101010100010001010001000101000100010100010001010101010101010000000101010001010001010101010100010101010101000001000001010101000100000101010100010101010001010101010101000100010101010101000101010101010100000101000101010101010001010001010101010100010101010101010100010101000001010101000101010100010000000101000001010001010001000000000101010000010100010100010101010101010001000101000101010100010101010101000101010101010000000100010000010000010101000101010101010100010100010001010000010101010101010101000000010001010001010100010101010100010000010101000100010101010101010001010101010101010101010101000100010101010101000101010100010001010101000100000101010101010101010001010101010101000100010101010101000100000101010101010101000101010001010101010101010101010001010001010101010101010101010100010101010101010100010001010101000000010101010100010001000101000100010001010101010101010101010101010101010001010101010100010101000100010001000001000100010101010101010000010100010001010101010001010101010101000101010000010100010001010001000101010100000101010001010101010100010101000001000101010101000101010101010000010101000101010101010101010101000101000101010100010001010001010101000000010101000101000101000101010101010000010101010000010101000001010001010101010100010001010101010000000101010001010101010000010101010101000001000101000001010101010100010101010100000001010101010101010101010101000101010101010000000000010101010100000001010001010101000101010100010001010001000101000101000101000000010001010101010001000101010101000101010101010101000001000101010100000100010101000001010101010101000100010000010001010100010100010101010101010101010101000101010001010100010100000101010101010101010001010101010101010101010101010101010000010000010001010101010101000000010001010101010101000101010101010101010101010001000001000101010101010101010001000101010001010001000100010100010101010100000101010100000000000101000101010101010100010101010100010100010101010101010101000100010100000101010101000100000001000101000101000101010101010101010001010101010001010101010000010001010101000100010101010101010101000001010101010101010001010000010101000001010001010100000100010100010101010100010101000101010001010101000100010000000100010101010101010101010001010101010101000101000101000001010000010101000100010101000101010001010100000001010100010101010001010101000001010001000101010100010101010001010000010001010100000101000101000101010101000000010101010101010100010100010101010101010101010000010101010100000101010100010101010001000101000001010001010101010001010101010101010101010101010000010101010101010100010001000100000101010100010101010101010101000101010101010101000101000101010101000101010001010101010101010000010101010100010100010101010101010000000000010101010101010001010100010101000100000100010101010100010101010101010100000001010100000101000001010101010101010001010101010101000000010001010101010001010101010000010001010100010101010100010100010100010101010100000101010100010001010101010101010001010101010101010100010001010101010101010101010101010001000101010001010100010101000101010001010101000001010101010100010000010101010101010101010101010100010101010100010101010101010101000100000001000101010101010101000001010101000100010101000100010100010101010100010001000101000100010101010101010101010101000101010101010100010101010101010001010101010100010101010100000100010001010001010101010100010101010001010000010101000001010101010100010101000001010100010000010101000101000101010100010101010101010101010100010101000101010000010001010100000100010101000101010000010101000101010100010001010001010101010101010001010100000100000001010001010101010101010101010100000100010101010001000100010000000100010101010101000001010101010100010100010101010100000000010101010100010001010101010100000101010101010101010001010101010000010101010100010101000001000100000100000100010001010001010101010101010101010101010100000101010100010101010100010100010100000001000101010101000100000101010101010101010001010000010101010101010101010101010101000101010100010101010101000001010000000101010101010001000101000101000101000100000100010001000001010101010100010101010000010100000001010101010101010101000101010100010100000000000100010001010101010101000101010100010101000100010001010101010101010100010101010001000101000001010001010101010001010101010101010001010101000101000100010101010101000101010101000101000101000001000101000100010101010101000001010101010101000100000101000001010101000101000001010000010101010101010101010100010101010001010000010101010001010101010101010101010101010101010101010101010101010100010101010101010001000000010101010100000100010101010100000100010001010001010101010101010101010101010101000001010101010101010101000001000100010101010101010001010101010101010101010101010001010101010000000001010001000001000101010101000001010101010101010101010001000100010001010101000101010101010101010101010101010101000000000101000101000101000101000101010001010101010001010001010101010100010101010101010101010100010001010101010100010101000101010000010101010101010101010101010101000101000100010001010101010101000000010101000100000101010101000101010101010001010101010101000000000101010001000101010101010001010001010101010101010101010101010101010101010101010101000101000001010001000000010000010100000101010101010101000101010001010100010100010101010101000001010101000001010001000001010101010101010101010101010001010101010001010100010101010000010101010000010101010101000100000101010101010101010101010101010101010000000000010101000000010101010001010100000101010101010101010000010100010101010101010101010001010101010101010101000101010000000001010100000101010001000101010001010000010101010101000001010101010001000101010101000101010101010101010001010101010101010001000101000101010100010100000100000101010101000101010101010101000000010100000101000101000101000101010001010100010101010101010101010001010001000101010101000101010101010100010101010001010101000100010101010100010101000001000101010101000101000101000101010101010101000101010100010101010101010101010100010101010101010101000101010101010100010101000100010000010001000001010101010001010100010101010101000101010100010001010001010101010101000101010000010101010101010100000101000001010101000100010101010100010101010101010101000101010101010001000101010101010101010101010000010101010101000101010100010001000100010101010101000001010100010101000100010101010101010100000101010101010001010101010001010100010001010001000101000001010101010101000101010101010100010101010101010001010000010101000001010001010101010100000101010001000001000100010001010101010101010001010101000101010101000101000101010100010101010101000101010101010001010001010000010101010000010101010101010101010001010100010101010101010001010101010001010100010100010100010101010101010101010101000100010101010001010101010000010101000001010100010001010101010101010100010100010000010101000101010101000101010100010001000101010101000101010101010100010000010001000101010101010100010101010101010100010101000101010100010001010101010101010100010101010100000000000001010101010100010101000100010100000101010101010101010101010101010101010101010001000100010001000001010101000001010101010001010101010101010101010101010101010100010100000101000101010101010100000101010101010100010001010000010101000101010001010001000100010101010100010101010001010101010101010101010001010001010100010101010001000101000001010000010100010100000101010100010100010000010101010001010101010101010100000101010001010101000101010101010100000101000001000101010101010100000001010100010101010001010001010101000101010101010100010100010100010101010101010000010001010101000000000001000101010000010101010100010101010001010101010101000101010101000101010100010101010101010101000101010101010101010101010101010101010100000101010100010101010100010100000100010101010101010100010001000101010001000100000101000101010101010100000101010101000101000001000101000101010101010101000001010000010101010101010000000100010101010101010101010001010001010001010001010001010001010101010101010001010101010001010001010101010101010100010100010001000101000101010001010101000001010101010101010100010000010001010100010101000101010101010100010000000101010101010101010101010100010101000001010100010001010101000101000100010001010001000000000001010101010001010101000101010101010101010001010101000101010100010001010001010101000100010101000001000100010101010101010101000100010101000000010101000101010101010101010001010101010100010001000100010100010101010000010101010101010001000101010001010101010001010101000100010101010101010001010101010100010101010100000101000101000101010101000101000101010100010100000101010101010001010100010001010000000001010101010000010101010100010100010101010101010101000101010101010001010101010001010001010001010101010101000101010100000100010001010101010000000101010100010101010001010101000101010000010101010101010000000100000101010100010001010101010100010000010000010001010101010100010100010001000100010000010101010100010100010101010101010101010001010101010000010101000001010001000101000101000101010100010000010100010100010001000101010101010100010101010101010101000101000101010101010001000001010001010101010101010101010101010101010101"> : tensor<100x100xi1>
++     return %c : tensor<100x100xi1>
++   }
++ }
+ diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+ --- stablehlo/stablehlo/tests/TestUtils.cpp
+ +++ stablehlo/stablehlo/tests/TestUtils.cpp
