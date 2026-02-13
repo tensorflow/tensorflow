@@ -44,9 +44,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-oeeg2T6kykUWIsmsdk6UMiWLG0/jXsNSZmVIXypeDHg=",
-    strip_prefix = "rules_ml_toolchain-4414c8de64a0e3723a24097092d8c8c4b771e96a",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/4414c8de64a0e3723a24097092d8c8c4b771e96a.tar.gz"],
+    integrity = "sha256-KEURV/vM/wuMXOYzREGY+K09q1zXSVEx9AuKTTr2MsM=",
+    strip_prefix = "rules_ml_toolchain-b23aabf15172daebdbab15956147bbf0cccf5a17",
+    urls = ["https://github.com/ybaturina/rules_ml_toolchain/archive/b23aabf15172daebdbab15956147bbf0cccf5a17.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -186,17 +186,73 @@ remote_execution_configure = use_extension("//third_party/extensions:remote_exec
 use_repo(remote_execution_configure, "local_config_remote_execution")
 
 ### From @rules_ml_toolchain
-cuda_configure = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
-use_repo(cuda_configure, "local_config_cuda")
+CCCL_DIST_DICT = {
+    "cuda_cccl;linux-sbsa;full_path": "\"https://github.com/NVIDIA/cccl/releases/download/v2.8.5/cccl-src-v2.8.5.tar.gz\"",
+    "cuda_cccl;linux-sbsa;sha256": "\"631cb620e78904fb30f4ef6e033efb7716af1934bc170dce9cbbf4cc48777ca2\"",
+    "cuda_cccl;linux-sbsa;strip_prefix": "\"cccl-src-v2.8.5\"",
+    "cuda_cccl;linux-x86_64;full_path": "\"https://github.com/NVIDIA/cccl/releases/download/v2.8.5/cccl-src-v2.8.5.tar.gz\"",
+    "cuda_cccl;linux-x86_64;sha256": "\"631cb620e78904fb30f4ef6e033efb7716af1934bc170dce9cbbf4cc48777ca2\"",
+    "cuda_cccl;linux-x86_64;strip_prefix": "\"cccl-src-v2.8.5\"",
+}
+
+CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES = {
+    "cuda_cccl;repo_name": "\"cuda_cccl\"",
+    "cuda_cccl;local;source_dirs": "[\"include\",\"lib\"]",
+    "cuda_cccl;version_to_template;any": "\"@rules_ml_toolchain//gpu/cuda/build_templates:cuda_cccl_github.BUILD.tpl\"",
+    "cuda_cccl;local;version_to_template;any": "\"@rules_ml_toolchain//gpu/cuda/build_templates:cuda_cccl.BUILD.tpl\"",
+}
+
+cuda_json_ext = use_extension("@rules_ml_toolchain//extensions:cuda_json.bzl", "cuda_json_ext")
+use_repo(cuda_json_ext, "cuda_redist_json")
+
+cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
+cuda_redist_init_ext.configure(
+    cuda_redistributions = CCCL_DIST_DICT,
+    redist_versions_to_build_templates = CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES,
+)
+use_repo(
+    cuda_redist_init_ext,
+    "cuda_cccl",
+    "cuda_crt",
+    "cuda_cublas",
+    "cuda_cudart",
+    "cuda_cudnn",
+    "cuda_cufft",
+    "cuda_cupti",
+    "cuda_curand",
+    "cuda_cusolver",
+    "cuda_cusparse",
+    "cuda_driver",
+    "cuda_nvcc",
+    "cuda_nvdisasm",
+    "cuda_nvjitlink",
+    "cuda_nvml",
+    "cuda_nvrtc",
+    "cuda_nvtx",
+    "cuda_nvvm",
+    "cuda_profiler_api",
+)
+
+cuda_configure_ext = use_extension("@rules_ml_toolchain//extensions:cuda_configure.bzl", "cuda_configure_ext")
+use_repo(cuda_configure_ext, "local_config_cuda")
+
+nvshmem_json_ext = use_extension("@rules_ml_toolchain//extensions:nvshmem_json.bzl", "nvshmem_json_ext")
+use_repo(nvshmem_json_ext, "nvshmem_redist_json")
+
+nvshmem_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:nvshmem_redist_init.bzl", "nvshmem_redist_init_ext")
+use_repo(
+    nvshmem_redist_init_ext,
+    "nvidia_nvshmem",
+)
+
+nccl_redist = use_extension("@rules_ml_toolchain//extensions:nccl_redist.bzl", "nccl_redist_ext")
+use_repo(nccl_redist, "cuda_nccl")
 
 nccl_configure = use_extension("@rules_ml_toolchain//extensions:nccl_configure.bzl", "nccl_configure_ext")
 use_repo(nccl_configure, "local_config_nccl")
 
 sycl_configure = use_extension("@rules_ml_toolchain//extensions:sycl_configure.bzl", "sycl_configure_ext")
 use_repo(sycl_configure, "local_config_sycl")
-
-cuda_redist_init_ext = use_extension("@rules_ml_toolchain//extensions:cuda_redist_init.bzl", "cuda_redist_init_ext")
-use_repo(cuda_redist_init_ext, "cuda_cudart")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 

@@ -9,10 +9,10 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
 tf_http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "a1e7a0d93ea4ca451622c9ac764e9432258b1b4fe35ec3526665485f2a5e0c78",
-    strip_prefix = "rules_ml_toolchain-4414c8de64a0e3723a24097092d8c8c4b771e96a",
+    sha256 = "28451157fbccff0b8c5ce633444198f8ad3dab5cd7495131f40b8a4d3af632c3",
+    strip_prefix = "rules_ml_toolchain-b23aabf15172daebdbab15956147bbf0cccf5a17",
     urls = tf_mirror_urls(
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/4414c8de64a0e3723a24097092d8c8c4b771e96a.tar.gz",
+        "https://github.com/ybaturina/rules_ml_toolchain/archive/b23aabf15172daebdbab15956147bbf0cccf5a17.tar.gz",
     ),
 )
 
