@@ -434,6 +434,11 @@ def build_wheel(
   if collab == "True":
     env["collaborator_build"] = True
 
+  # Force the child process to see the same libraries as this parent process.
+  # We use os.path.abspath because the subprocess runs in a different directory
+  # (cwd=cwd), so relative paths in sys.path would break.
+  env["PYTHONPATH"] = os.pathsep.join([os.path.abspath(p) for p in sys.path])
+
   subprocess.run(
       [
           sys.executable,

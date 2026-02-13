@@ -1,0 +1,18 @@
+diff --git a/third_party/py/python_init_toolchains.bzl b/third_party/py/python_init_toolchains.bzl
+index 82d755c32bb..7be6aebb434 100644
+--- a/third_party/py/python_init_toolchains.bzl
++++ b/third_party/py/python_init_toolchains.bzl
+@@ -6,7 +6,6 @@ load(
+     "HERMETIC_PYTHON_SHA256",
+     "HERMETIC_PYTHON_URL",
+     "HERMETIC_PYTHON_VERSION",
+-    "HERMETIC_PYTHON_VERSION_KIND",
+ )
+ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
+ load("@rules_python//python:versions.bzl", "MINOR_MAPPING", "PLATFORMS")
+@@ -67,5 +66,4 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
+             name = get_toolchain_name_per_python_version(name),
+             ignore_root_user_error = True,
+             python_version = HERMETIC_PYTHON_VERSION,
+-            python_version_kind = HERMETIC_PYTHON_VERSION_KIND,
+         )
