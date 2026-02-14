@@ -650,7 +650,10 @@ def tsl_pybind_extension_opensource(
                 ],
             }),
             defines = defines,
-            features = features + ["-use_header_modules"],
+            features = features + [
+                "-use_header_modules",
+                "asan_runtime_closure",  # https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/cc/sanitizers#troubleshooting
+            ],
             restricted_to = restricted_to,
             testonly = testonly,
             visibility = visibility,
@@ -664,7 +667,10 @@ def tsl_pybind_extension_opensource(
             additional_linker_inputs = [exported_symbols_file, version_script_file],
             compatible_with = compatible_with,
             deprecation = deprecation,
-            features = features + ["-use_header_modules"],
+            features = features + [
+                "-use_header_modules",
+                "asan_runtime_closure",  # https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/cc/sanitizers#troubleshooting
+            ],
             licenses = licenses,
             restricted_to = restricted_to,
             shared_lib_name = so_file,
@@ -726,7 +732,10 @@ def tsl_pybind_extension_opensource(
                 version_script_file,
             ],
             defines = defines,
-            features = features + ["-use_header_modules"],
+            features = features + [
+                "-use_header_modules",
+                "asan_runtime_closure",  # https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/cc/sanitizers#troubleshooting
+            ],
             linkshared = 1,
             testonly = testonly,
             licenses = licenses,
