@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

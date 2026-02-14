@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

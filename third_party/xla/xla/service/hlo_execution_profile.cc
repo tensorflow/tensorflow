@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/service/hlo_execution_profile.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_execution_profile_data.pb.h"

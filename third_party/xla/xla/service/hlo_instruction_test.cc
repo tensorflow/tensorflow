@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"

@@ -23,9 +23,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
