@@ -2105,6 +2105,12 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "barrier_requests",
+    hdrs = ["barrier_requests.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+cc_library(
     name = "collective_memory_requests",
     srcs = ["collective_memory_requests.cc"],
     hdrs = ["collective_memory_requests.h"],
@@ -2782,6 +2788,7 @@ cc_library(
     srcs = ["thunk.cc"],
     hdrs = ["thunk.h"],
     deps = [
+        ":barrier_requests",
         ":collective_clique_requests",
         ":collective_cliques",
         ":collective_memory",

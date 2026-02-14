@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/barrier_requests.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -368,8 +369,9 @@ absl::Status RendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options);
 
-absl::Status BarrierAfterExecutable(const DebugOptions* debug_options,
-                                    se::Stream* stream_to_sync);
+absl::Status BarrierAfterExecutable(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, se::Stream* stream_to_sync);
 
 absl::Status ExecuteThunksImpl(
     const DebugOptions* debug_options, const std::string& module_name,
@@ -476,6 +478,7 @@ absl::Status ExecuteThunksImpl(
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
   CollectiveMultimemRegistry multimem_registry(
       executor, collective_params.global_device_id);
+  BarrierRequests barrier_requests;
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{&collective_params,
@@ -483,7 +486,8 @@ absl::Status ExecuteThunksImpl(
                                         &collective_memory_requests,
                                         &multimem_registry,
                                         executor,
-                                        &buffer_allocations};
+                                        &buffer_allocations,
+                                        &barrier_requests};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     RETURN_IF_ERROR(thunk_sequence.Prepare(prepare_params));
@@ -560,9 +564,11 @@ absl::Status ExecuteThunksImpl(
   XLA_VLOG_DEVICE(1, run_options->device_ordinal())
       << "End GpuExecutable::ExecuteOnStream module: " << module_name;
 
-  if (collective_params.need_barrier) {
-    RETURN_IF_ERROR(BarrierAfterExecutable(debug_options, main_stream));
+  if (barrier_requests.IsBarrierAfterModuleExecutionRequested()) {
+    RETURN_IF_ERROR(
+        BarrierAfterExecutable(run_options, debug_options, main_stream));
   }
+
   return MaybeSyncAndProfile(run_options, execution_timer.get(),
                              block_host_until_done ? main_stream : nullptr);
 }
@@ -584,9 +590,10 @@ bool operator==(const InitializationKey& a, const InitializationKey& b) {
 }
 }  // namespace
 
-absl::Status RendezvousAfterInitialization(
+absl::Status RendezvousLocalThunkExecutors(
     const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options) {
+    const DebugOptions* debug_options, absl::string_view rendezvous_stage_name,
+    absl::string_view traceme_name) {
   // Thunk initialization can allocate new control data structures on device
   // that can lead to deadlocks if other replicas are executing concurrently
   // (i.e. this happens if we try to instantiate CUDA graph when other replica
@@ -598,7 +605,9 @@ absl::Status RendezvousAfterInitialization(
 
   // If we don't have Gpu executable options or device assignment it means we
   // are running in a single Gpu config and don't need a rendezvous.
-  if (!gpu_opts || !device_assn) return absl::OkStatus();
+  if (!gpu_opts || !device_assn) {
+    return absl::OkStatus();
+  }
 
   // Assume that all participants execute locally first, if we have a local
   // device id to global device id map we will use it to get the real number of
@@ -621,22 +630,22 @@ absl::Status RendezvousAfterInitialization(
     }
   }
 
-  VLOG(1) << "Join thunks initialization rendezvous with "
+  VLOG(1) << absl::StrFormat("Join thunks %s rendezvous with ",
+                             rendezvous_stage_name)
           << num_local_participants << " local participants"
           << "; device_ordinal=" << run_options->device_ordinal();
 
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
-        "RendezvousAfterInitialization",
-        {{"run_id", run_options->run_options().run_id().ToInt()},
-         {"num_local_participants", num_local_participants}});
+        traceme_name, {{"run_id", run_options->run_options().run_id().ToInt()},
+                       {"num_local_participants", num_local_participants}});
   });
 
   auto rendezvous_key = InitializationKey{run_options->run_options().run_id()};
-  auto rendezvous_name = absl::StrFormat(
-      "thunk initialization completion for device ordinal %d; run_id=%d",
-      run_options->device_ordinal(),
-      run_options->run_options().run_id().ToInt());
+  auto rendezvous_name =
+      absl::StrFormat("thunk %s completion for device ordinal %d; run_id=%d",
+                      rendezvous_stage_name, run_options->device_ordinal(),
+                      run_options->run_options().run_id().ToInt());
 
   return Rendezvous(
       rendezvous_name, rendezvous_key, num_local_participants,
@@ -648,6 +657,24 @@ absl::Status RendezvousAfterInitialization(
           debug_options
               ? debug_options->xla_gpu_executable_terminate_timeout_seconds()
               : 30));
+}
+
+absl::Status RendezvousAfterInitialization(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options) {
+  return RendezvousLocalThunkExecutors(
+      run_options, debug_options,
+      /*rendezvous_stage_name=*/"initialization",
+      /*traceme_name=*/"RendezvousAfterInitialization");
+}
+
+absl::Status RendezvousAfterExecution(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options) {
+  return RendezvousLocalThunkExecutors(
+      run_options, debug_options,
+      /*rendezvous_stage_name=*/"execution",
+      /*traceme_name=*/"RendezvousAfterExecution");
 }
 
 absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
@@ -680,14 +707,18 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
   return absl::OkStatus();
 }
 
-absl::Status BarrierAfterExecutable(const DebugOptions* debug_options,
-                                    se::Stream* stream) {
+absl::Status BarrierAfterExecutable(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, se::Stream* stream) {
   if (debug_options->xla_gpu_experimental_enable_nvshmem()) {
     ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
     ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
                      collectives->CreateCommunicator());
 
     RETURN_IF_ERROR(nvshmem_comm->Barrier(GpuCollectives::On(*stream)));
+  } else {
+    RETURN_IF_ERROR(stream->BlockHostUntilDone());
+    RETURN_IF_ERROR(RendezvousAfterExecution(run_options, debug_options));
   }
   return absl::OkStatus();
 }

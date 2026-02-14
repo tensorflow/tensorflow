@@ -106,6 +106,10 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
                       GetParticipatingDevicesGroups(
                           *params.collective_params->device_assn,
                           config().replica_groups, config().group_mode));
+  // Any nvshmem collective will need to require a barrier at the end of
+  // graph execution to make sure all reads and writes to symmetrics buffers
+  // are finished and ready for the next iteration of executable.
+  params.barrier_requests->RequestBarrierAfterModuleExecution();
 
   return params.collective_clique_requests->RequestClique(
       clique_key, std::move(device_groups));
@@ -116,10 +120,6 @@ absl::Status NvshmemCollectiveThunk::Initialize(
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
-  // Any nvshmem collective will need to require a barrier at the end of
-  // graph execution to make sure all reads and writes to symmetrics buffers
-  // are finished and ready for the next iteration of executable.
-  params.collective_params->need_barrier = true;
   return absl::OkStatus();
 }
 
