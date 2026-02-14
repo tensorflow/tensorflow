@@ -60,6 +60,7 @@ struct BackendVisitor {
         gpu.collective_params,
         gpu.collective_clique_requests,
         gpu.collective_memory_requests,
+        gpu.barrier_requests,
         gpu.collective_cliques,
         gpu.collective_memory,
         gpu.compute_capability,

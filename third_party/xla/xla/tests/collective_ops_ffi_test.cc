@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/barrier_requests.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
@@ -75,6 +76,15 @@ static ReplicaGroup AllDevices() {
   return group;
 }
 
+static std::vector<std::vector<GlobalDeviceId>> AllDeviceGroups() {
+  std::vector<std::vector<GlobalDeviceId>> device_groups(1);
+  device_groups[0].resize(kNumReplicas);
+  for (int64_t i = 0; i < kNumReplicas; ++i) {
+    device_groups[0][i] = GlobalDeviceId(i);
+  }
+  return device_groups;
+}
+
 // This is a prepare handler that tells XLA:GPU runtime what collective cliques
 // should be acquired before the execution starts. All collective operations
 // must let XLA:GPU runtime know what cliques they need ahead of time.
@@ -92,8 +102,8 @@ static absl::Status PrepareAllReduce(
 
   // Ask XLA:GPU runtime to acquire a clique for this key. Later we will be
   // able to get access to it from the execute handler.
-  TF_RETURN_IF_ERROR(
-      clique_requests->RequestClique(clique_key, /*device_groups=*/{{}}));
+  TF_RETURN_IF_ERROR(clique_requests->RequestClique(
+      clique_key, /*device_groups=*/AllDeviceGroups()));
 
   return absl::OkStatus();
 }
@@ -122,7 +132,7 @@ static absl::Status PrepareDeviceAllReduce(
   // Request XLA:GPU runtime to acquire a clique for this key. Later we will be
   // able to get access to it from the execute handler.
   TF_RETURN_IF_ERROR(clique_requests->RequestClique(
-      clique_key, /*device_groups=*/{{}}, requirements));
+      clique_key, /*device_groups=*/AllDeviceGroups(), requirements));
 
   // Request src and dst buffers to be symmetric on the given clique.
   TF_RETURN_IF_ERROR(memory_requests->RequestSymmetricAddress(
@@ -138,7 +148,8 @@ static absl::Status PrepareDeviceAllReduce(
 static absl::Status PrepareMulticastAllReduce(
     ffi::BufferR0<U32> src, ffi::Result<ffi::BufferR0<U32>> dst,
     const CollectiveParams* collective_params,
-    CollectiveMemoryRequests* memory_requests) {
+    CollectiveMemoryRequests* memory_requests,
+    BarrierRequests* barrier_requests) {
   TF_RET_CHECK(collective_params && memory_requests);
 
   // Request a clique that covers all devices (this test runs on 2 gpus).
@@ -157,6 +168,7 @@ static absl::Status PrepareMulticastAllReduce(
   TF_RETURN_IF_ERROR(memory_requests->RequestMulticastAddress(
       clique_key, src.device_memory()));
 
+  barrier_requests->RequestBarrierAfterModuleExecution();
   return absl::OkStatus();
 }
 
@@ -387,7 +399,8 @@ XLA_FFI_DEFINE_HANDLER(kPrepareMulticastAllReduce, PrepareMulticastAllReduce,
                            .Arg<ffi::BufferR0<U32>>()  // src
                            .Ret<ffi::BufferR0<U32>>()  // dst
                            .Ctx<ffi::CollectiveParams>()
-                           .Ctx<ffi::CollectiveMemoryRequests>());
+                           .Ctx<ffi::CollectiveMemoryRequests>()
+                           .Ctx<ffi::BarrierRequests>());
 
 XLA_FFI_DEFINE_HANDLER(kMulticastAllReduce, MulticastAllReduce,
                        ffi::Ffi::Bind()

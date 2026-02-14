@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/barrier_requests.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -266,6 +267,8 @@ class Thunk {
     se::StreamExecutor* absl_nonnull executor = nullptr;
     // Buffer allocations for the thunk.
     const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
+    // Allows thunks to request barriers.
+    BarrierRequests* barrier_requests = nullptr;
   };
 
   //===--------------------------------------------------------------------===//

@@ -130,6 +130,12 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
     XLA_FFI_ExecutionContext* ctx, void** collective_clique);
 
+// Returns a pointer to `xla::gpu::BarrierRequests` which allows FFI handlers
+// to get access to requested barrier synchronization. Available only for FFI
+// handlers executing at execute stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_BarrierRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** barrier_requests);
+
 // Returns a pointer to `xla::gpu::CollectiveMemory` which allows FFI handlers
 // to get access to requested and acquired collective memory. Available only for
 // FFI handlers executing at execute stage.
@@ -172,6 +178,7 @@ struct XLA_FFI_InternalApi {
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_BarrierRequests_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveCliques_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveMemory_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GpuComputeCapability_Get);

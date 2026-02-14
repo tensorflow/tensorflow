@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/base/optimization.h"
+#include "xla/backends/gpu/runtime/barrier_requests.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -49,6 +50,7 @@ struct CollectiveMemoryRequests {};    //  xla::gpu::CollectiveMemoryRequests*
 struct CollectiveCliques {};           //  const xla::gpu::CollectiveCliques*
 struct CollectiveMemory {};            //  const xla::gpu::CollectiveMemory*
 struct TargetGpuComputeCapability {};  //  const se::GpuComputeCapability*
+struct BarrierRequests {};             //  const xla::gpu::BarrierRequests*
 
 // Parametrized type tag for platform stream, e.g. cudaStream_t
 template <typename T>
@@ -161,6 +163,20 @@ struct CtxDecoding<CollectiveMemoryRequests> {
         api, ctx, diagnostic,
         api->internal_api->XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
         "collective memory requests");
+  }
+};
+
+template <>
+struct CtxDecoding<BarrierRequests> {
+  using Type = xla::gpu::BarrierRequests*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_BarrierRequests_Get,
+        "barrier requests");
   }
 };
 

@@ -55,6 +55,7 @@ namespace xla::gpu {
 struct CollectiveParams;
 class CollectiveCliqueRequests;
 class CollectiveMemoryRequests;
+class BarrierRequests;
 class CollectiveCliques;
 class CollectiveMemory;
 }  // namespace xla::gpu
@@ -79,6 +80,7 @@ struct InvokeContext {
     const gpu::CollectiveParams* collective_params = nullptr;
     gpu::CollectiveCliqueRequests* collective_clique_requests = nullptr;
     gpu::CollectiveMemoryRequests* collective_memory_requests = nullptr;
+    gpu::BarrierRequests* barrier_requests = nullptr;
     const gpu::CollectiveCliques* collective_cliques = nullptr;
     const gpu::CollectiveMemory* collective_memory = nullptr;
     const stream_executor::GpuComputeCapability* compute_capability = nullptr;
