@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
+#include <cstdint>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 
 namespace tensorflow {
 
