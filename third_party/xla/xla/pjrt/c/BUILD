@@ -3,6 +3,10 @@ load(
     "if_rocm_is_configured",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl_is_configured",
+)
+load(
     "//xla:xla.default.bzl",
     "xla_cc_binary",
     "xla_cc_test",
@@ -448,6 +452,8 @@ cc_library(
     local_defines = (
         if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
             "TENSORFLOW_USE_ROCM=1",
+        ]) + if_sycl_is_configured([
+            "TENSORFLOW_USE_SYCL=1",
         ])
     ),
     visibility = ["//visibility:public"],
