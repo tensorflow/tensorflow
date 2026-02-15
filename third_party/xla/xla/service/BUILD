@@ -1917,6 +1917,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 

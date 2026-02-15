@@ -2234,8 +2234,8 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   const char* const kExpectedMemoryUsageReport =
       R"(cumulative_size;       size;       offset; used_by_n_values; shapes_list
 ------------------------------------------------------------
-     800B( 50%);       800B;            0;                2; f32[100], f32[200]
-   1.2KiB( 75%);       400B;          800;                1; f32[100]
+     800B( 50%);       800B;          400;                2; f32[100], f32[200]
+   1.2KiB( 75%);       400B;            0;                1; f32[100]
    1.6KiB(100%);       400B;         1200;                1; f32[100]
 )";
   EXPECT_EQ(buffer.MemoryUsageReport(""), kExpectedMemoryUsageReport);
