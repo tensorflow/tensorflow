@@ -275,7 +275,7 @@ std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
   }
   for (const PjRtDevice* device : devices) {
     se::StreamExecutor* executor =
-        tensorflow::down_cast<const TfrtGpuDevice*>(device)->executor();
+        absl::down_cast<const TfrtGpuDevice*>(device)->executor();
     if (executor != nullptr) {
       return xla::Compiler::GpuTargetConfig(executor).ToProto();
     }
@@ -594,7 +594,7 @@ std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
   for (auto* device : addressable_devices) {
     // Use the device id to construct a globally unique memory space id. We do
     // not promise that memory space ids and device ids are the same.
-    TfrtGpuDevice* gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
+    TfrtGpuDevice* gpu_device = absl::down_cast<TfrtGpuDevice*>(device);
     // Initialize the default memory space.
     const int global_device_id = gpu_device->global_device_id().value();
     auto memory_space =
@@ -604,7 +604,7 @@ std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
   }
   const int basePinnedId = global_device_count;
   for (auto* device : addressable_devices) {
-    TfrtGpuDevice* gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
+    TfrtGpuDevice* gpu_device = absl::down_cast<TfrtGpuDevice*>(device);
     const int global_device_id = gpu_device->global_device_id().value();
     auto pinned = std::make_unique<PinnedHostMemorySpace>(
         basePinnedId + global_device_id, device);
@@ -888,7 +888,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
   xla::gpu::GpuCollectives* gpu_collectives =
-      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+      absl::down_cast<gpu::GpuCollectives*>(collectives);
 
   if (gpu_collectives == nullptr) {
     return absl::InternalError("Failed to get GPU collectives");
