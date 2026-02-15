@@ -327,8 +327,8 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
 
       // We deterministically choose the first device to create the
       // multicast memory. We will map the rest of participants to it later.
-      auto* gpu_executor =
-          tsl::down_cast<se::gpu::GpuExecutor*>(params[0]->executor);
+      auto* gpu_executor = absl::down_cast<stream_executor::gpu::GpuExecutor*>(
+          params[0]->executor);
       if (gpu_executor == nullptr) {
         return Unimplemented("Unsupported stream executor type");
       }
