@@ -109,6 +109,18 @@ class BinaryElementwiseTester {
     return *this;
   }
 
+  inline BinaryElementwiseTester& RelativeTolerance(float relative_tolerance) {
+    relative_tolerance_ = relative_tolerance;
+    return *this;
+  }
+
+  inline BinaryElementwiseTester& ExpectFp16Precision(
+      bool fp16_precision = true) {
+    yield_fp16_precision_ = fp16_precision;
+    return *this;
+  }
+  inline bool ExpectFp16Precision() const { return yield_fp16_precision_; }
+
   void Test(tflite::BuiltinOperator binary_op, TfLiteDelegate* delegate) const;
 
  private:
@@ -130,6 +142,8 @@ class BinaryElementwiseTester {
   bool sparse_weights_ = false;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  float relative_tolerance_ = 0.0f;
+  bool yield_fp16_precision_ = false;
 };
 
 }  // namespace xnnpack

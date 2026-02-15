@@ -114,6 +114,7 @@ void Pool2DTester::Test(tflite::BuiltinOperator pool_op,
   float* xnnpack_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
+  int exact_match_count = 0;
   for (int32_t i = 0; i < BatchSize(); i++) {
     for (int32_t y = 0; y < OutputHeight(); y++) {
       for (int32_t x = 0; x < OutputWidth(); x++) {
@@ -126,16 +127,35 @@ void Pool2DTester::Test(tflite::BuiltinOperator pool_op,
                 << "batch " << i << " / " << BatchSize() << ", y position " << y
                 << " / " << OutputHeight() << ", x position " << x << " / "
                 << OutputWidth() << ", channel " << c << " / " << Channels();
+            if (default_output_data[index] == xnnpack_output_data[index])
+              exact_match_count++;
           } else {
+            float tolerance = Tolerance();
+            if (tolerance == 0.0f) {
+              tolerance = std::abs(default_output_data[index]) * 3.0e-6f;
+            } else {
+              // tolerance is treated as relative tolerance if > 0.
+              tolerance = std::abs(default_output_data[index]) * tolerance;
+            }
             ASSERT_NEAR(default_output_data[index], xnnpack_output_data[index],
-                        std::abs(default_output_data[index]) * 3.0e-6f)
+                        tolerance)
                 << "batch " << i << " / " << BatchSize() << ", y position " << y
                 << " / " << OutputHeight() << ", x position " << x << " / "
                 << OutputWidth() << ", channel " << c << " / " << Channels();
+            if (default_output_data[index] == xnnpack_output_data[index])
+              exact_match_count++;
           }
         }
       }
     }
+  }
+
+  if (yield_fp16_precision_) {
+    const int total_elements =
+        BatchSize() * OutputHeight() * OutputWidth() * Channels();
+    EXPECT_LT(exact_match_count, total_elements)
+        << "Expected FP16 precision, but all outputs exactly matched the FP32 "
+           "reference.";
   }
 }
 
