@@ -45,24 +45,6 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 CPU",
-            repo: "openxla/xla",
-          },
-          {
-            pool: "windows-x86-n2-16",
-            container: null,
-            name: "XLA Windows x86 CPU",
-            repo: "openxla/xla",
-          },
-          {
-            pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 CPU Bzlmod",
-            repo: "openxla/xla",
-          },
-          {
-            pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux X86 GPU ONEAPI",
             repo: "openxla/xla",
           },
@@ -73,40 +55,10 @@ jobs:
             repo: "openxla/xla",
           },
           {
-            pool: "linux-arm64-c4a-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
-            name: "XLA Linux ARM64 CPU",
-            repo: "openxla/xla",
-          },
-          {
-            pool: "linux-x86-n2-16",
-            container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
-            name: "JAX Linux x86 CPU",
-            repo: "jax-ml/jax",
-          },
-          {
-            pool: "windows-x86-n2-16",
-            container: null,
-            name: "JAX Windows x86 CPU",
-            repo: "jax-ml/jax",
-          },
-          {
             pool: "linux-x86-g2-16-l4-1gpu",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
             name: "JAX Linux x86 GPU L4",
             repo: "jax-ml/jax",
-          },
-          {
-            pool: "linux-x86-n2-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "TensorFlow Linux x86 CPU",
-            repo: "tensorflow/tensorflow",
-          },
-          {
-            pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "TensorFlow Linux x86 GPU L4",
-            repo: "tensorflow/tensorflow",
           },
         ]
     name: ${{ matrix.job_info.name }}
@@ -126,6 +78,7 @@ jobs:
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
+          ref: "refs/pull/34222/merge"
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
