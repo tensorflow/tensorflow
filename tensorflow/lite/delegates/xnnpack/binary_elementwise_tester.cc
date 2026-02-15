@@ -171,10 +171,24 @@ void BinaryElementwiseTester::Test(tflite::BuiltinOperator binary_op,
   float* xnnpack_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
+  int exact_match_count = 0;
   for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
-    ASSERT_NEAR(default_output_data[i], xnnpack_output_data[i],
-                std::numeric_limits<float>::epsilon() *
-                    std::max(std::abs(default_output_data[i]) * 2.0f, 1.0f));
+    float tolerance = std::numeric_limits<float>::epsilon() *
+                      std::max(std::abs(default_output_data[i]) * 2.0f, 1.0f);
+    if (relative_tolerance_ > 0.0f) {
+      tolerance = std::max(
+          tolerance, relative_tolerance_ * std::abs(default_output_data[i]));
+    }
+    ASSERT_NEAR(default_output_data[i], xnnpack_output_data[i], tolerance);
+    if (default_output_data[i] == xnnpack_output_data[i]) {
+      exact_match_count++;
+    }
+  }
+
+  if (yield_fp16_precision_) {
+    EXPECT_LT(exact_match_count, ComputeSize(OutputShape()))
+        << "Expected FP16 precision, but all outputs exactly matched the FP32 "
+           "reference.";
   }
 }
 

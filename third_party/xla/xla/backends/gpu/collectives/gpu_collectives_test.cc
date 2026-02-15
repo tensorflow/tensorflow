@@ -18,19 +18,23 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/collectives/allocator_memory_registration.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
@@ -670,6 +674,46 @@ TEST(GpuCollectivesTest, PutAndWaitSignal) {
 
   EXPECT_THAT(h_recv0, testing::ElementsAre(5.0f, 6.0f, 7.0f, 8.0f));
   EXPECT_THAT(h_recv1, testing::ElementsAre(1.0f, 2.0f, 3.0f, 4.0f));
+}
+
+// Verifies that AllocatorMemoryRegistration registers recorded allocator ranges
+// with the clique communicator that runs on the same device.
+TEST(GpuCollectivesTest, AllocatorMemoryRegistrationRegistersWithClique) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
+
+  // Record one allocator range per device through the suballocator visitor, the
+  // same way the BFC preallocation path would.
+  auto registration = std::make_shared<AllocatorMemoryRegistration>();
+  auto alloc_visitor = registration->alloc_visitor();
+  for (size_t i = 0; i < executors.size(); ++i) {
+    alloc_visitor(allocs[i]->address().opaque(), executors[i]->device_ordinal(),
+                  allocs[i]->address().size());
+  }
+
+  // Build a clique from the real communicators and register memory with it.
+  absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators;
+  for (size_t i = 0; i < comms.size(); ++i) {
+    communicators.emplace(RankId(i), std::move(comms[i]));
+  }
+  GpuClique clique(GpuCliqueKey({kD0, kD1}, /*num_local_participants=*/2),
+                   std::nullopt, std::move(communicators),
+                   /*peer_access_enabled=*/true,
+                   std::make_shared<CancellationToken>());
+
+  ASSERT_OK(registration->RegisterWithClique(clique));
 }
 
 }  // namespace
