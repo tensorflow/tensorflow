@@ -19,6 +19,7 @@ import numbers
 import sys
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -530,19 +531,34 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       rtol_ = ops.convert_to_tensor(rtol, dtype.real_dtype)
       atol_ = ops.convert_to_tensor(atol, dtype.real_dtype)
       result = math_ops.abs(a - b) <= atol_ + rtol_ * math_ops.abs(b)
+      # Include exact equality to catch equal infinities (and exact matches).
+      result = result | math_ops.equal(a, b)
       if equal_nan:
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
-      # Numpy supports integer inputs for isclose by promoting to float
-      # we follow the same behavior to match Numpy semantics
-      a_f = math_ops.cast(a, dtypes.float64)
-      b_f = math_ops.cast(b, dtypes.float64)
-      rtol_ = ops.convert_to_tensor(rtol, dtypes.float64)
-      atol_ = ops.convert_to_tensor(atol, dtypes.float64)
-      result = math_ops.abs(a_f - b_f) <= atol_ + rtol_ * math_ops.abs(b_f)
-      return result
-      
+      # Integer dtypes (includes `bool`).
+      # Treat booleans as small integers so numeric comparisons work the
+      # same way as NumPy (e.g. True -> 1, False -> 0).
+      if dtype == dtypes.bool:
+        a = math_ops.cast(a, dtypes.int8)
+        b = math_ops.cast(b, dtypes.int8)
+
+      diff = math_ops.abs(a - b)
+      # Fast-path: exact equality when both tolerances are zero.
+      if rtol == 0 and atol == 0:
+        return a == b
+
+      # Compute comparison in float64 to avoid overflow and to correctly
+      # account for fractional `rtol` / `atol` when inputs are integers
+      # (matches NumPy semantics).
+      diff_f = math_ops.cast(diff, tf.float64)
+      rhs_f = (
+          tf.cast(atol, tf.float64)
+          + tf.cast(rtol, tf.float64) * math_ops.cast(math_ops.abs(b), tf.float64)
+      )
+      return diff_f <= rhs_f
+
   return _bin_op(f, a, b)
 
 
