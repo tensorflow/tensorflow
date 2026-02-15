@@ -30,8 +30,8 @@ REGISTER_KERNEL_BUILDER(Name("FloorMod")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_floor_mod<int32_t>>);
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("FloorMod")
