@@ -2974,6 +2974,59 @@ ENTRY main {
                   "(pid_0) -> (pid_0 * 2, 0), domain: pid_0 in [0, 4]"));
 }
 
+TEST_F(SymbolicTileAnalysisTest, SinglePointDimensionsArePreservedForPad) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  p0 = f32[10,1] parameter(0)
+  negate = f32[10,1] negate(p0)
+  zero = f32[] constant(0.0)
+  ROOT pad = f32[10,115] pad(negate, zero), padding=0_0x0_114
+}
+
+ENTRY main {
+  p0 = f32[10,1] parameter(0)
+  ROOT fusion = f32[10,115] fusion(p0), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion"}}
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* pad_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  Tiling tiling(Tiling::TileMapping{{pad_hlo, {2, 128}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              tiling, default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* pad = tiled_hlo_computation.GetRoots().front();
+  ASSERT_EQ(pad->hlo()->opcode(), HloOpcode::kPad);
+
+  EXPECT_THAT(*pad, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{2, 128}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/
+                        "(pid_0) -> (pid_0 * 2, 0), domain: pid_0 in [0, 4]"));
+
+  const TiledHloInstruction* negate = pad->operand(0);
+  ASSERT_EQ(negate->hlo()->opcode(), HloOpcode::kNegate);
+
+  EXPECT_THAT(*negate,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{2, 128}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> (pid_0 * 2, 0), domain: pid_0 in [0, 4]"));
+
+  const TiledHloInstruction* parameter = negate->operand(0);
+  ASSERT_EQ(parameter->hlo()->opcode(), HloOpcode::kParameter);
+
+  EXPECT_THAT(*parameter,
+              MatchTiledHloInstruction(
+                  /*tile_sizes=*/{2, 128}, /*tile_strides=*/{1, 1},
+                  /*tile_offsets_indexing=*/
+                  "(pid_0) -> (pid_0 * 2, 0), domain: pid_0 in [0, 4]"));
+}
+
 TEST_F(SymbolicTileAnalysisTest,
        TrivialNonBatchDotDimensionParametersArePreserved) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
