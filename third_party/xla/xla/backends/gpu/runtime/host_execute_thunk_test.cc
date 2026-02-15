@@ -340,7 +340,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto unified_memory_allocator,
                           stream_executor->CreateMemoryAllocator(
-                              stream_executor::MemoryType::kUnified));
+                              stream_executor::MemorySpace::kUnified));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto arg_memory_allocation,
