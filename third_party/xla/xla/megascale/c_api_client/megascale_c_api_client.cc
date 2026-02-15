@@ -232,7 +232,7 @@ MegaScaleClientContextFromClient(xla::PjRtClient* client) {
   args.struct_size =
       PJRT_Megascale_CreateClientContextFromPjRtClient_Args_STRUCT_SIZE;
 
-  args.client = tsl::down_cast<xla::PjRtCApiClient*>(client)->pjrt_c_client();
+  args.client = absl::down_cast<PjRtCApiClient*>(client)->pjrt_c_client();
   args.client_context = nullptr;
 
   RETURN_STATUS_IF_PJRT_ERROR(
