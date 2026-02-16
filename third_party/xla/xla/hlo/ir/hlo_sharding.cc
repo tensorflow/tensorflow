@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -59,6 +60,216 @@ namespace xla {
 namespace {
 
 using absl::StrCat;
+
+// The information of a sub-dimension in IotaTileAssignment. One tile dimension
+// in tile assignment may correspond to multiple sub-dimensions.
+struct SubDimInfo {
+  // The tile assignment dimension that this sub-dimension belongs to.
+  int64_t tile_dim_index;
+  // The sub-dimension index, whose order is minor to major.
+  int64_t tile_sub_dim_index;
+  // The reshape dimension that this sub-dimension belongs to.
+  int64_t reshape_dim_index;
+  // The size of this sub-dimension.
+  int64_t size;
+};
+
+struct AnalyzeTileAssignmentResult {
+  std::vector<SubDimInfo> sub_dims;
+  std::vector<int64_t> local_mesh;
+  bool uses_iota_factorization = false;
+};
+
+// Given a vector of integers, we can factorize its elements into a product of
+// smaller factors. For example, with the input vector of [4, 8], we can
+// decompose the element 4 into 2x2, and decompose the element 8 into 4x2. Thus,
+// we have a factorization of [2, 2, 4, 2]. Other valid factorizations include
+// [4, 4, 2], [2, 2, 8], [2, 2, 2, 2, 2].
+//
+// This function greedily extracts a common sequence of factors that can
+// produce both input vectors (when interpreted as products of factors). It
+// effectively aligns the "boundaries" of the multiplicative factors of both
+// inputs.
+std::vector<int64_t> ExtractCommonFactorSequence(
+    absl::Span<const int64_t> array1, absl::Span<const int64_t> array2) {
+  std::vector<int64_t> result;
+  int64_t index1 = 0;
+  int64_t index2 = 0;
+  while (index1 < array1.size() && array1[index1] == 1) {
+    index1++;
+  }
+  while (index2 < array2.size() && array2[index2] == 1) {
+    index2++;
+  }
+
+  int64_t val1 = 1;
+  int64_t val2 = 1;
+
+  while (index1 < array1.size() || index2 < array2.size() || val1 > 1 ||
+         val2 > 1) {
+    if (val1 == 1 && index1 < array1.size()) {
+      val1 = array1[index1++];
+      while (index1 < array1.size() && array1[index1] == 1) {
+        index1++;
+      }
+    }
+    if (val2 == 1 && index2 < array2.size()) {
+      val2 = array2[index2++];
+      while (index2 < array2.size() && array2[index2] == 1) {
+        index2++;
+      }
+    }
+
+    if (val1 == 1 && val2 == 1) {
+      break;
+    }
+    if (val1 == 1 || val2 == 1) {
+      return {};
+    }
+
+    const int64_t common = std::min(val1, val2);
+    if (val1 % common != 0 || val2 % common != 0) {
+      return {};
+    }
+    result.push_back(common);
+    val1 /= common;
+    val2 /= common;
+  }
+
+  return result;
+}
+
+// Create ordered SubDimInfo based on IotaTileAssignment (dims, reshape_dims,
+// and transpose_perm) in three steps.
+// 1. Find a common factorization of (1) dims and (2) reshape_dims
+// reordered by transpose_perm.
+// 2. Construct the SubDimInfo based on the common factorization, which
+// represents the common axes.
+// 3. Sort the vector of SubDimInfo based on tuple (reshapeDimIndex,
+// tileDimIndex).
+//
+// Take {devices=[6,35]<=[7,10,3]T(2,1,0)} as an example.
+// We find the a common factorization between (1) [6,35], and (2)
+// [7,10,3] reordered by [2,1,0], which is [3,10,7]. The common factorization
+// [3,2,5,7] is then used to create a sorted vector of SubDimInfo.
+//
+// columns:
+// - index: The mesh axis index.
+// - tileDimIndex: Index in 'dims' (logical tile shape).
+// - tileSubDimIndex: Order of the factor within 'tileDimIndex'.
+// - reshapeDimIndex: Index in 'reshape_dims' (physical device shape).
+// - size: Size of the factor/axis.
+//
+// index tileDimIndex tileSubDimIndex reshapeDimIndex size
+//   0        1              0               0         7
+//   1        0              0               1         2
+//   2        1              1               1         5
+//   3        0              1               2         3
+//
+// The 0-th sub-dimension with size 7 corresponds to dims[1] (which is 35), and
+// reshape_dims[0] (which is 7). The dims[1] (which is 35) is decomposed into
+// two sub-dimensions 7 and 5. Thus the sub-dimensions with size 7 and 5 share
+// the same tileDimIndex of 1 and have different tileSubDimIndex 0 and 1. 7 is
+// on the right of 5 in the common factorization [3,2,5,7] and the
+// tileSubDimIndex is ordered minor to major.
+//
+// If the input is not compatible with the mesh-based sharding, the function
+// returns std::nullopt, such as {devices=[2,3]<=[2,3]T(1,0)}.
+std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
+    const IotaTileAssignment& iota) {
+  std::vector<int64_t> device_shape;
+  device_shape.reserve(iota.transpose_perm().size());
+  for (const int perm_index : iota.transpose_perm()) {
+    device_shape.emplace_back(iota.reshape_dims()[perm_index]);
+  }
+
+  const std::vector<int64_t> axis_sizes =
+      ExtractCommonFactorSequence(iota.dims(), device_shape);
+  if (axis_sizes.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<SubDimInfo> sub_dims;
+  sub_dims.reserve(axis_sizes.size());
+
+  int64_t tile_dim_index = iota.ndims() - 1;
+  int64_t trans_perm_index = iota.transpose_perm().size() - 1;
+  int64_t acc_tile_size = 1;
+  int64_t acc_device_size = 1;
+  int64_t sub_dim = 0;
+
+  for (auto it = axis_sizes.rbegin(); it != axis_sizes.rend(); ++it) {
+    int64_t axis_size = *it;
+    while (iota.dim(tile_dim_index) == 1) {
+      tile_dim_index--;
+    }
+    sub_dims.push_back(SubDimInfo{
+        /* .tile_dim_index = */ tile_dim_index,
+        /* .tile_sub_dim_index = */ sub_dim++,
+        /* .reshape_dim_index = */ iota.transpose_perm()[trans_perm_index],
+        /* .size = */ axis_size,
+    });
+    acc_tile_size *= axis_size;
+    acc_device_size *= axis_size;
+    if (iota.dim(tile_dim_index) == acc_tile_size) {
+      tile_dim_index--;
+      acc_tile_size = 1;
+      sub_dim = 0;
+    }
+    if (device_shape[trans_perm_index] == acc_device_size) {
+      acc_device_size = 1;
+      trans_perm_index--;
+    }
+  }
+
+  absl::c_sort(sub_dims, [](const SubDimInfo& a, const SubDimInfo& b) {
+    return std::forward_as_tuple(a.reshape_dim_index, a.tile_dim_index) <
+           std::forward_as_tuple(b.reshape_dim_index, b.tile_dim_index);
+  });
+  return sub_dims;
+}
+
+// Analyze the input tile assignment to obtain the information on the mesh and
+// sub dimensions.
+AnalyzeTileAssignmentResult AnalyzeTileAssignment(
+    const TileAssignment& tile_assignment) {
+  // If the input has iota tile assignment (the corresponding HloSharding is in
+  // V2 format), we use GetOrderedSubDimsFromIotaTileAssignment.
+  if (tile_assignment.iota()) {
+    std::optional<std::vector<SubDimInfo>> sub_dims =
+        GetOrderedSubDimsFromIotaTileAssignment(*tile_assignment.iota());
+    // If common factorization is found, use it. Otherwise fall back to non-iota
+    // logic which treats tile assignment dimensions as mesh axes 1:1.
+    if (sub_dims.has_value()) {
+      std::vector<int64_t> mesh;
+      mesh.reserve(sub_dims->size());
+      for (const SubDimInfo& sub_dim_info : *sub_dims) {
+        mesh.push_back(sub_dim_info.size);
+      }
+      return AnalyzeTileAssignmentResult{
+          /* .sub_dims = */ std::move(*sub_dims),
+          /* .local_mesh = */ std::move(mesh),
+      };
+    }
+  }
+  // Fallback for non-iota: assume dims maps to mesh axes 1:1.
+  std::vector<int64_t> mesh(tile_assignment.dimensions().begin(),
+                            tile_assignment.dimensions().end());
+  std::vector<SubDimInfo> sub_dims;
+  sub_dims.reserve(tile_assignment.num_dimensions());
+  for (int64_t i = 0; i < tile_assignment.num_dimensions(); ++i) {
+    sub_dims.push_back(SubDimInfo{
+        /* .tile_dim_index = */ i,
+        /* .tile_sub_dim_index = */ 0,
+        /* .reshape_dim_index = */ i,  // Fake reshape dim index
+        /* .size = */ tile_assignment.dim(i),
+    });
+  }
+  return AnalyzeTileAssignmentResult{
+      /* .sub_dims = */ std::move(sub_dims),
+      /* .local_mesh = */ std::move(mesh),
+  };
+}
 
 // Helper to group minor dimensions totaling a given group size while preserving
 // V2 format. Returns true if such grouping is successful, otherwise returns
@@ -1144,6 +1355,167 @@ OpSharding HloSharding::ToProto() const {
     }
   }
   return result;
+}
+
+/*static*/ HloSharding HloSharding::ToNamedSharding(
+    const HloSharding& sharding) {
+  if (sharding.IsTuple()) {
+    std::vector<HloSharding> v3_elements;
+    v3_elements.reserve(sharding.tuple_elements().size());
+    for (const HloSharding& element : sharding.tuple_elements()) {
+      v3_elements.push_back(ToNamedSharding(element));
+    }
+    return HloSharding::FlatTuple(std::move(v3_elements));
+  }
+  if (sharding.UseNamedShardingLeaf()) {
+    return sharding;
+  }
+  if (sharding.IsReplicated()) {
+    return HloSharding(NamedSharding::Replicate(sharding.metadata()));
+  }
+  if (sharding.IsTileMaximal()) {
+    return HloSharding(NamedSharding::MaximalSharding(
+        sharding.tile_assignment().first(), sharding.metadata()));
+  }
+
+  // Tiled sharding.
+  const TileAssignment& tile_assignment = sharding.tile_assignment();
+  const AnalyzeTileAssignmentResult result =
+      AnalyzeTileAssignment(tile_assignment);
+
+  // Construct Mesh.
+  std::vector<std::string> axes_names;
+  axes_names.reserve(result.local_mesh.size());
+  for (int64_t i = 0; i < result.local_mesh.size(); ++i) {
+    axes_names.push_back(absl::StrCat("axis_", i));
+  }
+  std::vector<absl::string_view> axes_names_views(axes_names.begin(),
+                                                  axes_names.end());
+
+  // Construct `source_axes` which maps each dimension of the reshaped
+  // `mesh_devices` array to the corresponding `local_mesh` axis index.
+  std::vector<int64_t> source_axes;
+  source_axes.reserve(result.local_mesh.size());
+
+  const int64_t rank = sharding.TiledDataRank();
+  const int64_t total_dims = tile_assignment.num_dimensions();
+
+  // Map from logical dimension to list of local axis indices (minor-to-major).
+  std::vector<std::vector<int64_t>> dim_to_local_axes(total_dims);
+
+  for (size_t local_axis_index = 0; local_axis_index < result.sub_dims.size();
+       ++local_axis_index) {
+    const SubDimInfo& sub_dim_info = result.sub_dims[local_axis_index];
+    std::vector<int64_t>& axes = dim_to_local_axes[sub_dim_info.tile_dim_index];
+    if (sub_dim_info.tile_sub_dim_index >= axes.size()) {
+      axes.resize(sub_dim_info.tile_sub_dim_index + 1);
+    }
+    axes[sub_dim_info.tile_sub_dim_index] = local_axis_index;
+  }
+
+  // Append data axes to source_axes.
+  // Array layout iterates major to minor sub-dims for each dimension.
+  // dim_to_local_axes is stored minor to major (by tile_sub_dim_index).
+  for (int64_t i = 0; i < total_dims; ++i) {
+    const std::vector<int64_t>& axes = dim_to_local_axes[i];
+    for (auto it = axes.rbegin(); it != axes.rend(); ++it) {
+      source_axes.push_back(*it);
+    }
+  }
+
+  // Check that source_axes is a permutation of 0..local_mesh.size()-1.
+  CHECK_EQ(source_axes.size(), result.local_mesh.size());
+
+  std::optional<Mesh> mesh;
+  if (result.uses_iota_factorization) {
+    // If we successfully factorized the iota tile assignment, the resulting
+    // mesh is guaranteed to be an iota mesh (0, 1, ..., N-1) corresponding
+    // to the linearized order of the reshape dimensions (permuted).
+    mesh.emplace(result.local_mesh, axes_names_views);
+  } else {
+    Array<int64_t> mesh_devices = tile_assignment.array();
+
+    // Reshape array to the factors.
+    std::vector<int64_t> array_reshape_dims;
+    array_reshape_dims.reserve(source_axes.size());
+    for (int64_t axis_idx : source_axes) {
+      array_reshape_dims.push_back(result.local_mesh[axis_idx]);
+    }
+    mesh_devices.Reshape(array_reshape_dims);
+
+    // Calculate the permutation required to transpose `mesh_devices` such that
+    // its dimensions correspond to `local_mesh` axes in order (0, 1, ...).
+    std::vector<int> transpose_perm(source_axes.size());
+    for (int k = 0; k < source_axes.size(); ++k) {
+      transpose_perm[source_axes[k]] = k;
+    }
+
+    if (source_axes.size() > 1) {
+      mesh_devices.TransposeDimensions(transpose_perm);
+    }
+
+    bool is_iota = true;
+    int64_t expected_device = 0;
+    for (int64_t device : mesh_devices) {
+      if (device != expected_device++) {
+        is_iota = false;
+        break;
+      }
+    }
+
+    if (is_iota) {
+      mesh.emplace(result.local_mesh, axes_names_views);
+    } else {
+      mesh.emplace(mesh_devices, axes_names_views);
+    }
+  }
+
+  std::vector<AxisRef> manual_axes;
+  std::vector<AxisRef> unreduced_axes;
+  std::vector<AxisRef> replicated_axes;
+
+  // Classify subgroup axes based on the sharding type.
+  for (size_t local_axis_index = 0; local_axis_index < result.sub_dims.size();
+       ++local_axis_index) {
+    const SubDimInfo& sub_dim_info = result.sub_dims[local_axis_index];
+    if (sub_dim_info.tile_dim_index >= rank) {
+      int64_t subgroup_idx = sub_dim_info.tile_dim_index - rank;
+      OpSharding::Type type;
+      if (sharding.ReplicateOnLastTileDim()) {
+        CHECK_EQ(subgroup_idx, 0);
+        type = OpSharding::REPLICATED;
+      } else {
+        type = sharding.subgroup_types()[subgroup_idx];
+      }
+
+      if (type == OpSharding::MANUAL) {
+        manual_axes.emplace_back(local_axis_index);
+      } else if (type == OpSharding::UNREDUCED) {
+        unreduced_axes.emplace_back(local_axis_index);
+      } else if (type == OpSharding::REPLICATED) {
+        replicated_axes.emplace_back(local_axis_index);
+      } else {
+        LOG(FATAL) << "Unsupported subgroup type: "
+                   << OpSharding::Type_Name(type);
+      }
+    }
+  }
+
+  // Construct dimension shardings, ensuring axes are ordered major-to-minor.
+  std::vector<NamedSharding::DimensionSharding> dim_shardings;
+  dim_shardings.reserve(rank);
+  for (int i = 0; i < rank; ++i) {
+    const std::vector<int64_t>& axes = dim_to_local_axes[i];
+    std::vector<AxisRef> axis_refs;
+    for (auto it = axes.rbegin(); it != axes.rend(); ++it) {
+      axis_refs.emplace_back(*it);
+    }
+    dim_shardings.emplace_back(axis_refs, /*is_closed=*/true);
+  }
+
+  return HloSharding(NamedSharding(*mesh, dim_shardings, replicated_axes,
+                                   unreduced_axes, manual_axes,
+                                   sharding.metadata()));
 }
 
 /*static*/ HloSharding HloSharding::V3ToV2Sharding(
