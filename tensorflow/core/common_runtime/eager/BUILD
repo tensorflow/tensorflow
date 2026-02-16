@@ -773,7 +773,11 @@ cc_library(
     name = "eager_op_rewrite_registry",
     srcs = ["eager_op_rewrite_registry.cc"],
     hdrs = ["eager_op_rewrite_registry.h"],
-    deps = [":eager_operation"],
+    deps = [
+        ":eager_operation",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
