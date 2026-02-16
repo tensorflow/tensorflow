@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -45,9 +46,13 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 
 absl::StatusOr<Compiler::GpuTargetConfig> GetGpuTargetConfig() {
+  const std::string spec_file =
+      stream_executor::PlatformManager::PlatformWithName("ROCM").ok()
+          ? "mi200.txtpb"
+          : "h100_sxm.txtpb";
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "backends/gpu/target_config/specs", "h100_sxm.txtpb");
+                        "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config_proto;
   TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                         &target_config_proto));
