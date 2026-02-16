@@ -26,12 +26,12 @@ limitations under the License.
 
 namespace py = pybind11;
 
-void CallDelete_Device(PyObject* capsule) {
+void CallDelete_ParallelDevice(PyObject* capsule) {
   delete reinterpret_cast<TFE_CustomDevice*>(
       PyCapsule_GetPointer(capsule, "TFE_CustomDevice"));
 }
 
-void CallDelete_DeviceInfo(PyObject* capsule) {
+void CallDelete_ParallelDeviceInfo(PyObject* capsule) {
   void (*destructor)(void*) =
       reinterpret_cast<void (*)(void*)>(PyCapsule_GetContext(capsule));
   destructor(PyCapsule_GetPointer(capsule, "TFE_CustomDevice_DeviceInfo"));
@@ -48,7 +48,7 @@ PYBIND11_MODULE(_pywrap_parallel_device, m) {
           // `device` is owned by `device_capsule`.
           TFE_CustomDevice* device = new TFE_CustomDevice;
           tensorflow::Safe_PyObjectPtr device_capsule(
-              PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_Device));
+              PyCapsule_New(device, "TFE_CustomDevice", &CallDelete_ParallelDevice));
           void* device_info;
           tensorflow::parallel_device::AllocateParallelDevice(
               name, underlying_devices_c.data(), underlying_devices_c.size(),
@@ -56,7 +56,7 @@ PYBIND11_MODULE(_pywrap_parallel_device, m) {
           if (PyErr_Occurred()) throw py::error_already_set();
           tensorflow::Safe_PyObjectPtr device_info_capsule(
               PyCapsule_New(device_info, "TFE_CustomDevice_DeviceInfo",
-                            &CallDelete_DeviceInfo));
+                            &CallDelete_ParallelDeviceInfo));
           if (PyErr_Occurred()) throw py::error_already_set();
           // The PyCapsule destructor needs a pointer to the destructor for
           // DeviceInfo.
