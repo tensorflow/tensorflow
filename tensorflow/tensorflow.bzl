@@ -3329,6 +3329,8 @@ def pybind_extension(
         pywrap_only = False,
         **kwargs):
     if use_pywrap_rules():
+        if "wrap_py_init" not in kwargs:
+            kwargs["wrap_py_init"] = True
         _pybind_extension(
             name = name,
             common_lib_packages = common_lib_packages + ["tensorflow", "tensorflow/python"],
