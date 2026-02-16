@@ -1350,7 +1350,7 @@ tf_python_pybind_extension(
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",
-        "//tensorflow/c/eager/parallel_device:sources",
+        "//tensorflow/c/eager/parallel_device:device_sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],

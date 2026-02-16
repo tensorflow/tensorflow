@@ -32,6 +32,7 @@ filegroup(
 filegroup(
     name = "device_sources",
     srcs = ["parallel_device.cc"],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 filegroup(
@@ -49,7 +50,6 @@ filegroup(
         ":device_sources",
         ":lib_sources",
     ],
-    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 cc_library(
