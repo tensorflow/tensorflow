@@ -16,12 +16,12 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 
 #include <cstdint>
-#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"

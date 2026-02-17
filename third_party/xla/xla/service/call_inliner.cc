@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
