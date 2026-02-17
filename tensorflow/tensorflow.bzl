@@ -2366,9 +2366,11 @@ def tf_custom_op_library(
         data = if_static([name + "_check_deps"]),
         copts = copts + tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
+        additional_linker_inputs = ["//tensorflow:tf_custom_op.lds"],
         linkopts = linkopts + select({
             "//conditions:default": [
                 "-lm",
+                "-Wl,--version-script,$(location //tensorflow:tf_custom_op.lds)",
             ],
             clean_dep("//tensorflow:windows"): [],
             clean_dep("//tensorflow:macos"): [],
