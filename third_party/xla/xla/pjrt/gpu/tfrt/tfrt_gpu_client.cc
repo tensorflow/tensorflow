@@ -523,7 +523,7 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
       std::move(on_delete_callback));
   return std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
-      tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
+      absl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -539,7 +539,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
       compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
-      tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
+      absl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
 }
 
@@ -560,7 +560,7 @@ TfrtGpuClient::CreateAliasBuffer(const Shape& shape,
     return absl::InternalError(
         "CreateAliasBuffer only supports single-device memory spaces");
   }
-  auto* device = tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+  auto* device = absl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
   auto result_buffer = std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this, device, memory_space);
 
@@ -575,7 +575,7 @@ TfrtGpuClient::CreateAliasBuffer(const Shape& shape,
       buffer_promise->SetError(buffer_or.status());
       return buffer_or.status();
     }
-    auto* tfrt_buffer = tsl::down_cast<xla::TfrtGpuBuffer*>(*buffer_or);
+    auto* tfrt_buffer = absl::down_cast<TfrtGpuBuffer*>(*buffer_or);
     if (tfrt_buffer == nullptr) {
       auto status = absl::InternalError("Failed to cast to TfrtGpuBuffer");
       definition_event_promise->SetError(status);
@@ -774,7 +774,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
     std::unique_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
   auto se_executable = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
+      absl::down_cast<StreamExecutorExecutable*>(executable.release()));
   CompileOptions compile_options = se_executable->compile_options();
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
@@ -801,7 +801,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
   }
 
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
+      absl::down_cast<TfrtGpuDevice*>(memory_space->devices().front());
   VLOG(4) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString() << " error: " << error;
 
@@ -812,7 +812,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
       /*ready_event=*/error_async_value_ref);
   return std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
-      tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
+      absl::down_cast<TfrtGpuDevice*>(device), memory_space);
 }
 
 absl::Status TfrtGpuClient::UpdateCompileOptions(
@@ -954,7 +954,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
   TfrtGpuDevice* device =
-      tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
   Shape device_shape = ShapeUtil::MakeShape(type, dims);
@@ -1155,7 +1155,7 @@ TfrtGpuClient::CreateBuffersForAsyncHostToDevice(
   VLOG(4) << "TfrtGpuClient::CreateBuffersForAsyncHostToDevice";
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices()[0];
-  auto* tfrt_gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
+  auto* tfrt_gpu_device = absl::down_cast<TfrtGpuDevice*>(device);
   return TfrtGpuAsyncHostToDeviceTransferManager::Create(
       shape_specs, device_layouts, tfrt_gpu_device, this, memory_space);
 }
@@ -1189,7 +1189,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TfrtGpuBuffer> output_buffer,
       AllocateTfrtGpuDestinationBuffer(shape, definition_event,
-                                       tsl::down_cast<TfrtGpuDevice*>(device),
+                                       absl::down_cast<TfrtGpuDevice*>(device),
                                        this, memory_space));
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
@@ -1201,7 +1201,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   VLOG(4) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
   non_blocking_thread_pool_->Schedule(
       [literal, definition_event, device_buffer, shape, this,
-       device = tsl::down_cast<TfrtGpuDevice*>(device),
+       device = absl::down_cast<TfrtGpuDevice*>(device),
        usage_event = std::move(usage_event)]() mutable {
         tsl::profiler::TraceMe traceme("BufferFromHostLiteral::H2D_Dispatch");
         TransferManager* transfer_manager =
@@ -1243,7 +1243,7 @@ absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
       non_blocking_thread_pool(), [&]() -> absl::Status {
         tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaMap");
         se::StreamExecutor* executor =
-            tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+            absl::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
                 ->executor();
         DCHECK(executor);
         bool success = executor->HostMemoryRegister(data, buffer_size);
@@ -1262,7 +1262,7 @@ absl::Status TfrtGpuClient::DmaUnmap(void* data) {
       non_blocking_thread_pool(), [&]() -> absl::Status {
         tsl::profiler::TraceMe trace_me("TfrtGpuClient::DmaUnmap");
         se::StreamExecutor* executor =
-            tensorflow::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
+            absl::down_cast<TfrtGpuDevice*>(addressable_devices_[0])
                 ->executor();
         DCHECK(executor);
         bool success = executor->HostMemoryUnregister(data);
