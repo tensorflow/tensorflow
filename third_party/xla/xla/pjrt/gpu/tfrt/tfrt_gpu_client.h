@@ -145,10 +145,10 @@ class TfrtGpuClient final : public PjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override;
+      GlobalDeviceId global_device_id) const override;
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override;
+      LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
       absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
@@ -350,7 +350,7 @@ class TfrtGpuClient final : public PjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device_;
+  absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<ComputationPlacer> computation_placer_;

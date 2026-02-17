@@ -67,8 +67,8 @@ class TfrtGpuDevice final : public PjRtDevice {
     int32_t process_index;
     int32_t process_index_in_partition;
     int partition_index;
-    PjRtLocalDeviceId local_device_id;
-    PjRtLocalHardwareId local_hardware_id;
+    LocalDeviceId local_device_id;
+    LocalChipId local_hardware_id;
     se::StreamExecutor* executor;
     int max_inflight_computations;
     std::string platform_version;
@@ -93,14 +93,10 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id() const override { return id_; }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return local_device_id_;
-  }
+  LocalDeviceId local_device_id() const override { return local_device_id_; }
 
   // Used as `device_ordinal`.
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return local_hardware_id_;
-  }
+  LocalChipId local_hardware_id() const override { return local_hardware_id_; }
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -160,8 +156,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id_;
   TfrtGpuClient* client_ = nullptr;
-  const PjRtLocalDeviceId local_device_id_;
-  const PjRtLocalHardwareId local_hardware_id_;
+  const LocalDeviceId local_device_id_;
+  const LocalChipId local_hardware_id_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
   std::unique_ptr<se::Stream> d2h_stream_;
