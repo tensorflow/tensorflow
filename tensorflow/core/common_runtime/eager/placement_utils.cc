@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 
-#include <variant>
+#include <cstdint>
+#include <string>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
