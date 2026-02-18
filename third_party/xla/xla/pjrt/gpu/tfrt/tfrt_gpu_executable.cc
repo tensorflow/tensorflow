@@ -1041,8 +1041,7 @@ TfrtGpuExecutable::Execute(
       const int device_id = (*device_assignment_)(replica, partition);
       TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                           client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
-      TfrtGpuDevice* gpu_device =
-          tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
+      TfrtGpuDevice* gpu_device = absl::down_cast<TfrtGpuDevice*>(pjrt_device);
 
       VLOG(1) << "Try to run ExecuteHelper for " << name() << " on device "
               << gpu_device->DebugString()

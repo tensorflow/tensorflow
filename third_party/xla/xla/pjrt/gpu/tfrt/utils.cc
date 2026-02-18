@@ -604,7 +604,7 @@ std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
   }
   const int basePinnedId = global_device_count;
   for (auto* device : addressable_devices) {
-    TfrtGpuDevice* gpu_device = tensorflow::down_cast<TfrtGpuDevice*>(device);
+    TfrtGpuDevice* gpu_device = absl::down_cast<TfrtGpuDevice*>(device);
     const int global_device_id = gpu_device->global_device_id().value();
     auto pinned = std::make_unique<PinnedHostMemorySpace>(
         basePinnedId + global_device_id, device);

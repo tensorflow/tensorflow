@@ -259,7 +259,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
           << " is_last_transfer=" << is_last_transfer
           << " device=" << device_->DebugString();
 
-  auto* client = tsl::down_cast<TfrtGpuClient*>(device_->client());
+  auto* client = absl::down_cast<TfrtGpuClient*>(device_->client());
   DCHECK(client);
 
   HostMemoryAllocator::OwnedPtr staging_buffer;
