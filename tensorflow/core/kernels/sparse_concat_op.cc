@@ -148,7 +148,7 @@ class SparseConcatOp : public OpKernel {
 
     OP_REQUIRES(
         context, !overflow_ocurred,
-        errors::Internal("Encountered overflow from large input shape."));
+        errors::InvalidArgument("Encountered overflow from large input shape."));
 
     const TensorShape input_shape(shapes[0].vec<int64_t>());
     const int input_rank = input_shape.dims();
@@ -176,8 +176,14 @@ class SparseConcatOp : public OpKernel {
                   " for dimension ", j, " but got ", current_shape.dim_size(j),
                   " at position ", i));
         } else {
-          output_shape.set_dim(
-              j, output_shape.dim_size(j) + current_shape.dim_size(j));
+          // Use the checked version SetDimWithStatus instead of set_dim to
+          // avoid TF_CHECK_OK aborts inside RecomputeNumElements in case the
+          // product of dimensions would overflow int64. Convert the error to a
+          // proper InvalidArgument that the caller can handle.
+          const int64_t new_dim_size =
+              output_shape.dim_size(j) + current_shape.dim_size(j);
+          OP_REQUIRES_OK(context,
+                         output_shape.SetDimWithStatus(j, new_dim_size));
         }
       }
     }
@@ -239,3 +245,4 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
+
