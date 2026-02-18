@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
@@ -67,6 +68,40 @@ constexpr char kBarrierId[] = "barrier_id";
 // Note: b/169705709: no protobuf matchers in OSS.
 MATCHER_P2(IsKvEntry, key, value, "") {
   return key == arg.key() && value == arg.value();
+}
+
+std::string DebugString(const CoordinationService::Config& config) {
+  return absl::StrFormat(
+      "CoordinationService::Config {\n"
+      "  cluster_register_timeout: %s\n"
+      "  cluster_register_with_barrier: %v\n"
+      "  heartbeat_timeout: %s\n"
+      "  num_tasks: %d\n"
+      "  shutdown_barrier_timeout: %s\n"
+      "  allow_new_incarnation_to_reconnect: %v\n"
+      "  recoverable: %v\n"
+      "}",
+      absl::FormatDuration(config.cluster_register_timeout),
+      config.cluster_register_with_barrier,
+      absl::FormatDuration(config.heartbeat_timeout), config.num_tasks,
+      absl::FormatDuration(config.shutdown_barrier_timeout),
+      config.allow_new_incarnation_to_reconnect, config.recoverable);
+}
+
+std::string DebugString(const CoordinationServiceAgent::Config& config) {
+  return absl::StrFormat(
+      "CoordinationServiceAgent::Config {\n"
+      "  cluster_register_timeout: %s\n"
+      "  heartbeat_timeout: %s\n"
+      "  shutdown_barrier_timeout: %s\n"
+      "  agent_destruction_without_shutdown: %v\n"
+      "  poll_for_error_from_service_at_startup: %v\n"
+      "}",
+      absl::FormatDuration(config.cluster_register_timeout),
+      absl::FormatDuration(config.heartbeat_timeout),
+      absl::FormatDuration(config.shutdown_barrier_timeout),
+      config.agent_destruction_without_shutdown,
+      config.poll_for_error_from_service_at_startup);
 }
 
 class ClientServerTest : public ::testing::Test {
@@ -123,6 +158,8 @@ class ClientServerTest : public ::testing::Test {
 
     CoordinationServiceAgent::Config config =
         GetConfig(init_and_shutdown_timeout, shutdown_on_destruction);
+    VLOG(1) << "Getting client " << node_id << " with config:\n"
+            << DebugString(config);
     auto coord_agent = CoordinationServiceAgent::Create(
         tsl::Env::Default(), node_id, config, std::move(leader_client),
         std::move(error_fn));
@@ -142,6 +179,7 @@ class ClientServerTest : public ::testing::Test {
     auto config = GetServiceConfig(num_nodes, init_and_shutdown_timeout,
                                    cluster_register_with_barrier,
                                    cluster_shutdown_with_barrier, recoverable);
+    VLOG(1) << "Starting service with config:\n" << DebugString(config);
 
     int port = tsl::testing::PickUnusedPortOrDie();
     grpc::ServerBuilder builder;
