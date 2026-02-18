@@ -182,6 +182,8 @@ cc_library(
         ":strcat",
         ":stringpiece",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:types",
     ],
@@ -198,6 +200,8 @@ cc_library(
     deps = [
         ":platform",
         ":tstring",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/strings:cord",
         "@xla//xla/tsl/platform:types",
     ] + tsl_protobuf_deps(),
 )
@@ -1049,6 +1053,7 @@ cc_library(
         ":str_util",
         ":stringpiece",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:macros",
     ],
 )
@@ -1085,6 +1090,7 @@ tsl_cc_test(
     srcs = ["hash_test.cc"],
     deps = [
         ":hash",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:test",
@@ -1126,6 +1132,7 @@ tsl_cc_test(
         ":stringpiece",
         ":tstring",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
     ],
@@ -1260,6 +1267,7 @@ tsl_cc_test(
     ],
     deps = [
         ":refcount",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:env_impl",
@@ -1343,6 +1351,7 @@ tsl_cc_test(
     deps = [
         ":mutex",
         ":platform_port",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:env_time",
@@ -1358,6 +1367,7 @@ tsl_cc_test(
     ],
     deps = [
         ":scanner",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
     ],
@@ -1371,6 +1381,8 @@ tsl_cc_test(
     ],
     deps = [
         ":str_util",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
     ],
@@ -1384,6 +1396,7 @@ tsl_cc_test(
     ],
     deps = [
         ":stringpiece",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
     ],
@@ -1411,6 +1424,7 @@ tsl_cc_test(
     deps = [
         ":numbers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:test",
         "@xla//xla/tsl/platform:types",
@@ -1428,6 +1442,8 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":random",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
@@ -1458,6 +1474,10 @@ tsl_cc_test(
     deps = [
         ":retrying_file_system",
         ":str_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/lib/core:status_test_util",
         "@xla//xla/tsl/platform:env_impl",
@@ -1472,6 +1492,8 @@ tsl_cc_test(
     deps = [
         ":retrying_utils",
         ":str_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/lib/core:status_test_util",
