@@ -41,6 +41,7 @@ def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs
             name + ".cc",
             name + ".h",
         ],
+        tools = ["@xxd//:xxd"],
         cmd = """
             HDR_OUT=$(location {name}.h)
             CC_OUT=$(location {name}.cc)
@@ -76,7 +77,7 @@ def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs
                 echo "const std::string& $${{FUNC_NAME}}();" >> "$${{HDR_OUT}}"
 
                 # CC: Embed data using xxd
-                xxd -i "$${{src}}" | \
+                $(location @xxd//:xxd) -i "$${{src}}" | \
                 sed -e "s/^unsigned char [^[]*/static const unsigned char $${{VAR_NAME}}/" \
                     -e "s/^unsigned int .*_len/static const size_t $${{VAR_NAME}}_size/" \
                     >> "$${{CC_OUT}}"
