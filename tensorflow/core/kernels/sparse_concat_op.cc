@@ -267,3 +267,4 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
+

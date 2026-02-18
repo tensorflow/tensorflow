@@ -1,6 +1,7 @@
 # Tests of TensorFlow sparse ops written using the Python API.
 
 load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -393,3 +394,9 @@ tf_py_strict_test(
         "//third_party/py/numpy",
     ],
 )
+tf_py_test(
+    name = "sparse_concat_overflow_test",
+    srcs = ["sparse_concat_overflow_test.py"],
+    tags = ["no_oss"],
+)
+
