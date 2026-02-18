@@ -138,6 +138,8 @@ class HloRunnerPjRt : public HloRunnerInterface {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  PjRtClient* client() const { return pjrt_client_.get(); }
+
  private:
   absl::StatusOr<CompileOptions> GenerateDefaultCompileOptions(
       HloModule* module, bool run_hlo_passes);
