@@ -214,13 +214,20 @@ def _get_injected_local_wheels(
             local_package_name = wheel_name.replace("_", "-")
         else:
             local_package_name = wheel_name
-        local_wheel_requirements.append(
-            "{pypi_package_name} @ {local_file_path_prefix}{wheel_path}".format(
-                local_file_path_prefix = local_file_path_prefix,
-                pypi_package_name = local_package_name,
-                wheel_path = wheel_path.realpath,
-            ),
-        )
+
+        # Wheel name in dist/ looks like: jaxlib-0.9.1.dev0+selfbuilt-cp311...
+        exact_version = wheel_path.basename.split("-")[1]
+        dist_dir = wheel_path.dirname.realpath
+
+        # Add --find-links starting rules_python 1.7.0+
+        local_wheel_requirements.append("--find-links {prefix}{dir}".format(
+            prefix = local_file_path_prefix,
+            dir = dist_dir,
+        ))
+        local_wheel_requirements.append("{pkg}=={version}".format(
+            pkg = local_package_name,
+            version = exact_version,
+        ))
 
     return local_wheel_requirements
 
