@@ -248,8 +248,8 @@ py_binary(
     main = "build_pip_package.py",
     deps = [
         "//tensorflow/tools/pip_package/utils:py_utils",
-        "@pypi_setuptools//:pkg",
-        "@pypi_wheel//:pkg",
+        "@pypi//setuptools",
+        "@pypi//wheel",
     ],
 )
 
