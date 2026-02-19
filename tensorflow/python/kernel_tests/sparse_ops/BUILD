@@ -392,9 +392,19 @@ tf_py_strict_test(
         "//third_party/py/numpy",
     ],
 )
-tf_py_test(
+tf_py_strict_test(
     name = "sparse_concat_overflow_test",
+    size = "small",
     srcs = ["sparse_concat_overflow_test.py"],
-    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
 )
 
