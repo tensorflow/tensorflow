@@ -20,7 +20,7 @@ namespace tensorflow {
 
 namespace {
 
-static const string kCostModelLogTag = "COST_MODEL";
+static const std::string kCostModelLogTag = "COST_MODEL";
 
 }  // namespace
 
