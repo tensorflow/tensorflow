@@ -69,3 +69,7 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
             python_version = HERMETIC_PYTHON_VERSION,
             python_version_kind = HERMETIC_PYTHON_VERSION_KIND,
         )
+
+python_init_toolchains_ext = module_extension(
+    implementation = lambda mctx: python_init_toolchains(),
+)

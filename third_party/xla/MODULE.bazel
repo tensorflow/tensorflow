@@ -118,48 +118,88 @@ use_repo(
 ##############################################################
 # Python toolchain and pypi dependencies
 
-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-python.defaults(python_version = "3.11")
-python.toolchain(python_version = "3.11")
-use_repo(python, "pythons_hub")
+single_version_override(
+    module_name = "rules_python",
+    patches = [
+        "//third_party/py:rules_python_pip_version.patch",
+        "//third_party/py:rules_python_freethreaded.patch",
+        "//third_party/py:rules_python_versions.patch",
+    ],
+    patch_strip = 1,
+)
 
-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-pip.whl_mods(
-    additive_build_content = """
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-cc_library(
-    name = "numpy_headers_2",
-    hdrs = glob(["site-packages/numpy/_core/include/**/*.h"]),
-    strip_include_prefix="site-packages/numpy/_core/include/",
+archive_override(
+    module_name = "protobuf",
+    patch_strip = 1,
+    patches = [
+        "//third_party/protobuf:protobuf.patch",
+    ],
+    strip_prefix = "protobuf-6.31.1",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"],
 )
-cc_library(
-    name = "numpy_headers_1",
-    hdrs = glob(["site-packages/numpy/core/include/**/*.h"]),
-    strip_include_prefix="site-packages/numpy/core/include/",
-)
-cc_library(
-    name = "numpy_headers",
-    deps = [":numpy_headers_2", ":numpy_headers_1"],
-)
-""",
-    hub_name = "pypi_mods",
-    whl_name = "numpy",
-)
-pip.parse(
-    extra_hub_aliases = {
-        "numpy": ["numpy_headers"],
-    },
-    hub_name = "xla_pypi",
-    python_version = "3.11",
-    requirements_lock = "//:requirements_lock_3_11.txt",
-    whl_modifications = {
-        "@pypi_mods//:numpy.json": "numpy",
-    },
-)
-use_repo(pip, "pypi_mods", pypi = "xla_pypi")
 
-python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
-use_repo(python_version_ext, "python_version_repo")
+REQUIREMENTS = {
+    "3.11": "//:requirements_lock_3_11.txt",
+    "3.12": "//:requirements_lock_3_12.txt",
+}
+python_init_repositories = use_extension("//third_party/py:python_init_repositories.bzl", "python_init_repositories_ext")
+python_init_repositories.configure(
+    requirements_versions = REQUIREMENTS.keys(),
+    requirements_locks = REQUIREMENTS.values(),
+)
+use_repo(python_init_repositories, "python_version_repo", "pythons_hub")
+
+python_init_toolchains = use_extension("//third_party/py:python_init_toolchains.bzl", "python_init_toolchains_ext")
+use_repo(python_init_toolchains, "python_3_11_host", "python_3_12_host")
+
+python_init_pip = use_extension("//third_party/py:python_init_pip.bzl", "python_init_pip_ext")
+use_repo(python_init_pip, "pypi")
+
+pip_ext = use_extension("//third_party/extensions:pip.bzl", "pip_ext")
+use_repo(pip_ext)
+
+#python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+#python.defaults(python_version = "3.11")
+#python.toolchain(python_version = "3.11")
+#use_repo(python, "pythons_hub")
+
+#pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+#pip.whl_mods(
+#    additive_build_content = """
+#load("@rules_cc//cc:cc_library.bzl", "cc_library")
+#cc_library(
+#    name = "numpy_headers_2",
+#    hdrs = glob(["site-packages/numpy/_core/include/**/*.h"]),
+#    strip_include_prefix="site-packages/numpy/_core/include/",
+#)
+#cc_library(
+#    name = "numpy_headers_1",
+#    hdrs = glob(["site-packages/numpy/core/include/**/*.h"]),
+#    strip_include_prefix="site-packages/numpy/core/include/",
+#)
+#cc_library(
+#    name = "numpy_headers",
+#    deps = [":numpy_headers_2", ":numpy_headers_1"],
+#)
+#""",
+#    hub_name = "pypi_mods",
+#    whl_name = "numpy",
+#)
+#pip.parse(
+#    extra_hub_aliases = {
+#        "numpy": ["numpy_headers"],
+#    },
+#    hub_name = "xla_pypi",
+#    python_version = "3.11",
+#    requirements_lock = "//:requirements_lock_3_11.txt",
+#    whl_modifications = {
+#        "@pypi_mods//:numpy.json": "numpy",
+#    },
+#)
+#use_repo(pip, "pypi_mods", pypi = "xla_pypi")
+
+#python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
+#use_repo(python_version_ext, "python_version_repo")
 
 ##############################################################
 # Other dependencies via module extensions

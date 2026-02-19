@@ -44,3 +44,7 @@ cc_library(
         },
         requirements_lock = REQUIREMENTS_WITH_LOCAL_WHEELS,
     )
+
+python_init_pip_ext = module_extension(
+    implementation = lambda mctx: python_init_pip(),
+)
