@@ -43,6 +43,8 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/python/ifrt",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:ref_count",
@@ -63,6 +65,8 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
         "//xla/python/ifrt:basic_device_list",

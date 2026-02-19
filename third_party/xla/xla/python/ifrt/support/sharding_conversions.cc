@@ -28,6 +28,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -164,6 +166,66 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
     return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
   }
   if (hlo_sharding.IsTiled()) {
+    if (hlo_sharding.UseNamedShardingLeaf()) {
+      const auto& named_sharding = hlo_sharding.named_sharding();
+      if (!named_sharding.manual_axes().empty() ||
+          !named_sharding.unreduced_axes().empty()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Unsupported conversion to `ShardingParam` from `NamedSharding` "
+            "with manual or unreduced axes; sharding=",
+            hlo_sharding.ToString()));
+      }
+      if (named_sharding.dim_shardings().size() != rank) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Rank mismatch: `NamedSharding` has %d dim shardings, but array "
+            "rank is %d; sharding=%s",
+            named_sharding.dim_shardings().size(), rank,
+            hlo_sharding.ToString()));
+      }
+      std::vector<int64_t> dim_shards;
+      dim_shards.reserve(rank);
+      ShardingParam::MinorToMajor minor_to_major;
+      int64_t num_axes = named_sharding.replicated_axes().size();
+      for (const NamedSharding::DimensionSharding& dim_sharding :
+           named_sharding.dim_shardings()) {
+        num_axes += dim_sharding.axes().size();
+      }
+      minor_to_major.axis_sizes.reserve(num_axes);
+      minor_to_major.permutation.reserve(num_axes);
+      int64_t device_count = 1;
+
+      for (const NamedSharding::DimensionSharding& dim_sharding :
+           named_sharding.dim_shardings()) {
+        int64_t shard = 1;
+        // NamedSharding axes are Major-to-Minor. ShardingParam expects
+        // Minor-to-Major.
+        for (const AxisRef& axis : llvm::reverse(dim_sharding.axes())) {
+          int64_t size = axis.size(named_sharding.mesh());
+          shard *= size;
+          minor_to_major.axis_sizes.push_back(size);
+          minor_to_major.permutation.push_back(
+              minor_to_major.permutation.size());
+          device_count *= size;
+        }
+        dim_shards.push_back(shard);
+      }
+      for (const AxisRef& axis :
+           llvm::reverse(named_sharding.replicated_axes())) {
+        int64_t size = axis.size(named_sharding.mesh());
+        minor_to_major.axis_sizes.push_back(size);
+        minor_to_major.permutation.push_back(minor_to_major.permutation.size());
+        device_count *= size;
+      }
+
+      if (device_count != num_devices) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Device count mismatch: `NamedSharding` mesh has %d devices, but "
+            "`num_devices` is %d; sharding=%s",
+            device_count, num_devices, hlo_sharding.ToString()));
+      }
+
+      return ShardingParam(std::move(dim_shards), std::move(minor_to_major));
+    }
     const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
     if (!tile_assignment.iota()) {
       return absl::InvalidArgumentError(absl::StrCat(
