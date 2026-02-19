@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/support/sharding_conversions.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -27,8 +29,11 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
@@ -52,6 +57,16 @@ namespace {
 
 using ::testing::Return;
 using xla::HloSharding;
+
+HloSharding CreateNamedSharding(
+    absl::Span<const int64_t> mesh_shape,
+    absl::Span<const absl::string_view> mesh_axis_names,
+    absl::Span<const std::vector<std::string>> dim_shardings,
+    absl::Span<const std::string> replicated_axis_names) {
+  xla::Mesh mesh(mesh_shape, mesh_axis_names);
+  return HloSharding(xla::test_utils::FromAxisNames(mesh, dim_shardings,
+                                                    replicated_axis_names));
+}
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param, const DeviceListRef& device_list) {
@@ -296,6 +311,94 @@ TEST_P(ShardingConversionsTest, OpShardingReplicated) {
   EXPECT_EQ(actual, expected);
 }
 
+TEST_P(ShardingConversionsTest, NamedSharding) {
+  HloSharding hlo_sharding =
+      CreateNamedSharding({2, 3}, {"x", "y"}, {{"x"}, {"y"}}, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
+                          ToShardingParam(hlo_sharding, /*rank=*/2,
+                                          /*num_devices=*/6));
+
+  ShardingParam expected_sharding_param{
+      /*dim_shards=*/{2, 3}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  EXPECT_EQ(sharding_param, expected_sharding_param);
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingWithReplication) {
+  HloSharding hlo_sharding =
+      CreateNamedSharding({2, 3}, {"x", "y"}, {{"x"}}, {"y"});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
+                          ToShardingParam(hlo_sharding, /*rank=*/1,
+                                          /*num_devices=*/6));
+
+  ShardingParam expected_sharding_param{
+      /*dim_shards=*/{2}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
+  EXPECT_EQ(sharding_param, expected_sharding_param);
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingSwappedAxes) {
+  HloSharding hlo_sharding =
+      CreateNamedSharding({2, 3}, {"x", "y"}, {{"y"}, {"x"}}, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
+                          ToShardingParam(hlo_sharding, /*rank=*/2,
+                                          /*num_devices=*/6));
+
+  ShardingParam expected_sharding_param{
+      /*dim_shards=*/{3, 2}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}}};
+  EXPECT_EQ(sharding_param, expected_sharding_param);
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingManualAxes) {
+  xla::Mesh mesh({2, 2}, {"x", "y"});
+  std::vector<xla::AxisRef> x_axis = {xla::AxisRef(0)};
+  std::vector<xla::AxisRef> y_axis = {xla::AxisRef(1)};
+  xla::NamedSharding named_sharding(
+      mesh, {xla::NamedSharding::DimensionSharding(x_axis, true)},
+      /*replicated_axes=*/{}, /*unreduced_axes=*/{},
+      /*manual_axes=*/y_axis);
+  HloSharding hlo_sharding(named_sharding);
+
+  EXPECT_THAT(ToShardingParam(hlo_sharding, 1, 4),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     testing::HasSubstr("manual")));
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingUnreducedAxes) {
+  xla::Mesh mesh({2, 2}, {"x", "y"});
+  std::vector<xla::AxisRef> x_axis = {xla::AxisRef(0)};
+  std::vector<xla::AxisRef> y_axis = {xla::AxisRef(1)};
+  xla::NamedSharding named_sharding(
+      mesh, {xla::NamedSharding::DimensionSharding(x_axis, true)},
+      /*replicated_axes=*/{}, /*unreduced_axes=*/y_axis,
+      /*manual_axes=*/{});
+  HloSharding hlo_sharding(named_sharding);
+
+  EXPECT_THAT(ToShardingParam(hlo_sharding, 1, 4),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     testing::HasSubstr("unreduced")));
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingRankMismatch) {
+  HloSharding hlo_sharding =
+      CreateNamedSharding({2, 3}, {"x", "y"}, {{"x"}}, {});
+
+  EXPECT_THAT(ToShardingParam(hlo_sharding, /*rank=*/2, /*num_devices=*/6),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     testing::HasSubstr("Rank mismatch")));
+}
+
+TEST_P(ShardingConversionsTest, NamedShardingDeviceCountMismatch) {
+  HloSharding hlo_sharding =
+      CreateNamedSharding({2, 3}, {"x", "y"}, {{"x", "y"}}, {});
+
+  EXPECT_THAT(
+      ToShardingParam(hlo_sharding, /*rank=*/1, /*num_devices=*/2),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             testing::HasSubstr("Device count mismatch")));
+}
+
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingConversionsTest,
                          testing::Values(7));
 
@@ -385,6 +488,90 @@ INSTANTIATE_TEST_SUITE_P(
         {HloSharding::PartialTile(TileAssignment({12, 1, 1, 2}, {2, 12},
                                                  {1, 0})),
          3, 24},
+    }));
+
+struct NamedShardingTestStruct {
+  HloSharding hlo_sharding;
+  int rank;
+  int num_devices;
+  ShardingParam expected_param;
+};
+
+class NamedShardingToShardingParamTest
+    : public testing::TestWithParam<NamedShardingTestStruct> {
+ public:
+  void SetUp() override {
+    const auto& param = GetParam();
+    client_ = MakeTestClient(param.num_devices);
+  }
+
+ private:
+  std::shared_ptr<Client> client_;
+};
+
+TEST_P(NamedShardingToShardingParamTest, Conversion) {
+  const auto& param = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sharding_param,
+      ToShardingParam(param.hlo_sharding, param.rank, param.num_devices));
+
+  EXPECT_EQ(sharding_param, param.expected_param);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    NamedShardingConversionTests, NamedShardingToShardingParamTest,
+    testing::ValuesIn<NamedShardingTestStruct>({
+        // 2D mesh, 1:1 mapping.
+        {CreateNamedSharding({2, 3}, {"x", "y"}, {{"x"}, {"y"}}, {}),
+         /*rank=*/2, /*num_devices=*/6,
+         ShardingParam(/*dim_shards=*/{2, 3},
+                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}})},
+        // 2D mesh, swapped axes.
+        {CreateNamedSharding({2, 3}, {"x", "y"}, {{"y"}, {"x"}}, {}),
+         /*rank=*/2, /*num_devices=*/6,
+         ShardingParam(/*dim_shards=*/{3, 2},
+                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}})},
+        // One replicated axis.
+        {CreateNamedSharding({2, 3}, {"x", "y"}, {{"x"}}, {"y"}), /*rank=*/1,
+         /*num_devices=*/6,
+         ShardingParam(/*dim_shards=*/{2},
+                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}})},
+        // One replicated axis, swapped.
+        {CreateNamedSharding({2, 3}, {"x", "y"}, {{"y"}}, {"x"}), /*rank=*/1,
+         /*num_devices=*/6,
+         ShardingParam(/*dim_shards=*/{3},
+                       {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}})},
+        // 3D mesh, 1:1 mapping.
+        {CreateNamedSharding({2, 3, 4}, {"x", "y", "z"}, {{"x"}, {"y"}, {"z"}},
+                             {}),
+         /*rank=*/3, /*num_devices=*/24,
+         ShardingParam(/*dim_shards=*/{2, 3, 4},
+                       {/*permutation=*/{0, 1, 2}, /*axis_sizes=*/{2, 3, 4}})},
+        // 3D mesh, reversed mapping.
+        {CreateNamedSharding({2, 3, 4}, {"x", "y", "z"}, {{"z"}, {"y"}, {"x"}},
+                             {}),
+         /*rank=*/3, /*num_devices=*/24,
+         ShardingParam(/*dim_shards=*/{4, 3, 2},
+                       {/*permutation=*/{0, 1, 2}, /*axis_sizes=*/{4, 3, 2}})},
+        // Multiple mesh axes map to one dimension.
+        {CreateNamedSharding({2, 3, 4}, {"x", "y", "z"}, {{"x", "y"}, {"z"}},
+                             {}),
+         /*rank=*/2, /*num_devices=*/24,
+         ShardingParam(/*dim_shards=*/{6, 4},
+                       {/*permutation=*/{0, 1, 2}, /*axis_sizes=*/{3, 2, 4}})},
+        // Multiple mesh axes map to one dimension, different grouping.
+        {CreateNamedSharding({2, 3, 4}, {"x", "y", "z"}, {{"x"}, {"y", "z"}},
+                             {}),
+         /*rank=*/2, /*num_devices=*/24,
+         ShardingParam(/*dim_shards=*/{2, 12},
+                       {/*permutation=*/{0, 1, 2}, /*axis_sizes=*/{2, 4, 3}})},
+        // Multiple mesh axes map to one dimension, mixed order.
+        {CreateNamedSharding({2, 3, 4}, {"x", "y", "z"}, {{"z"}, {"x", "y"}},
+                             {}),
+         /*rank=*/2, /*num_devices=*/24,
+         ShardingParam(/*dim_shards=*/{4, 6},
+                       {/*permutation=*/{0, 1, 2}, /*axis_sizes=*/{4, 3, 2}})},
     }));
 
 }  // namespace

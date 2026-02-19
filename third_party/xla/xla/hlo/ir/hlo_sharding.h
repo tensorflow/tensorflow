@@ -590,6 +590,8 @@ class HloSharding {
   // Gets the subgroup types array.
   // REQUIRES: !IsTuple()
   const std::vector<OpSharding::Type>& subgroup_types() const {
+    // Named sharding does not support subgroups.
+    CHECK(!UseNamedShardingLeaf());
     return subgroup_types_;
   }
 
