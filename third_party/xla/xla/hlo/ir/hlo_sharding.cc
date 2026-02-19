@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -1226,6 +1227,136 @@ OpSharding HloSharding::ToProto() const {
                                        .Transpose(transpose_perm)
                                        .Reshape(tile_assignment_dims);
   return HloSharding::Subgroup(tile_assignment, types, metadata);
+}
+
+/*static*/ HloSharding HloSharding::ToNamedSharding(
+    const HloSharding& sharding) {
+  if (sharding.IsTuple()) {
+    std::vector<HloSharding> v3_elements;
+    v3_elements.reserve(sharding.tuple_elements().size());
+    for (const HloSharding& element : sharding.tuple_elements()) {
+      v3_elements.push_back(ToNamedSharding(element));
+    }
+    return HloSharding::FlatTuple(std::move(v3_elements));
+  }
+  if (sharding.UseNamedShardingLeaf()) {
+    return sharding;
+  }
+  if (sharding.IsReplicated()) {
+    return HloSharding(NamedSharding::Replicate(sharding.metadata()));
+  }
+  if (sharding.IsTileMaximal()) {
+    return HloSharding(NamedSharding::MaximalSharding(
+        sharding.tile_assignment().first(), sharding.metadata()));
+  }
+
+  // Tiled sharding.
+  const TileAssignment& tile_assignment = sharding.tile_assignment();
+  std::vector<int64_t> mesh_dims;
+  std::vector<int64_t> perm;
+
+  // Check if the device assignment is equivalent to a simple iota (0, 1, 2,
+  // ...). If so, we can treat the mesh as having the same dimensions as the
+  // tile assignment and use an identity permutation.
+  bool effective_iota = true;
+  int64_t expected_device = 0;
+  tile_assignment.array().Each([&](absl::Span<const int64_t>, int64_t device) {
+    if (device != expected_device++) {
+      effective_iota = false;
+    }
+  });
+
+  // Determine the dimensions of the underlying mesh and the permutation from
+  // mesh axes to tile dimensions.
+  if (effective_iota) {
+    mesh_dims.assign(tile_assignment.dimensions().begin(),
+                     tile_assignment.dimensions().end());
+    perm.resize(mesh_dims.size());
+    absl::c_iota(perm, 0);
+  } else if (tile_assignment.iota()) {
+    mesh_dims.assign(tile_assignment.iota()->reshape_dims().begin(),
+                     tile_assignment.iota()->reshape_dims().end());
+    perm.assign(tile_assignment.iota()->transpose_perm().begin(),
+                tile_assignment.iota()->transpose_perm().end());
+  } else {
+    mesh_dims.assign(tile_assignment.dimensions().begin(),
+                     tile_assignment.dimensions().end());
+    perm.resize(mesh_dims.size());
+    absl::c_iota(perm, 0);
+  }
+
+  // When converting back to NamedSharding (v3), we construct a new mesh where
+  // the axis names are simply their indices ("axis_0", "axis_1", ...).
+  std::vector<std::string> axes_names_storage;
+  axes_names_storage.reserve(mesh_dims.size());
+  for (int64_t i = 0; i < mesh_dims.size(); ++i) {
+    axes_names_storage.push_back(absl::StrCat("axis_", i));
+  }
+  // Note that we use `tile_assignment.dimensions()` which are the dimensions
+  // after any reshape/transpose operations defined in the V2 sharding.
+  // Consequently, any transpose in V2 is 'baked' into the resulting Mesh, and
+  // the dimension mappings in V3 are always identity (Tensor Dim i -> Mesh Axis
+  // i) for the tiled dimensions.
+  std::vector<absl::string_view> axes_names_views(axes_names_storage.begin(),
+                                                  axes_names_storage.end());
+
+  Mesh mesh = (effective_iota || tile_assignment.iota())
+                  ? Mesh(mesh_dims, axes_names_views)
+                  : Mesh(tile_assignment.array(), axes_names_views);
+
+  // Map the data dimensions to the corresponding mesh axes using the calculated
+  // permutation.
+  std::vector<NamedSharding::DimensionSharding> dim_shardings;
+  int64_t tiled_data_rank = sharding.TiledDataRank();
+  dim_shardings.reserve(tiled_data_rank);
+
+  int64_t perm_idx = 0;
+  auto consume_axes = [&](int64_t target_size) {
+    std::vector<AxisRef> axes;
+    int64_t accumulated_size = 1;
+    while (accumulated_size < target_size && perm_idx < perm.size()) {
+      int64_t axis_idx = perm[perm_idx];
+      accumulated_size *= mesh_dims[axis_idx];
+      axes.push_back(AxisRef(axis_idx));
+      perm_idx++;
+    }
+    CHECK_EQ(accumulated_size, target_size)
+        << "Unable to map tile dimension size " << target_size
+        << " to mesh axes. Accumulated size: " << accumulated_size;
+    return axes;
+  };
+
+  for (int64_t i = 0; i < tiled_data_rank; ++i) {
+    dim_shardings.push_back(NamedSharding::DimensionSharding(
+        consume_axes(tile_assignment.dimensions()[i]), /*is_closed=*/true));
+  }
+
+  std::vector<AxisRef> replicated_axes;
+  std::vector<AxisRef> unreduced_axes;
+  std::vector<AxisRef> manual_axes;
+
+  // Handle subgroup types which correspond to additional dimensions in the tile
+  // assignment (beyond TiledDataRank). These are mapped to specific axis types
+  // (manual, unreduced, replicated) in V3.
+  int64_t dim_idx = tiled_data_rank;
+  for (OpSharding::Type type : sharding.subgroup_types()) {
+    std::vector<AxisRef> axes =
+        consume_axes(tile_assignment.dimensions()[dim_idx++]);
+    CHECK(type == OpSharding::REPLICATED || type == OpSharding::MANUAL ||
+          type == OpSharding::UNREDUCED)
+        << "Unsupported sharding type: " << OpSharding::Type_Name(type);
+    if (type == OpSharding::MANUAL) {
+      manual_axes.insert(manual_axes.end(), axes.begin(), axes.end());
+    } else if (type == OpSharding::UNREDUCED) {
+      unreduced_axes.insert(unreduced_axes.end(), axes.begin(), axes.end());
+    } else if (type == OpSharding::REPLICATED) {
+      replicated_axes.insert(replicated_axes.end(), axes.begin(), axes.end());
+    }
+  }
+
+  return HloSharding(NamedSharding(mesh, dim_shardings, replicated_axes,
+                                   unreduced_axes, manual_axes,
+                                   sharding.metadata()));
 }
 
 Shape HloSharding::TileShape(const Shape& shape) const {
