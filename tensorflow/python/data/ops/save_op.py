@@ -97,7 +97,7 @@ def set_save_dataset_attributes(dataset, shard_func, path):
   """Sets parameters for SaveDatasetOp and SaveDatasetV2Op."""
   if shard_func is None:
     use_shard_func = False
-    shard_func = lambda *x: np.int64(0)  # a dummy function that will not be used
+    shard_func = lambda *x: 0  # a dummy function that will not be used
   else:
     use_shard_func = True
   wrapped_func = structured_function.StructuredFunctionWrapper(
