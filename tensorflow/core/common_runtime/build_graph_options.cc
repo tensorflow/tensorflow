@@ -19,8 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-string BuildGraphOptions::DebugString() const {
-  string rv = "Feed endpoints: ";
+std::string BuildGraphOptions::DebugString() const {
+  std::string rv = "Feed endpoints: ";
   for (auto& s : callable_options.feed()) {
     absl::StrAppend(&rv, s, ", ");
   }
@@ -35,7 +35,7 @@ string BuildGraphOptions::DebugString() const {
   if (collective_graph_key != kNoCollectiveGraphKey) {
     absl::StrAppend(&rv, "\ncollective_graph_key: ", collective_graph_key);
   }
-  string collective_order_str;
+  std::string collective_order_str;
   switch (collective_order) {
     case GraphCollectiveOrder::kNone:
       collective_order_str = "none";
