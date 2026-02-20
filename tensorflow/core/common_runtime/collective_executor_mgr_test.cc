@@ -43,7 +43,7 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
     ConfigProto cp;
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
-    string task_name = "/job:localhost/replica:0/task:0";
+    std::string task_name = "/job:localhost/replica:0/task:0";
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
