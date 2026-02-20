@@ -1,3 +1,4 @@
+
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <limits>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -70,6 +72,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     }
 
     std::vector<sparse::SparseTensor> sp_inputs;
+    sp_inputs.reserve(N);
     for (int i = 0; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       sparse::SparseTensor tensor;
@@ -184,6 +187,9 @@ class SparseConcatOp : public OpKernel {
                     "Concat dimension must be in range [", -input_rank, ", ",
                     input_rank, "), got ", concat_dim_attr_)));
     TensorShape output_shape = input_shape;
+    // When accumulating the output dimension at concat_dim, do a safe add to
+    // ensure the addition itself does not overflow; then use SetDimWithStatus to
+    // get proper error status if the TensorShape internals detect invalid dims.
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
@@ -219,10 +225,20 @@ class SparseConcatOp : public OpKernel {
       output_shape_t(j) = output_shape.dim_size(j);
     }
 
+    // Sum output_nnz carefully and check for overflow while summing.
     int64_t output_nnz = 0;
     for (int i = 0; i < N; ++i) {
-      output_nnz += inds[i].dim_size(0);
+      const int64_t add = inds[i].dim_size(0);
+      OP_REQUIRES(context, add >= 0,
+                  errors::InvalidArgument("Input nnz must be non-negative"));
+      OP_REQUIRES(context,
+                  output_nnz <=
+                      (std::numeric_limits<int64_t>::max() - add),
+                  errors::InvalidArgument(
+                      "Sum of nnz across inputs would overflow int64"));
+      output_nnz += add;
     }
+
     if (output_nnz == 0) {
       Tensor* output_inds = nullptr;
       OP_REQUIRES_OK(context,
@@ -267,4 +283,3 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
-
