@@ -335,7 +335,7 @@ PjRtCpuClient::PjRtCpuClient(
 PjRtCpuClient::~PjRtCpuClient() { VLOG(1) << "PjRtCpuClient destroyed."; }
 
 absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupDevice(
-    xla::PjRtGlobalDeviceId global_device_id) const {
+    GlobalDeviceId global_device_id) const {
   auto it = id_to_device_.find(global_device_id);
   if (it != id_to_device_.end()) {
     return it->second;
@@ -345,7 +345,7 @@ absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupAddressableDevice(
-    PjRtLocalDeviceId local_device_id) const {
+    LocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
       return device;
@@ -542,7 +542,7 @@ PjRtCpuClient::LoadInternal(
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
+        GlobalDeviceId device_id((*device_assignment)(replica, partition));
         if (UnpackCpuProcessIndex(device_id) != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
@@ -812,7 +812,7 @@ PjRtCpuClient::CompileInternal(
       for (int computation = 0;
            computation < device_assignment->computation_count();
            ++computation) {
-        PjRtGlobalDeviceId id((*device_assignment)(replica, computation));
+        GlobalDeviceId id((*device_assignment)(replica, computation));
         if (UnpackCpuProcessIndex(id) != process_index()) {
           // TODO(phawkins): improve this error message when we're ready to
           // publicize that multiprocess collectives exist.
@@ -829,8 +829,7 @@ PjRtCpuClient::CompileInternal(
     TF_RETURN_IF_ERROR([&]() -> absl::Status {
       for (int replica = 0; replica < num_replicas; ++replica) {
         for (int partition = 0; partition < num_partitions; ++partition) {
-          PjRtGlobalDeviceId device_id(
-              (*device_assignment)(replica, partition));
+          GlobalDeviceId device_id((*device_assignment)(replica, partition));
           if (UnpackCpuProcessIndex(device_id) != process_index()) {
             VLOG(3) << "Non-local device: " << device_id;
             continue;
@@ -1436,7 +1435,7 @@ PjRtCpuLoadedExecutable::StartRawExecutable(const ExecuteOptions& options,
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
     const int64_t device_id = (*device_assignment_)(replica, partition);
-    PjRtGlobalDeviceId global_device_id(device_id);
+    GlobalDeviceId global_device_id(device_id);
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(global_device_id));
     device = tsl::down_cast<PjRtCpuDevice*>(pjrt_device);
