@@ -1,3 +1,4 @@
+
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <limits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -68,6 +70,7 @@ struct SparseConcatFunctor<CPUDevice, T> {
     }
 
     std::vector<sparse::SparseTensor> sp_inputs;
+    sp_inputs.reserve(N);
     for (int i = 0; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       sparse::SparseTensor tensor;
@@ -124,7 +127,10 @@ class SparseConcatOp : public OpKernel {
     OP_REQUIRES(context, shapes.size() == N,
                 errors::InvalidArgument("Expected ", N, " input shapes, got ",
                                         shapes.size()));
-    bool overflow_ocurred = false;
+
+    // Early check: ensure none of the input shapes individually overflow when
+    // computing their number of elements.
+    bool overflow_occurred = false;
     for (int i = 0; i < N; i++) {
       int64_t new_num_elements = 1;
       OP_REQUIRES(context, TensorShapeUtils::IsVector(shapes[i].shape()),
@@ -132,22 +138,24 @@ class SparseConcatOp : public OpKernel {
                       "Input shapes should be a vector but received shape ",
                       shapes[i].shape().DebugString(), " at position ", i));
       auto input_shape_vector = shapes[i].vec<int64_t>();
-      for (int j = 0; j < input_shape_vector.size(); j++) {
+      const int64_t dim_count = input_shape_vector.size();
+      for (int j = 0; j < dim_count; j++) {
+        // MultiplyWithoutOverflow returns negative on overflow.
         new_num_elements =
             MultiplyWithoutOverflow(new_num_elements, input_shape_vector(j));
         if (new_num_elements < 0) {
-          overflow_ocurred = true;
+          overflow_occurred = true;
           break;
         }
       }
 
-      if (overflow_ocurred) {
+      if (overflow_occurred) {
         break;
       }
     }
 
     OP_REQUIRES(
-        context, !overflow_ocurred,
+        context, !overflow_occurred,
         errors::InvalidArgument("Encountered overflow from large input shape."));
 
     const TensorShape input_shape(shapes[0].vec<int64_t>());
@@ -159,7 +167,11 @@ class SparseConcatOp : public OpKernel {
                 errors::InvalidArgument("Concat dimension must be in range [",
                                         -input_rank, ", ", input_rank,
                                         "), got ", concat_dim_attr_));
+
     TensorShape output_shape = input_shape;
+    // When accumulating the output dimension at concat_dim, do a safe add to
+    // ensure the addition itself does not overflow; then use SetDimWithStatus to
+    // get proper error status if the TensorShape internals detect invalid dims.
     for (int i = 1; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64_t>());
       OP_REQUIRES(
@@ -176,12 +188,21 @@ class SparseConcatOp : public OpKernel {
                   " for dimension ", j, " but got ", current_shape.dim_size(j),
                   " at position ", i));
         } else {
-          // Use the checked version SetDimWithStatus instead of set_dim to
-          // avoid TF_CHECK_OK aborts inside RecomputeNumElements in case the
-          // product of dimensions would overflow int64. Convert the error to a
-          // proper InvalidArgument that the caller can handle.
-          const int64_t new_dim_size =
-              output_shape.dim_size(j) + current_shape.dim_size(j);
+          const int64_t a = output_shape.dim_size(j);
+          const int64_t b = current_shape.dim_size(j);
+          // Ensure dims are non-negative.
+          OP_REQUIRES(context, a >= 0 && b >= 0,
+                      errors::InvalidArgument(
+                          "Shape dimensions must be non-negative; got ", a,
+                          " and ", b, " at position ", i));
+          // Check that a + b will not overflow int64_t.
+          OP_REQUIRES(
+              context, a <= (std::numeric_limits<int64_t>::max() - b),
+              errors::InvalidArgument(
+                  "Concatenated shape dimension would overflow int64"));
+          const int64_t new_dim_size = a + b;
+          // Use SetDimWithStatus which performs overflow-aware checks and
+          // returns an error status instead of triggering a CHECK abort.
           OP_REQUIRES_OK(context,
                          output_shape.SetDimWithStatus(j, new_dim_size));
         }
@@ -197,10 +218,20 @@ class SparseConcatOp : public OpKernel {
       output_shape_t(j) = output_shape.dim_size(j);
     }
 
+    // Sum output_nnz carefully and check for overflow while summing.
     int64_t output_nnz = 0;
     for (int i = 0; i < N; ++i) {
-      output_nnz += inds[i].dim_size(0);
+      const int64_t add = inds[i].dim_size(0);
+      OP_REQUIRES(context, add >= 0,
+                  errors::InvalidArgument("Input nnz must be non-negative"));
+      OP_REQUIRES(context,
+                  output_nnz <=
+                      (std::numeric_limits<int64_t>::max() - add),
+                  errors::InvalidArgument(
+                      "Sum of nnz across inputs would overflow int64"));
+      output_nnz += add;
     }
+
     if (output_nnz == 0) {
       Tensor* output_inds = nullptr;
       OP_REQUIRES_OK(context,
@@ -245,4 +276,3 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
-
