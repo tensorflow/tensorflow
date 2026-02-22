@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/graph/algorithm.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
