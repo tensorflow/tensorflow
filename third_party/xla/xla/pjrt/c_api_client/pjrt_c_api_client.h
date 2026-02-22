@@ -152,7 +152,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   bool IsAddressable() const override;
 
-  PjRtLocalHardwareId local_hardware_id() const override;
+  LocalChipId local_hardware_id() const override;
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(
@@ -289,25 +289,24 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       const override;
   absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override;
   absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override;
-  absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const override;
-  absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
-  LogicalDeviceOfDefaultTypeIdsOnProcess(
-      PjRtProcessId process_id) const override;
-  absl::StatusOr<std::pair<PjRtProcessId, int>>
-  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const override;
-  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  absl::StatusOr<PjRtIdContainer<ProcessId>> ProcessIds() const override;
+  absl::StatusOr<PjRtIdContainer<GlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(ProcessId process_id) const override;
+  absl::StatusOr<std::pair<ProcessId, int>> ProcessIdAndIndexOnProcessForChip(
+      GlobalChipId chip_id) const override;
+  absl::StatusOr<std::pair<ProcessId, int>>
   ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const override;
+      GlobalDeviceId device_id) const override;
   absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
-      PjRtProcessId process_id) const override;
-  absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      ProcessId process_id) const override;
+  absl::StatusOr<GlobalChipId> ChipIdFromCoord(
       const PjRtDeviceDimensions& chip) const override;
-  absl::StatusOr<xla::PjRtGlobalDeviceId>
+  absl::StatusOr<GlobalDeviceId>
   LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
       const PjRtDeviceDimensions& chip, int core_index) const override;
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const override;
+      GlobalDeviceId device_id) const override;
   absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const override;
   absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
   absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
@@ -361,10 +360,10 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override;
+      GlobalDeviceId global_device_id) const override;
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override;
+      LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
       absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
@@ -455,13 +454,13 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
-      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      absl::Span<const GlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
-      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      absl::Span<const GlobalDeviceId> src_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
