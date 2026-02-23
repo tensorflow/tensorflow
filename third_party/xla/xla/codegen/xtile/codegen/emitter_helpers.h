@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -124,7 +126,9 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
 
 // XLA -> MLIR type conversions.
 absl::StatusOr<mlir::Type> PrimitiveTypeToMlirType(
-    mlir::ImplicitLocOpBuilder& b, PrimitiveType t);
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType t,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc =
+        std::nullopt);
 
 // MLIR type -> XLA type conversions.
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
