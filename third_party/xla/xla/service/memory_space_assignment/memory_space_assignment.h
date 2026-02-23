@@ -79,6 +79,15 @@ Classes
     a buffer of a given size, with a defined lifetime. In MSA, the buffer
     corresponds to an HloValue.
 
+  - Joint Proposal: A joint proposal is initially created from an HloValue.
+    However, we also add all HloValues that must alias with the HloValue, so
+    upon creation its granularity is that of an HloBuffer.
+    * In the general case, a joint proposal consists of a collection of
+      AllocationValues corresponding to the non-trivial positions of all
+      HloValues in the HloBuffer.
+    * When sync copy/slice replacement is enabled, AllocationValues are also
+      created for non-trivial positions needed for sync copy replacement.
+
   - AllocationValue: An AllocationValue is defined by an HloValue, and *one* of
     its HloPositions. Note that a given HloValue may be associated with multiple
     AllocationValues in this way.

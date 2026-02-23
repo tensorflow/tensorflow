@@ -366,8 +366,7 @@ bool ReservedAllocation::operator==(const Allocation& other) const {
 }
 
 bool ReservedAllocation::operator==(const ReservedAllocation& other) const {
-  return this->base_is_equal(static_cast<const Allocation&>(other)) &&
-         reserved_ == other.reserved_;
+  return this->base_is_equal(static_cast<const Allocation&>(other));
 }
 
 CopyAllocation::CopyAllocation(

@@ -433,13 +433,15 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
   // operand_index has the given opcode and memory space.
   void CheckOperandOpcodeAndMemorySpaceForInstructionNames(
       HloModule* module, const std::vector<std::string>& instruction_names,
-      int64_t operand_index, HloOpcode operand_opcode,
-      int64_t operand_memory_space) {
+      int64_t operand_index, int64_t operand_memory_space,
+      std::optional<HloOpcode> operand_opcode = std::nullopt) {
     for (const std::string& name : instruction_names) {
       HloInstruction* use_inst = FindInstruction(module, name);
       EXPECT_NE(use_inst, nullptr);
       const HloInstruction* operand = use_inst->operand(operand_index);
-      EXPECT_EQ(operand->opcode(), operand_opcode);
+      if (operand_opcode.has_value()) {
+        EXPECT_EQ(operand->opcode(), operand_opcode.value());
+      }
       EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space);
     }
   }

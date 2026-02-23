@@ -1091,11 +1091,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // this allocation sequence.
   void AddToPendingChunks(const MsaBufferInterval& buffer_interval,
                           const Chunk& chunk);
+
   // If we need to remove the allocations for this allocation sequence, this
   // removes pending chunks and asynchronous copies in the respective pending
   // buffers from the interval trees. If an allocation request returns
   // kFailRequiresUncommit, this method must be called.
-  void UncommitPendingChunks(absl::Span<AllocationValue> allocation_values);
+  void UncommitPendingWork(absl::Span<AllocationValue> allocation_values);
 
   // Finalizes the allocations where they can no longer be uncommitted.
   void FinalizeAllocations(absl::Span<AllocationValue> allocation_values);
@@ -1364,6 +1365,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_;
+
+  // We have released the chunks corresponding to the allocations in the list.
+  // When we uncommit the current pending state following a
+  // kFailRequiresUncommit, we need to re-reserve those chunks.
+  std::vector<ReservedAllocation*> pending_deallocated_reserved_allocations_;
 };
 
 }  // namespace memory_space_assignment
