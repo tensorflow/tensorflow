@@ -2,6 +2,7 @@ load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
@@ -59,6 +60,7 @@ exports_files(
         "env.h",
         "numa_hwloc.cc",
         "numa_noop.cc",
+        "zip.h",
     ],
     visibility = internal_visibility([
         "//tensorflow/core/platform:__subpackages__",
@@ -933,6 +935,88 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "zip_interface",
+    hdrs = ["zip.h"],
+    deps = [
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "zip",
+    hdrs = ["zip.h"],
+    deps = tf_platform_deps("zip") + [
+        ":zip_interface",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+tsl_cc_test(
+    name = "zip_test",
+    size = "small",
+    srcs = [
+        "zip_test.cc",
+    ],
+    deps = [
+        ":env",
+        ":statusor",
+        ":zip",
+        "//third_party/libzip:zip",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "zip_util",
+    srcs = ["zip_util.cc"],
+    hdrs = ["zip_util.h"],
+    deps = [
+        ":env",
+        ":file_statistics",
+        ":ram_file_system",
+        ":statusor",
+        ":zip_interface",
+        "//third_party/libzip:zip",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:env",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:path",
+    ],
+)
+
+tsl_cc_test(
+    name = "zip_util_test",
+    srcs = ["zip_util_test.cc"],
+    deps = [
+        ":env",
+        ":zip_interface",
+        ":zip_util",
+        "//third_party/libzip:zip",
+        "//third_party/protobuf/io",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 
