@@ -53,25 +53,3 @@ diff --git a/src/python/grpcio/grpc/BUILD.bazel b/src/python/grpcio/grpc/BUILD.b
      imports = ["../"],
      deps = [
          ":_observability",
-
-diff --git a/MODULE.bazel b/MODULE.bazel
---- a/MODULE.bazel
-+++ b/MODULE.bazel
-@@ -60,7 +60,7 @@ bazel_dep(name = "rules_shell", version = "0.4.0", dev_dependency = True)
- # Python dependencies
- # ===================
- 
--bazel_dep(name = "rules_python", version = "1.5.4")
-+bazel_dep(name = "rules_python", version = "1.6.3")
- 
- PYTHON_VERSIONS = [
-     "3.9",
-@@ -68,7 +68,7 @@ PYTHON_VERSIONS = [
-     "3.11",
-     "3.12",
-     "3.13",
--    "3.14.0b2",
-+    "3.14",
- ]
- 
- python = use_extension("@rules_python//python/extensions:python.bzl", "python")

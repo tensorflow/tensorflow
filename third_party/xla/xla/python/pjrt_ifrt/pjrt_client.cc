@@ -377,7 +377,8 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
         device.set_to_string(std::string(pjrt_device->ToString()));
         device.set_debug_string(std::string(pjrt_device->DebugString()));
         // NOLINTEND(*-redundant-string-conversions)
-        SerializePjRtDeviceAttributes(pjrt_device->Attributes(), device);
+        SerializePjRtDeviceAttributes(pjrt_device->description().Attributes(),
+                                      device);
       }
     }
   }
@@ -419,7 +420,8 @@ LocalTopologyProto MakeLocalTopologyFromPjRtClient(
     device_proto.set_to_string(std::string(device->ToString()));
     device_proto.set_debug_string(std::string(device->DebugString()));
     // NOLINTEND(*-redundant-string-conversions)
-    SerializePjRtDeviceAttributes(device->Attributes(), device_proto);
+    SerializePjRtDeviceAttributes(device->description().Attributes(),
+                                  device_proto);
   }
 
   return local_topology_proto;
