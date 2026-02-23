@@ -129,6 +129,20 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 // Same as above, but with `minimum_tiles` = `dst->NumTiles() + 1`.
 bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst);
 
+// Merges `to_merge` into `dst` only if they are compatible. Returns if merging
+// happened.
+//
+// Compatibility checks:
+// 1. Both shardings must be NamedShardings (V3).
+// 2. They must share the same Mesh instance.
+// 3. Tensor ranks must match.
+// Merging Logic:
+// The merged sharding uses the longest sequence of axes for each dimension
+// if one is a prefix of the other.
+// A_merged(d) = A_1(d) if A_1(d) is prefix of A_2(d) else A_2(d)
+bool MergeNamedShardingIfCompatible(const HloSharding& to_merge,
+                                    HloSharding* dst);
+
 // Find a reasonable common sharding for a list of shardings. The reasonable
 // sharding should incur little(the least) amount of total resharding cost when
 // resharding all the shardings to this common sharding.
