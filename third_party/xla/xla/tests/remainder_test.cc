@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <utility>
-
 #include <gtest/gtest.h>
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"

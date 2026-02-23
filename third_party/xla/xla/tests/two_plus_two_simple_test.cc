@@ -15,13 +15,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
-#include <memory>
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
