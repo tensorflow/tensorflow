@@ -387,6 +387,7 @@ enum StatType {
   kMetadataCudaRuntimeVersion,
   kMetadataCudaDriverVersion,
   kLastStatType = kMetadataCudaDriverVersion,
+  kXProfRequest,
 };
 
 enum MegaScaleStatType : uint8_t {
