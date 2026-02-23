@@ -211,7 +211,8 @@ struct Options {
   // Should only be used for testing purposes. This function allows us to
   // modify the AllocationResult after the AllocationRequest has been processed
   // by AllocateSegment().
-  std::function<void(const AllocationRequest&, AllocationResult&)>
+  std::function<void(const AllocationRequest&, AllocationResult&,
+                     int64_t retry_number_lte)>
       allocation_result_modifier_testing_fn = nullptr;
 
   // Should only be used for testing purposes. This function allows us to

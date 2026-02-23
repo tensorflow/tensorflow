@@ -1448,7 +1448,8 @@ ENTRY entry {
   options_result_modifier.max_retries = 1;
   options_result_modifier.allocation_request_modifier_testing_fn = nullptr;
   options_result_modifier.allocation_result_modifier_testing_fn =
-      [](const AllocationRequest& request, AllocationResult& result) {
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number_lte) {
         if (request.allocation_value_to_update->defining_instruction()
                     ->name() == "p0" &&
             request.use->hlo_use.instruction->name() == "add0") {
@@ -1544,7 +1545,8 @@ ENTRY entry {
   // sync slice conversion target, so that maybe other constraints of the
   // allocation can be satisfied.
   options.allocation_result_modifier_testing_fn =
-      [](const AllocationRequest& request, AllocationResult& result) {
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number_lte) {
         if (request.allocation_value->defining_instruction()->name() ==
                 "p0_copy" &&
             request.use->hlo_use.instruction->name() == "concat") {
@@ -16807,6 +16809,96 @@ ENTRY entry {
       module.get(), {"mul0", "div0"},
       /*operand_index=*/1, /*operand_opcode=*/HloOpcode::kCopyDone,
       /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest, TestReresrvingPendingAllocations) {
+  // * negate0, negate3, and negate4 require contiguous allocations.
+  // * negate0 and negate4 are colored in alternate memory space.
+  // * Sort order is negate3, negate4, negate0 followed by other buffers.
+  // * When we force fail the allocation of negate0, the reserved allocation
+  //   should be re-reserved during repacking.
+  absl::string_view hlo_string = R"hlo(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param0 = f32[2,3]{1,0} parameter(1), sharding={replicated}
+  param1 = f32[4,3]{1,0} parameter(0), sharding={replicated}
+  param2 = f32[2,3]{1,0} parameter(2), sharding={replicated}
+  negate0 = f32[4,3]{1,0} negate(param1)
+  negate1 = f32[4,3]{1,0} negate(negate0)
+  negate2 = f32[4,3]{1,0} negate(negate1)
+  negate3 = f32[2,3]{1,0} negate(param0)
+  add0 = f32[4,3]{1,0} add(negate0, negate2)
+  negate4 = f32[2,3]{1,0} negate(param2)
+  tanh0 = f32[4,3]{1,0} tanh(add0)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add1 = f32[2,3]{1,0} add(negate3,negate5)
+  ROOT tuple0 = (f32[2,3]{1,0}, f32[4,3]{1,0}) tuple(add1, tanh0)
+})hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 72;
+  memory_space_options.verify = true;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->name() == "negate0" ||
+               position.instruction->name() == "negate3" ||
+               position.instruction->name() == "negate4";
+      };
+  HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  HloPosition negate4_position{FindInstruction(module.get(), "negate4"), {}};
+  memory_space_options.max_retries = 1;
+  memory_space_options.max_repacks = 1;
+  memory_space_options.buffer_colorings = {
+      {negate0_position, kAlternateMemorySpace},
+      {negate4_position, kAlternateMemorySpace}};
+  absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
+  auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
+    // 3 allocations: 2 committed allocations for negate3 and negate4
+    // 1 re-reserved allocation for negate0
+    EXPECT_EQ(allocations.size(), 3);
+  };
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map, check_fun, true);
+
+  memory_space_options.repacker = &repacker;
+  MsaBufferIntervalCompare buffer_interval_compare =
+      [](const MsaBufferInterval& lhs, const MsaBufferInterval& rhs) {
+        auto lookup = [](const MsaBufferInterval& x) {
+          int priority = 100;
+          if (x.buffer->instruction()->name() == "negate3") {
+            priority = 1;
+          }
+          if (x.buffer->instruction()->name() == "negate4") {
+            priority = 2;
+          }
+          if (x.buffer->instruction()->name() == "negate0") {
+            priority = 3;
+          }
+          return std::make_tuple(priority, x.buffer->instruction()->name());
+        };
+        return lookup(lhs) < lookup(rhs);
+      };
+
+  memory_space_options.allocation_result_modifier_testing_fn =
+      [](const AllocationRequest& request, AllocationResult& result,
+         int64_t retry_number_lte) {
+        if (request.allocation_value->defining_instruction()->name() ==
+                "negate0" &&
+            retry_number_lte <= 0 && result == AllocationResult::kSuccess) {
+          result = AllocationResult::kFailOutOfMemory;
+        }
+      };
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
+  AssignMemorySpace(module.get(), std::move(memory_space_options),
+                    buffer_interval_compare, &prefetch_interval_picker);
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
+  CheckMemorySpaceForInstructionNames(
+      module.get(), {"negate0", "negate4", "negate3"}, kAlternateMemorySpace);
 }
 
 }  // namespace

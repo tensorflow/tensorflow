@@ -280,7 +280,8 @@ class ReservedAllocation final : public Allocation {
   bool operator==(const ReservedAllocation& other) const;
 
   bool is_chunk_reserved_in_interval_tree() const { return reserved_; }
-  void chunk_freed_in_interval_tree() { reserved_ = false; }
+  void mark_chunk_freed_in_interval_tree() { reserved_ = false; }
+  void mark_chunk_reserved_in_interval_tree() { reserved_ = true; }
 
  private:
   // Indicates whether the chunk is still reserved in the interval_tree_.
