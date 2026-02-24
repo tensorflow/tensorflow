@@ -121,6 +121,8 @@ class HloBuffer {
 
   std::string ToString() const;
 
+  std::string ToDebugString() const;
+
   bool operator==(const HloBuffer& other) const;
   bool operator!=(const HloBuffer& other) const { return !(*this == other); }
 

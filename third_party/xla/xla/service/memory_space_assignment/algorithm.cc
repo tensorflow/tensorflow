@@ -632,6 +632,21 @@ void MsaAlgorithm::FindAliases(
                 << use.hlo_use.ToString() << " to " << root_alias;
         use.aliases.push_back(root_alias);
       }
+
+      // Special case for conditionals - the output of a conditional op must
+      // alias with the branch computation outputs.
+      auto it = branched_computation_root_to_conditional_instruction_.find(
+          use.hlo_use.instruction);
+      if (it != branched_computation_root_to_conditional_instruction_.end() &&
+          use.hlo_use.instruction->opcode() == HloOpcode::kTuple) {
+        ShapeIndex index = use.hlo_use.operand_index;
+        index.push_front(use.hlo_use.operand_number);
+        HloPosition conditional_output_position{it->second, index};
+        VLOG(1) << "Add use alias for counditional output position "
+                << conditional_output_position.ToString() << " to use "
+                << use.hlo_use.ToString();
+        use.aliases.push_back(conditional_output_position);
+      }
     }
   }
 }
@@ -3139,6 +3154,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
 
+  // Build a map from the root instructions of the branched computations of a
+  // conditional instruction to the conditional instruction.
+  for (const auto& instruction :
+       hlo_live_range_.flattened_instruction_sequence().instructions()) {
+    if (instruction->opcode() == HloOpcode::kConditional) {
+      for (const HloComputation* called_computation :
+           instruction->called_computations()) {
+        branched_computation_root_to_conditional_instruction_
+            [called_computation->root_instruction()] = instruction;
+      }
+    }
+  }
+
   if (options_.memory_bound_loop_optimizer_options.enabled()) {
     IdentifyAndOptimizeMemoryBoundLoops();
   }
@@ -3162,20 +3190,19 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
     JointAllocationProposal proposal = GetJointProposal(interval);
     if (proposal.allocation_values.empty()) {
-      VLOG(3) << "No allocation values for these joint-processed values.";
+      VLOG(3) << "No allocation values for these joint-processed values."
+              << interval.buffer->ToString();
       continue;
     }
     // Retry allocating this value with larger limits if allocation fails.
     bool repacked = false;
     for (int retry_number = 0; retry_number < options_.max_retries;
          retry_number++) {
-      for (auto& colocated_intervals : proposal.colocated_intervals) {
-        AddRequiredAssignmentsForColocatedIntervals(colocated_intervals);
-      }
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
       TF_ASSIGN_OR_RETURN(
           AllocationResult result,
-          AllocateAllocationValues(absl::MakeSpan(proposal.allocation_values)));
+          AllocateAllocationValues(absl::MakeSpan(proposal.allocation_values),
+                                   proposal.colocated_intervals));
       VLOG(2) << "Allocation result = " << ResultToString(result);
       VLOG(4)
           << "Non-finalized allocations after processing allocation values:";
@@ -3665,14 +3692,15 @@ std::vector<HloPositionOrUse> MsaAlgorithm::GetInefficientAllocationSites(
   return inefficient_sites;
 }
 
-void MsaAlgorithm::AddRequiredAssignmentsForColocatedIntervals(
-    absl::Span<const MsaBufferInterval* const> colocated_intervals) {
+void MsaAlgorithm::RequireConditionalOutputsInDefaultMemory(
+    absl::Span<const MsaBufferInterval* const> colocated_intervals,
+    HloPosition conditional_phi_position) {
   // TODO(berkin): For now, place the phi values due to conditionals in
   // default memory.
   for (const MsaBufferInterval* colocated_interval : colocated_intervals) {
     const HloValue* value = colocated_interval->buffer;
     for (const auto& position : value->positions()) {
-      if (position.instruction->opcode() == HloOpcode::kConditional) {
+      if (position == conditional_phi_position) {
         VLOG(3) << "Adding required assignment for condition output: "
                 << value->ToShortString();
         AddRequiredAssignment(position.instruction, position.index,
@@ -3889,8 +3917,87 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
   return uses_work_list;
 }
 
+absl::flat_hash_map<const AllocationValue*, HloPosition>
+MsaAlgorithm::GetAllocationValuesToConditionalPhiPositionsMap(
+    absl::Span<AllocationValue> allocation_values,
+    std::vector<std::vector<const MsaBufferInterval*>>& colocated_intervals) {
+  // Map from HloBuffer to AllocationValues with defining positions in that
+  // buffer.
+  absl::flat_hash_map<const HloBuffer*, std::vector<AllocationValue*>>
+      hlo_buffer_to_allocation_values;
+  for (AllocationValue& allocation_value : allocation_values) {
+    const HloBuffer& buffer = alias_analysis_.GetUniqueBufferAt(
+        allocation_value.defining_position().instruction,
+        allocation_value.defining_position().index);
+    hlo_buffer_to_allocation_values[&buffer].push_back(&allocation_value);
+  }
+
+  // If the joint proposal has a conditional phi, we create a map of all the
+  // allocation values that are aliased with the conditional phi. This map is
+  // later used to ensure that the branched computation outputs have the same
+  // offset as the conditional phi.
+  absl::flat_hash_map<const AllocationValue*, HloPosition>
+      allocation_value_to_conditional_phi_position;
+  for (AllocationValue& allocation_value : allocation_values) {
+    const HloInstruction* defining_instruction =
+        allocation_value.value()->instruction();
+    if (allocation_value.value()->is_phi() &&
+        defining_instruction->opcode() == HloOpcode::kConditional) {
+      // Check if the phi is required to be in the default memory.
+      std::optional<RequiredMemoryAssignment>
+          required_assignment_at_definition = RequiredMemoryAssignmentAt(
+              allocation_value.value(),
+              hlo_live_range_.instruction_schedule().at(
+                  allocation_value.defining_instruction()));
+      bool required_assignment_in_default_memory =
+          required_assignment_at_definition.has_value() &&
+          required_assignment_at_definition->memory_space ==
+              MemorySpace::kDefault;
+
+      // Check if the branched computation roots are not tuples.
+      bool branched_computation_roots_are_not_tuples = false;
+      for (const HloComputation* branched_computation :
+           defining_instruction->called_computations()) {
+        if (branched_computation->root_instruction()->opcode() !=
+            HloOpcode::kTuple) {
+          branched_computation_roots_are_not_tuples = true;
+          break;
+        }
+      }
+
+      // If the phi is required to be in the default memory, or if the branched
+      // computation roots are not tuples, we require the conditional outputs
+      // to be in the default memory.
+      if (required_assignment_in_default_memory ||
+          branched_computation_roots_are_not_tuples) {
+        for (auto& colocated_interval_group : colocated_intervals) {
+          RequireConditionalOutputsInDefaultMemory(
+              colocated_interval_group, allocation_value.defining_position());
+        }
+        continue;
+      }
+
+      // We record the conditional phi position for each allocation value that
+      // has a defining position in the same buffer as the conditional phi.
+      const HloBuffer phi_buffer = alias_analysis_.GetUniqueBufferAt(
+          allocation_value.defining_position().instruction,
+          allocation_value.defining_position().index);
+      for (const AllocationValue* aliased_allocation_value :
+           hlo_buffer_to_allocation_values[&phi_buffer]) {
+        if (allocation_value.defining_position() !=
+            aliased_allocation_value->defining_position()) {
+          allocation_value_to_conditional_phi_position
+              [aliased_allocation_value] = allocation_value.defining_position();
+        }
+      }
+    }
+  }
+  return allocation_value_to_conditional_phi_position;
+}
+
 absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
-    absl::Span<AllocationValue> allocation_values) {
+    absl::Span<AllocationValue> allocation_values,
+    std::vector<std::vector<const MsaBufferInterval*>>& colocated_intervals) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   absl::flat_hash_map<const HloInstruction*, std::vector<size_t>>
       value_indices_by_sync_inst;
@@ -3901,6 +4008,13 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       value_indices_by_sync_inst[inst].push_back(idx);
     }
   }
+
+  // A map from AllocationValues that have their defining position in the same
+  // buffer as a conditional phi position to the conditional phi position.
+  absl::flat_hash_map<const AllocationValue*, HloPosition>
+      allocation_value_to_conditional_phi_position =
+          GetAllocationValuesToConditionalPhiPositionsMap(allocation_values,
+                                                          colocated_intervals);
 
   // Extract all use times
   std::vector<int64_t> all_use_times;
@@ -3925,6 +4039,11 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       preferred_offset_for_allocation_value;
   absl::flat_hash_map<const AllocationValue*, int64_t>
       definition_time_for_allocation_value;
+
+  // Data structure to contain the preferred offset for a given phi position in
+  // a conditional.
+  absl::flat_hash_map<HloPosition, AliasedOffset*>
+      preferred_offsets_for_phi_positions;
   AllocationResult result = AllocationResult::kSuccess;
   for (int alloc_value_idx = 0; alloc_value_idx < allocation_values.size();
        ++alloc_value_idx) {
@@ -3952,6 +4071,21 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     const AllocationValue::Use* previous_use = nullptr;
     auto uses_work_list = GenerateAllocationSegmentContexts(
         allocation_values, value_indices_by_sync_inst, alloc_value_idx);
+
+    // If any allocation value in with the same buffer as a conditional phi is
+    // allocated in alternate memory, try to allocate other allocation values
+    // in the same buffer at the same offset as the conditional phi.
+    auto allocation_value_conditional_phi_position =
+        allocation_value_to_conditional_phi_position.find(&allocation_value);
+    AliasedOffset* phi_position_offset = nullptr;
+    if (allocation_value_conditional_phi_position !=
+        allocation_value_to_conditional_phi_position.end()) {
+      auto phi_position_offset_it = preferred_offsets_for_phi_positions.find(
+          allocation_value_conditional_phi_position->second);
+      if (phi_position_offset_it != preferred_offsets_for_phi_positions.end()) {
+        phi_position_offset = phi_position_offset_it->second;
+      }
+    }
 
     // Iterate over the uses.
     for (auto& entry : uses_work_list) {
@@ -4000,6 +4134,9 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           all_use_times, entry.only_extend_existing_allocation,
           allocation_values.subspan(0, alloc_value_idx),
           /*shape_override=*/std::nullopt);
+      if (phi_position_offset != nullptr) {
+        request.preferred_offset = phi_position_offset;
+      }
       if (options_.allocation_request_modifier_testing_fn) {
         options_.allocation_request_modifier_testing_fn(request);
       }
@@ -4123,6 +4260,34 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
       MaybeCreateMirroredParentAllocationForWhileUse(
           allocation_value_to_update, use, use_time, allocation_values,
           preferred_offset_for_computation);
+    }
+
+    if (allocation_value_conditional_phi_position !=
+            allocation_value_to_conditional_phi_position.end() &&
+        phi_position_offset == nullptr) {
+      if (allocation_value.allocation_sequence()->empty() ||
+          allocation_value.allocation_sequence()->back()->memory_space() !=
+              MemorySpace::kAlternate) {
+        // If the allocation is not in the alternate memory, then we add a
+        // required assignment in the default memory for the conditional
+        // outputs.
+        for (auto& colocated_interval_group : colocated_intervals) {
+          RequireConditionalOutputsInDefaultMemory(
+              colocated_interval_group,
+              allocation_value_conditional_phi_position->second);
+        }
+      } else {
+        VLOG(3) << "Setting preferred offset for conditional phi position: "
+                << allocation_value_conditional_phi_position->second.ToString()
+                << " to "
+                << GetAliasedOffset(
+                       *allocation_value.allocation_sequence()->back())
+                       ->offset;
+        preferred_offsets_for_phi_positions
+            [allocation_value_conditional_phi_position->second] =
+                GetAliasedOffset(
+                    *allocation_value.allocation_sequence()->back());
+      }
     }
   }
 
@@ -6237,7 +6402,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       RequiredMemoryAssignmentAt(request.allocation_value->value(),
                                  request.inclusive_start_time);
   std::optional<MemorySpace> required_memory_space_at_start;
-  if (required_assignment_at_start) {
+  if (required_assignment_at_start.has_value()) {
     required_memory_space_at_start = required_assignment_at_start->memory_space;
   }
   // Find required assignment both for the use and its aliases. If they are both
@@ -6257,7 +6422,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
     }
   }
   std::optional<MemorySpace> required_memory_space_at_end;
-  if (required_assignment_at_end) {
+  if (required_assignment_at_end.has_value()) {
     required_memory_space_at_end = required_assignment_at_end->memory_space;
   }
 
@@ -6298,7 +6463,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       << " start time: " << request.inclusive_start_time
       << " end time: " << request.end_time;
 
-  if (required_assignment_at_start) {
+  if (required_assignment_at_start.has_value()) {
     bool needs_required_allocation = true;
     if (!allocation_sequence->empty()) {
       auto prev_allocation_it = std::find_if(

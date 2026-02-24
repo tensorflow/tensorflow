@@ -812,7 +812,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // other. Returns either kSuccess if all of the sites could be placed in the
   // alternate memory or a bitwise OR of failure reasons why they couldn't
   absl::StatusOr<AllocationResult> AllocateAllocationValues(
-      absl::Span<AllocationValue> allocation_values);
+      absl::Span<AllocationValue> allocation_values,
+      std::vector<std::vector<const MsaBufferInterval*>>& colocated_intervals);
+
+  // Returns a map from AllocationValues that have their defining position in
+  // the same buffer as a conditional phi position to the conditional phi
+  // position.
+  absl::flat_hash_map<const AllocationValue*, HloPosition>
+  GetAllocationValuesToConditionalPhiPositionsMap(
+      absl::Span<AllocationValue> allocation_values,
+      std::vector<std::vector<const MsaBufferInterval*>>& colocated_intervals);
 
   // Checks for a situation in which an HloValue has more than one live
   // AllocationValue at the same time, and the already processed AllocationValue
@@ -938,9 +947,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
 
-  // Goes through the colocated intervals and adds any required assignment.
-  void AddRequiredAssignmentsForColocatedIntervals(
-      absl::Span<const MsaBufferInterval* const> colocated_intervals);
+  // Adds required assignment in the default memory for conditional outputs
+  // aliased to the given conditional phi position.
+  void RequireConditionalOutputsInDefaultMemory(
+      absl::Span<const MsaBufferInterval* const> colocated_intervals,
+      HloPosition conditional_phi_position);
 
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(const HloInstruction* instruction,
@@ -1364,6 +1375,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_;
+
+  // Maps from a root instruction of a branched computation of a conditional
+  // instruction to the conditional instruction.
+  absl::flat_hash_map<HloInstruction*, HloInstruction*>
+      branched_computation_root_to_conditional_instruction_;
 };
 
 }  // namespace memory_space_assignment
