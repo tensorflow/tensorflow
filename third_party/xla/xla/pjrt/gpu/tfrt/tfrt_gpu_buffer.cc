@@ -295,7 +295,6 @@ TfrtGpuBuffer::AcquireExternalReference() {
         tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   }
 
-
   tsl::BlockUntilReady(tracked_device_buffer_->definition_event());
   if (tracked_device_buffer_->definition_event().IsError()) {
     return tracked_device_buffer_->definition_event().GetError();
@@ -516,7 +515,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
       if (generated.IsKnownReady()) {
         copy_to_literal_and_set_event(generated.Await());
       } else {
-        generated.OnReady(client->blocking_thread_pool()->AsExecutor(),
+        generated.OnReady(*client->blocking_thread_pool(),
                           std::move(copy_to_literal_and_set_event));
       }
     }
