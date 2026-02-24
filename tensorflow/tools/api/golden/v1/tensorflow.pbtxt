@@ -10,7 +10,7 @@ tf_module {
   }
   member {
     name: "AttrValue"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "COMPILER_VERSION"
@@ -34,7 +34,7 @@ tf_module {
   }
   member {
     name: "ConfigProto"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "CriticalSection"
@@ -54,7 +54,7 @@ tf_module {
   }
   member {
     name: "Event"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FIFOQueue"
@@ -78,7 +78,7 @@ tf_module {
   }
   member {
     name: "GPUOptions"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "GRAPH_DEF_VERSION"
@@ -102,7 +102,7 @@ tf_module {
   }
   member {
     name: "GraphDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "GraphKeys"
@@ -110,11 +110,11 @@ tf_module {
   }
   member {
     name: "GraphOptions"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "HistogramProto"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "IdentityReader"
@@ -138,7 +138,7 @@ tf_module {
   }
   member {
     name: "LogMessage"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "MONOLITHIC_BUILD"
@@ -146,7 +146,7 @@ tf_module {
   }
   member {
     name: "MetaGraphDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Module"
@@ -154,11 +154,11 @@ tf_module {
   }
   member {
     name: "NameAttrList"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "NodeDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "NoneTensorSpec"
@@ -174,7 +174,7 @@ tf_module {
   }
   member {
     name: "OptimizerOptions"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "OptionalSpec"
@@ -218,11 +218,11 @@ tf_module {
   }
   member {
     name: "RunMetadata"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "RunOptions"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Session"
@@ -230,7 +230,7 @@ tf_module {
   }
   member {
     name: "SessionLog"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "SparseConditionalAccumulator"
@@ -254,11 +254,11 @@ tf_module {
   }
   member {
     name: "Summary"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "SummaryMetadata"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "TFRecordReader"
@@ -278,7 +278,7 @@ tf_module {
   }
   member {
     name: "TensorInfo"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "TensorShape"

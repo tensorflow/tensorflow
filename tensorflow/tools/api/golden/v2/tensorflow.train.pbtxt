@@ -2,7 +2,7 @@ path: "tensorflow.train"
 tf_module {
   member {
     name: "BytesList"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Checkpoint"
@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "ClusterDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "ClusterSpec"
@@ -34,7 +34,7 @@ tf_module {
   }
   member {
     name: "Example"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "ExponentialMovingAverage"
@@ -42,39 +42,39 @@ tf_module {
   }
   member {
     name: "Feature"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FeatureList"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FeatureLists"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Features"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "FloatList"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Int64List"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "JobDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "SequenceExample"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "ServerDef"
-    mtype: "<class \'google._upb._message.MessageMeta\'>"
+    mtype: "<class \'google.protobuf.internal.python_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "TrackableView"
