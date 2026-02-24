@@ -113,7 +113,7 @@ mlir::DenseIntElementsAttr getReplicaGroups(
     sdy::AxisRefListAttr reductionAxesAttr, MeshAttr mesh,
     OpBuilder& rewriter) {
   SmallVector<AxisRefAttr> meshAxisRefs =
-      getOrderedAxisRefs(reductionAxesAttr, mesh);
+      xla::sdy::getOrderedAxisRefs(reductionAxesAttr, mesh);
 
   ArrayRef<AxisRefAttr> reductionAxes = reductionAxesAttr.getValue();
   int64_t groupSize = 1;
@@ -204,7 +204,8 @@ void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
         // `CollectiveOpGroupMode::kFlattenedID` mode.
         auto newAllReduce = stablehlo::AllReduceOp::create(
             blockBuilder, op.getLoc(), arg.getType(), arg,
-            getReplicaGroups(op.getReductionAxesAttr(), mesh, blockBuilder),
+            xla::sdy::getReplicaGroups(op.getReductionAxesAttr(), mesh,
+                                       blockBuilder),
             channelHandle,
             /*use_global_device_ids=*/true);
         // No need to add a sharding to the all-reduce, since it's inside a
@@ -233,7 +234,7 @@ int64_t convertReduceScatter(sdy::ReduceScatterOp op, int64_t nextChannelId,
             continue;
           }
           DenseIntElementsAttr replicaGroups =
-              getReplicaGroups(reductionAxes, mesh, blockBuilder);
+              xla::sdy::getReplicaGroups(reductionAxes, mesh, blockBuilder);
           int64_t groupSize = replicaGroups.getShapedType().getShape().back();
           CHECK_EQ(curShape[dim] % groupSize, 0) << kNonDivisibleShardingError;
           curShape[dim] /= groupSize;

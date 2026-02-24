@@ -425,7 +425,8 @@ HloSharding convertToHloSharding(
   }
 
   // We will add all axes and let canonicalization merge adjacent axes.
-  SmallVector<AxisRefAttr> meshAxisRefs = getOrderedAxisRefs(sdySharding, mesh);
+  SmallVector<AxisRefAttr> meshAxisRefs =
+      xla::sdy::getOrderedAxisRefs(sdySharding, mesh);
   SmallVector<int64_t> reshapeDims(meshAxisRefs.size());
   SmallVector<int> transposePerm(meshAxisRefs.size());
 
