@@ -266,22 +266,6 @@ class ExportNamedComputationsPass
         }
       }
     });
-
-    // Drop uncalled inlineable manual computation funcs.
-    // TODO(enver): Drop generically, not just inlined manual computation funcs.
-    llvm::SmallVector<FuncOp> uncalledInlineableManualComputationFuncs;
-    SymbolUserMap symbolUserMap(symbolTableCollection, moduleOp);
-    for (FuncOp funcOp : moduleOp.getOps<FuncOp>()) {
-      if (StringRef funcSymName = funcOp.getName();
-          funcSymName.contains(kInlineableManualComputationFuncName) &&
-          symbolUserMap.useEmpty(funcOp)) {
-        uncalledInlineableManualComputationFuncs.push_back(funcOp);
-      }
-    }
-    // TODO(enver): Erase directly without collecting on a vector.
-    for (FuncOp funcOp : uncalledInlineableManualComputationFuncs) {
-      symbolTable.erase(funcOp);
-    }
   }
 
   StringRef getArgument() const override {

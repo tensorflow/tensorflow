@@ -74,6 +74,9 @@ using ::mlir::OperationPass;
 using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
+using ::mlir::SymbolTable;
+using ::mlir::SymbolTableCollection;
+using ::mlir::SymbolUserMap;
 using ::mlir::Value;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
@@ -401,7 +404,8 @@ class ShardMapExportPass
   void runOnOperation() final {
     ManualComputationToParentManualAxes parentManualCompAxes;
     ModuleOp module = getOperation();
-    mlir::SymbolTable symbolTable(module);
+    SymbolTableCollection symbolTableCollection;
+    SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     // Need to go from parent into child/nested `ManualComputationOp`s in order
     // to make sure we have the latest `parentManualCompAxes`, so do a pre-order
     // walk.
@@ -423,6 +427,22 @@ class ShardMapExportPass
       convertManualComputationOp(op, parentManualCompAxes, symbolTable,
                                  createHloShardingConstraints);
     });
+
+    // Drop uncalled inlineable manual computation funcs.
+    // TODO(enver): Drop generically, not just inlined manual computation funcs.
+    llvm::SmallVector<FuncOp> uncalledInlineableManualComputationFuncs;
+    SymbolUserMap symbolUserMap(symbolTableCollection, module);
+    for (FuncOp funcOp : module.getOps<FuncOp>()) {
+      if (StringRef funcSymName = funcOp.getName();
+          funcSymName.contains(kInlineableManualComputationFuncName) &&
+          symbolUserMap.useEmpty(funcOp)) {
+        uncalledInlineableManualComputationFuncs.push_back(funcOp);
+      }
+    }
+    // TODO(enver): Erase directly without collecting on a vector.
+    for (FuncOp funcOp : uncalledInlineableManualComputationFuncs) {
+      symbolTable.erase(funcOp);
+    }
   }
 
   StringRef getArgument() const override {
