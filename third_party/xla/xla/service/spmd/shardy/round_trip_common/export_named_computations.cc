@@ -133,6 +133,121 @@ StringAttr createFuncOpOrGetFromCache(
   return funcSymName;
 }
 
+void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
+                             bool dedupFunctionsFully) {
+  mlir::Block& moduleBlock = moduleOp.getRegion().front();
+  llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
+
+  if (dedupFunctionsFully) {
+    using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
+    llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
+    llvm::SmallDenseMap<FuncNameKey, std::pair<NamedComputationOp, int64_t>>
+        funcToNamedComputations;
+    // TODO(enver): Instead of a SmallDenseMap and a separate SmallVector to
+    // guarantee a deterministic iteration order, consider using
+    // llvm::MapVector.
+    // Required to iterate on functions in a deterministic order.
+    llvm::SmallVector<FuncNameKey> funcNames;
+    moduleOp.walk([&](NamedComputationOp namedComputationOp) {
+      ManualAxesAttr manualAxesAttr =
+          namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+      ComputationKey key = {namedComputationOp.getName(),
+                            namedComputationOp.getInShardings().value_or(
+                                TensorShardingPerValueAttr()),
+                            namedComputationOp.getOutShardings().value_or(
+                                TensorShardingPerValueAttr()),
+                            manualAxesAttr};
+      const int64_t callSiteCount = funcCallSiteCounts[key]++;
+      FuncNameKey funcNameKey =
+          std::pair(namedComputationOp.getName(), manualAxesAttr);
+      if (auto [it, inserted] = funcToNamedComputations.try_emplace(
+              funcNameKey, namedComputationOp, callSiteCount);
+          !inserted) {
+        auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
+        if (callSiteCount > cachedCallSiteCount) {
+          cachedNamedComputationOp = namedComputationOp;
+          cachedCallSiteCount = callSiteCount;
+        }
+      } else {  // inserted is true.
+        funcNames.push_back(funcNameKey);
+      }
+    });
+
+    for (FuncNameKey funcNameKey : funcNames) {
+      auto& [namedComputationOp, callSiteCount] =
+          funcToNamedComputations.find(funcNameKey)->second;
+      mlir::IRRewriter rewriter(namedComputationOp);
+      rewriter.setInsertionPointToEnd(&moduleBlock);
+      ManualAxesAttr manualAxesAttr =
+          namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+      StringAttr funcSymName =
+          createFuncOp(namedComputationOp, rewriter, symbolTable,
+                       namedComputationOp.getInShardings(),
+                       namedComputationOp.getOutShardings(), manualAxesAttr);
+      funcCache.try_emplace(
+          ComputationKey{namedComputationOp.getName(),
+                         TensorShardingPerValueAttr(),
+                         TensorShardingPerValueAttr(), manualAxesAttr},
+          funcSymName);
+    }
+  }
+
+  // NOTE: The walk needs to be in post order, which is the default order, to
+  // account for nested named computations.
+  moduleOp.walk([&](NamedComputationOp namedComputationOp) {
+    mlir::IRRewriter rewriter(namedComputationOp);
+    rewriter.setInsertionPointToEnd(&moduleBlock);
+
+    ManualAxesAttr manualAxesAttr =
+        namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+    std::optional<TensorShardingPerValueAttr> inShardings =
+        namedComputationOp.getInShardings();
+    std::optional<TensorShardingPerValueAttr> outShardings =
+        namedComputationOp.getOutShardings();
+    if (manualAxesAttr) {
+      CHECK(!manualAxesAttr.empty());
+      CHECK(inShardings.has_value());
+      CHECK(outShardings.has_value());
+    }
+    StringAttr funcSymName = createFuncOpOrGetFromCache(
+        namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
+        inShardings, outShardings, dedupFunctionsFully);
+
+    // Replace the `NamedComputationOp` with a `CallOp`.
+    rewriter.setInsertionPoint(namedComputationOp);
+    mlir::SmallVector<NamedAttribute> callOpAttrs(
+        namedComputationOp->getDiscardableAttrs());
+    auto callOp = rewriter.replaceOpWithNewOp<CallOp>(
+        namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
+        namedComputationOp.getOperands());
+    callOp->setAttrs(callOpAttrs);
+
+    // Copy the func output shardings to the call op.
+    FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
+    if (TensorShardingPerValueAttr funcResultShardings =
+            getFuncResultShardings(callOp, funcOp, symbolTable);
+        funcResultShardings) {
+      mlir::sdy::setShardings(callOp, funcResultShardings);
+      if (outShardings.has_value()) {
+        for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
+                 funcResultShardings.getShardings(),
+                 outShardings->getShardings(), callOp.getResults())) {
+          if (!funcResultSharding.isEquivalent(outSharding)) {
+            rewriter.setInsertionPointAfterValue(result);
+            auto copyOp =
+                mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
+            mlir::sdy::setShardings(copyOp, outSharding);
+            rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
+          }
+        }
+      }
+      if (manualAxesAttr) {
+        callOp->setAttr(kManualAxes, manualAxesAttr);
+      }
+    }
+  });
+}
+
 // Converts a `NamedComputationOp` into a `CallOp`.
 class ExportNamedComputationsPass
     : public mlir::PassWrapper<ExportNamedComputationsPass,
@@ -140,8 +255,10 @@ class ExportNamedComputationsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportNamedComputationsPass)
 
-  explicit ExportNamedComputationsPass(bool dedupFunctionsFully) {
+  explicit ExportNamedComputationsPass(bool dedupFunctionsFully,
+                                       bool enableNativeNonFlatSupport) {
     this->dedupFunctionsFully = dedupFunctionsFully;
+    this->enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   }
 
   ExportNamedComputationsPass() = default;
@@ -149,123 +266,21 @@ class ExportNamedComputationsPass
   explicit ExportNamedComputationsPass(
       const ExportNamedComputationsPass& other) {
     this->dedupFunctionsFully = other.dedupFunctionsFully;
+    this->enableNativeNonFlatSupport = other.enableNativeNonFlatSupport;
   }
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
     SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
-    mlir::Block& moduleBlock = moduleOp.getRegion().front();
-    llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
-    if (dedupFunctionsFully) {
-      using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
-      llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
-      llvm::SmallDenseMap<FuncNameKey, std::pair<NamedComputationOp, int64_t>>
-          funcToNamedComputations;
-      // TODO(enver): Instead of a SmallDenseMap and a separate SmallVector to
-      // guarantee a deterministic iteration order, consider using
-      // llvm::MapVector.
-      // Required to iterate on functions in a deterministic order.
-      llvm::SmallVector<FuncNameKey> funcNames;
-      moduleOp.walk([&](NamedComputationOp namedComputationOp) {
-        ManualAxesAttr manualAxesAttr =
-            namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
-        ComputationKey key = {namedComputationOp.getName(),
-                              namedComputationOp.getInShardings().value_or(
-                                  TensorShardingPerValueAttr()),
-                              namedComputationOp.getOutShardings().value_or(
-                                  TensorShardingPerValueAttr()),
-                              manualAxesAttr};
-        const int64_t callSiteCount = funcCallSiteCounts[key]++;
-        FuncNameKey funcNameKey =
-            std::pair(namedComputationOp.getName(), manualAxesAttr);
-        if (auto [it, inserted] = funcToNamedComputations.try_emplace(
-                funcNameKey, namedComputationOp, callSiteCount);
-            !inserted) {
-          auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
-          if (callSiteCount > cachedCallSiteCount) {
-            cachedNamedComputationOp = namedComputationOp;
-            cachedCallSiteCount = callSiteCount;
-          }
-        } else {  // inserted is true.
-          funcNames.push_back(funcNameKey);
-        }
-      });
-
-      for (FuncNameKey funcNameKey : funcNames) {
-        auto& [namedComputationOp, callSiteCount] =
-            funcToNamedComputations.find(funcNameKey)->second;
-        mlir::IRRewriter rewriter(namedComputationOp);
-        rewriter.setInsertionPointToEnd(&moduleBlock);
-        ManualAxesAttr manualAxesAttr =
-            namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
-        StringAttr funcSymName =
-            createFuncOp(namedComputationOp, rewriter, symbolTable,
-                         namedComputationOp.getInShardings(),
-                         namedComputationOp.getOutShardings(), manualAxesAttr);
-        funcCache.try_emplace(
-            ComputationKey{namedComputationOp.getName(),
-                           TensorShardingPerValueAttr(),
-                           TensorShardingPerValueAttr(), manualAxesAttr},
-            funcSymName);
-      }
-    }
-
-    // NOTE: The walk needs to be in post order, which is the default order, to
-    // account for nested named computations.
-    moduleOp.walk([&](NamedComputationOp namedComputationOp) {
-      mlir::IRRewriter rewriter(namedComputationOp);
-      rewriter.setInsertionPointToEnd(&moduleBlock);
-
-      ManualAxesAttr manualAxesAttr =
-          namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
-      std::optional<TensorShardingPerValueAttr> inShardings =
-          namedComputationOp.getInShardings();
-      std::optional<TensorShardingPerValueAttr> outShardings =
-          namedComputationOp.getOutShardings();
-      if (manualAxesAttr) {
-        CHECK(!manualAxesAttr.empty());
-        CHECK(inShardings.has_value());
-        CHECK(outShardings.has_value());
-      }
-      StringAttr funcSymName = createFuncOpOrGetFromCache(
-          namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
-          inShardings, outShardings, dedupFunctionsFully);
-
-      // Replace the `NamedComputationOp` with a `CallOp`.
-      rewriter.setInsertionPoint(namedComputationOp);
-      mlir::SmallVector<NamedAttribute> callOpAttrs(
-          namedComputationOp->getDiscardableAttrs());
-      auto callOp = rewriter.replaceOpWithNewOp<CallOp>(
-          namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
-          namedComputationOp.getOperands());
-      callOp->setAttrs(callOpAttrs);
-
-      // Copy the func output shardings to the call op.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
-      if (TensorShardingPerValueAttr funcResultShardings =
-              getFuncResultShardings(callOp, funcOp, symbolTable);
-          funcResultShardings) {
-        mlir::sdy::setShardings(callOp, funcResultShardings);
-        if (outShardings.has_value()) {
-          for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
-                   funcResultShardings.getShardings(),
-                   outShardings->getShardings(), callOp.getResults())) {
-            if (!funcResultSharding.isEquivalent(outSharding)) {
-              rewriter.setInsertionPointAfterValue(result);
-              auto copyOp =
-                  mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
-              mlir::sdy::setShardings(copyOp, outSharding);
-              rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
-            }
-          }
-        }
-        if (manualAxesAttr) {
-          callOp->setAttr(kManualAxes, manualAxesAttr);
-        }
-      }
-    });
+    if (!enableNativeNonFlatSupport) {
+      exportNamedComputations(moduleOp, symbolTable, dedupFunctionsFully);
+    } else {
+			moduleOp.walk([&](NamedComputationOp namedComputationOp) {
+				
+			}
+		}
 
     // Drop uncalled inlineable manual computation funcs.
     // TODO(enver): Drop generically, not just inlined manual computation funcs.
@@ -307,13 +322,21 @@ class ExportNamedComputationsPass
           "is false, meaning it will deduplicate only if the input and output "
           "shardings are the same."),
       llvm::cl::init(false)};
+
+  Option<bool> enableNativeNonFlatSupport{
+      *this, "enable-native-non-flat-support",
+      llvm::cl::desc("Whether to propagate shardings directly on a non-flat "
+                     "graph without flattening it. The default is false, "
+                     "meaning it will flatten the graph and then propagate."),
+      llvm::cl::init(false)};
 };
 
 }  // namespace
 
 std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(
-    bool dedupFunctionsFully) {
-  return std::make_unique<ExportNamedComputationsPass>(dedupFunctionsFully);
+    bool dedupFunctionsFully, bool enableNativeNonFlatSupport) {
+  return std::make_unique<ExportNamedComputationsPass>(
+      dedupFunctionsFully, enableNativeNonFlatSupport);
 }
 
 void registerExportNamedComputationsPass() {

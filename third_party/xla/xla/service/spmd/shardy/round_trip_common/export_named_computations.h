@@ -36,7 +36,7 @@ namespace sdy {
 // the same name as the `NamedComputationOp` in the module, the MLIR symbol
 // table will change it to `{name}_#`.
 std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(
-    bool dedupFunctionsFully);
+    bool dedupFunctionsFully, bool enableNativeNonFlatSupport);
 
 // Register the xla-sdy-export-named-computations pass.
 void registerExportNamedComputationsPass();

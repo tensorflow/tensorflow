@@ -41,6 +41,12 @@ struct StablehloExportPipelineOptions
           "each caller function. The default is false, meaning it will "
           "deduplicate only if the input and output shardings are the same."),
       llvm::cl::init(false)};
+  Option<bool> enableNativeNonFlatSupport{
+      *this, "enable-native-non-flat-support",
+      llvm::cl::desc("Whether to propagate shardings directly on a non-flat "
+                     "graph without flattening it. The default is false, "
+                     "meaning it will flatten the graph and then propagate."),
+      llvm::cl::init(false)};
   Option<bool> addMissingShardingToControlFlow{
       *this, "add-missing-sharding-to-control-flow",
       llvm::cl::desc(
