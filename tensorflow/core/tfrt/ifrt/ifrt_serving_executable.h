@@ -205,6 +205,12 @@ class IfrtServingExecutable {
                         IfrtLoadedVariableRegistry::KeyEq>
         variable_arrays;
     std::vector<xla::HloSharding> arg_hlo_shardings;
+    std::vector<xla::ifrt::ShardingRef> arg_ifrt_shardings;
+    // Only populated when portable execution is used, currently only single
+    // device sharding is supported.
+    absl::flat_hash_map<xla::ifrt::DeviceId,
+                        std::shared_ptr<xla::ifrt::SingleDeviceSharding>>
+        portable_single_device_shardings;
     std::vector<xla::HloSharding> retval_hlo_shardings;
 
     // Input tensor shapes that matches the Tf2Hlo compiled shapes.
