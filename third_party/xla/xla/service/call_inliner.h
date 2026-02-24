@@ -89,6 +89,12 @@ class CallInliner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
+  void SetOverridePolicy(std::optional<std::function<InlineOverridePolicy(
+                             const CallGraph&, const HloInstruction*)>>
+                             override_policy) {
+    override_policy_ = std::move(override_policy);
+  }
+
  private:
   absl::StatusOr<bool> InlineAndLegalize(
       const CallGraph& call_graph, HloComputation* computation,
