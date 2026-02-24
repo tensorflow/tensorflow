@@ -17,5 +17,7 @@ temporary_patch_list = [
     "//third_party/triton:temporary/test_analysis_visibility.patch",
     "//third_party/triton:temporary/h100_full_when_needed.patch",
     "//third_party/triton:temporary/wgmma_pipeline_fix.patch",
+    "//third_party/triton:temporary/add_remove.patch",
+    "//third_party/triton:temporary/rename.patch",
     # Add new patches just above this line. Format is "//third_party/triton:temporary/example.patch"
 ]

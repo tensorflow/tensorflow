@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/additional_file.txt
+@@ -0,0 +1,5 @@
++halloooooooooooo
++
++patch
++patch
++patch!
+--- a/cmake/llvm-hash.txt
++++ /dev/null
+@@ -1 +0,0 @@
+-53f84636eb86e6c64c1ec405f70b3dd2b27f4ddc
