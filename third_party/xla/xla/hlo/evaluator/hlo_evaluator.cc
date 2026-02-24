@@ -2433,8 +2433,9 @@ ShapeUtil::IndexIterationSpace IterationSpaceForOutputOffsetIndices(
     bool is_output_window_dim =
         absl::c_binary_search(dim_numbers.offset_dims(), i);
     if (is_output_window_dim) {
-      while (absl::c_binary_search(dim_numbers.collapsed_slice_dims(),
-                                   slice_sizes_idx)) {
+      while (IsCollapsedOrBatchingDim(dim_numbers.collapsed_slice_dims(),
+                                      dim_numbers.operand_batching_dims(),
+                                      slice_sizes_idx)) {
         slice_sizes_idx++;
       }
       index_count[i] = slice_sizes[slice_sizes_idx++];

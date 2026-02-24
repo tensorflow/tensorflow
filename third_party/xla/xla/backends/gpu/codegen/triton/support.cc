@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 
 #include <string>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,10 +66,25 @@ CodegenDecision IsTritonSupportedDataType(
         return CodegenDecision::Allow();
       }
       if (gpu_version.IsRocm()) {
-        return CodegenDecision::Forbid("F8E4M3FN is not supported on ROCm.");
+        if (gpu_version.rocm_compute_capability()->has_ocp_fp8_support()) {
+          return CodegenDecision::Allow();
+        }
+        return CodegenDecision::Forbid(
+            "F8E4M3FN/F8E5M2 requires OCP FP8 support on ROCm.");
       }
       return CodegenDecision::Forbid(
-          "Unsupported GPU architecture for F8E4M3FN.");
+          "Unsupported GPU architecture for F8E4M3FN/F8E5M2.");
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+      if (gpu_version.IsRocm()) {
+        if (gpu_version.rocm_compute_capability()->has_nanoo_fp8_support()) {
+          return CodegenDecision::Allow();
+        }
+        return CodegenDecision::Forbid(
+            "F8E4M3FNUZ/F8E5M2FNUZ requires NANOO FP8 support on ROCm.");
+      }
+      return CodegenDecision::Forbid(
+          "F8E4M3FNUZ/F8E5M2FNUZ is only supported on ROCm.");
     case BF16:
       if (gpu_version.IsCuda()) {
         return CodegenDecision::Allow();
@@ -400,6 +413,11 @@ CodegenDecision AreTypesSupportedByAlgUnsetDot(
       return CodegenDecision::Forbid(
           "Dot operation for F8E4M3FN is not supported before Hopper.");
     }
+    if (auto* rocm_cc = gpu_version.rocm_compute_capability();
+        rocm_cc && !rocm_cc->has_ocp_fp8_support()) {
+      return CodegenDecision::Forbid(
+          "Dot operation for F8E4M3FN requires OCP FP8 support on ROCm.");
+    }
   }
 
   auto supported_float_types = {BF16, F16, F32, F64, F8E5M2, F8E4M3FN};
@@ -620,23 +638,33 @@ CodegenDecision IsTritonSupportedFusion(
                    " is not supported: ", decision.Explain()));
 }
 
+bool AnyOperandIsFusion(const HloInstruction& hlo) {
+  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+    return operand->opcode() == HloOpcode::kFusion;
+  });
+}
+
 CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
   CHECK(hlo.opcode() == HloOpcode::kConcatenate);
+  if (hlo.shape().element_type() == S4) {
+    return CodegenDecision::Forbid("S4 is not supported.");
+  }
   if (!IsInTritonNestedGemmFusion(hlo)) {
     return CodegenDecision::Forbid(
         "Only concatenates in nested GEMM fusions are supported.");
   }
-  // TODO(b/393299275): remove this operand filter once migration is
-  // complete and priority fusion can produce nests.
-  if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-        return operand->opcode() != HloOpcode::kFusion;
-      })) {
-    return CodegenDecision::Forbid(
-        "Only support concatenates with nested GEMM fusions as a "
-        "parameter.");
+  if (AnyOperandIsFusion(hlo)) {
+    // TODO(b/393299275): remove this operand filter once migration is
+    // complete and priority fusion can produce nests.
+    if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+          return operand->opcode() != HloOpcode::kFusion;
+        })) {
+      return CodegenDecision::Forbid(
+          "Only support concatenates with nested GEMM fusions as a "
+          "parameter.");
+    }
   }
-  return CodegenDecision(hlo.shape().element_type() != S4,
-                         "S4 is not supported.");
+  return CodegenDecision::Allow();
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
@@ -733,8 +761,19 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         return CodegenDecision::Forbid(
             "only bitcasts with the same number of elements are supported");
       }
-      return CodegenDecision(instr.shape().element_type() != S4,
-                             "S4 is not supported.");
+      // With Triton we use i1 type for PRED, while on HLO level we assume that
+      // PRED takes 8 bits.
+      {
+        PrimitiveType operand_type = instr.operand(0)->shape().element_type();
+        PrimitiveType result_type = instr.shape().element_type();
+        if (result_type != operand_type &&
+            (result_type == PRED || operand_type == PRED)) {
+          return CodegenDecision::Forbid(
+              "bitcasts with different element types are not supported if PRED "
+              "is involved");
+        }
+        return CodegenDecision(result_type != S4, "S4 is not supported.");
+      }
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
     case HloOpcode::kSlice:

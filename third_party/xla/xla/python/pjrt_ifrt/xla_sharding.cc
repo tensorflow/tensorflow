@@ -310,12 +310,9 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
                                 single_device_shard_semantics);
   }
-  for (const xla::OpSharding::Type subgroup_type :
-       xla_hlo_sharding_.subgroup_types()) {
-    if (subgroup_type != xla::OpSharding::REPLICATED) {
-      return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
-                                  single_device_shard_semantics);
-    }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
+                                single_device_shard_semantics);
   }
   if (xla_hlo_sharding_.num_devices() != num_devices) {
     return absl::InvalidArgumentError(

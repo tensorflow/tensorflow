@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
@@ -323,12 +324,26 @@ uint64_t GetNetworkThroughputBytesPerSec(absl::Duration runtime,
 
 IotaReplicaGroupList GetCollectiveDeviceList(
     absl::string_view collective_device_list_unparsed) {
-  auto collective_device_list =
-      xla::ParseCollectiveDeviceListOnly(collective_device_list_unparsed);
-  CHECK_OK(collective_device_list);
-  CHECK(collective_device_list->iota_replica_group_list().has_value());
+  auto device_list_or_status =
+      xla::ParseCollectiveDeviceListBase(collective_device_list_unparsed);
+  if (device_list_or_status.ok()) {
+    std::unique_ptr<xla::CollectiveDeviceListBase> list =
+        std::move(device_list_or_status.value());
+    if (auto* iota = dynamic_cast<xla::IotaReplicaGroupList*>(list.get())) {
+      return *iota;
+    }
+    if (auto iota = list->MaybeConvertToIotaReplicaGroupList()) {
+      return *iota;
+    }
+  }
 
-  return *collective_device_list->iota_replica_group_list();
+  IotaReplicaGroupListProto proto;
+  if (tsl::protobuf::TextFormat::ParseFromString(
+          collective_device_list_unparsed, &proto)) {
+    return IotaReplicaGroupList::FromProto(proto);
+  }
+  LOG(FATAL) << "Failed to parse collective device list: "
+             << collective_device_list_unparsed;
 }
 
 }  // namespace

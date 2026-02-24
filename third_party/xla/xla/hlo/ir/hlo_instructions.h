@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -1146,6 +1147,9 @@ class HloScanInstruction : public HloDimensionsInstruction {
 
   // Returns the dimension along which to scan.
   int64_t scan_dimension() const { return HloInstruction::dimensions(0); }
+
+  // Returns the size of the dimension along which to scan.
+  absl::StatusOr<int64_t> GetScanDimSize() const;
 
   // Returns whether the scan is in reverse order.
   bool is_reverse() const { return is_reverse_; }
@@ -2975,8 +2979,6 @@ inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
 inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
 inline constexpr absl::string_view kCreateBufferCustomCallTarget =
     "CreateBuffer";
-inline constexpr absl::string_view kCollectiveMetadataCustomCallTarget =
-    "CollectiveMetadata";
 
 }  // namespace xla
 

@@ -172,9 +172,13 @@ xla_test(
     # own synchronization. This can lead to TSAN false positives that are hard
     # to track down.
     backend_tags = {
-        gpu: ["notsan"]
-        for gpu in GPU_BACKENDS
-        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
+        "h100": [
+            "full",
+            "notsan",
+        ],
+        "gpu": [
+            "notsan",
+        ],
     },
     backends = ["cpu"] + [
         gpu

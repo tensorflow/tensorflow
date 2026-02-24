@@ -29,11 +29,17 @@ namespace gpu {
 
 class CopyDoneThunk : public Thunk {
  public:
-  CopyDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
+  CopyDoneThunk(ThunkInfo thunk_info,
                 std::shared_ptr<CopyThunk::AsyncEvents> events,
-                const HloInstruction* copy_start_instr);
+                int64_t copy_start_instr_id);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<CopyDoneThunk>> FromProto(
+      ThunkInfo thunk_info, const CopyDoneThunkProto& thunk_proto,
+      CopyThunk::AsyncEventsMap& async_events_map);
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 
@@ -41,7 +47,7 @@ class CopyDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
-  const HloInstruction* copy_start_instr_;
+  int64_t copy_start_instr_id_;
 };
 
 }  // namespace gpu

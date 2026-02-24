@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -70,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
 #include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -79,8 +81,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -394,6 +400,24 @@ absl::string_view PjRtCApiClient::platform_version() const {
   return platform_version_;
 }
 
+absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+PjRtCApiClient::RuntimeAbiVersion() const {
+  PJRT_AbiVersion_Extension* extension =
+      FindExtension<PJRT_AbiVersion_Extension>(
+          PJRT_Extension_Type::PJRT_Extension_Type_AbiVersion);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Client_RuntimeAbiVersion_Args args;
+  args.struct_size = PJRT_Client_RuntimeAbiVersion_Args_STRUCT_SIZE;
+  args.client = c_client_.get();
+  RETURN_STATUS_IF_PJRT_ERROR(extension->client_runtime_abi_version(&args),
+                              c_api_);
+  return std::make_unique<PjRtCApiRuntimeAbiVersion>(args.abi_version, c_api_,
+                                                     extension);
+}
+
 std::optional<PjRtPluginAttributes> PjRtCApiClient::plugin_attributes() const {
   return PjRtPluginAttributes{c_api_->pjrt_api_version.major_version,
                               c_api_->pjrt_api_version.minor_version,
@@ -433,7 +457,7 @@ absl::StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
-    PjRtGlobalDeviceId global_device_id) const {
+    GlobalDeviceId global_device_id) const {
   PJRT_Client_LookupDevice_Args args;
   args.struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -444,7 +468,7 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
-    PjRtLocalDeviceId local_device_id) const {
+    LocalDeviceId local_device_id) const {
   PJRT_Client_LookupAddressableDevice_Args args;
   args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
@@ -1178,7 +1202,7 @@ PjRtCApiClient::MakeCrossHostReceiveBuffers(
 
 absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
     absl::Span<PjRtBuffer* const> buffers,
-    absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+    absl::Span<const GlobalDeviceId> dst_global_device_ids,
     std::vector<CrossHostTransferKey> transfer_keys) {
   // Get C API extension.
   const PJRT_Api* c_api = pjrt_c_api();
@@ -1228,7 +1252,7 @@ absl::StatusOr<std::vector<Future<>>> PjRtCApiClient::CrossHostSendBuffers(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 PjRtCApiClient::CrossHostReceiveBuffers(
     xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
-    absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+    absl::Span<const GlobalDeviceId> src_global_device_ids,
     std::vector<CrossHostTransferKey> transfer_keys) {
   // Get C API extension.
   const PJRT_Api* c_api = pjrt_c_api();
@@ -1532,34 +1556,27 @@ int PjRtCApiDeviceDescription::process_index() const {
   return args.process_index;
 }
 
-void PjRtCApiDeviceDescription::InitAttributes() {
-  attributes_ = {};
-  PJRT_DeviceDescription_Attributes_Args args;
-  args.struct_size = PJRT_DeviceDescription_Attributes_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  args.device_description = device_description_;
-  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Attributes(&args),
-                            c_api_);
-
-  for (int i = 0; i < args.num_attributes; ++i) {
-    const auto& attribute = args.attributes[i];
+absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
+DeviceAttributesFromPjRtValues(
+    absl::Span<const PJRT_NamedValue> pjrt_attributes) {
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes;
+  for (const PJRT_NamedValue& attribute : pjrt_attributes) {
     std::string attribute_name(attribute.name, attribute.name_size);
     switch (attribute.type) {
       case PJRT_NamedValue_Type::PJRT_NamedValue_kString: {
         std::string string_value(attribute.string_value, attribute.value_size);
-        attributes_[attribute_name] = PjRtDeviceAttribute(string_value);
+        attributes[attribute_name] = PjRtDeviceAttribute(string_value);
         break;
       }
       case PJRT_NamedValue_Type::PJRT_NamedValue_kInt64: {
-        attributes_[attribute_name] =
-            PjRtDeviceAttribute(attribute.int64_value);
+        attributes[attribute_name] = PjRtDeviceAttribute(attribute.int64_value);
         break;
       }
       case PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List: {
         const int64_t* array_ptr(attribute.int64_array_value);
         std::vector<int64_t> int64_array(array_ptr,
                                          array_ptr + attribute.value_size);
-        attributes_[attribute_name] = PjRtDeviceAttribute(int64_array);
+        attributes[attribute_name] = PjRtDeviceAttribute(int64_array);
         break;
       }
       // Do not allow other types (such as
@@ -1569,14 +1586,26 @@ void PjRtCApiDeviceDescription::InitAttributes() {
       // PJRT library is a newer version that returns types not supported by
       // this client). Failing here to prevent undefined behavior.
       default: {
-        LOG(FATAL) << "PJRT_DeviceDescription_Attributes() returned attribute '"
-                   << attribute_name << "' with unsupported type "
-                   << attribute.type
-                   << " to PjRtCApiDeviceDescription::InitAttributes()";
+        LOG(FATAL) << "Attribute '" << attribute_name
+                   << "' has unsupported type " << attribute.type;
         break;
       }
     }
   }
+  return attributes;
+}
+
+void PjRtCApiDeviceDescription::InitAttributes() {
+  attributes_ = {};
+  PJRT_DeviceDescription_Attributes_Args args;
+  args.struct_size = PJRT_DeviceDescription_Attributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device_description = device_description_;
+  pjrt::LogFatalIfPjrtError(c_api_->PJRT_DeviceDescription_Attributes(&args),
+                            c_api_);
+
+  attributes_ = DeviceAttributesFromPjRtValues(
+      absl::MakeSpan(args.attributes, args.num_attributes));
 }
 
 const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
@@ -1656,7 +1685,14 @@ PjRtCApiDevice::PjRtCApiDevice(PJRT_Device* device, PjRtCApiClient* client)
     : client_(client),
       device_(device),
       description_(client->pjrt_c_api(),
-                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {}
+                   pjrt::GetDeviceDescription(client->pjrt_c_api(), device)) {
+  if (client_->pjrt_c_api()->pjrt_api_version.minor_version >= 92 &&
+      client_->pjrt_c_api()->PJRT_Device_GetAttributes != nullptr) {
+    InitAttributes();
+  } else {
+    attributes_ = description_.Attributes();
+  }
+}
 
 PjRtClient* PjRtCApiDevice::client() const { return client_; }
 
@@ -1670,14 +1706,14 @@ bool PjRtCApiDevice::IsAddressable() const {
   return args.is_addressable;
 }
 
-PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id() const {
+LocalChipId PjRtCApiDevice::local_hardware_id() const {
   PJRT_Device_LocalHardwareId_Args args;
   args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.device = device_;
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
-  return PjRtLocalHardwareId(args.local_hardware_id);
+  return LocalChipId(args.local_hardware_id);
 }
 
 absl::StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {
@@ -1777,6 +1813,26 @@ absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
   args.device = device_;
   RETURN_STATUS_IF_PJRT_ERROR(extension->get_stream(&args), c_api);
   return args.stream;
+}
+
+void PjRtCApiDevice::InitAttributes() {
+  PJRT_Device_GetAttributes_Args args;
+  args.struct_size = PJRT_Device_GetAttributes_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device = device_;
+  args.attributes = nullptr;
+  args.num_attributes = 0;
+  args.device_attributes = nullptr;
+  args.attributes_deleter = nullptr;
+
+  pjrt::LogFatalIfPjrtError(
+      client_->pjrt_c_api()->PJRT_Device_GetAttributes(&args),
+      client_->pjrt_c_api());
+
+  attributes_ = DeviceAttributesFromPjRtValues(
+      absl::MakeSpan(args.attributes, args.num_attributes));
+  CHECK(args.attributes_deleter != nullptr);
+  args.attributes_deleter(args.device_attributes);
 }
 
 absl::StatusOr<bool> PjRtCApiDevice::PoisonExecution(int32_t launch_id,
@@ -2026,12 +2082,20 @@ static absl::StatusOr<Shape> GetOutputShapeHelper(
 std::optional<std::vector<OpSharding>>
 PjRtCApiExecutable::GetParameterShardings() const {
   const PJRT_Api* api = pjrt_c_api();
+  if (api->pjrt_api_version.major_version == 0 &&
+      api->pjrt_api_version.minor_version < 91) {
+    // If the PJRT C API version is too old, fall back to the default
+    // implementation.
+    return this->PjRtExecutable::GetParameterShardings();
+  }
   PJRT_Shardings_Extension* extension =
       pjrt::FindExtension<PJRT_Shardings_Extension>(
           api, PJRT_Extension_Type::PJRT_Extension_Type_Shardings);
   if (extension == nullptr ||
-      extension->PJRT_Shardings_PJRT_Executable_OutputShardings == nullptr) {
-    return std::nullopt;
+      extension->PJRT_Shardings_PJRT_Executable_ParameterShardings == nullptr) {
+    // If we can't find PJRT_Shardings_PJRT_Executable_ParameterShardings
+    // support, fall back to the default implementation.
+    return this->PjRtExecutable::GetParameterShardings();
   }
   PJRT_Shardings_PJRT_Executable_ParameterShardings_Args args;
   args.struct_size =
@@ -2143,12 +2207,20 @@ PjRtCApiExecutable::GetOutputDimensions() const {
 std::optional<std::vector<OpSharding>> PjRtCApiExecutable::GetOutputShardings()
     const {
   const PJRT_Api* api = pjrt_c_api();
+  if (api->pjrt_api_version.major_version == 0 &&
+      api->pjrt_api_version.minor_version < 91) {
+    // If the PJRT C API version is too old, fall back to the default
+    // implementation.
+    return this->PjRtExecutable::GetOutputShardings();
+  }
   PJRT_Shardings_Extension* extension =
       pjrt::FindExtension<PJRT_Shardings_Extension>(
           api, PJRT_Extension_Type::PJRT_Extension_Type_Shardings);
   if (extension == nullptr ||
       extension->PJRT_Shardings_PJRT_Executable_OutputShardings == nullptr) {
-    return std::nullopt;
+    // If we can't find PJRT_Shardings_PJRT_Executable_OutputShardings
+    // support, fall back to the default implementation.
+    return this->PjRtExecutable::GetOutputShardings();
   }
   PJRT_Shardings_PJRT_Executable_OutputShardings_Args args;
   args.struct_size =
@@ -2181,6 +2253,62 @@ std::optional<std::vector<OpSharding>> PjRtCApiExecutable::GetOutputShardings()
     shardings->push_back(std::move(sharding));
   }
   return shardings;
+}
+absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+PjRtCApiExecutable::GetParameterLayouts() const {
+  const PJRT_Api* c_api = pjrt_c_api();
+  if (c_api->pjrt_api_version.major_version == 0 &&
+      c_api->pjrt_api_version.minor_version < 93) {
+    // If the PJRT C API version is too old, fall back to the default
+    // implementation.
+    return this->PjRtExecutable::GetParameterLayouts();
+  }
+  PJRT_Layouts_Extension* extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (extension == nullptr ||
+      extension->PJRT_Layouts_MemoryLayout_Serialize == nullptr ||
+      extension->PJRT_Layouts_PJRT_Executable_GetParameterLayouts == nullptr) {
+    // If we can't find PJRT_Layouts_PJRT_Executable_GetParameterLayouts
+    // support, fall back to the default implementation.
+    return this->PjRtExecutable::GetParameterLayouts();
+  }
+
+  PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args args;
+  args.struct_size =
+      PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_executable();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_PJRT_Executable_GetParameterLayouts(&args),
+      c_api);
+
+  std::vector<std::shared_ptr<const PjRtLayout>> layouts;
+  layouts.reserve(args.num_parameters);
+  for (int i = 0; i < args.num_parameters; ++i) {
+    // TODO(b/343274093): returns a PjRtLayout that wraps a C API layout
+    // directly instead of de/serializing into an xla::Layout.
+    PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+    serialize_args.struct_size =
+        PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+    serialize_args.extension_start = nullptr;
+    serialize_args.layout = args.layouts[i];
+    pjrt::LogFatalIfPjrtError(
+        extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args), c_api);
+
+    // Clean up `PJRT_Layouts_SerializedLayout`.
+    absl::Cleanup cleanup = [&serialize_args] {
+      serialize_args.serialized_layout_deleter(
+          serialize_args.serialized_layout);
+    };
+
+    std::string serialized_layout(serialize_args.serialized_bytes,
+                                  serialize_args.serialized_bytes_size);
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                        PjRtLayout::Deserialize(serialized_layout));
+    layouts.push_back(std::move(pjrt_layout));
+  }
+  return layouts;
 }
 
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
@@ -2232,10 +2360,9 @@ PjRtCApiExecutable::GetOutputLayouts() const {
 
     std::string serialized_layout(serialize_args.serialized_bytes,
                                   serialize_args.serialized_bytes_size);
-    absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout =
-        PjRtLayout::Deserialize(serialized_layout);
-    CHECK_OK(pjrt_layout.status());
-    layouts.push_back(*std::move(pjrt_layout));
+    TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                        PjRtLayout::Deserialize(serialized_layout));
+    layouts.push_back(std::move(pjrt_layout));
   }
   return layouts;
 }
@@ -2350,6 +2477,24 @@ absl::StatusOr<std::string> PjRtCApiExecutable::FingerprintExecutable() const {
                               c_api_);
   return std::string(args.executable_fingerprint,
                      args.executable_fingerprint_size);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+PjRtCApiExecutable::GetAbiVersion() const {
+  PJRT_AbiVersion_Extension* extension =
+      pjrt::FindExtension<PJRT_AbiVersion_Extension>(
+          c_api_, PJRT_Extension_Type::PJRT_Extension_Type_AbiVersion);
+  if (extension == nullptr) {
+    return absl::UnimplementedError(
+        "AbiVersion extension not implemented in this PJRT plugin.");
+  }
+  PJRT_Executable_GetAbiVersion_Args args;
+  args.struct_size = PJRT_Executable_GetAbiVersion_Args_STRUCT_SIZE;
+  args.executable = c_executable();
+  RETURN_STATUS_IF_PJRT_ERROR(extension->executable_get_abi_version(&args),
+                              c_api_);
+  return std::make_unique<PjRtCApiExecutableAbiVersion>(args.abi_version,
+                                                        c_api_, extension);
 }
 
 absl::StatusOr<CompileOptions> PjRtCApiExecutable::GetCompileOptions() const {
@@ -3953,7 +4098,7 @@ PjRtCApiTopologyDescription::CoreCountOfDefaultTypePerProcess() const {
   return args.core_count_of_default_type_per_process;
 }
 
-absl::StatusOr<PjRtIdContainer<PjRtProcessId>>
+absl::StatusOr<PjRtIdContainer<ProcessId>>
 PjRtCApiTopologyDescription::ProcessIds() const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented("ProcessIds is not supported by the PJRT C API.");
@@ -3967,17 +4112,17 @@ PjRtCApiTopologyDescription::ProcessIds() const {
   args.process_ids = process_ids_storage.data();
   RETURN_STATUS_IF_PJRT_ERROR(tpu_topology_extension_->process_ids(&args),
                               c_api_);
-  PjRtIdContainer<PjRtProcessId> ids;
+  PjRtIdContainer<ProcessId> ids;
   ids.reserve(args.num_process_ids);
   for (size_t i = 0; i < args.num_process_ids; ++i) {
-    ids.push_back(PjRtProcessId(args.process_ids[i]));
+    ids.push_back(ProcessId(args.process_ids[i]));
   }
   return ids;
 }
 
-absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
+absl::StatusOr<PjRtIdContainer<GlobalDeviceId>>
 PjRtCApiTopologyDescription::LogicalDeviceOfDefaultTypeIdsOnProcess(
-    PjRtProcessId process_id) const {
+    ProcessId process_id) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented(
         "LogicalDeviceOfDefaultTypeIdsOnProcess is not supported by the PJRT "
@@ -3994,18 +4139,17 @@ PjRtCApiTopologyDescription::LogicalDeviceOfDefaultTypeIdsOnProcess(
   args.logical_device_of_default_type_ids = logical_device_ids_storage.data();
   RETURN_STATUS_IF_PJRT_ERROR(
       tpu_topology_extension_->logical_device_ids_on_process(&args), c_api_);
-  PjRtIdContainer<PjRtGlobalDeviceId> ids;
+  PjRtIdContainer<GlobalDeviceId> ids;
   ids.reserve(args.num_logical_device_ids);
   for (size_t i = 0; i < args.num_logical_device_ids; ++i) {
-    ids.push_back(
-        PjRtGlobalDeviceId(args.logical_device_of_default_type_ids[i]));
+    ids.push_back(GlobalDeviceId(args.logical_device_of_default_type_ids[i]));
   }
   return ids;
 }
 
-absl::StatusOr<std::pair<PjRtProcessId, int>>
+absl::StatusOr<std::pair<ProcessId, int>>
 PjRtCApiTopologyDescription::ProcessIdAndIndexOnProcessForChip(
-    PjRtGlobalChipId chip_id) const {
+    GlobalChipId chip_id) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented(
         "ProcessIdAndIndexOnProcessForChip is not supported by the PJRT C "
@@ -4018,12 +4162,12 @@ PjRtCApiTopologyDescription::ProcessIdAndIndexOnProcessForChip(
   args.chip_id = chip_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(
       tpu_topology_extension_->proc_id_and_idx_on_proc_for_chip(&args), c_api_);
-  return std::make_pair(PjRtProcessId(args.process_id), args.index_on_process);
+  return std::make_pair(ProcessId(args.process_id), args.index_on_process);
 }
 
-absl::StatusOr<std::pair<PjRtProcessId, int>> PjRtCApiTopologyDescription::
+absl::StatusOr<std::pair<ProcessId, int>> PjRtCApiTopologyDescription::
     ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-        xla::PjRtGlobalDeviceId device_id) const {
+        xla::GlobalDeviceId device_id) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented(
         "ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType is not "
@@ -4037,12 +4181,11 @@ absl::StatusOr<std::pair<PjRtProcessId, int>> PjRtCApiTopologyDescription::
   RETURN_STATUS_IF_PJRT_ERROR(
       tpu_topology_extension_->proc_id_and_idx_on_proc_for_logi_device(&args),
       c_api_);
-  return std::make_pair(PjRtProcessId(args.process_id), args.index_on_process);
+  return std::make_pair(ProcessId(args.process_id), args.index_on_process);
 }
 
 absl::StatusOr<PjRtDeviceDimensions>
-PjRtCApiTopologyDescription::ProcessCoordFromId(
-    PjRtProcessId process_id) const {
+PjRtCApiTopologyDescription::ProcessCoordFromId(ProcessId process_id) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented(
         "ProcessCoordFromId is not supported by the PJRT C API.");
@@ -4060,7 +4203,7 @@ PjRtCApiTopologyDescription::ProcessCoordFromId(
       absl::MakeSpan(coords.data(), args.coords_num_dims));
 }
 
-absl::StatusOr<PjRtGlobalChipId> PjRtCApiTopologyDescription::ChipIdFromCoord(
+absl::StatusOr<GlobalChipId> PjRtCApiTopologyDescription::ChipIdFromCoord(
     const PjRtDeviceDimensions& chip) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented("ChipIdFromCoord is not supported by the PJRT C API.");
@@ -4072,10 +4215,10 @@ absl::StatusOr<PjRtGlobalChipId> PjRtCApiTopologyDescription::ChipIdFromCoord(
   args.coords_num_dims = chip.size();
   RETURN_STATUS_IF_PJRT_ERROR(
       tpu_topology_extension_->chip_id_from_coord(&args), c_api_);
-  return PjRtGlobalChipId(args.chip_id);
+  return GlobalChipId(args.chip_id);
 }
 
-absl::StatusOr<xla::PjRtGlobalDeviceId> PjRtCApiTopologyDescription::
+absl::StatusOr<xla::GlobalDeviceId> PjRtCApiTopologyDescription::
     LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
         const PjRtDeviceDimensions& chip, int core_index) const {
   if (tpu_topology_extension_ == nullptr) {
@@ -4097,12 +4240,12 @@ absl::StatusOr<xla::PjRtGlobalDeviceId> PjRtCApiTopologyDescription::
   RETURN_STATUS_IF_PJRT_ERROR(
       tpu_topology_extension_->logical_device_id_from_chip_coord_and_idx(&args),
       c_api_);
-  return PjRtGlobalDeviceId(args.logical_device_of_default_type_id);
+  return GlobalDeviceId(args.logical_device_of_default_type_id);
 }
 
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 PjRtCApiTopologyDescription::ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-    xla::PjRtGlobalDeviceId device_id) const {
+    xla::GlobalDeviceId device_id) const {
   if (tpu_topology_extension_ == nullptr) {
     return Unimplemented(
         "ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType is not supported "
@@ -4406,6 +4549,122 @@ absl::StatusOr<std::unique_ptr<PjRtPhaseCompiler>> GetCApiPhaseCompiler() {
         "instead.");
   }
   return GetCApiPhaseCompiler(device_types[0]);
+}
+
+PjRtCApiRuntimeAbiVersion::PjRtCApiRuntimeAbiVersion(
+    PJRT_RuntimeAbiVersion* c_abi_version, const PJRT_Api* c_api,
+    const PJRT_AbiVersion_Extension* extension)
+    : c_abi_version_(c_abi_version), c_api_(c_api), extension_(extension) {}
+
+PjRtCApiRuntimeAbiVersion::~PjRtCApiRuntimeAbiVersion() {
+  PJRT_RuntimeAbiVersion_Destroy_Args args;
+  args.struct_size = PJRT_RuntimeAbiVersion_Destroy_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  pjrt::LogFatalIfPjrtError(extension_->runtime_abi_version_destroy(&args),
+                            c_api_);
+}
+
+absl::Status PjRtCApiRuntimeAbiVersion::IsCompatibleWith(
+    const PjRtRuntimeAbiVersion& runtime_abi_version) const {
+  PJRT_RuntimeAbiVersion_IsCompatibleWithRuntime_Args args;
+  args.struct_size =
+      PJRT_RuntimeAbiVersion_IsCompatibleWithRuntime_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  args.other_abi_version =
+      tensorflow::down_cast<const PjRtCApiRuntimeAbiVersion&>(
+          runtime_abi_version)
+          .c_abi_version();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension_->runtime_abi_version_is_compatible_with_runtime(&args),
+      c_api_);
+  return absl::OkStatus();
+}
+
+absl::Status PjRtCApiRuntimeAbiVersion::IsCompatibleWith(
+    const PjRtExecutableAbiVersion& executable_abi_version) const {
+  PJRT_RuntimeAbiVersion_IsCompatibleWithExecutable_Args args;
+  args.struct_size =
+      PJRT_RuntimeAbiVersion_IsCompatibleWithExecutable_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  args.executable_abi_version =
+      tensorflow::down_cast<const PjRtCApiExecutableAbiVersion&>(
+          executable_abi_version)
+          .c_abi_version();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension_->runtime_abi_version_is_compatible_with_executable(&args),
+      c_api_);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<PjRtRuntimeAbiVersionProto> PjRtCApiRuntimeAbiVersion::ToProto()
+    const {
+  PJRT_RuntimeAbiVersion_ToProto_Args args;
+  args.struct_size = PJRT_RuntimeAbiVersion_ToProto_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  RETURN_STATUS_IF_PJRT_ERROR(extension_->runtime_abi_version_to_proto(&args),
+                              c_api_);
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_proto_deleter(args.serialized_proto_holder);
+  };
+  PjRtRuntimeAbiVersionProto proto;
+  if (!proto.ParseFromString(
+          std::string(args.serialized_proto, args.serialized_proto_size))) {
+    return absl::InternalError(
+        "PjRtCApiRuntimeAbiVersion::ToProto: Failed to parse "
+        "PjRtRuntimeAbiVersionProto");
+  }
+  return proto;
+}
+
+PjRtPlatformId PjRtCApiRuntimeAbiVersion::platform_id() const {
+  PJRT_RuntimeAbiVersion_PlatformId_Args args;
+  args.struct_size = PJRT_RuntimeAbiVersion_PlatformId_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  pjrt::LogFatalIfPjrtError(extension_->runtime_abi_version_platform_id(&args),
+                            c_api_);
+  return args.platform_id;
+}
+
+PjRtCApiExecutableAbiVersion::PjRtCApiExecutableAbiVersion(
+    PJRT_ExecutableAbiVersion* c_abi_version, const PJRT_Api* c_api,
+    const PJRT_AbiVersion_Extension* extension)
+    : c_abi_version_(c_abi_version), c_api_(c_api), extension_(extension) {}
+
+PjRtCApiExecutableAbiVersion::~PjRtCApiExecutableAbiVersion() {
+  PJRT_ExecutableAbiVersion_Destroy_Args args;
+  args.struct_size = PJRT_ExecutableAbiVersion_Destroy_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  pjrt::LogFatalIfPjrtError(extension_->executable_abi_version_destroy(&args),
+                            c_api_);
+}
+
+absl::StatusOr<PjRtExecutableAbiVersionProto>
+PjRtCApiExecutableAbiVersion::ToProto() const {
+  PJRT_ExecutableAbiVersion_ToProto_Args args;
+  args.struct_size = PJRT_ExecutableAbiVersion_ToProto_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension_->executable_abi_version_to_proto(&args), c_api_);
+  absl::Cleanup cleanup = [&args] {
+    args.serialized_proto_deleter(args.serialized_proto_holder);
+  };
+  PjRtExecutableAbiVersionProto proto;
+  if (!proto.ParseFromString(
+          std::string(args.serialized_proto, args.serialized_proto_size))) {
+    return absl::InternalError(
+        "PjRtCApiExecutableAbiVersion::ToProto: Failed to parse "
+        "PjRtExecutableAbiVersionProto");
+  }
+  return proto;
+}
+
+PjRtPlatformId PjRtCApiExecutableAbiVersion::platform_id() const {
+  PJRT_ExecutableAbiVersion_PlatformId_Args args;
+  args.struct_size = PJRT_ExecutableAbiVersion_PlatformId_Args_STRUCT_SIZE;
+  args.abi_version = c_abi_version_;
+  pjrt::LogFatalIfPjrtError(
+      extension_->executable_abi_version_platform_id(&args), c_api_);
+  return args.platform_id;
 }
 
 }  // namespace xla

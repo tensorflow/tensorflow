@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
@@ -474,9 +474,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  if (std::optional<double> latency = GetCustomCallLatencyMetadata(instr)) {
-    VLOG(10) << "NodeCost: Returning latency from custom call for "
-             << instr->name() << ": " << *latency << " us";
+  if (const std::optional<TimeCost> latency = GetLatencyFromMetadata(*instr)) {
     return *latency;
   }
   if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||

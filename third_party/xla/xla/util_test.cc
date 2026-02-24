@@ -409,6 +409,27 @@ TEST(UtilTest, PackInt4) {
   }
 }
 
+class PackUnpackIntNTest : public testing::TestWithParam<int> {};
+
+TEST_P(PackUnpackIntNTest, RoundTrip) {
+  const int bitwidth = GetParam();
+  std::vector<char> input(15);
+  for (int i = 0; i < input.size(); ++i) {
+    input[i] = i & LsbMask<uint8_t>(bitwidth);
+  }
+
+  std::vector<char> packed(CeilOfRatio<int64_t>(input.size(), 8 / bitwidth));
+  PackIntN(bitwidth, input, absl::MakeSpan(packed));
+  std::vector<char> unpacked(input.size());
+  UnpackIntN(bitwidth, packed, absl::MakeSpan(unpacked));
+  for (size_t i = 0; i < input.size(); ++i) {
+    EXPECT_EQ(unpacked[i], input[i]) << i;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(PackUnpackIntNTest, PackUnpackIntNTest,
+                         testing::Values(1, 2, 4));
+
 TEST(UtilTest, MaybeOwningTestNull) {
   MaybeOwning<char> m(nullptr);
   EXPECT_EQ(m.get(), nullptr);

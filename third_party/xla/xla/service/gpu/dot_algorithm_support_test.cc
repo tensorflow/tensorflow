@@ -175,6 +175,18 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
       GTEST_SKIP() << "TODO: Triton unsupported in ROCm";
     }
   }
+
+  // CublasLt does not support FP8 fast accumulation.
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  if (debug_options.xla_gpu_enable_cublaslt() &&
+      params.algorithm ==
+          PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM &&
+      params.lhs_storage_type == F8E4M3FN &&
+      params.rhs_storage_type == F8E4M3FN &&
+      params.output_storage_type == F8E5M2) {
+    is_algorithm_supported = false;
+  }
+
   if (is_algorithm_supported) {
     EXPECT_TRUE(Run(hlo_text)) << "Failed to run HLO: " << hlo_text;
 

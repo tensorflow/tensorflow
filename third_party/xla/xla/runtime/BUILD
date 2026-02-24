@@ -102,6 +102,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hang_watchdog",
+    srcs = ["hang_watchdog.cc"],
+    hdrs = ["hang_watchdog.h"],
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_cc_test(
+    name = "hang_watchdog_test",
+    srcs = ["hang_watchdog_test.cc"],
+    deps = [
+        ":hang_watchdog",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
     name = "object_pool",
     hdrs = ["object_pool.h"],
     deps = [
@@ -158,6 +187,17 @@ cc_library(
     hdrs = ["device_id.h"],
     deps = [
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "chip_id",
+    hdrs = ["chip_id.h"],
+    deps = [
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

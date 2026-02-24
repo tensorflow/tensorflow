@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -670,6 +671,10 @@ absl::Status CudaCommandBuffer::Trace(
 absl::Status CudaCommandBuffer::LaunchGraph(Stream* stream) {
   VLOG(3) << "Launch command buffer executable graph " << graph_exec()
           << " on a stream: " << stream;
+  // [GPU] Memory leak in Collective Ops when using Command Buffer github #36487
+  // https://github.com/openxla/xla/issues/36487
+  // Disable the leak check temporarily.
+  absl::LeakCheckDisabler disabler;
   return cuda::ToStatus(
       cuGraphLaunch(
           graph_exec(),

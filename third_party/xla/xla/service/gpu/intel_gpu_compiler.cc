@@ -31,7 +31,8 @@ IntelGpuCompiler::IntelGpuCompiler()
 absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
-    const se::SemanticVersion& toolkit_version) {
+    const se::SemanticVersion& toolkit_version,
+    CompilationStats* compilation_stats) {
   // Note: this is a stub.
   return absl::OkStatus();
 }

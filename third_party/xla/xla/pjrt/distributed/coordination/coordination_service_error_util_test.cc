@@ -40,11 +40,8 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   absl::Status error = absl::InternalError("Test Error");
-  CoordinatedTask source_task;
-  source_task.set_job_name("test_worker");
-  source_task.set_task_id(7);
 
-  absl::Status coordination_error = MakeCoordinationError(error, source_task);
+  absl::Status coordination_error = MakeCoordinationError(error, 7);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());
@@ -52,19 +49,14 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
-  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
+  EXPECT_EQ(payload.source_task().task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), false);
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   absl::Status error = absl::InternalError("Test Error");
-  CoordinatedTask source_task;
-  source_task.set_job_name("test_worker");
-  source_task.set_task_id(7);
-
   absl::Status coordination_error =
-      MakeCoordinationError(error, source_task,
+      MakeCoordinationError(error, 7,
                             /*is_reported_error=*/true);
 
   EXPECT_EQ(coordination_error.code(), error.code());
@@ -73,8 +65,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
-  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
+  EXPECT_EQ(payload.source_task().task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), true);
 }
 

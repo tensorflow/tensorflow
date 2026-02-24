@@ -8,6 +8,7 @@ load(
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
@@ -17,6 +18,7 @@ load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla/util:build_defs.bzl", "embed_files")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -50,6 +52,8 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cudnn",
+        "//xla/backends/gpu/transforms:block_scaling_rewriter",
+        "//xla/backends/gpu/transforms:cudnn_fusion_compiler",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -63,8 +67,6 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",
-        "//xla/service/gpu/transforms:block_scaling_rewriter",
-        "//xla/service/gpu/transforms:cudnn_fusion_compiler",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
@@ -152,10 +154,23 @@ cc_library(
         "//xla/backends/gpu/autotuner:custom_kernel",
         "//xla/backends/gpu/autotuner:fission_backend",
         "//xla/backends/gpu/autotuner:triton",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel_fusion",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel_fusion_pattern",
         "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/backends/gpu/runtime:buffer_comparator",
+        "//xla/backends/gpu/transforms:block_scaling_rewriter",
+        "//xla/backends/gpu/transforms:convert_triton_gemm_config",
+        "//xla/backends/gpu/transforms:custom_kernel_fusion_rewriter",
+        "//xla/backends/gpu/transforms:dot_algorithm_rewriter",
+        "//xla/backends/gpu/transforms:fusion_wrapper",
+        "//xla/backends/gpu/transforms:gemm_rewriter",
+        "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
+        "//xla/backends/gpu/transforms:nest_gemm_fusion",
+        "//xla/backends/gpu/transforms:priority_fusion",
+        "//xla/backends/gpu/transforms:scaled_dot_rewriter",
         "//xla/hlo/analysis:alias_info",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
@@ -180,19 +195,6 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:split_k_gemm_rewriter",
         "//xla/service/gpu:stream_executor_util",
-        "//xla/service/gpu/kernels:custom_kernel",
-        "//xla/service/gpu/kernels:custom_kernel_fusion",
-        "//xla/service/gpu/kernels:custom_kernel_fusion_pattern",
-        "//xla/service/gpu/transforms:block_scaling_rewriter",
-        "//xla/service/gpu/transforms:convert_triton_gemm_config",
-        "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
-        "//xla/service/gpu/transforms:dot_algorithm_rewriter",
-        "//xla/service/gpu/transforms:fusion_wrapper",
-        "//xla/service/gpu/transforms:gemm_rewriter",
-        "//xla/service/gpu/transforms:hoist_fused_bitcasts",
-        "//xla/service/gpu/transforms:nest_gemm_fusion",
-        "//xla/service/gpu/transforms:priority_fusion",
-        "//xla/service/gpu/transforms:scaled_dot_rewriter",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
@@ -264,7 +266,9 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/autotuner:gpu_codegen_backend",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/backends/gpu/transforms:gemm_fusion",
+        "//xla/backends/gpu/transforms:gemm_rewriter",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:filecheck",
@@ -280,8 +284,6 @@ xla_test(
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu/transforms:gemm_fusion",
-        "//xla/service/gpu/transforms:gemm_rewriter",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:semantic_version",
@@ -663,18 +665,43 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "all_default_configs",
+    data = glob(["default_configs/*.txtpb"]),
+)
+
+exports_files(glob([
+    "default_configs/*.txtpb",
+]))
+
+embed_files(
+    name = "embed_default_configs",
+    srcs = glob(["default_configs/*.txtpb"]),
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
+    cpp_namespace = "xla::gpu::configs",
+)
+
 cc_library(
     name = "triton_configs",
     srcs = ["triton_configs.cc"],
     hdrs = ["triton_configs.h"],
     deps = [
+        ":embed_default_configs",
         "//xla:autotuning_proto_cc",
         "//xla/service/gpu:matmul_utils",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_configs_test",
+    srcs = ["triton_configs_test.cc"],
+    deps = [
+        ":triton_configs",
+        "@com_google_googletest//:gtest_main",
     ],
 )

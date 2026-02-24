@@ -116,13 +116,13 @@ StringAttr createFuncOpOrGetFromCache(
     std::optional<TensorShardingPerValueAttr> inShardings,
     std::optional<TensorShardingPerValueAttr> outShardings,
     bool dedupFunctionsFully) {
-  auto key = std::make_tuple(
+  ComputationKey key = {
       namedComputationOp.getName(),
       dedupFunctionsFully ? TensorShardingPerValueAttr()
                           : inShardings.value_or(TensorShardingPerValueAttr()),
       dedupFunctionsFully ? TensorShardingPerValueAttr()
                           : outShardings.value_or(TensorShardingPerValueAttr()),
-      manualAxesAttr);
+      manualAxesAttr};
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
@@ -171,13 +171,12 @@ class ExportNamedComputationsPass
       moduleOp.walk([&](NamedComputationOp namedComputationOp) {
         ManualAxesAttr manualAxesAttr =
             namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
-        auto key =
-            std::make_tuple(namedComputationOp.getName(),
-                            namedComputationOp.getInShardings().value_or(
-                                TensorShardingPerValueAttr()),
-                            namedComputationOp.getOutShardings().value_or(
-                                TensorShardingPerValueAttr()),
-                            manualAxesAttr);
+        ComputationKey key = {namedComputationOp.getName(),
+                              namedComputationOp.getInShardings().value_or(
+                                  TensorShardingPerValueAttr()),
+                              namedComputationOp.getOutShardings().value_or(
+                                  TensorShardingPerValueAttr()),
+                              manualAxesAttr};
         const int64_t callSiteCount = funcCallSiteCounts[key]++;
         FuncNameKey funcNameKey =
             std::pair(namedComputationOp.getName(), manualAxesAttr);
@@ -206,9 +205,9 @@ class ExportNamedComputationsPass
                          namedComputationOp.getInShardings(),
                          namedComputationOp.getOutShardings(), manualAxesAttr);
         funcCache.try_emplace(
-            std::make_tuple(namedComputationOp.getName(),
-                            TensorShardingPerValueAttr(),
-                            TensorShardingPerValueAttr(), manualAxesAttr),
+            ComputationKey{namedComputationOp.getName(),
+                           TensorShardingPerValueAttr(),
+                           TensorShardingPerValueAttr(), manualAxesAttr},
             funcSymName);
       }
     }

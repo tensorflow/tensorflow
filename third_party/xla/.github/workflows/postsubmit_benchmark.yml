@@ -27,8 +27,8 @@ on:
         required: true
         default: 'no'
         options:
-        - 'yes'
-        - 'no'
+          - 'yes'
+          - 'no'
   push:
     branches:
       - main
@@ -63,7 +63,7 @@ jobs:
     strategy:
       fail-fast: false # Continue running other benchmarks even if one fails
       matrix:
-         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json || '[]') }}
+        benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json || '[]') }}
 
     runs-on: ${{ matrix.benchmark_entry.runner_label }}
     container: ${{ matrix.benchmark_entry.container_image }}
@@ -91,7 +91,7 @@ jobs:
 
       # Workflow context variables
       CHECKOUT_REF: ${{ github.sha }} # For postsubmit, use the commit SHA from the push/dispatch event
-      COMMIT_SHA: ${{ github.sha }}   # For postsubmit, use the commit SHA
+      COMMIT_SHA: ${{ github.sha }} # For postsubmit, use the commit SHA
       WORKFLOW_RUN_ID: ${{ github.run_id }}
 
       # Paths and script locations
@@ -148,51 +148,52 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.CHECKOUT_REF }}
+          persist-credentials: false
 
       - name: Build Binaries
         id: build_binaries
         run: |
-           bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
+          bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
         env:
           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Prepare Benchmark Artifact
         id: prep_artifact
         run: |
-           bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
+          bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
         env:
           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Run Benchmark and Generate Stats
         id: run_hlo
         env:
-           RUNNER_BINARY: "${{ steps.build_binaries.outputs.runner_binary }}"
-           STATS_BINARY: "${{ steps.build_binaries.outputs.stats_binary }}"
-           DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
-           LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
-           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
-           # Other job-level env vars are automatically inherited
+          RUNNER_BINARY: "${{ steps.build_binaries.outputs.runner_binary }}"
+          STATS_BINARY: "${{ steps.build_binaries.outputs.stats_binary }}"
+          DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
+          LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
+          # Other job-level env vars are automatically inherited
         run: |
-           # The run_benchmark.sh script is expected to create $RESOLVED_OUTPUT_DIR/results.json
-           bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
+          # The run_benchmark.sh script is expected to create $RESOLVED_OUTPUT_DIR/results.json
+          bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
 
-           # Print the content of results.json for debugging purposes
-           RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
-           echo "--- Content of results.json (from workflow) ---"
-           if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
-             if command -v jq &> /dev/null && jq '.' "$RESULTS_JSON_FILE_PATH" > /dev/null 2>&1; then
-               jq '.' "$RESULTS_JSON_FILE_PATH"
-             else
-               echo "results.json may not be valid JSON or jq failed, printing with cat:"
-               cat "$RESULTS_JSON_FILE_PATH"
-             fi
-           elif [ -f "${RESULTS_JSON_FILE_PATH}.txt" ]; then # Fallback for non-JSON or renamed output
-             echo "results.json not found, printing fallback .txt file:"
-             cat "${RESULTS_JSON_FILE_PATH}.txt"
-           else
-             echo "::warning::Neither results.json nor results.json.txt found at $RESULTS_JSON_FILE_PATH"
-           fi
-           echo "---------------------------------------------"
+          # Print the content of results.json for debugging purposes
+          RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
+          echo "--- Content of results.json (from workflow) ---"
+          if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
+            if command -v jq &> /dev/null && jq '.' "$RESULTS_JSON_FILE_PATH" > /dev/null 2>&1; then
+              jq '.' "$RESULTS_JSON_FILE_PATH"
+            else
+              echo "results.json may not be valid JSON or jq failed, printing with cat:"
+              cat "$RESULTS_JSON_FILE_PATH"
+            fi
+          elif [ -f "${RESULTS_JSON_FILE_PATH}.txt" ]; then # Fallback for non-JSON or renamed output
+            echo "results.json not found, printing fallback .txt file:"
+            cat "${RESULTS_JSON_FILE_PATH}.txt"
+          else
+            echo "::warning::Neither results.json nor results.json.txt found at $RESULTS_JSON_FILE_PATH"
+          fi
+          echo "---------------------------------------------"
 
       - name: Compare Results to Baseline
         if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
@@ -205,7 +206,7 @@ jobs:
       - name: Upload results.json directly to GCS
         run: |
           GCS_BUCKET="gs://openxla-postsubmit-transient"
-          RESULTS_JSON_FILE_PATH="${{ env.RESOLVED_OUTPUT_DIR }}/results.json"
+          RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
 
           # Check if the results file exists
           if [ ! -f "$RESULTS_JSON_FILE_PATH" ]; then

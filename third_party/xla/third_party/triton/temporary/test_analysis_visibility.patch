@@ -1,0 +1,28 @@
+diff --git a/test/BUILD b/test/BUILD
+index 1234567..abcdefg 100644
+--- a/test/BUILD
++++ b/test/BUILD
+@@ -56,6 +56,7 @@ cc_library(
+     name = "TritonTestAnalysis",
+     srcs = glob(["lib/Analysis/*.cpp"]),
+     hdrs = glob(["include/Analysis/*.h"]),
++    visibility = ["//visibility:public"],
+     deps = [
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:GPUDialect",
+@@ -73,6 +74,7 @@ cc_library(
+ cc_library(
+     name = "TritonTestDialect",
+     srcs = glob(["lib/Dialect/*.cpp"]),
++    visibility = ["//visibility:public"],
+     deps = [
+         "@llvm-project//mlir:GPUDialect",
+         "@llvm-project//mlir:IR",
+@@ -90,6 +92,7 @@ cc_library(
+ cc_library(
+     name = "ProtonTestTransforms",
+     srcs = ["lib/Proton/TestScopeIdAllocation.cpp"],
++    visibility = ["//visibility:public"],
+     deps = [
+         "@llvm-project//mlir:Pass",
+         "@triton//third_party/proton:ProtonAnalysis",

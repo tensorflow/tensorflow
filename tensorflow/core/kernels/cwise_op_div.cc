@@ -61,8 +61,8 @@ REGISTER_KERNEL_BUILDER(Name("Div")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("z")
-                            .TypeConstraint<int32>("T"),
-                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        BinaryOp<CPUDevice, functor::safe_div<int32_t>>);
 
 #endif
 

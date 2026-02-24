@@ -26,11 +26,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/xla_data.pb.h"
 

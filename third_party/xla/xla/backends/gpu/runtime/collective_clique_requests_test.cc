@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
+#include <optional>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,6 +28,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+namespace {
+
+using ::testing::UnorderedElementsAre;
 
 TEST(CollectiveCliqueRequestsTest, OrderedRequests) {
   GlobalDeviceId d0 = GlobalDeviceId(0);
@@ -78,6 +83,8 @@ TEST(CollectiveCliqueRequestsTest, RequestDevComms) {
   ASSERT_EQ(ordered_requests[0].dev_comms.size(), 2);
   EXPECT_TRUE(ordered_requests[0].dev_comms.contains(dev_comm0));
   EXPECT_TRUE(ordered_requests[0].dev_comms.contains(dev_comm1));
+
+  EXPECT_THAT(requests.GetDevicesRequiringBarrier(), UnorderedElementsAre());
 }
 
 TEST(CollectiveCliqueRequestsTest, DeviceGroupsNormalized) {
@@ -116,4 +123,47 @@ TEST(CollectiveCliqueRequestsTest, DeviceGroupsMismatch) {
                              testing::HasSubstr("different device groups")));
 }
 
+TEST(CollectiveCliqueRequestsTest, BarrierAfterModuleExecutionRequested) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+
+  // Check that the order of devices in replica groups doesn't matter.
+  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
+  std::vector<std::vector<GlobalDeviceId>> dg0b = {{d1, d0}};
+
+  CollectiveCliqueRequests requests;
+  CollectiveCliqueRequests::CliqueRequirements requirements{
+      std::nullopt, CollectiveCliqueRequests::BarrierRequirements{true}};
+  TF_ASSERT_OK(requests.RequestClique(k0, dg0a, requirements));
+  TF_ASSERT_OK(requests.RequestClique(k0, dg0b));
+
+  EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
+              UnorderedElementsAre(d0, d1));
+}
+
+TEST(CollectiveCliqueRequestsTest,
+     BarrierAfterModuleExecutionRequestedByDisjointCliques) {
+  GlobalDeviceId d0 = GlobalDeviceId(0);
+  GlobalDeviceId d1 = GlobalDeviceId(1);
+  GlobalDeviceId d2 = GlobalDeviceId(2);
+
+  GpuCliqueKey k0({d0, d1}, 2);
+  GpuCliqueKey k1({d1, d2}, 2);
+
+  std::vector<std::vector<GlobalDeviceId>> dg0a = {{d0, d1}};
+  std::vector<std::vector<GlobalDeviceId>> dg1a = {{d1, d2}};
+
+  CollectiveCliqueRequests requests;
+  CollectiveCliqueRequests::CliqueRequirements requirements{
+      std::nullopt, CollectiveCliqueRequests::BarrierRequirements{true}};
+  TF_ASSERT_OK(requests.RequestClique(k0, dg0a, requirements));
+  TF_ASSERT_OK(requests.RequestClique(k1, dg1a, requirements));
+
+  EXPECT_THAT(requests.GetDevicesRequiringBarrier(),
+              UnorderedElementsAre(d0, d1, d2));
+}
+
+}  // namespace
 }  // namespace xla::gpu

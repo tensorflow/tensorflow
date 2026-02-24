@@ -97,6 +97,10 @@ class EmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
+  static std::array<uint64_t, 2> MaybeSplitGridDimensionX(
+      uint64_t num_threads_x, uint64_t num_blocks_x,
+      const se::DeviceDescription& info);
+
   mlir::Value EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                               WorkGroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;

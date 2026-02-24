@@ -61,8 +61,9 @@ class H2DTransferExecutor {
       // `input_xla_shape` is not used in this implementation.
       const xla::Shape* /*input_xla_shape*/,
       const xla::ifrt::DeviceListRef& device_list,
-      const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool,
-      const xla::ifrt::LayoutRef& xla_input_layout);
+      const xla::HloSharding& hlo_sharding,
+      tsl::thread::ThreadPool& thread_pool,
+      xla::ifrt::LayoutRef xla_input_layout);
 
   // Executes the H2D transfers for all registered tensors.
   virtual absl::Status RunH2DTransfers();

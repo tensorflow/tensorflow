@@ -232,8 +232,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   auto* fusion = Cast<HloFusionInstruction>(
       module->entry_computation()->root_instruction());
-  const se::DeviceDescription dev_info =
-      TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
+  const se::DeviceDescription dev_info = TestGpuDeviceInfo::B200SXMDeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Triple triple(nvptx::TargetTriple());
   std::string data_layout = nvptx::DataLayout();

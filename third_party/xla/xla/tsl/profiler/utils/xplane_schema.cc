@@ -398,7 +398,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_version", kMetadataCudaVersion},
        {"libtpu_version", kMetadataLibtpuVersion},
        {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
-       {"cuda_driver_version", kMetadataCudaDriverVersion}});
+       {"cuda_driver_version", kMetadataCudaDriverVersion},
+       // LLO Debug Dump.
+       {"llo_proto", kLloProto}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

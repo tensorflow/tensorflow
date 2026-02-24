@@ -947,7 +947,7 @@ tpu_py_strict_test(
         ":functional",
         ":tpu_py",
         ":tpu_replication",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:def_function",

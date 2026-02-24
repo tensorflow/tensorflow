@@ -62,6 +62,30 @@ const HloInstruction* SkipOptionalBitcast(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kBitcast ? instr->operand(0) : instr;
 }
 
+std::optional<absl::InlinedVector<int64_t, 4>> ComputeByteStridesForSubByte(
+    const Shape& shape) {
+  absl::InlinedVector<int64_t, 4> strides(shape.dimensions().size());
+  int64_t stride_in_bits = ShapeUtil::ElementSizeInBits(shape);
+  for (int i : shape.layout().minor_to_major()) {
+    if (stride_in_bits % CHAR_BIT != 0) {
+      strides[i] = -1;
+    } else {
+      strides[i] = stride_in_bits / CHAR_BIT;
+    }
+    stride_in_bits *= shape.dimensions(i);
+  }
+  return strides;
+}
+
+std::optional<absl::InlinedVector<int64_t, 4>> ComputeByteStrides(
+    const Shape& shape) {
+  auto strides = ShapeUtil::ByteStrides(shape);
+  if (strides) {
+    return strides;
+  }
+  return ComputeByteStridesForSubByte(shape);
+}
+
 }  // namespace
 
 absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
@@ -227,7 +251,7 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
   }
 
   std::optional<absl::InlinedVector<int64_t, 4>> strides =
-      ShapeUtil::ByteStrides(root->operand(0)->shape());
+      ComputeByteStrides(root->operand(0)->shape());
   if (!strides) {
     VLOG(5) << "Failed to get byte strides.";
     return false;
@@ -258,7 +282,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
       SkipOptionalBitcast(fusion.fused_expression_root());
   const Shape& slice_input_shape = slice->operand(0)->shape();
   std::optional<absl::InlinedVector<int64_t, 4>> strides =
-      ShapeUtil::ByteStrides(slice_input_shape);
+      ComputeByteStrides(slice_input_shape);
   if (!strides) {
     return std::nullopt;
   }
@@ -280,6 +304,11 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     if (IsZeroOffset(slice, i)) {
       VLOG(5) << "Offset for dimension " << i << " is clamped to 0.";
       continue;
+    }
+
+    if ((*strides)[i] < 0) {
+      VLOG(5) << "Rejected: dim[" << i << "] not byte-aligned for slicing.";
+      return std::nullopt;
     }
 
     if (operand->opcode() == HloOpcode::kConstant) {

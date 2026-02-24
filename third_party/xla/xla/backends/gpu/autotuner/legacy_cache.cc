@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
@@ -37,6 +38,8 @@ namespace xla {
 
 namespace gpu {
 
+using autotuner::Backend;
+
 std::optional<LegacyCache::Config> LegacyCache::Lookup(
     const HloInstruction* instr) {
   AutotuneCacheKey key = GetAutotuneCacheKey(*instr);
@@ -47,20 +50,19 @@ std::optional<LegacyCache::Config> LegacyCache::Lookup(
     return std::nullopt;
   }
   if (!result->has_value()) {
+    stats_.misses++;
     return std::nullopt;
   }
+  stats_.hits++;
   return GetConfig(result->value(), instr->opcode() == HloOpcode::kFusion);
 }
 
 absl::Status LegacyCache::Insert(const HloInstruction* instr,
                                  const Config& best_config) {
   AutotuneCacheKey key = GetAutotuneCacheKey(*instr);
-  std::optional<AutotuneResult> opt_result = GetAutotuneResult(best_config);
-  if (!opt_result.has_value()) {
-    return absl::OkStatus();
-  }
+  AutotuneResult autotune_result = GetAutotuneResult(best_config);
   absl::StatusOr<AutotunerUtil::ResultAndInserted> result_and_inserted =
-      AutotunerUtil::AddResultToCaches(key, opt_result.value(), cache_dir_,
+      AutotunerUtil::AddResultToCaches(key, autotune_result, cache_dir_,
                                        cache_mode_);
   if (!result_and_inserted.ok()) {
     LOG(ERROR) << "Failed to insert autotune cache: "
@@ -105,43 +107,48 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
     const AutotuneResult& result, bool is_fusion_instruction) {
   Config config;
   if (result.has_triton()) {
-    config.codegen_backend_name = "Triton";
+    config.codegen_backend = Backend::TRITON;
     config.backend_config.PackFrom(result.triton());
   } else if (result.has_gemm()) {
-    config.codegen_backend_name = "Cublas";
+    config.codegen_backend = Backend::CUBLASLT;
     if (is_fusion_instruction) {
-      config.codegen_backend_name = "Cublas_fission";
+      config.codegen_backend = Backend::CUBLASLT_FISSION;
     }
     config.backend_config.PackFrom(result.gemm());
   } else if (result.has_algorithm()) {
-    config.codegen_backend_name = "Cudnn";
+    config.codegen_backend = Backend::CUDNN;
     config.backend_config.PackFrom(result.algorithm());
-  } else if (result.has_other()) {
-    config.codegen_backend_name = result.other().name();
-    config.backend_config = result.other().config();
   } else if (result.has_custom_kernel_fusion()) {
-    config.codegen_backend_name = "CustomKernel_fission";
+    config.codegen_backend = Backend::CUSTOM_KERNEL_FISSION;
     config.backend_config.PackFrom(result.custom_kernel_fusion());
+  } else if (result.has_other()) {
+    if (!autotuner::Backend_Parse(result.other().name(),
+                                  &config.codegen_backend)) {
+      LOG(ERROR) << "Failed to parse codegen backend: "
+                 << result.other().name();
+      return std::nullopt;
+    }
+    config.backend_config = result.other().config();
   } else {
     return std::nullopt;
   }
   return config;
 }
 
-std::optional<AutotuneResult> LegacyCache::GetAutotuneResult(
+AutotuneResult LegacyCache::GetAutotuneResult(
     const LegacyCache::Config& config) {
   AutotuneResult result;
-  if (config.codegen_backend_name == "Triton") {
+  if (config.codegen_backend == Backend::TRITON) {
     config.backend_config.UnpackTo(result.mutable_triton());
-  } else if (config.codegen_backend_name == "Cublas" ||
-             config.codegen_backend_name == "Cublas_fission") {
+  } else if (config.codegen_backend == Backend::CUBLASLT ||
+             config.codegen_backend == Backend::CUBLASLT_FISSION) {
     config.backend_config.UnpackTo(result.mutable_gemm());
-  } else if (config.codegen_backend_name == "Cudnn") {
+  } else if (config.codegen_backend == Backend::CUDNN) {
     config.backend_config.UnpackTo(result.mutable_algorithm());
-  } else if (config.codegen_backend_name == "CustomKernel_fission") {
+  } else if (config.codegen_backend == Backend::CUSTOM_KERNEL_FISSION) {
     config.backend_config.UnpackTo(result.mutable_custom_kernel_fusion());
   } else {
-    result.mutable_other()->set_name(config.codegen_backend_name);
+    result.mutable_other()->set_name(Backend_Name(config.codegen_backend));
     *result.mutable_other()->mutable_config() = config.backend_config;
   }
   return result;

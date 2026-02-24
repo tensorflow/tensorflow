@@ -62,6 +62,7 @@ struct BatchResourceOptions {
   int32_t low_priority_max_enqueued_batches;
   std::vector<int32_t> low_priority_allowed_batch_sizes;
   MixedPriorityBatchingPolicy mixed_priority_batching_policy;
+  bool enable_priority_aware_batch_scheduler;
 };
 
 // Base class for resource that encapsulating the state and logic for batching
@@ -86,6 +87,12 @@ class BatchResourceBase : public ResourceBase {
   struct BatchTask : public tensorflow::serving::BatchTask {
     BatchTask() : criticality_val(tsl::criticality::GetCriticality()) {};
 
+    BatchTask(AsyncOpKernel::DoneCallback done_callback,
+              std::shared_ptr<ThreadSafeStatus> status)
+        : status(status),
+          done_callback(std::move(done_callback)),
+          criticality_val(tsl::criticality::GetCriticality()) {}
+
     // A unique ID to identify this invocation of Batch.
     int64_t guid;
 
@@ -94,7 +101,6 @@ class BatchResourceBase : public ResourceBase {
     std::vector<Tensor> inputs;
     std::vector<Tensor> captured_inputs;
     OpKernelContext* context;
-    AsyncOpKernel::DoneCallback done_callback;
 
     // The index of this split, along the 0-th dimension of input from op
     // invocation.
@@ -106,11 +112,6 @@ class BatchResourceBase : public ResourceBase {
     // 2) callback that runs to merge output of individual splits for an op
     // invocation, after all splits complete.
     std::shared_ptr<TensorMatrix> output;
-
-    // 'status' records error (could be from any split) if at least one split
-    // returns error, OK otherwise.
-    // Ownership is shared by individual splits and callback.
-    std::shared_ptr<ThreadSafeStatus> status;
 
     bool is_partial = false;
 
@@ -143,12 +144,36 @@ class BatchResourceBase : public ResourceBase {
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;
 
+    // 'status' records error (could be from any split) if at least one split
+    // returns error, OK otherwise.
+    // Ownership is shared by individual splits and callback.
+    std::shared_ptr<ThreadSafeStatus> status;
+
+    void set_done_callback(AsyncOpKernel::DoneCallback callback) {
+      done_callback = std::move(callback);
+    }
+
    protected:
+    void FinishTaskImpl(const absl::Status& status) override {
+      WithContext wc(this->propagated_context);
+
+      if (!status.ok()) {
+        this->status->Update(status);
+      }
+      if (this->done_callback) {
+        this->done_callback();
+        // Clear the callback to avoid double deletion.
+        this->done_callback = nullptr;
+      }
+    }
+
     virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
       return std::make_unique<BatchTask>();
     }
 
    private:
+    AsyncOpKernel::DoneCallback done_callback;
+
     // Criticality associated with the task.
     ::tsl::criticality::Criticality criticality_val;
   };
@@ -223,7 +248,8 @@ class BatchResourceBase : public ResourceBase {
       int32_t low_priority_batch_timeout_micros,
       int32_t low_priority_max_enqueued_batches,
       const std::vector<int32>& low_priority_allowed_batch_sizes,
-      MixedPriorityBatchingPolicy mixed_priority_batching_policy);
+      MixedPriorityBatchingPolicy mixed_priority_batching_policy,
+      bool enable_priority_aware_batch_scheduler);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,

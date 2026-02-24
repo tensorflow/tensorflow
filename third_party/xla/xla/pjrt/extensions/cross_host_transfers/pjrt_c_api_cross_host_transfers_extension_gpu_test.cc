@@ -209,7 +209,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   // Sender logic.
   if (is_sender) {
     std::vector<PJRT_Buffer*> raw_buffers;
-    std::vector<xla::PjRtGlobalDeviceId> dst_device_ids;
+    std::vector<xla::GlobalDeviceId> dst_device_ids;
     std::vector<xla::CrossHostTransferKey> transfer_keys;
     raw_buffers.reserve(num_arrays);
     dst_device_ids.reserve(num_arrays);
@@ -246,7 +246,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
 
       raw_buffers.push_back(args.buffer);
       CHECK_OK(event->future.Await());
-      xla::PjRtGlobalDeviceId src_device_id =
+      xla::GlobalDeviceId src_device_id =
           args.device->device->global_device_id();
       dst_device_ids.push_back(1 - src_device_id);
       transfer_keys.push_back(xla::CrossHostTransferKey(i));
@@ -284,7 +284,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
           {{1, 2, 3}, {4, 5, 6 * static_cast<float>(i)}}));
     }
     std::vector<xla::Shape> shapes;
-    std::vector<xla::PjRtGlobalDeviceId> src_device_ids;
+    std::vector<xla::GlobalDeviceId> src_device_ids;
     std::vector<xla::CrossHostTransferKey> transfer_keys;
     std::vector<size_t> shape_num_dims;
     std::vector<const int64_t*> num_dims;
@@ -297,12 +297,12 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     num_dims.reserve(num_arrays);
     element_types.reserve(num_arrays);
     layouts.reserve(num_arrays);
-    xla::PjRtGlobalDeviceId dst_device_id =
+    xla::GlobalDeviceId dst_device_id =
         GetClientAddressableDevices(create_arg.client, api)[0]
             ->device->global_device_id();
     for (int i = 0; i < num_arrays; ++i) {
       shapes.push_back(xla_shape);
-      src_device_ids.push_back(xla::PjRtGlobalDeviceId(1 - dst_device_id));
+      src_device_ids.push_back(xla::GlobalDeviceId(1 - dst_device_id));
       transfer_keys.push_back(xla::CrossHostTransferKey(i));
       shape_num_dims.push_back(shapes.back().dimensions().size());
       num_dims.push_back(shapes.back().dimensions().data());

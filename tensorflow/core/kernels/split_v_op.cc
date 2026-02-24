@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -242,10 +243,13 @@ class SplitVOpCPUImpl {
     // TODO(jewillco): Tune heuristic further.
     const auto input_element_count = input_shape.num_elements();
     const int num_split = split_start_points.size();
+    // Use parallelism between outputs if we have enough splits and enough
+    // elements per split to justify a thread, OR if we have many splits even
+    // for large tensors (to avoid the overhead of many small sharded copies).
     const bool use_parallelism_between_outputs =
         (num_split >= kMinimumSplitNum &&
          input_element_count >= std::min(num_threads, num_split) * 4096 &&
-         input_element_count < num_split * 180 * 1024);
+         (input_element_count < num_split * 180 * 1024 || num_split >= 16));
 
     auto range_output_func =
         [&indices, context, &input_shape, split_dim, &split_sizes_vec,
@@ -311,6 +315,13 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
+
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "SplitVOp", {{"input_shape", input_shape.DebugString()},
+                       {"split_dim", split_dim},
+                       {"num_split", num_split}});
+    });
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
@@ -390,6 +401,14 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
+
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "SplitVOp", {{"input_shape", input_shape.DebugString()},
+                       {"split_dim", split_dim},
+                       {"num_split", num_split}});
+    });
+
     OP_REQUIRES(
         context,
         FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),

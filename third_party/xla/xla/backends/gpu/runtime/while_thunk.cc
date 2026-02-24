@@ -186,16 +186,10 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-void WhileThunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-  condition_thunk_sequence_->ForAllThunks(fn);
-  body_thunk_sequence_->ForAllThunks(fn);
-}
-
-void WhileThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  condition_thunk_sequence_->ForAllThunksMutable(fn);
-  body_thunk_sequence_->ForAllThunksMutable(fn);
+absl::Status WhileThunk::WalkNested(
+    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Walk(callback));
+  return body_thunk_sequence_->Walk(callback);
 }
 
 absl::Status WhileThunk::TransformAllNestedThunks(

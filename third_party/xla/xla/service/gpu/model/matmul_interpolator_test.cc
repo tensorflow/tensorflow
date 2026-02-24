@@ -329,8 +329,7 @@ class MatmulInterpolatorDefaultTableTest
   }
 
   std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorB200() {
-    return GetMatmulInterpolator(TestGpuDeviceInfo::RTXA6000DeviceInfo(
-        se::CudaComputeCapability(10, 0)));
+    return GetMatmulInterpolator(TestGpuDeviceInfo::B200SXMDeviceInfo());
   }
 };
 

@@ -313,8 +313,8 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
   if (HloCallableInstruction::ClassOf(instruction)) {
     // Check and propagate via output-operand aliasing
     VLOG(3) << "Propagating aliasing:" << instruction->ToString() << "\n";
-    for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
-             output_operand_pair : instruction->output_operand_aliasing()) {
+    for (const auto& output_operand_pair :
+         instruction->output_operand_aliasing()) {
       if (output_operand_pair.first != buffer.index()) {
         continue;
       }
@@ -1712,8 +1712,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraintToResultForCustomCall(
     const HloInstruction* user,
     const OperandLayoutConstraint& operand_constraint) {
   int64_t operand_no = operand_constraint.operand_no();
-  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
-           output_operand_pair : user->output_operand_aliasing()) {
+  for (const auto& output_operand_pair : user->output_operand_aliasing()) {
     if (output_operand_pair.second.first != operand_no) {
       continue;
     }
@@ -2664,8 +2663,8 @@ absl::StatusOr<bool> LayoutAssignment::RunImpl(
         // aliasing information depending on ordering of constraints. We expect
         // that unnecessary copies may be optimized out by later passes.
         absl::flat_hash_set<int64_t> processed;
-        for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
-                 output_operand_pair : instruction->output_operand_aliasing()) {
+        for (const auto& output_operand_pair :
+             instruction->output_operand_aliasing()) {
           int operand_no = output_operand_pair.second.first;
           if (!processed.contains(operand_no)) {
             operands_to_copy.emplace_back(instruction, operand_no);

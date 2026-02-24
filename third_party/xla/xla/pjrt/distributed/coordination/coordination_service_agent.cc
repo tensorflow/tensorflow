@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -73,38 +74,22 @@ constexpr char kHeartbeatThread[] = "CoordinationServiceHeartbeatLoop";
 
 /*static*/ absl::StatusOr<std::unique_ptr<CoordinationServiceAgent>>
 CoordinationServiceAgent::Create(
-    tsl::Env* env, absl::string_view job_name, int task_id,
-    const Config& config, std::unique_ptr<CoordinationClient> leader_client,
-    tsl::StatusCallback error_fn, bool recoverable) {
+    tsl::Env* env, int task_id, const Config& config,
+    std::unique_ptr<CoordinationClient> leader_client,
+    tsl::StatusCallback error_fn) {
   // Validate arguments.
-  if (config.service_leader.empty()) {
-    return MakeCoordinationError(InvalidArgument(
-        "CoordinationServiceAgent must be initialized with a valid leader."));
-  }
   if (leader_client == nullptr) {
     return MakeCoordinationError(InvalidArgument(
         "CoordinationServiceAgent must have a valid leader client."));
-  }
-  if (recoverable) {
-    LOG(WARNING)
-        << "Using experimental recoverable task feature. The default shutdown "
-           "barrier will only block non-recoverable tasks. If a synchronized "
-           "shutdown is desired, the user / library should invoke "
-           "`WaitAtBarrier` explicitly at the end of the program.";
   }
 
   // Record coordination service agent metric.
   enabled_usage_metric->GetCell()->Set(true);
 
-  CoordinatedTask task;
-  task.set_job_name(std::string(job_name));
-  task.set_task_id(task_id);
-  task.set_recoverable(recoverable);
-
   // The CoordinationServiceAgent constructor is private, so we can't call
   // std::make_unique.
   return absl::WrapUnique(new CoordinationServiceAgent(
-      env, task, config, error_fn, std::move(leader_client)));
+      env, task_id, config, error_fn, std::move(leader_client)));
 }
 
 bool CoordinationServiceAgent::IsConnected() {
@@ -146,7 +131,7 @@ absl::Status CoordinationServiceAgent::Connect() {
   }
   absl::Status connect_status = Unknown("Connection not attempted yet.");
   RegisterTaskRequest request;
-  *request.mutable_source_task() = task_;
+  request.mutable_source_task()->set_task_id(task_id_);
   request.set_incarnation(incarnation_id_.value());
   RegisterTaskResponse response;
 
@@ -222,7 +207,7 @@ absl::Status CoordinationServiceAgent::Connect() {
 
 void CoordinationServiceAgent::StartSendingHeartbeats() {
   HeartbeatRequest request;
-  *request.mutable_source_task() = task_;
+  request.mutable_source_task()->set_task_id(task_id_);
   request.set_incarnation(incarnation_id_.value());
   HeartbeatResponse response;
   const absl::Duration heartbeat_interval = config_.heartbeat_timeout / 2;
@@ -308,7 +293,7 @@ void CoordinationServiceAgent::PollForErrorAsync(tsl::StatusCallback done) {
   }
   auto request = std::make_shared<PollForErrorRequest>();
   auto response = std::make_shared<PollForErrorResponse>();
-  *request->mutable_source_task() = task_;
+  request->mutable_source_task()->set_task_id(task_id_);
   VLOG(3) << "PollForErrorRequest: " << request->DebugString();
 
   const tsl::CancellationToken token =
@@ -337,12 +322,8 @@ const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
   return cluster_devices_;
 }
 
-absl::StatusOr<CoordinatedTask> CoordinationServiceAgent::GetOwnTask() {
-  return task_;
-}
-
 std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
-    absl::string_view job_name, std::optional<int64_t> version_number,
+    std::optional<int64_t> version_number,
     std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
         callback) {
   auto request = std::make_shared<WatchJobStateRequest>();
@@ -350,7 +331,6 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
   auto call_opts = std::make_shared<tsl::CallOptions>();
   WatchJobStateRequest* request_ptr = request.get();
   WatchJobStateResponse* response_ptr = response.get();
-  request->set_job_name(job_name);
   request->set_version_number(version_number.value_or(-1));
 
   leader_client_->WatchJobStateAsync(
@@ -367,12 +347,11 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
 }
 
 absl::StatusOr<tensorflow::WatchJobStateResponse>
-CoordinationServiceAgent::WatchJobState(absl::string_view job_name,
-                                        std::optional<int64_t> version_number) {
+CoordinationServiceAgent::WatchJobState(std::optional<int64_t> version_number) {
   absl::StatusOr<tensorflow::WatchJobStateResponse> response;
   absl::Notification done;
   WatchJobStateAsync(
-      job_name, version_number,
+      version_number,
       [&response, &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
         response = std::move(r);
         done.Notify();
@@ -392,7 +371,7 @@ absl::Status CoordinationServiceAgent::Shutdown() {
   if (!config_.agent_destruction_without_shutdown && is_connected) {
     LOG(INFO) << "Coordination agent has initiated Shutdown().";
     ShutdownTaskRequest request;
-    *request.mutable_source_task() = task_;
+    request.mutable_source_task()->set_task_id(task_id_);
     ShutdownTaskResponse response;
     tsl::CallOptions call_opts;
     // Add 5s for service-related errors to propagate.
@@ -464,7 +443,7 @@ absl::Status CoordinationServiceAgent::Reset() {
   }
 
   ResetTaskRequest request;
-  *request.mutable_source_task() = task_;
+  request.mutable_source_task()->set_task_id(task_id_);
   VLOG(3) << "ResetTaskRequest: " << request.DebugString();
   ResetTaskResponse response;
 
@@ -736,7 +715,7 @@ absl::Status CoordinationServiceAgent::ActivateWatch(
 
 absl::Status CoordinationServiceAgent::WaitAtBarrier(
     absl::string_view barrier_id, absl::Duration timeout,
-    const std::vector<CoordinatedTask>& tasks) {
+    const std::vector<CoordinationService::TaskId>& tasks) {
   absl::Status status;
   absl::Notification n;
   WaitAtBarrierAsync(barrier_id, timeout, tasks, [&](const absl::Status& s) {
@@ -749,7 +728,8 @@ absl::Status CoordinationServiceAgent::WaitAtBarrier(
 
 void CoordinationServiceAgent::WaitAtBarrierAsync(
     absl::string_view barrier_id, absl::Duration timeout,
-    const std::vector<CoordinatedTask>& tasks, tsl::StatusCallback done) {
+    const std::vector<CoordinationService::TaskId>& tasks,
+    tsl::StatusCallback done) {
   absl::Status agent_running_status =
       ValidateRunningAgent(/*allow_disconnected=*/true);
   if (!agent_running_status.ok()) {
@@ -773,8 +753,10 @@ void CoordinationServiceAgent::WaitAtBarrierAsync(
 
     request->set_barrier_id(std::string(barrier_id));
     request->set_barrier_timeout_in_ms(timeout / absl::Milliseconds(1));
-    *request->mutable_source_task() = task_;
-    *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+    request->mutable_source_task()->set_task_id(task_id_);
+    for (const CoordinationService::TaskId task : tasks) {
+      request->add_tasks()->set_task_id(task);
+    }
 
     // Counter is incremented for each unique id's WaitAtBarrier() call.
     // Design note: we need agent-side state to fail attempts by restarted tasks
@@ -859,7 +841,7 @@ void CoordinationServiceAgent::CancelBarrierAsync(absl::string_view barrier_id,
   auto request = std::make_shared<CancelBarrierRequest>();
   auto response = std::make_shared<CancelBarrierResponse>();
   request->set_barrier_id(std::string(barrier_id));
-  *request->mutable_source_task() = task_;
+  request->mutable_source_task()->set_task_id(task_id_);
   VLOG(3) << "CancelBarrierRequest: " << request->DebugString();
   leader_client_->CancelBarrierAsync(
       request.get(), response.get(),
@@ -872,7 +854,7 @@ void CoordinationServiceAgent::CancelBarrierAsync(absl::string_view barrier_id,
 
 absl::StatusOr<std::vector<CoordinationServiceAgent::AliveTask>>
 CoordinationServiceAgent::GetAliveTasks(
-    const std::vector<CoordinatedTask>& tasks) {
+    const std::vector<CoordinationService::TaskId>& tasks) {
   // Validate the agent.
   if (absl::Status s = ValidateRunningAgent(/*allow_disconnected=*/true);
       !s.ok()) {
@@ -882,8 +864,10 @@ CoordinationServiceAgent::GetAliveTasks(
   // Form the request and response.
   auto request = std::make_shared<GetAliveTasksRequest>();
   auto response = std::make_shared<GetAliveTasksResponse>();
-  *request->mutable_requesting_task() = task_;
-  *request->mutable_tasks() = {tasks.begin(), tasks.end()};
+  request->mutable_requesting_task()->set_task_id(task_id_);
+  for (const CoordinationService::TaskId task : tasks) {
+    request->add_tasks()->set_task_id(task);
+  }
 
   // Issue the request and wait for it to finish.
   absl::Status status;

@@ -25,18 +25,24 @@ limitations under the License.
 // the same parameter at the peer device, where N is the number of devices
 // participating in the collective kernel.
 // This information is structured as the
-// single dimentional array with the following layout:
+// single dimensional array with the following layout:
 // [
 //   param0_peer0, param0_peer1, ..., param0_peerN,
 //   param1_peer0, param1_peer1, ..., param1_peerN,
 //   ...
 // ]
+//
+// Each parameter might also have an assosiated pointer to the root of the
+// multicast address space for the current device. These parameters are stored
+// in the same order as the parameters themselves in the array:
+// [param0_multicast_root, param1_multicast_root, ...]
+//
+// `param_to_multimem_addresses` is a pointer to the array of the multicast root
+// pointers for each parameter.
 struct CollectiveKernelMetadata {
   uint64_t rank;
   void** param_to_peers;
-
-  // Root pointer for multicast buffer for current device.
-  void* multicast_buffer_ptr;
+  void** param_to_multimem_addresses;
 };
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_COLLECTIVE_KERNEL_METADATA_H_

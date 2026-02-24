@@ -852,10 +852,11 @@ class DecodeImageV2Op : public OpKernel {
                    context->allocate_output(
                        0, TensorShape({height, width, channels}), &output));
 
-    OP_REQUIRES(context,
-                jxl::DecodeImage(input, channels, output->flat<uint8>().data(),
-                                 output->flat<uint8>().size()),
-                absl::InvalidArgumentError("Failed to decode JXL image"));
+    OP_REQUIRES(
+        context,
+        jxl::DecodeImage(input, channels, output->flat<uint8_t>().data(),
+                         output->flat<uint8_t>().size()),
+        absl::InvalidArgumentError("Failed to decode JXL image"));
   }
 
  private:

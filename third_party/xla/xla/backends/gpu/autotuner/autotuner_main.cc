@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,8 +30,6 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/autotuner/profiler.h"
-#include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/debug_options_flags.h"
@@ -42,13 +39,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -63,13 +63,11 @@ namespace {
 
 const char* const kUsage = R"(
 This tool autotunes an HLO module from a given HLO file and prints the
-autotuned module to stdout.
+autotuned module to stdout. Honour XLA_FLAGS.
 
 Usage:
 
-  bazel run autotuner_main -- --hlo_file=path/to/hlo_module \
-    [--cache_dir=path/to/cache_dir] \
-    [--autotune_cache_mode=READ|READ_WRITE]
+  bazel run autotuner_main -- --hlo_file=path/to/hlo_module
 )";
 }  // namespace
 
@@ -85,9 +83,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
   return ParseAndReturnUnverifiedModule(hlo_text);
 }
 
-absl::Status Autotune(HloModule& module, const std::string& cache_dir,
-                      const std::string& autotune_cache_mode_str,
-                      mlir::MLIRContext* mlir_context) {
+absl::Status Autotune(HloModule& module) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       PlatformUtil::CanonicalPlatformName("gpu"));
 
@@ -107,54 +103,64 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   Compiler::GpuTargetConfig target_config(stream_executor);
 
-  auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
-                      registry.FindObject<GetCodegenBackends>(platform->id()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends =
-      get_codegen_backends(stream_executor, &debug_options, compiler.get(),
-                           &target_config, alias_info.get(), mlir_context);
+  mlir::MLIRContext mlir_context;
+  xla::RegisterSymbolicExprStorage(&mlir_context);
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                      gpu_compiler->GetAutotunerBackends(
+                          stream_executor, &target_config, alias_info.get(),
+                          debug_options, &mlir_context));
 
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
-  auto profiler =
-      GpuProfiler::Create(stream_executor, ProfileOptions(), allocator.get());
-  if (profiler == nullptr) {
-    return absl::InternalError("Failed to create profiler");
-  }
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuner",
                                       tsl::port::MaxParallelism());
 
-  const absl::flat_hash_map<std::string, DebugOptions::AutotuneCacheMode>
-      mode_map = {
-          {"READ_WRITE", DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE},
-          {"READ", DebugOptions::AUTOTUNE_CACHE_MODE_READ},
-      };
-  auto it = mode_map.find(autotune_cache_mode_str);
-  if (it == mode_map.end()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid autotune_cache_mode: ", autotune_cache_mode_str));
-  }
+  xla::AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
+  auto profiler = GpuProfiler::Create(
+      stream_executor, GetProfileOptions(debug_options, autotune_config),
+      allocator.get());
 
-  std::unique_ptr<AutotunerCacheInterface> cache;
-  if (!cache_dir.empty()) {
-    cache = std::make_unique<LegacyCache>(cache_dir, it->second,
-                                          target_config.device_description);
+  if (profiler == nullptr) {
+    return absl::InternalError("Failed to create profiler to autotune.");
   }
-
-  xla::AutotuneConfig autotune_config;
+  std::unique_ptr<AutotunerCacheInterface> cache =
+      std::make_unique<LegacyCache>(
+          debug_options.xla_gpu_per_fusion_autotune_cache_dir(),
+          debug_options.xla_gpu_experimental_autotune_cache_mode(),
+          target_config.device_description);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), &thread_pool));
 
-  // TODO: b/407494793 - Expand the filter to include more instructions.
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    if ((instruction.opcode() == HloOpcode::kFusion &&
-         instruction.fusion_kind() == HloInstruction::FusionKind::kCustom) ||
-        instruction.opcode() == HloOpcode::kCustomCall) {
+  bool do_not_autotune_cublas_and_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
+  auto should_autotune = [do_not_autotune_cublas_and_cudnn](
+                             const HloInstruction& instruction) -> bool {
+    if (!do_not_autotune_cublas_and_cudnn &&
+        (instruction.opcode() == HloOpcode::kCustomCall &&
+         (IsCublasGemm(instruction) ||
+          IsCustomCallToDnnConvolution(instruction)))) {
       return true;
+    }
+    if (instruction.opcode() != HloOpcode::kFusion) {
+      return false;
+    }
+    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    if (backend_config.kind() == kTritonGemmFusionKind) {
+      return !backend_config.has_triton_gemm_config();
+    }
+    if (backend_config.kind() == kCuDnnFusionKind) {
+      return !backend_config.has_cudnn_fusion_config();
+    }
+    if (backend_config.kind() == kCustomFusionKind) {
+      return !backend_config.has_custom_fusion_config();
     }
     return false;
   };
@@ -168,14 +174,9 @@ absl::Status Autotune(HloModule& module, const std::string& cache_dir,
 
 int main(int argc, char* argv[]) {
   std::string hlo_file;
-  std::string cache_dir;
-  std::string autotune_cache_mode = "READ_WRITE";
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("hlo_file", &hlo_file, "Path to the HLO file to autotune."),
-      tsl::Flag("cache_dir", &cache_dir,
-                "Directory to store/load the autotune cache."),
-      tsl::Flag("autotune_cache_mode", &autotune_cache_mode,
-                "Autotune cache mode: READ or READ_WRITE.")};
+  };
 
   const std::string usage_string =
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
@@ -186,10 +187,7 @@ int main(int argc, char* argv[]) {
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
-  mlir::MLIRContext mlir_context;
-  xla::RegisterSymbolicExprStorage(&mlir_context);
-  CHECK_OK(xla::gpu::Autotune(*module.value(), cache_dir, autotune_cache_mode,
-                              &mlir_context));
+  CHECK_OK(xla::gpu::Autotune(*module.value()));
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }

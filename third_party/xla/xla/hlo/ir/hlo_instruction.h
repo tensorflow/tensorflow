@@ -2165,6 +2165,13 @@ class HloInstruction {
       const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
       const HloInstruction& sorted_instruction);
 
+  // Sorts the users of this instruction using the given comparison function.
+  void SortUsers(
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+          compare) {
+    users_.SortInstructionUsers(compare);
+  }
+
   // Old methods kept for smooth subclassing transition BEGIN.
   // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
   // rather than using these methods.
@@ -2698,6 +2705,9 @@ class HloInstruction {
     void MaybeRemoveUser(HloInstruction* user);  // Remove user if present
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
     int64_t UserId(HloInstruction* user);
+    void SortInstructionUsers(
+        absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+            compare);
     void SortInstructionUsers(
         const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
         const Users& sorted_instruction_users);

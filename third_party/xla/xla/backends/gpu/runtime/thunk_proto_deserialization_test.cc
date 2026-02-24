@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
+#include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
@@ -1106,6 +1107,97 @@ TEST(ThunkProtoDeserializationTest, CustomKernelThunkSymbolResolvingWorks) {
       custom_kernel_thunk->custom_kernel().kernel_spec().in_process_symbol(),
       Optional(Field(&stream_executor::InProcessSymbol::symbol,
                      tsl::safe_reinterpret_cast<void*>(&test_kernel))));
+}
+
+TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunksRoundTrip) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        sequential_thunk {
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            host_to_device_copy_thunk {
+              copy_thunk {
+                source_buffer {
+                  slice { offset: 0 size: 1024 buffer_allocation_index: 0 }
+                  shape {
+                    dimensions: 256
+                    element_type: F32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+                destination_buffer {
+                  slice { offset: 0 size: 1024 buffer_allocation_index: 1 }
+                  shape {
+                    dimensions: 256
+                    element_type: F32
+                    is_dynamic_dimension: false
+                    layout {
+                      minor_to_major: 0
+                      tail_padding_alignment_in_elements: 1
+                    }
+                  }
+                }
+                mem_size: 1024
+              }
+              async_events_unique_id: 123
+              instr_id: 1
+            }
+          }
+          thunks {
+            thunk_info { execution_stream_id: 7 }
+            copy_done_thunk {
+              async_events_unique_id: 123
+              copy_start_instr_id: 1
+            }
+          }
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations,
+                            /*hlo_module=*/nullptr, kTestPlatformName,
+                            se::GpuComputeCapability()));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+
+  const auto* sequential_thunk = dynamic_cast<SequentialThunk*>(thunk.get());
+  ASSERT_NE(sequential_thunk, nullptr);
+  ASSERT_EQ(sequential_thunk->thunks().size(), 2);
+
+  const auto* start_thunk =
+      dynamic_cast<HostToDeviceCopyThunk*>(sequential_thunk->thunks()[0].get());
+  ASSERT_NE(start_thunk, nullptr);
+
+  const auto* done_thunk =
+      dynamic_cast<CopyDoneThunk*>(sequential_thunk->thunks()[1].get());
+  ASSERT_NE(done_thunk, nullptr);
+
+  EXPECT_TRUE(start_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_TRUE(done_thunk->GetAsyncEventsUniqueId().has_value());
+  EXPECT_EQ(start_thunk->GetAsyncEventsUniqueId(),
+            done_thunk->GetAsyncEventsUniqueId());
+
+  // The unique id is regenerated on deserialization. Overwrite it with the
+  // original value for the purpose of the roundtrip test.
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(0)
+      ->mutable_host_to_device_copy_thunk()
+      ->set_async_events_unique_id(123);
+  round_trip_proto.mutable_sequential_thunk()
+      ->mutable_thunks(1)
+      ->mutable_copy_done_thunk()
+      ->set_async_events_unique_id(123);
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace

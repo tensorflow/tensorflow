@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
-#include <unordered_set>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -63,7 +62,7 @@ TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
 }
 
 TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
-  std::unordered_set<HloOpcode> FloatTypes = {
+  absl::flat_hash_set<HloOpcode> FloatTypes = {
       // go/keep-sorted start
       HloOpcode::kAtan2,
       HloOpcode::kCbrt,
@@ -88,7 +87,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
       HloOpcode::kTanh
       // go/keep-sorted end
   };
-  std::unordered_set<HloOpcode> MeasurebleInFloat = {
+  absl::flat_hash_set<HloOpcode> MeasurebleInFloat = {
       // go/keep-sorted start
       HloOpcode::kAdd,
       HloOpcode::kMultiply,

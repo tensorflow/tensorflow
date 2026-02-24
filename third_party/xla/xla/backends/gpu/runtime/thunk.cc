@@ -27,9 +27,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -55,15 +57,17 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
-    ExecutionStreamIdMap additional_compute_streams) {
+    CollectiveMemory* collective_memory,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
-                       collective_params, collective_cliques,
+                       collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
-                       additional_compute_streams,
+                       additional_compute_streams, execution_scoped_state,
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
@@ -78,32 +82,37 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
   return ExecuteParams(
       &buffer_allocations, params.stream, params.command_buffer_trace_stream,
       params.collective_params, params.collective_cliques,
-      params.device_to_host_stream, params.host_to_device_stream,
-      params.send_device_memory_function, params.recv_device_memory_function,
-      params.ffi_execution_context, params.additional_compute_streams);
+      params.collective_memory, params.device_to_host_stream,
+      params.host_to_device_stream, params.send_device_memory_function,
+      params.recv_device_memory_function, params.ffi_execution_context,
+      params.additional_compute_streams);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
-    se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
+    CollectiveMemory* collective_memory, se::Stream* device_to_host_stream,
+    se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state, bool mock_collectives,
     int64_t execution_id)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
       collective_params(collective_params),
       collective_cliques(collective_cliques),
+      collective_memory(collective_memory),
       device_to_host_stream(device_to_host_stream),
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
+      execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
       execution_id(execution_id) {}
 
@@ -496,7 +505,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
   }
 }
 
-/*static*/
 absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
     ExecutionStreamId stream_id, const ExecuteParams& params) {
   if (stream_id == kDefaultExecutionStreamId) {
@@ -504,7 +512,12 @@ absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
   }
   auto iter = params.additional_compute_streams.find(stream_id);
   if (iter == params.additional_compute_streams.end()) {
-    return absl::InvalidArgumentError("Invalid execution stream id.");
+    return InvalidArgument(
+        "Invalid execution stream id: %v; available streams: [%s]", stream_id,
+        absl::StrJoin(params.additional_compute_streams, ",",
+                      [](std::string* out, auto pair) {
+                        absl::StrAppendFormat(out, "%v", pair.first);
+                      }));
   }
   return iter->second;
 }
@@ -583,14 +596,6 @@ bool Thunk::IsCollective() const {
   }
 }
 
-void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-}
-
-void Thunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-}
-
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
   return absl::UnimplementedError(absl::StrFormat(
       "Proto serialization for thunk of type %s is not implemented",
@@ -607,7 +612,7 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
     const Thunk& root_thunk) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.ForAllThunks([&metadata_list_proto](const Thunk* thunk) {
+  root_thunk.Walk([&metadata_list_proto](const Thunk* thunk) {
     *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
   });
   return metadata_list_proto;

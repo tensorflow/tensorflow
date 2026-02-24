@@ -183,4 +183,24 @@ void MMapHandle::UnMap() {
   size_ = 0;
 }
 
+bool MMapHandle::LockMemory() {
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+  return true;
+#elif defined(_WIN32)
+  return VirtualLock(data_, size_) != 0;
+#else
+  return mlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
+bool MMapHandle::UnlockMemory() {
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+  return true;
+#elif defined(_WIN32)
+  return VirtualUnlock(data_, size_) != 0;
+#else
+  return munlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
 }  // namespace tflite::xnnpack

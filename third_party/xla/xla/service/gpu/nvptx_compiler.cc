@@ -40,21 +40,21 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/cublas.h"
-#include "xla/backends/gpu/autotuner/cublaslt.h"
-#include "xla/backends/gpu/autotuner/cudnn.h"
-#include "xla/backends/gpu/autotuner/custom_kernel.h"
-#include "xla/backends/gpu/autotuner/fission_backend.h"
-#include "xla/backends/gpu/autotuner/native_emitter.h"
-#include "xla/backends/gpu/autotuner/triton.h"
-#include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/backends/gpu/transforms/algebraic_simplifier.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_padding_legalization.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
+#include "xla/backends/gpu/transforms/cudnn_custom_call_compiler.h"
+#include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
+#include "xla/backends/gpu/transforms/cudnn_norm_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
+#include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
+#include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -65,13 +65,12 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -81,19 +80,6 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/transforms/algebraic_simplifier.h"
-#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
-#include "xla/service/gpu/transforms/conv_padding_legalization.h"
-#include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
-#include "xla/service/gpu/transforms/cudnn_custom_call_compiler.h"
-#include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
-#include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
-#include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
-#include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
-#include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -180,11 +166,12 @@ class MatmulBfloat16Support : public FloatSupport {
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
-    const se::SemanticVersion& toolkit_version) {
+    const se::SemanticVersion& toolkit_version,
+    CompilationStats* compilation_stats) {
   auto* cuda_compute_capability = gpu_version.cuda_compute_capability();
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (ConvPaddingLegalization). Also expand cuSolver calls.
-  HloPassPipeline pipeline("conv_canonicalization");
+  HloPassPipeline pipeline("conv_canonicalization", compilation_stats);
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
@@ -266,14 +253,16 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    CompilationStats* compilation_stats) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   auto* cuda_compute_capability =
       gpu_target_config.device_description.gpu_compute_capability()
           .cuda_compute_capability();
 
-  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
+  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1",
+                               compilation_stats);
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm() &&
       !hlo_module->config()
            .debug_options()
@@ -310,9 +299,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool));
+      thread_pool, compilation_stats));
 
-  HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
+  HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2",
+                                compilation_stats);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -321,164 +311,6 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       post_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
           .status());
 
-  return absl::OkStatus();
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-NVPTXCompiler::GetCodegenBackends(
-    se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  const auto& enabled_backends =
-      debug_options.xla_gpu_experimental_autotune_backends();
-
-  auto is_backend_enabled = [&](DebugOptions::AutotuneBackend backend) {
-    if (enabled_backends.empty()) {
-      return true;
-    }
-    for (const auto& enabled_backend : enabled_backends) {
-      if (enabled_backend == DebugOptions::AUTOTUNE_BACKEND_ALL) {
-        return true;
-      }
-      if (enabled_backend == backend) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  // Selecting the "first' config in the autotuner is backend order dependent.
-  // To make all tests pass we need to keep the CuDnn backend first and the
-  // Triton backend second.
-
-  // CudnnBackend must be disabled if the binary libraries are disabled.
-  // Otherwise CuDnn graph will not be compiled and CuDNN thunk crashes on cache
-  // lookup.
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
-      is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUDNN)) {
-    backends.push_back(std::make_unique<CudnnBackend>(
-        stream_exec, &debug_options, this, target_config));
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_TRITON)) {
-    backends.push_back(std::make_unique<TritonBackend>(
-        &debug_options, this, target_config, alias_info, mlir_context));
-  }
-
-  if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLAS)) {
-      backends.push_back(std::make_unique<CublasBackend>(
-          stream_exec, &debug_options, this, target_config));
-    }
-    if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLASLT)) {
-      backends.push_back(std::make_unique<CublasLtBackend>(
-          stream_exec, &debug_options, this, target_config));
-    }
-    if (debug_options.xla_gpu_cublas_fallback()) {
-      if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLAS)) {
-        backends.push_back(std::make_unique<FissionBackend>(
-            &debug_options, this, target_config,
-            std::make_unique<CublasBackend>(stream_exec, &debug_options, this,
-                                            target_config, true),
-            GetCublasRewriterPipeline(target_config->device_description),
-            alias_info, mlir_context));
-      }
-      if (debug_options.xla_gpu_enable_cublaslt() &&
-          is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLASLT)) {
-        backends.push_back(std::make_unique<FissionBackend>(
-            &debug_options, this, target_config,
-            std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this,
-                                              target_config),
-            GetCublasRewriterPipeline(target_config->device_description,
-                                      /*enable_cublaslt=*/true),
-            alias_info, mlir_context));
-      }
-    }
-    backends.push_back(std::make_unique<FissionBackend>(
-        &debug_options, this, target_config,
-        std::make_unique<CustomKernelBackend>(stream_exec, &debug_options, this,
-                                              target_config),
-        GetCustomKernelRewriterPipeline(target_config->device_description),
-        alias_info, mlir_context));
-  }
-
-  return backends;
-}
-
-namespace {
-
-bool ShouldAutotuneBetweenFusionEmittersAny(const HloInstruction& instruction) {
-  if (instruction.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  // kCustom fusions have already been assigned to a backend and we don't want
-  // to override it.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return false;
-  }
-  // Scatter can't go through the block-level emitter and runs into comparator
-  // issues in the autotuner as different runs can produce different results.
-  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
-                     HloPredicateIsOp<HloOpcode::kScatter>)) {
-    return false;
-  }
-  return true;
-}
-
-// Returns true if the instruction is a fusion that would go through the native
-// emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
-bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
-  if (!ShouldAutotuneBetweenFusionEmittersAny(instruction)) return false;
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
-}
-
-}  // namespace
-
-absl::Status NVPTXCompiler::AddFusionAutotuningPass(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-    stream_executor::StreamExecutor* stream_executor,
-    const Compiler::GpuTargetConfig* target_config,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    const MultiProcessKeyValueStore& key_value_store) {
-  if (stream_executor == nullptr) {
-    return absl::OkStatus();
-  }
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
-    return absl::OkStatus();
-  }
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  auto native_backend = std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config);
-  backends.push_back(std::move(native_backend));
-  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
-      &debug_options, this, shape_size_fn, target_config,
-      /*use_default_config=*/true);
-  backends.push_back(std::move(ble_backend));
-
-  auto should_autotune =
-      debug_options.xla_gpu_experimental_all_fusions_with_triton()
-          ? ShouldAutotuneBetweenFusionEmittersAny
-          : ShouldAutotuneBetweenFusionEmitters;
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator,
-                            /*optimize_scratch_bytes=*/false, key_value_store,
-                            /*allow_reg_spills=*/true));
-  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 

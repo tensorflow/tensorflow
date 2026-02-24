@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -136,7 +137,7 @@ class CommandExecutor {
                             RecordId record_id = RecordId(0)) const;
 
   // Returns buffers referenced by commands in this sequence.
-  const absl::flat_hash_set<BufferUse>& buffers() const;
+  const absl::flat_hash_set<BufferUse>& buffer_uses() const;
 
   // Returns buffer allocations indices referenced by commands in this sequence.
   absl::Span<const BufferAllocation::Index> allocs_indices() const;
@@ -163,6 +164,16 @@ class CommandExecutor {
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.
   absl::StatusOr<std::string> RenderExecutionGraph();
+
+  // Recursively traverses all commands in the executor and nested executors.
+  absl::Status Walk(
+      absl::FunctionRef<absl::Status(const Command*)> callback) const {
+    return commands_.Walk(callback);
+  }
+
+  absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
+    return commands_.Walk(callback);
+  }
 
  private:
   // We use index into the `commands_` vector as a command id.

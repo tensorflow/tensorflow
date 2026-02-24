@@ -11602,6 +11602,22 @@ TEST_F(SimplifyNoOpBitcastConvertTest,
 }
 
 TEST_F(SimplifyNoOpBitcastConvertTest,
+       SimplifyBitcastConvertFromPredToNarrowerBitwidth) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      ROOT out = pred[10,4] bitcast-convert(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast()));
+}
+
+TEST_F(SimplifyNoOpBitcastConvertTest,
        DoNotSimplifyBitcastConvertToNonMinorDim) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
@@ -11635,6 +11651,22 @@ m {
   a = s4[3,5,2]{2,1,0:E(4)} parameter(0)
   b = s8[3,5]{1,0} bitcast-convert(a)
 })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast()));
+}
+
+TEST_F(SimplifyNoOpBitcastConvertTest,
+       SimplifyBitcastConvertFromPredToWiderBitwidth) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = pred[10,4] parameter(0)
+      ROOT out = s32[10] bitcast-convert(p0)
+    }
+  )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),

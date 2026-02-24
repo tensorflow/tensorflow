@@ -1133,7 +1133,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (it != sharding_colors_.end()) {
       return it->second;
     }
-    ColorScheme color = static_cast<ColorScheme>(
+    auto color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
     sharding_colors_.emplace(instr->sharding(), color);
     return color;

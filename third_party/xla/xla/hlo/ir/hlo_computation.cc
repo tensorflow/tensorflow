@@ -1728,7 +1728,7 @@ absl::Status HloComputation::ReplaceWithNewEntryComputationParameter(
 absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
-    bool remove_unused_operands) {
+    bool remove_unused_operands, bool preserve_frontend_attributes) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << absl::StreamFormat(
@@ -1738,7 +1738,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
              new_instruction->shape().ToString(/*print_layout=*/true));
   return ReplaceInstructionWithDifferentShape(
       old_instruction, new_instruction, preserve_sharding,
-      relay_control_dependency, remove_unused_operands);
+      relay_control_dependency, remove_unused_operands,
+      preserve_frontend_attributes);
 }
 
 absl::Status HloComputation::ReplaceInstruction(
@@ -1753,7 +1754,7 @@ absl::Status HloComputation::ReplaceInstruction(
 absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
-    bool remove_unused_operands) {
+    bool remove_unused_operands, bool preserve_frontend_attributes) {
   if (preserve_sharding && new_instruction->has_sharding() &&
       old_instruction->has_sharding() &&
       !new_instruction->has_compatible_sharding(old_instruction)) {
@@ -1782,7 +1783,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  if (new_instruction->frontend_attributes().map().empty()) {
+  if (preserve_frontend_attributes &&
+      new_instruction->frontend_attributes().map().empty()) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }

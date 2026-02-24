@@ -24,13 +24,11 @@ limitations under the License.*/
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/runtime/collective_cliques.h"
-#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -147,9 +145,6 @@ class CollectiveKernelThunk : public Thunk {
     std::unique_ptr<se::Kernel> kernel;
     uint32_t invocation_count = 0;
 
-    std::shared_ptr<CollectiveMultimem> collective_multimem;
-    void* multicast_device_ptr = nullptr;
-
     // Constructor to make OSS builds happy.
     StreamState() = default;
     StreamState(int device_ordinal_arg, RankId rank_arg,
@@ -161,6 +156,12 @@ class CollectiveKernelThunk : public Thunk {
 
   // Returns the input size in bytes for the collective.
   int64_t GetInputSizeBytes() const;
+
+  // Calculate the device memory base for the given parameter index.
+  // The size of the returned memory is num_devices pointers.
+  static absl::StatusOr<se::DeviceAddressBase> GetParameterDeviceMemoryBase(
+      se::DeviceAddressBase metadata, int64_t num_parameters,
+      int64_t num_devices, int64_t parameter_index);
 
   // Whether the one-shot kernel is enabled.
   const bool collective_kernel_enabled_;

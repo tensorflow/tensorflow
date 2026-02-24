@@ -173,6 +173,17 @@ void HloInstruction::Users::RemoveUser(HloInstruction* user) {
 }
 
 void HloInstruction::Users::SortInstructionUsers(
+    absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+        compare) {
+  absl::c_sort(users_, compare);
+  if (user_map_ != nullptr) {
+    user_map_->clear();
+    RebuildMap();
+  }
+  DCHECK(CheckInvariants());
+}
+
+void HloInstruction::Users::SortInstructionUsers(
     const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
     const Users& sorted_instruction_users) {
   using Sorter = MappedPtrContainerSorter<HloInstruction>;
@@ -4018,8 +4029,9 @@ bool HloInstruction::IsElementwiseImpl(
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
   if (opcode_ == HloOpcode::kBitcastConvert &&
-      primitive_util::BitWidth(shape().element_type()) !=
-          primitive_util::BitWidth(operands_[0]->shape().element_type())) {
+      primitive_util::StorageBitWidth(shape().element_type()) !=
+          primitive_util::StorageBitWidth(
+              operands_[0]->shape().element_type())) {
     return false;
   }
   return IsOpElementwise(opcode_);

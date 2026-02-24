@@ -597,6 +597,12 @@ TEST_F(BufferAssignmentTest, BasicToFromProto) {
       std::unique_ptr<BufferAssignment> buffers_from_proto,
       ConvertToProtoAndBack(buffers_orig.get(), module.get()));
 
+  EXPECT_EQ(buffers_from_proto->GetStats().parameter_allocation_bytes, 804);
+  EXPECT_EQ(buffers_from_proto->GetStats().maybe_live_out_allocation_bytes,
+            400);
+  EXPECT_EQ(buffers_from_proto->GetStats().total_allocation_count, 4);
+  EXPECT_EQ(buffers_from_proto->GetStats().total_allocation_bytes, 1204);
+
   // Compare the two buffer assignments and ensure that they are identical.
   const HloDataflowAnalysis& dataflow_orig = buffers_orig->dataflow_analysis();
   const HloDataflowAnalysis& dataflow_proto =

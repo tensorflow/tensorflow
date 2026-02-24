@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/MLIRContext.h"
+#include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -43,8 +44,12 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/testing/temporary_directory.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -53,6 +58,7 @@ namespace {
 using absl_testing::IsOk;
 using absl_testing::StatusIs;
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
+using ::tsl::proto_testing::EqualsProto;
 
 const char kHlo[] = R"(
   HloModule module
@@ -552,6 +558,104 @@ TEST_F(TritonBackendTest, TmaConfigsAreGeneratedOnlyForHopperAndWorkCorrectly) {
                          *tma_config),
         absl_testing::IsOk());
   }
+}
+
+TEST_F(TritonBackendTest, GetOverriddenConfigs) {
+  AutotuneResult::TritonGemmKey gemm_config;
+  gemm_config.set_num_ctas(1);
+  gemm_config.set_num_warps(4);
+  gemm_config.set_block_m(16);
+  gemm_config.set_block_n(16);
+  gemm_config.set_block_k(16);
+  gemm_config.set_num_stages(2);
+  gemm_config.set_is_tma_allowed(true);
+  gemm_config.set_is_warp_specialization_allowed(true);
+  std::string gemm_config_str;
+  ASSERT_TRUE(
+      tsl::protobuf::TextFormat::PrintToString(gemm_config, &gemm_config_str));
+
+  debug_options_.set_xla_gpu_override_gemm_autotuner(gemm_config_str);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction()));
+
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_EQ(configs.value().size(), 1);
+  TritonBackendConfig triton_config;
+  ASSERT_TRUE(configs.value()[0]->UnpackTo(&triton_config));
+  EXPECT_THAT(triton_config, EqualsProto(gemm_config));
+}
+
+TEST_F(TritonBackendTest, GetOverriddenConfigsFromFile) {
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  const std::string file_path =
+      tsl::io::JoinPath(temp_dir.path(), "triton_override.txt");
+  TritonGemmConfigsProto gemm_configs;
+  AutotuneResult::TritonGemmKey* gemm_config = gemm_configs.add_config();
+  gemm_config->set_num_ctas(1);
+  gemm_config->set_num_warps(4);
+  gemm_config->set_block_m(16);
+  gemm_config->set_block_n(16);
+  gemm_config->set_block_k(16);
+  gemm_config->set_num_stages(2);
+  gemm_config->set_is_tma_allowed(true);
+  gemm_config->set_is_warp_specialization_allowed(true);
+  std::string gemm_configs_str;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::PrintToString(gemm_configs,
+                                                       &gemm_configs_str));
+  EXPECT_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), file_path, gemm_configs_str));
+
+  debug_options_.set_xla_gpu_gemm_autotuner_override_file(file_path);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction()));
+
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_EQ(configs.value().size(), 1);
+  TritonBackendConfig triton_config;
+  ASSERT_TRUE(configs.value()[0]->UnpackTo(&triton_config));
+  EXPECT_THAT(triton_config, EqualsProto(*gemm_config));
+}
+
+TEST_F(TritonBackendTest, WarpSpecializationConfigsAreGenerated) {
+  if (target_config_.device_description.gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  se::CudaComputeCapability blackwell_cap{se::CudaComputeCapability::kBlackwell,
+                                          0};
+  target_config_.device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{blackwell_cap});
+
+  debug_options_.set_xla_gpu_experimental_enable_triton_warp_specialization(
+      true);
+  debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kSimpleGemmFusionHlo));
+
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOk());
+  EXPECT_GT(configs.value().size(), 0);
+
+  EXPECT_TRUE(
+      std::any_of(configs.value().begin(), configs.value().end(),
+                  [](const std::unique_ptr<BackendConfig>& config) {
+                    TritonBackendConfig triton_config;
+                    if (!config->UnpackTo(&triton_config)) {
+                      return false;
+                    }
+                    return triton_config.is_warp_specialization_allowed();
+                  }));
 }
 
 }  // namespace

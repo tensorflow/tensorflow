@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
@@ -261,8 +261,11 @@ class LowerReduce : public mlir::OpRewritePattern<stablehlo::ReduceOp> {
     // Check that the reduction is along a single dimension.
     auto dimensions = op.getDimensions();
     if (dimensions.size() != 1) {
-      return rewriter.notifyMatchFailure(
-          op->getLoc(), "tt.reduce only supports single dimension reductions.");
+      absl::string_view error_text =
+          "tt.reduce only supports single dimension reductions.";
+      // Report this as a hard error to abort the compilation.
+      op.emitError(error_text);
+      return rewriter.notifyMatchFailure(op->getLoc(), error_text);
     }
 
     return mlir::success();

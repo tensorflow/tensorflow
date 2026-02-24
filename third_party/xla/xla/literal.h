@@ -1882,6 +1882,9 @@ NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
+  if (subshape().element_type() == PRED) {
+    return static_cast<NativeT>(buffer()[linear_index] ? true : false);
+  }
   return data<NativeT>().data()[linear_index];
 }
 

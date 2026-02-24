@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/codegen/kernels/custom_kernel.proto";
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/copy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
@@ -26,7 +27,6 @@ import "xla/ffi/execution_state.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/gpu_conv_runner.proto";
 import "xla/service/gpu/gpu_norm_runner.proto";
-import "xla/service/gpu/kernels/custom_kernel.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/service/hlo.proto";
 import "xla/service/shaped_slice.proto";
@@ -425,6 +425,7 @@ message RaggedAllToAllStartThunkProto {
   int64 num_input_rows = 5;
   int64 num_row_elements = 6;
   bool one_shot_kernel_enabled = 7;
+  bool use_multi_gpu_barrier_in_one_shot_kernel = 8;
 }
 
 message CollectivePermuteStartThunkProto {
@@ -472,6 +473,11 @@ message CollectiveGroupThunkProto {
   ThunkKindProto thunk_kind = 1;
   repeated ThunkProto thunks = 2;
   optional uint64 async_events_unique_id = 4;
+}
+
+message CopyDoneThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  int64 copy_start_instr_id = 2;
 }
 
 message ThunkProto {
@@ -524,6 +530,7 @@ message ThunkProto {
     CollectiveBroadcastStartThunkProto collective_broadcast_start_thunk = 46;
     CollectiveGroupThunkProto collective_group_thunk = 47;
     DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
+    CopyDoneThunkProto copy_done_thunk = 49;
   }
 }
 

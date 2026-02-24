@@ -91,6 +91,8 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -103,6 +105,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::xtile {
 
@@ -126,6 +129,12 @@ Value MakeIndex(mlir::ImplicitLocOpBuilder& b, int64_t value) {
 TensorValue Iota(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
   auto type = mlir::RankedTensorType::get(limit, b.getI32Type());
   return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
+}
+
+bool AnyOperandIsFusion(const HloInstruction& hlo) {
+  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+    return operand->opcode() == HloOpcode::kFusion;
+  });
 }
 
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
@@ -428,11 +437,8 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
 // dimension of matrix multiplication.
 absl::StatusOr<int64_t> GetDotLoopIterationCount(
     const TiledHloInstruction& tiled_dot) {
-  // As LHS (and RHS) must point to the outline fusion computation that is
-  // tiled with contracting dimension, we can get the
-  // - size from the shape of the operand
-  // - tile size from the tiling of the nested fusion root
-  // using the contracting dimension from the dot instruction.
+  // We get the size and tile size for the contracting dimension by looking at
+  // the tiled instruction for the lhs operand (it is the same for the rhs).
   const HloInstruction& dot = *tiled_dot.hlo();
   const auto& dims = dot.dot_dimension_numbers();
   if (dims.lhs_contracting_dimensions_size() != 1) {
@@ -595,6 +601,169 @@ absl::StatusOr<TensorValue> CanonicalizeDotOperand(
   return operand;
 }
 
+absl::StatusOr<TensorValue> EmitTiledHloInstruction(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_hlo, mlir::FunctionOpInterface fn,
+    Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values);
+
+absl::Status EmitTiledInstructionList(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    const std::vector<std::unique_ptr<TiledHloInstruction>>& tiled_instructions,
+    mlir::FunctionOpInterface fn, Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  for (const std::unique_ptr<TiledHloInstruction>& tiled_hlo :
+       tiled_instructions) {
+    const HloInstruction* hlo = tiled_hlo->hlo();
+    TF_ASSIGN_OR_RETURN(
+        TensorValue result,
+        EmitTiledHloInstruction(b, fusion, *tiled_hlo, fn, pid, values));
+    TF_RET_CHECK(values.insert({tiled_hlo.get(), result}).second)
+        << hlo->ToString();
+    VLOG(8) << "Emitted " << hlo->ToString(HloPrintOptions::ShortParsable());
+  }
+  return absl::OkStatus();
+}
+
+// Emits dot instruction that has LHS and RHS as part of its region.
+// TODO(b/446827313): pass references instead of pointers across the file.
+absl::StatusOr<TensorValue> EmitUnnestedDot(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
+    Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  // Symbolic tiling analysis identifies instructions that belong to the dot
+  // and puts them inside of the dot's `region`.
+  //
+  // To emit it we create a loop over the contracting dimension and emit the
+  // region of the dot inside:
+  //
+  // acc = [tile_m, tile_n] 0.0f
+  // for (k = 0 .. size_k / tile_k) {
+  //   <contents of the region, including lhs and rhs>
+  //   acc += dot(lhs, rhs)
+  // }
+  // c = acc
+  // TODO(b/446827313): it is legal for dot to have no regions if LHS and RHS
+  // are already emitted and there is no reduction loop to emit.
+  TF_RET_CHECK(tiled_hlo_dot.regions().size() == 1);
+
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
+
+  SmallVector<int64_t, 2> padded_tile_sizes_no_unit_dims =
+      CollapseUnitDims(padded_tile_sizes, padded_tile_sizes).first;
+
+  // Sanity check: Triton historically did not support non-2D dots (and still
+  // doesn't support arbitrary nD dots), so we require that the dot is tiled
+  // with exactly two non-unit tile sizes. This anyway matches the hardware's
+  // expectations, so seems like a reasonable requirement.
+  // TODO(b/393299275): this needs to be enforced in tiling.
+  if (padded_tile_sizes_no_unit_dims.size() != 2) {
+    return absl::FailedPreconditionError(
+        "Expected dot to be tiled with exactly two non-unit tile sizes");
+  }
+  const HloDotInstruction& dot =
+      *::xla::Cast<HloDotInstruction>(tiled_hlo_dot.hlo());
+  // The specific accumulator type to use may not correspond to the output type
+  // of the dot. In particular, that is the case when an algorithm is specified
+  // and the dot's output type does not match its expectations.
+  TF_ASSIGN_OR_RETURN(Type accumulator_type,
+                      xtile::GetDotAccumulatorType(b, dot));
+  TensorValue accumulator =
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
+
+  TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
+                      GetDotLoopIterationCount(tiled_hlo_dot));
+  auto pid_dim = b.getAffineDimExpr(0);
+  auto ki_symbol = b.getAffineSymbolExpr(0);
+  // Instructions in the region are tiled with indexing map
+  // 'pid * loop_iter_count + ki'.
+  IndexingMap computation_index_map{
+      AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      {IndexingMap::Variable{
+          tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
+      {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+      /*rt_vars=*/{}};
+
+  auto for_op = mlir::scf::ForOp::create(
+      b,
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count),
+      /*step=*/MakeIndex(b, 1), accumulator);
+
+  {  // Loop body.
+    mlir::OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(for_op.getBody());
+    Value ki = for_op.getInductionVar();
+    Value computation_index = xla::ApplyIndexingOp::create(
+                                  b, ValueRange{pid, ki}, computation_index_map)
+                                  .getResult(0);
+    // TODO(b/446827313): we should be careful here about adding to the "values"
+    // map: not all instructions will be valid outside of the loop.
+    TF_RETURN_IF_ERROR(EmitTiledInstructionList(b, fusion,
+                                                tiled_hlo_dot.regions().front(),
+                                                fn, computation_index, values));
+    SmallVector<TensorValue> dot_args;
+    for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
+      CHECK(values.contains(operand))
+          << "Dot operand " << operand->ToString()
+          << " not found in the emitter values map ";
+      dot_args.push_back(values[operand]);
+    }
+
+    Value acc = for_op.getRegionIterArgs().front();
+    int64_t lhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
+
+    int64_t rhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
+
+    Value ki_i32 = Cast(b, ki, b.getI32Type());
+    TF_ASSIGN_OR_RETURN(
+        TensorValue lhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0], ki_i32,
+                       lhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        TensorValue rhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
+                       rhs_contracting_dim_idx));
+
+    // Canonicalize the dot operands to match Triton's/the hardware's
+    // expectations.
+    TF_ASSIGN_OR_RETURN(lhs,
+                        CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
+                                               DotOperandSide::kLhs));
+    TF_ASSIGN_OR_RETURN(rhs,
+                        CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
+                                               DotOperandSide::kRhs));
+
+    TF_ASSIGN_OR_RETURN(
+        Value acc_next,
+        xtile::EmitSingleTileDot(b, dot, xtile::DotOperands{lhs, rhs, acc}));
+    mlir::scf::YieldOp::create(b, acc_next);
+  }
+
+  // The output of the loop may not match the expected output type of the dot.
+  // We make sure to issue a conversion if necessary.
+  TF_ASSIGN_OR_RETURN(Type dot_output_type,
+                      PrimitiveTypeToMlirType(b, dot.shape().element_type()));
+
+  Value result = for_op.getResult(0);
+  if (dot_output_type != accumulator_type) {
+    result = Cast(b, result, dot_output_type);
+  }
+
+  auto tensor_result = mlir::cast<TensorValue>(result);
+
+  if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
+    return EmitTiledReshape(b, padded_tile_sizes, tensor_result);
+  }
+
+  return tensor_result;
+}
+
 absl::StatusOr<TensorValue> EmitDot(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
@@ -735,6 +904,160 @@ absl::StatusOr<TensorValue> EmitDot(
     TF_ASSIGN_OR_RETURN(
         Value acc_next,
         xtile::EmitSingleTileDot(b, dot, xtile::DotOperands{lhs, rhs, acc}));
+    mlir::scf::YieldOp::create(b, acc_next);
+  }
+
+  // The output of the loop may not match the expected output type of the dot.
+  // We make sure to issue a conversion if necessary.
+  TF_ASSIGN_OR_RETURN(Type dot_output_type,
+                      PrimitiveTypeToMlirType(b, dot.shape().element_type()));
+
+  Value result = for_op.getResult(0);
+  if (dot_output_type != accumulator_type) {
+    result = Cast(b, result, dot_output_type);
+  }
+
+  auto tensor_result = mlir::cast<TensorValue>(result);
+
+  if (padded_tile_sizes.size() != padded_tile_sizes_no_unit_dims.size()) {
+    return EmitTiledReshape(b, padded_tile_sizes, tensor_result);
+  }
+
+  return tensor_result;
+}
+
+// Emits scaled dot instruction that is not nested into the fusion.
+absl::StatusOr<TensorValue> EmitUnnestedScaledDot(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
+    Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  // Symbolic tiling analysis identifies instructions that belong to the dot
+  // and puts them inside of the dot's `region`.
+  //
+  // To emit it we create a loop over the contracting dimension and emit the
+  // region of the dot inside:
+  //
+  // acc = [tile_m, tile_n] 0.0f
+  // for (k = 0 .. size_k / tile_k) {
+  //   <contents of the region, including lhs and rhs>
+  //   acc += dot(lhs, rhs)
+  // }
+  // c = acc
+  // TODO(b/446827313): it is legal for dot to have no regions if LHS and RHS
+  // are already emitted and there is no reduction loop to emit.
+  TF_RET_CHECK(tiled_hlo_dot.regions().size() == 1);
+
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
+
+  SmallVector<int64_t, 2> padded_tile_sizes_no_unit_dims =
+      CollapseUnitDims(padded_tile_sizes, padded_tile_sizes).first;
+
+  // Sanity check: Triton historically did not support non-2D dots (and still
+  // doesn't support arbitrary nD dots), so we require that the dot is tiled
+  // with exactly two non-unit tile sizes. This anyway matches the hardware's
+  // expectations, so seems like a reasonable requirement.
+  // TODO(b/393299275): this needs to be enforced in tiling.
+  if (padded_tile_sizes_no_unit_dims.size() != 2) {
+    return absl::FailedPreconditionError(
+        "Expected dot to be tiled with exactly two non-unit tile sizes");
+  }
+  const HloScaledDotInstruction& dot =
+      *::xla::Cast<HloScaledDotInstruction>(tiled_hlo_dot.hlo());
+  // The specific accumulator type to use may not correspond to the output type
+  // of the dot. In particular, that is the case when an algorithm is specified
+  // and the dot's output type does not match its expectations.
+  Type accumulator_type = b.getF32Type();
+  TensorValue accumulator =
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims);
+
+  TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
+                      GetDotLoopIterationCount(tiled_hlo_dot));
+  auto pid_dim = b.getAffineDimExpr(0);
+  auto ki_symbol = b.getAffineSymbolExpr(0);
+  // Instructions in the region are tiled with indexing map
+  // 'pid * loop_iter_count + ki'.
+  IndexingMap computation_index_map{
+      AffineMap::get(1, 1, pid_dim * loop_iteration_count + ki_symbol),
+      {IndexingMap::Variable{
+          tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0), "pid"}},
+      {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+      /*rt_vars=*/{}};
+
+  auto for_op = mlir::scf::ForOp::create(
+      b,
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count),
+      /*step=*/MakeIndex(b, 1), accumulator);
+
+  {  // Loop body.
+    mlir::OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(for_op.getBody());
+    Value ki = for_op.getInductionVar();
+    Value computation_index = xla::ApplyIndexingOp::create(
+                                  b, ValueRange{pid, ki}, computation_index_map)
+                                  .getResult(0);
+    // TODO(b/446827313): we should be careful here about adding to the "values"
+    // map: not all instructions will be valid outside of the loop.
+    TF_RETURN_IF_ERROR(EmitTiledInstructionList(b, fusion,
+                                                tiled_hlo_dot.regions().front(),
+                                                fn, computation_index, values));
+    SmallVector<TensorValue> dot_args;
+    for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
+      CHECK(values.contains(operand))
+          << "Dot operand " << operand->ToString()
+          << " not found in the emitter values map ";
+      dot_args.push_back(values[operand]);
+    }
+
+    Value acc = for_op.getRegionIterArgs().front();
+    int64_t lhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
+
+    int64_t rhs_contracting_dim_idx =
+        dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
+
+    Value ki_i32 = Cast(b, ki, b.getI32Type());
+    TF_ASSIGN_OR_RETURN(
+        TensorValue lhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0], ki_i32,
+                       lhs_contracting_dim_idx));
+    TF_ASSIGN_OR_RETURN(
+        TensorValue rhs,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
+                       rhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        TensorValue lhs_scale,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(2), dot_args[2], ki_i32,
+                       lhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        TensorValue rhs_scale,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(3), dot_args[3], ki_i32,
+                       rhs_contracting_dim_idx));
+
+    // Canonicalize the dot operands to match Triton's/the hardware's
+    // expectations.
+    TF_ASSIGN_OR_RETURN(
+        lhs_scale, CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
+                                          DotOperandSide::kLhs, lhs));
+    TF_ASSIGN_OR_RETURN(
+        rhs_scale, CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
+                                          DotOperandSide::kRhs, rhs));
+    TF_ASSIGN_OR_RETURN(lhs,
+                        CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
+                                               DotOperandSide::kLhs));
+    TF_ASSIGN_OR_RETURN(rhs,
+                        CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
+                                               DotOperandSide::kRhs));
+
+    TF_ASSIGN_OR_RETURN(
+        Value acc_next,
+        xtile::EmitSingleTileScaledDot(
+            b, dot,
+            xtile::ScaledDotOperands{lhs, rhs, lhs_scale, rhs_scale, acc}));
     mlir::scf::YieldOp::create(b, acc_next);
   }
 
@@ -910,6 +1233,33 @@ absl::StatusOr<TensorValue> EmitScaledDot(
   return tensor_result;
 }
 
+absl::Status CheckConcatenateOperands(
+    const TiledHloInstruction& tiled_concatenate,
+    int64_t concat_dim_tile_size) {
+  int64_t concatenate_dimension =
+      tiled_concatenate.hlo()->concatenate_dimension();
+  int64_t num_operands = tiled_concatenate.operands().size();
+  for (const auto [index, operand] :
+       llvm::enumerate(tiled_concatenate.operands())) {
+    int64_t operand_concat_dim_size =
+        operand->hlo()->shape().dimensions(concatenate_dimension);
+    // The last operand does not have to be a multiple of the tile size, since
+    // we can pad it.
+    if (index != num_operands - 1 &&
+        operand_concat_dim_size % concat_dim_tile_size != 0) {
+      // Sanity check: concatenation dimension should be divisible by the tile
+      // size for each operand. This is not a fundamental limitation, but this
+      // lowering will emit incorrect code if this does not hold---so we gate
+      // against it explicitly.
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected the tile size of the concatenation dimension of operand ",
+          operand->ToString(), "to divide the dimension size exactly, but got",
+          operand_concat_dim_size, " % ", concat_dim_tile_size, " != 0"));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<TensorValue> EmitConcatenate(
     mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
     const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
@@ -925,32 +1275,16 @@ absl::StatusOr<TensorValue> EmitConcatenate(
       GetPaddedTileSizes(tiled_concatenate.tile_sizes());
   int64_t concat_dim_tile_size = padded_tile_sizes[concatenate_dimension];
 
-  int64_t num_operands = tiled_concatenate.operands().size();
-  for (const auto [index, operand] :
-       llvm::enumerate(tiled_concatenate.operands())) {
-    if (operand->hlo()->opcode() != HloOpcode::kFusion) {
-      // Sanity check: all operands should be nested fusions.
-      return absl::FailedPreconditionError(
-          "Expected concatenate operands to be nested fusions.");
-    }
-
-    int64_t operand_concat_dim_size =
-        operand->hlo()->shape().dimensions(concatenate_dimension);
-
-    // The last operand does not have to be a multiple of the tile size, since
-    // we can pad it.
-    if (index != num_operands - 1 &&
-        operand_concat_dim_size % concat_dim_tile_size != 0) {
-      // Sanity check: concatenation dimension should be divisible by the tile
-      // size for each operand. This is not a fundamental limitation, but this
-      // lowering will emit incorrect code if this does not hold---so we gate
-      // against it explicitly.
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Expected the tile size of the concatenation dimension of operand ",
-          operand->ToString(), "to divide the dimension size exactly, but got",
-          operand_concat_dim_size, " % ", concat_dim_tile_size, " != 0"));
-    }
+  // Sanity check: all operands should be nested fusions.
+  if (absl::c_any_of(tiled_concatenate.operands(),
+                     [](const TiledHloInstruction* operand) {
+                       return operand->hlo()->opcode() != HloOpcode::kFusion;
+                     })) {
+    return absl::FailedPreconditionError(
+        "Expected all concatenate operands to be nested fusions.");
   }
+  TF_RETURN_IF_ERROR(
+      CheckConcatenateOperands(tiled_concatenate, concat_dim_tile_size));
   TF_ASSIGN_OR_RETURN(Type element_type,
                       PrimitiveTypeToMlirType(
                           b, tiled_concatenate.hlo()->shape().element_type()));
@@ -1017,6 +1351,88 @@ absl::StatusOr<TensorValue> EmitConcatenate(
   return mlir::cast<TensorValue>(if_ops.front().getResult(0));
 }
 
+absl::StatusOr<TensorValue> EmitUnnestedConcatenate(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_concatenate, mlir::FunctionOpInterface fn,
+    Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values) {
+  const int64_t concatenate_dimension =
+      tiled_concatenate.hlo()->concatenate_dimension();
+
+  TF_RET_CHECK(tiled_concatenate.operands().size() ==
+               tiled_concatenate.regions().size())
+      << "Concatenate must have the same number of operands and regions";
+
+  // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
+  // is using power of twos everywhere, including when propagating into the
+  // prologue of reductions.
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_concatenate.tile_sizes());
+  int64_t concat_dim_tile_size = padded_tile_sizes[concatenate_dimension];
+
+  TF_RETURN_IF_ERROR(
+      CheckConcatenateOperands(tiled_concatenate, concat_dim_tile_size));
+  TF_ASSIGN_OR_RETURN(Type element_type,
+                      PrimitiveTypeToMlirType(
+                          b, tiled_concatenate.hlo()->shape().element_type()));
+  Type result_type =
+      mlir::RankedTensorType::get(padded_tile_sizes, element_type);
+
+  // We will load and compute from a single operand, so we need to figure out
+  // which one by looking at the offset within the concatenation dimension.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_concatenate.tile_offsets_indexing());
+
+  Value concatenate_dimension_offset =
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/pid,
+                              /*symbols=*/{}, b)[concatenate_dimension];
+
+  // It would have been nice to be able to use `scf::IndexSwitchOp`, but Triton
+  // does not want to deal with the `Index` type, and does not support the op.
+  // Instead, we generate a sequence of nested `scf::IfOp`s.
+  SmallVector<mlir::scf::IfOp, 4> if_ops;
+  int64_t limit = 0;
+  for (auto [i, operand] : llvm::enumerate(tiled_concatenate.operands())) {
+    // Write in the else branch of the previous if op if one exists.
+    if (!if_ops.empty()) {
+      b.setInsertionPointToStart(if_ops.back().elseBlock());
+    }
+
+    // Add an `if_op` if we have not reached the last operand. The last operand
+    // directly populates the `else` block of the previous `if_op`.
+    if (if_ops.size() < tiled_concatenate.operands().size() - 1) {
+      limit += operand->hlo()->shape().dimensions()[concatenate_dimension];
+      Value offset_limit = CreateConst(b, b.getIndexType(), limit);
+
+      auto cond =
+          arith::CmpIOp::create(b, arith::CmpIPredicate::slt,
+                                concatenate_dimension_offset, offset_limit);
+      auto if_op =
+          mlir::scf::IfOp::create(b, mlir::TypeRange(result_type), cond,
+                                  /*withElseRegion=*/true);
+
+      // Propagate the result from the nested `if_op` if we were already within
+      // an `if_op`.
+      if (!if_ops.empty()) {
+        mlir::scf::YieldOp::create(b, if_op.getResult(0));
+      }
+
+      b.setInsertionPointToStart(if_op.thenBlock());
+      if_ops.push_back(if_op);
+    }
+    RETURN_IF_ERROR(EmitTiledInstructionList(
+        b, fusion, tiled_concatenate.regions()[i], fn, pid, values));
+    // We assume that operand is part of the region, thus it will be in the
+    // values.
+    TF_RET_CHECK(values.contains(operand))
+        << "Concatenate operand " << operand->ToString()
+        << " is not found in the values map (not part of the region?)";
+    mlir::scf::YieldOp::create(b, values[operand]);
+  }
+  b.setInsertionPointAfter(if_ops.front());
+  return mlir::cast<TensorValue>(if_ops.front().getResult(0));
+}
+
 absl::StatusOr<TensorValue> EmitPad(
     mlir::ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_pad,
     absl::flat_hash_map<const TiledHloInstruction*, TensorValue>& values,
@@ -1041,8 +1457,21 @@ absl::StatusOr<TensorValue> EmitPad(
   Type i32_type = b.getI32Type();
   Value mask;
   for (auto [dim_index, sizes] : llvm::enumerate(
-           llvm::zip(pad_input_shape, padded_tile_sizes, tile_offsets))) {
-    auto [pad_input_dim_size, pad_output_dim_size, tile_offset] = sizes;
+           llvm::zip(pad_input_shape, padded_tile_sizes, tile_offsets,
+                     tiled_pad.hlo()->padding_config().dimensions()))) {
+    auto [pad_input_dim_size, pad_output_dim_size, tile_offset, dim_config] =
+        sizes;
+    if (dim_config.edge_padding_low() != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Low padding is not supported but got edge_padding_low: ",
+          dim_config.edge_padding_low()));
+    }
+    if (dim_config.interior_padding() != 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Interior padding is not supported but got interior_padding: ",
+          dim_config.interior_padding()));
+    }
+
     if (pad_input_dim_size == pad_output_dim_size) {
       continue;
     }
@@ -1185,6 +1614,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
+    if (!AnyOperandIsFusion(*hlo)) {
+      return EmitUnnestedConcatenate(b, fusion, tiled_hlo, fn, pid, values);
+    }
     return EmitConcatenate(b, fusion, tiled_hlo, fn, pid, values);
   }
 
@@ -1193,10 +1625,16 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
+    if (!AnyOperandIsFusion(*hlo)) {
+      return EmitUnnestedDot(b, fusion, tiled_hlo, fn, pid, values);
+    }
     return EmitDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
+    if (!AnyOperandIsFusion(*hlo)) {
+      return EmitUnnestedScaledDot(b, fusion, tiled_hlo, fn, pid, values);
+    }
     return EmitScaledDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
@@ -1292,6 +1730,14 @@ absl::StatusOr<std::vector<TensorValue>> EmitTiledComputation(
     // Skip generating nested fusions, they are emitted by their consumer.
     if (hlo->parent()->IsFusionComputation() &&
         hlo->opcode() == HloOpcode::kFusion) {
+      if (hlo->backend_config<xla::gpu::GpuBackendConfig>()
+              .value()
+              .fusion_backend_config()
+              .kind() != xla::gpu::kTritonNestedGemmFusionKind) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Nested fusions must have kind: ",
+                         xla::gpu::kTritonNestedGemmFusionKind));
+      }
       VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
       continue;
     }
@@ -1371,7 +1817,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   }
   TF_RET_CHECK(root_index < symbolic_tile_analysis.GetRoots().size());
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      symbolic_tile_analysis.ComputeTiledHloInstructions(
+                      symbolic_tile_analysis.ComputeTiledComputation(
                           tiling, schedule_builder,
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));

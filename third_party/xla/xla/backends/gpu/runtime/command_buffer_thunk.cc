@@ -169,11 +169,13 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   Thunk::ExecuteParams execute_params(
       params.buffer_allocations, params.stream,
       params.command_buffer_trace_stream, params.collective_params,
-      params.collective_cliques, /*device_to_host_stream=*/nullptr,
+      params.collective_cliques, params.collective_memory,
+      /*device_to_host_stream=*/nullptr,
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
       /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
-      /*additional_compute_streams=*/{}, /*mock_collectives=*/false);
+      /*additional_compute_streams=*/{}, params.execution_scoped_state,
+      /*mock_collectives=*/false);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -378,20 +380,12 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-void CommandBufferThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
+absl::Status CommandBufferThunk::WalkNested(
+    absl::FunctionRef<absl::Status(Thunk*)> callback) {
   if (thunks_ != nullptr) {
-    thunks_->ForAllThunks(fn);
+    TF_RETURN_IF_ERROR(thunks_->Walk(callback));
   }
-}
-
-void CommandBufferThunk::ForAllThunksMutable(
-    absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  if (thunks_ != nullptr) {
-    thunks_->ForAllThunksMutable(fn);
-  }
+  return absl::OkStatus();
 }
 
 std::string CommandBufferThunk::ToString(int indent) const {

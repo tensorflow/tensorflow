@@ -228,6 +228,12 @@ bool NcclCollectives::SupportsDeviceComm() const {
   return NCCL_VERSION_CODE >= 22800;
 }
 
+size_t NcclCollectives::SymmetricMemoryAlignment() const {
+  // TODO(ezhulenev): Query memory alignment from CUDA executor for multicast
+  // memory (CU_MULTICAST_GRANULARITY_MINIMUM). Find how to query it for NCCL.
+  return 4096;
+}
+
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(
     const GpuCollectives::Config& config,
     const se::StreamExecutor* stream_executor) {

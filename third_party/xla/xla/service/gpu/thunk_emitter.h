@@ -85,6 +85,9 @@ class ThunkEmitter {
   absl::StatusOr<ThunkSequence> EmitHloInstruction(
       const HloInstruction* hlo, bool emit_group_thunks = false);
 
+  // Calls the right function to emit the custom call thunk for `hlo`.
+  absl::StatusOr<ThunkSequence> EmitCustomCallSwitch(const HloInstruction* hlo);
+
   absl::StatusOr<ThunkSequence> EmitAsyncStart(const HloInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitAsyncComputation(const HloInstruction* hlo);
@@ -101,9 +104,6 @@ class ThunkEmitter {
       Thunk::Kind kind, const HloInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitCollectiveGroupStartThunk(
-      const HloInstruction* hlo);
-
-  absl::StatusOr<ThunkSequence> EmitCollectiveMetadata(
       const HloInstruction* hlo);
 
   absl::StatusOr<ThunkSequence> EmitCollectivePermute(

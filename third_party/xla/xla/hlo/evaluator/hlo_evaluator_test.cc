@@ -5118,6 +5118,42 @@ ENTRY %module {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateGather_ExplicitBatchDimsWithOffsetDims) {
+  const std::string hlo_text = R"(
+HloModule gather
+
+ENTRY main {
+  operand = s32[2,3,2,4] parameter(0)
+  indices = s32[2,3] parameter(1)
+  ROOT gather = s32[2,3,2,4] gather(operand, indices),
+      offset_dims={1,2,3},
+      collapsed_slice_dims={},
+      start_index_map={1,2,3},
+      operand_batching_dims={0},
+      start_indices_batching_dims={0},
+      index_vector_dim=1,
+      slice_sizes={1,3,2,4}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // operand shape: [2,3,2,4]
+  // batch 0:
+  // [[[0,1,2,3],[4,5,6,7]],[[8,9,10,11],[12,13,14,15]],[[16,17,18,19],[20,21,22,23]]]
+  // batch 1:
+  // [[[24,25,26,27],[28,29,30,31]],[[32,33,34,35],[36,37,38,39]],[[40,41,42,43],[44,45,46,47]]]
+  Array4D<int32_t> operand_array(2, 3, 2, 4);
+  int32_t val = 0;
+  operand_array.Each(
+      [&](absl::Span<const int64_t> /*indices*/, int32_t* v) { *v = val++; });
+  Literal operand = LiteralUtil::CreateR4FromArray4D(operand_array);
+
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32_t>({{0, 0, 0}, {0, 0, 0}});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand, &start_indices}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(operand, result));
+}
+
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV1

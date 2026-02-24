@@ -158,7 +158,6 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
   absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
       sender_barrier_events_;
   bool p2p_memcpy_enabled_ = false;
-  int64_t device_count_ = 0;
 };
 
 absl::Status RunCollectivePermute(

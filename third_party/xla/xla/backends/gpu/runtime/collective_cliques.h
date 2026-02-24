@@ -40,6 +40,14 @@ class CollectiveCliques {
   absl::StatusOr<GpuCommunicator*> GetComm(
       const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id) const;
 
+  absl::StatusOr<GpuDeviceCommunicator*> GetDeviceComm(
+      const GpuCliqueKey& clique_key, RankId rank,
+      const GpuDeviceCommunicator::Requirements& reqs) const;
+
+  absl::StatusOr<GpuDeviceCommunicator*> GetDeviceComm(
+      const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id,
+      const GpuDeviceCommunicator::Requirements& reqs) const;
+
   // Returns whether peer device memory access is possible between all devices
   // in the clique.
   absl::StatusOr<bool> peer_access_enabled(
@@ -53,6 +61,10 @@ class CollectiveCliques {
 
 // Acquires collective cliques using the given collective parameters for all
 // requested GPU cliques.
+//
+// WARNING: This is a collective operation, that must be called by all
+// participating ranks in the requested cliques, otherwise it will lead to a
+// deadlock.
 absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     const CollectiveParams& params, const CollectiveCliqueRequests& cliques);
 

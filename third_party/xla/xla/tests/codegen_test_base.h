@@ -21,12 +21,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/tests/hlo_test_base_with_mlir_context.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 // Provides access to both the JIT and the AOT compiler for testing.
-class CodegenTestBase : public HloTestBaseWithMLIRContext {
+class CodegenTestBase : public HloTestBase {
  protected:
   // Compiles hlo_module with the JIT compiler.
   absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(

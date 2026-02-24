@@ -24,7 +24,7 @@ cc_library(
     srcs = ["plugin_tracer.cc"],
     hdrs = ["plugin_tracer.h"],
     copts = tf_profiler_copts(),
-    visibility = ["//xla:internal"],
+    visibility = ["//xla:friends"],
     deps = [
         ":profiler_c_api_hdrs",
         "//xla/tsl/platform:logging",
@@ -79,9 +79,6 @@ cc_library(
     name = "plugin_metadata_hdr",
     hdrs = ["plugin_metadata.h"],
     visibility = ["//xla/backends/profiler/plugin:__subpackages__"],
-    deps = [
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
-    ],
 )
 
 cc_library(
@@ -91,7 +88,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_metadata_hdr",
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ] + if_google(
         ["//xla/backends/profiler/plugin/google:plugin_metadata_google"],
         ["//xla/backends/profiler/plugin/oss:plugin_metadata_oss"],

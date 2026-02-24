@@ -84,14 +84,24 @@ absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                                 const NodeDef& ndef,
                                 MemoryTypeVector* inp_mtypes,
                                 MemoryTypeVector* out_mtypes) {
+  return MemoryTypesForNode(op_registry, device_type, ndef, inp_mtypes,
+                            out_mtypes, nullptr);
+}
+
+absl::Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
+                                const DeviceType& device_type,
+                                const NodeDef& ndef,
+                                MemoryTypeVector* inp_mtypes,
+                                MemoryTypeVector* out_mtypes,
+                                const KernelRegistry* registry) {
   // Look up the Op registered for this op name.
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(op_registry->LookUpOpDef(ndef.op(), &op_def));
 
   // Look up the Kernel registered for this node def.
   const KernelDef* kdef = nullptr;
-  absl::Status status =
-      FindKernelDef(device_type, ndef, &kdef, nullptr /* kernel_class_name */);
+  absl::Status status = FindKernelDef(
+      device_type, ndef, &kdef, nullptr /* kernel_class_name */, registry);
 
   DataTypeVector inp_dtypes;
   DataTypeVector out_dtypes;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -342,13 +343,18 @@ void PopulateWithRandomFloatingPointData(Literal* literal,
 template <typename FloatT>
 void PopulateWithFloatingPointData(
     Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
-    bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
+    bool use_large_range, std::optional<int64_t> max_bits_of_precision,
+    std::function<double(std::minstd_rand0*)> generator = nullptr) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
   CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
-  if (max_bits_of_precision.has_value()) {
+  if (generator != nullptr) {
+    for (FloatT& value : literal->data<FloatT>()) {
+      value = static_cast<FloatT>(generator(engine));
+    }
+  } else if (max_bits_of_precision.has_value()) {
     CHECK(!use_large_range) << "Cannot set both use_large_range and "
                                "max_bits_of_precision for floating points.";
     CHECK(!no_duplicates) << "Cannot set both no_duplicates and "
@@ -373,8 +379,10 @@ void PopulateWithFloatingPointData(
 }
 
 template <typename ComplexT>
-void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
-                             bool no_duplicates, bool use_large_range) {
+void PopulateWithComplexData(
+    Literal* result, std::minstd_rand0* engine, bool no_duplicates,
+    bool use_large_range,
+    std::function<double(std::minstd_rand0*)> generator = nullptr) {
   using InnerFloatT = typename ComplexT::value_type;
   CHECK_NOTNULL(engine);
   CHECK_EQ(result->shape().element_type(),
@@ -386,10 +394,10 @@ void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
 
   PopulateWithFloatingPointData<InnerFloatT>(
       &real_lit, engine, no_duplicates, use_large_range,
-      /*max_bits_of_precision=*/std::nullopt);
+      /*max_bits_of_precision=*/std::nullopt, generator);
   PopulateWithFloatingPointData<InnerFloatT>(
       &imaginary_lit, engine, no_duplicates, use_large_range,
-      /*max_bits_of_precision=*/std::nullopt);
+      /*max_bits_of_precision=*/std::nullopt, generator);
 
   absl::Span<const InnerFloatT> real_data = real_lit.data<InnerFloatT>();
   absl::Span<const InnerFloatT> imaginary_data =
@@ -411,10 +419,13 @@ template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
                                               std::minstd_rand0* engine,
                                               bool no_duplicates, IntT min,
-                                              IntT max) {
+                                              IntT max,
+                                              std::optional<IntT> alignment) {
   CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
+  CHECK(!(no_duplicates && alignment.has_value()))
+      << "Cannot set both no_duplicates and alignment for integral types.";
   if (no_duplicates &&
       ShapeUtil::ElementsIn(literal->shape()) < static_cast<int64_t>(max)) {
     int32_t start = 0;
@@ -432,6 +443,9 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
         static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
     for (IntT& value : literal->data<IntT>()) {
       value = static_cast<IntT>(generator(*engine));
+      if (alignment.has_value()) {
+        value = (value / alignment.value()) * alignment.value();
+      }
     }
   }
 }
@@ -745,7 +759,9 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<int64_t> alignment,
+    std::function<double(std::minstd_rand0*)> float_generator) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     const auto& shape_tuple_shapes = shape.tuple_shapes();
@@ -754,8 +770,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
       TF_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
-                          no_duplicates, use_large_range,
-                          max_bits_of_precision));
+                          no_duplicates, use_large_range, max_bits_of_precision,
+                          alignment, float_generator));
       elements.push_back(std::move(element));
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
@@ -779,7 +795,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
                             primitive_type_constant)) {
             PopulateWithFloatingPointData<NativeT>(
                 &literal, engine, no_duplicates, use_large_range,
-                max_bits_of_precision);
+                max_bits_of_precision, float_generator);
             return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
@@ -807,8 +823,13 @@ absl::StatusOr<Literal> MakeFakeLiteral(
                     min, static_cast<NativeT>(-(1 << *max_bits_of_precision)));
               }
             }
+            std::optional<NativeT> alignment_native = std::nullopt;
+            if (alignment.has_value()) {
+              alignment_native = static_cast<NativeT>(*alignment);
+            }
             PopulateWithRandomIntegralDataWithBounds<NativeT>(
-                &literal, engine, /*no_duplicate*/ no_duplicates, min, max);
+                &literal, engine, /*no_duplicate*/ no_duplicates, min, max,
+                alignment_native);
             if (is_sorted) {
               std::sort(literal.data<NativeT>().begin(),
                         literal.data<NativeT>().end());
@@ -818,7 +839,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           if constexpr (primitive_util::IsComplexType(
                             primitive_type_constant)) {
             PopulateWithComplexData<NativeT>(&literal, engine, no_duplicates,
-                                             use_large_range);
+                                             use_large_range, float_generator);
             return absl::OkStatus();
           }
         }

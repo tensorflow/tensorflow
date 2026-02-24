@@ -527,8 +527,8 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       // printf("trans_a %d trans_b %d\n", (int)trans_a, (int)trans_b);
       MatmulParameters cudnn_matmul_params(
           stream->parent(),
-          /*ab_type=*/a.dtype(),
-          /*c_type=*/output->dtype(), trans_a, trans_b,
+          /*ab_dtype=*/a.dtype(),
+          /*c_dtype=*/output->dtype(), trans_a, trans_b,
           static_cast<uint64_t>(m), static_cast<uint64_t>(n),
           static_cast<uint64_t>(k), a.dim_size(1), b.dim_size(1),
           output->dim_size(1), matmul_activation_mode);

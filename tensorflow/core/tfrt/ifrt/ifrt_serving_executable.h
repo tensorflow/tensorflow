@@ -19,15 +19,18 @@ limitations under the License.
 #include <stdbool.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -66,6 +70,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// Encodes the layout of `xla_input_shapes` to the module.
+absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
+                          mlir::ModuleOp module);
 
 class IfrtServingExecutable {
  public:
@@ -131,6 +139,53 @@ class IfrtServingExecutable {
     }
   };
 
+  // A view of the key. This is used to avoid copying the input shapes and
+  // dtypes and shapes when looking up the cache.
+  struct KeyView {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const KeyView& key) {
+      for (const auto& dtype_and_shape : key.dtypes_and_shapes) {
+        for (auto size : dtype_and_shape.shape.dim_sizes()) {
+          h = H::combine(std::move(h), size);
+        }
+      }
+      return h;
+    }
+  };
+
+  // Hash function for the key.
+  struct KeyHash {
+    using is_transparent = void;
+
+    size_t operator()(const Key& key) const { return absl::Hash<Key>()(key); }
+    size_t operator()(const KeyView& key) const {
+      return absl::Hash<KeyView>()(key);
+    }
+  };
+
+  // Equality function for the key.
+  struct KeyEq {
+    using is_transparent = void;
+
+    bool operator()(const Key& lhs, const Key& rhs) const { return lhs == rhs; }
+    bool operator()(const Key& lhs, const KeyView& rhs) const {
+      if (lhs.input_shapes.size() != rhs.dtypes_and_shapes.size()) {
+        return false;
+      }
+      for (int i = 0; i < lhs.input_shapes.size(); ++i) {
+        if (lhs.input_shapes[i] != rhs.dtypes_and_shapes[i].shape) {
+          return false;
+        }
+      }
+      return true;
+    }
+    bool operator()(const KeyView& lhs, const Key& rhs) const {
+      return this->operator()(rhs, lhs);
+    }
+  };
+
   struct CachedExecutableBundle {
     // If populated, these are the input shapes and layouts that the
     // executable was compiled with. `xla_input_shapes` and `xla_input_layouts`
@@ -139,14 +194,18 @@ class IfrtServingExecutable {
     // executable.
     // TODO(b/477700609): Currently `xla_input_layouts` and `xla_input_shapes`
     // are not used. We should use them to generate ifrt arrays.
-    std::optional<std::vector<xla::Shape>> xla_input_shapes;
+    std::optional<std::vector<std::shared_ptr<xla::Shape>>> xla_input_shapes;
     std::optional<std::vector<xla::ifrt::LayoutRef>> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
     absl::flat_hash_map<IfrtLoadedVariableRegistry::Key,
-                        IfrtLoadedVariableRegistry::LoadedVariable>
+                        IfrtLoadedVariableRegistry::LoadedVariable,
+                        IfrtLoadedVariableRegistry::KeyHash,
+                        IfrtLoadedVariableRegistry::KeyEq>
         variable_arrays;
+    std::vector<xla::HloSharding> arg_hlo_shardings;
+    std::vector<xla::HloSharding> retval_hlo_shardings;
 
     CachedExecutableBundle() = default;
     // Move only
@@ -222,7 +281,8 @@ class IfrtServingExecutable {
       compilation_env_or_overrides_;  // proto is NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, tsl::Future<SharedCachedExecutableBundle>>
+  absl::flat_hash_map<Key, tsl::Future<SharedCachedExecutableBundle>, KeyHash,
+                      KeyEq>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
@@ -250,7 +310,7 @@ class IfrtServingExecutable {
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  // Returns the cached executable bundle futre if it exists, otherwise creates
+  // Returns the cached executable bundle future if it exists, otherwise creates
   // a new one by calling xla compiler. When compilation happens, it also calls
   // `LoadAndRegisterVariableOnExecutable` to load variables on the new
   // executable.
@@ -261,7 +321,7 @@ class IfrtServingExecutable {
                            absl::Span<const int> variable_arg_indices,
                            const xla::ifrt::DeviceListRef& device_list);
 
-  // Creates an executable by calling tf2xla annd xla compiler
+  // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,

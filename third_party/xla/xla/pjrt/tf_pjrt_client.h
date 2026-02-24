@@ -209,11 +209,11 @@ class TfPjRtClient : public PjRtClient {
     return wrapped_->addressable_devices();
   }
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override {
+      GlobalDeviceId global_device_id) const override {
     return wrapped_->LookupDevice(global_device_id);
   }
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override {
+      LocalDeviceId local_device_id) const override {
     if (wrapped_ == nullptr) {
       return absl::InternalError(
           "Wrapped PJRT client in TfPjRtClient is already destroyed.");

@@ -64,6 +64,7 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_Start(PLUGIN_Profiler_Start_Args* args) {
   }
   args->profiler->byte_size = 0;
   PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->Start());
+  AddPluginMetadata();
   args->profiler->stopped = false;
   return nullptr;
 }
@@ -86,7 +87,6 @@ PLUGIN_Profiler_Error* PLUGIN_Profiler_CollectData(
   if (!args->profiler->space) {
     VLOG(1) << "TpuProfiler CollectData";
     PLUGIN_PROFILER_RETURN_IF_ERROR(args->profiler->impl->CollectData(&space));
-    AddPluginMetadata(&space);
     args->profiler->byte_size = space.ByteSizeLong();
     VLOG(2) << "TpuProfiler CollectData: Number of XPlanes: "
             << space.planes_size();

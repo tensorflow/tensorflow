@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -57,20 +58,16 @@ class CallInliner : public HloModulePass {
   // inlined.
   // If update_domain is true, the exit domains could be updated for calls which
   // are being inlined if necessary.
-  // If `uniquify_channel_ids` is true, the channel ids of the resulting
-  // computation will be uniquified.
   // If the callback `override_policy` is provided, callsites will be inlined
   // according to the policy returned.
   explicit CallInliner(
       bool single_call_site = false, bool update_domain = false,
       absl::flat_hash_set<std::string> composites_to_preserve = {},
-      bool uniquify_channel_ids = false,
       std::optional<std::function<InlineOverridePolicy(const CallGraph&,
                                                        const HloInstruction*)>>
           override_policy = std::nullopt)
       : single_call_site_(single_call_site),
         update_domain_(update_domain),
-        uniquify_channel_ids_(uniquify_channel_ids),
         composites_to_preserve_(std::move(composites_to_preserve)),
         override_policy_(std::move(override_policy)) {}
   ~CallInliner() override = default;
@@ -103,12 +100,10 @@ class CallInliner : public HloModulePass {
 
   bool single_call_site_;
   bool update_domain_;
-  bool uniquify_channel_ids_;
   absl::flat_hash_set<std::string> composites_to_preserve_;
   std::optional<std::function<InlineOverridePolicy(const CallGraph& call_graph,
                                                    const HloInstruction*)>>
       override_policy_;
-  int64_t next_unique_channel_id_ = 1;
 };
 
 // Returns true if the computation has instructions that are inlinable.

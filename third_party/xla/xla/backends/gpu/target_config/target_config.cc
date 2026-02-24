@@ -112,6 +112,10 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
   target_config.dnn_version_info =
       se::dnn::VersionInfo(proto.dnn_version_info());
   target_config.device_description_str = proto.device_description_str();
+  if (!target_config.device_description_str.empty()) {
+    target_config.device_description.set_name(
+        target_config.device_description_str);
+  }
   se::SemanticVersion runtime_version(proto.runtime_version().major(),
                                       proto.runtime_version().minor(),
                                       proto.runtime_version().patch());

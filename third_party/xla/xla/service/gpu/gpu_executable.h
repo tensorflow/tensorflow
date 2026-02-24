@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -256,6 +257,7 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options);
 
   absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
+      const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       se::DeviceAddressAllocator* memory_allocator, int device_ordinal);
@@ -265,7 +267,9 @@ class GpuExecutable : public Executable {
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
       se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
-      int64_t arg_idx);
+      int64_t arg_idx,
+      const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
+          allocate_granularity);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because

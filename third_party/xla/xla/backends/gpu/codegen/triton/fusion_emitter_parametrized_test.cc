@@ -57,6 +57,11 @@ struct MixTypeParams {
   float arel = 1e-6;
 };
 
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
+}
+
 class MixedTypeTest : public GpuCodegenTest,
                       public ::testing::WithParamInterface<MixTypeParams> {};
 

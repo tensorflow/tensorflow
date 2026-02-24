@@ -1728,7 +1728,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   InstructionMap while_body_to_peeled;
   absl::flat_hash_set<HloInstruction*> to_skip_set;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> formatting_map;
-  absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
+  absl::flat_hash_map<HloInstruction*, absl::InlinedVector<int64_t, 1>>
+      is_output_instruction;
   std::vector<int64_t> moves_requiring_special_output;
   int64_t count = 0;
   // Add all-reduces to duplicate into a set.
@@ -1777,8 +1778,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
-    is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
-        i;
+    is_output_instruction[while_body->root_instruction()->mutable_operand(i)]
+        .push_back(i);
   }
 
   // Collect the new parameter shapes with the additional state for the indices
@@ -1853,7 +1854,9 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
     if (output_it != is_output_instruction.end()) {
-      new_init_operands[output_it->second] = cloned_instr;
+      for (int64_t i : output_it->second) {
+        new_init_operands[i] = cloned_instr;
+      }
     }
   }
 
@@ -1886,7 +1889,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
         absl::MakeConstSpan(move_info.collectives_to_move),
         absl::MakeSpan(move_info.formatting_ops));
     for (auto* pipelined : pipelined_instrs) {
-      is_output_instruction[pipelined] = new_init_operands.size();
+      is_output_instruction[pipelined].push_back(new_init_operands.size());
       new_parameter_shapes.push_back(pipelined->shape());
       new_root_operands.push_back(pipelined);
       new_init_operands.push_back(while_body_to_peeled[pipelined]);
@@ -2508,6 +2511,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
       collective_to_new_tuple_index[collective] = new_root_operands.size();
       indices_to_insert.insert(new_root_operands.size());
       new_root_operands.push_back(collective->mutable_operand(0));
+      invariant_cache[collective] = false;
     }
     CHECK_EQ(to_move.dynamic_update_slices.size(),
              to_move.output_indices.size());

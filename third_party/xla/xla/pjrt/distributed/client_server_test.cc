@@ -181,8 +181,8 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
   std::string host_0_boot_id = "foo";
   std::string host_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(2);
-  locals[0].set_node_id(0);
-  locals[1].set_node_id(1);
+  locals[0].set_process_id(0);
+  locals[1].set_process_id(1);
   locals[0].set_boot_id(host_0_boot_id);
   locals[1].set_boot_id(host_1_boot_id);
   DeviceProto* d0 = locals[0].add_devices();
@@ -195,8 +195,8 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
   d3->set_local_device_ordinal(1);
 
   GlobalTopologyProto expected_topology;
-  auto* node0 = expected_topology.add_nodes();
-  auto* node1 = expected_topology.add_nodes();
+  auto* node0 = expected_topology.add_processes();
+  auto* node1 = expected_topology.add_processes();
   *node0 = locals[0];
   node0->set_boot_id(host_0_boot_id);
   node0->mutable_devices(0)->set_global_device_id(0);
@@ -287,7 +287,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
   StartService(num_nodes);
   std::vector<LocalTopologyProto> locals(num_nodes);
   for (int i = 0; i < num_nodes; ++i) {
-    locals[i].set_node_id(i);
+    locals[i].set_process_id(i);
     // Two unique boot_id, one per host.
     locals[i].set_boot_id(absl::StrCat("test_boot_id_", i % 2));
     auto device = locals[i].add_devices();
@@ -300,7 +300,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
   GlobalTopologyProto expected_topology;
   int slice_0_global_id = 0, slice_1_global_id = num_nodes / 2 + 1;
   for (int i = 0; i < num_nodes; ++i) {
-    auto* node = expected_topology.add_nodes();
+    auto* node = expected_topology.add_processes();
     *node = locals[i];
     node->mutable_devices(0)->set_global_device_id(
         (i % 2 == 0) ? slice_0_global_id++ : slice_1_global_id++);

@@ -5021,3 +5021,40 @@ func.func public @FCAddToFCWithBiasAndReshape(%arg0: tensor<1x10xf32>) -> tensor
   // CHECK: %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<5xf32>) -> tensor<1x5xf32>
   // CHECK: %1 = "tfl.reshape"(%0, %cst) : (tensor<1x5xf32>, tensor<3xi32>) -> tensor<1x1x5xf32>
 }
+
+// CHECK-LABEL: @EliminateAddZerosLikeRHS
+func.func @EliminateAddZerosLikeRHS(%arg0: tensor<1x5xf32>, %arg1: tensor<1x5xf32>) -> tensor<1x5xf32> {
+  // CHECK-NOT: tfl.zeros_like
+  // CHECK-NOT: tfl.add
+  %0 = "tfl.zeros_like"(%arg1) : (tensor<1x5xf32>) -> tensor<1x5xf32>
+  %1 = tfl.add(%arg0, %0) <{fused_activation_function = "NONE"}> : (tensor<1x5xf32>, tensor<1x5xf32>) -> tensor<1x5xf32>
+  // CHECK: return %arg0 : tensor<1x5xf32>
+  func.return %1 : tensor<1x5xf32>
+}
+
+// CHECK-LABEL: @EliminateAddZerosLikeLHS
+func.func @EliminateAddZerosLikeLHS(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  // CHECK-NOT: tfl.add
+  %0 = "tfl.zeros_like"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %1 = tfl.add(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+  // CHECK: return %arg1 : tensor<4x4xf32>
+  func.return %1 : tensor<4x4xf32>
+}
+
+// CHECK-LABEL: @EliminateSubZerosLikeRHS
+func.func @EliminateSubZerosLikeRHS(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK-NOT: tfl.sub
+  %0 = "tfl.zeros_like"(%arg1) : (tensor<10xf32>) -> tensor<10xf32>
+  %1 = tfl.sub(%arg0, %0) <{fused_activation_function = "NONE"}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  // CHECK: return %arg0 : tensor<10xf32>
+  func.return %1 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @ConvertSubZerosLikeToNeg
+func.func @ConvertSubZerosLikeToNeg(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xf32>) -> tensor<5x5xf32> {
+  %0 = "tfl.zeros_like"(%arg0) : (tensor<5x5xf32>) -> tensor<5x5xf32>
+  %1 = tfl.sub(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<5x5xf32>, tensor<5x5xf32>) -> tensor<5x5xf32>
+  // CHECK: %[[NEG:.*]] = "tfl.neg"(%arg1) : (tensor<5x5xf32>) -> tensor<5x5xf32> 
+  // CHECK: return %[[NEG]] : tensor<5x5xf32>
+  func.return %1 : tensor<5x5xf32>
+}

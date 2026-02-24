@@ -694,7 +694,10 @@ ENTRY main {
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
   const HloInstruction* custom_op = root->operand(0)->operand(0);
-  EXPECT_TRUE(custom_op->IsCustomCall("__cublas$gemm"));
+  bool is_cublas_gemm = GetDebugOptionsForTest().xla_gpu_enable_cublaslt()
+                            ? custom_op->IsCustomCall("__cublas$lt$matmul")
+                            : custom_op->IsCustomCall("__cublas$gemm");
+  EXPECT_TRUE(is_cublas_gemm) << custom_op->ToString();
   // Make sure that the module has the same number of computations with/without
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
@@ -803,7 +806,6 @@ ENTRY main {
 
   se::GpuComputeCapability gpu_cc =
       device_description().gpu_compute_capability();
-  bool is_cuda = gpu_cc.IsCuda();
   se::CudaComputeCapability cuda_cc = get_cuda_cc();
   se::RocmComputeCapability rocm_cc =
       device_description().rocm_compute_capability();
@@ -815,13 +817,13 @@ ENTRY main {
       R"(CHECK: custom-call($0{{[^)]*}}, $1{{[^)]*}}){{.*}}custom_call_target="__cublas$$lt$$matmul$$f8")",
       lhs_name, rhs_name);
   const std::string cublas_convert_to_f16 =
-      R"(CHECK: custom-call(f16{{[^)]*}}, f16{{[^)]*}}){{.*}}custom_call_target="__cublas$gemm")";
+      R"(CHECK: custom-call(f16{{.*}}, f16{{.*}}){{.*}}custom_call_target="{{__cublas\$gemm|__cublas\$lt\$matmul}}")";
   const std::string fallback_convert_to_f16 =
       R"(CHECK: dot(f16{{[^)]*}}, f16{{[^)]*}}))";
 
   HloPrintOptions print_options =
       HloPrintOptions().set_print_operand_shape(true);
-  if (is_cuda) {
+  {
     // Triton enabled, no fallback.
     ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback_and_executable,
                          optimize_module(/*enable_triton=*/true,
@@ -831,7 +833,8 @@ ENTRY main {
     const std::string triton_expected_check =
         (cuda_cc.IsAtLeastHopper() ||
          (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
-          rhs_type == F8E5M2))
+          rhs_type == F8E5M2) ||
+         rocm_cc.has_ocp_fp8_support())
             ? triton_keep_types
             : cublas_convert_to_f16;
     ASSERT_OK_AND_ASSIGN(

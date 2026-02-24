@@ -63,6 +63,8 @@ class CommonPjRtClient : public PjRtClient {
   // Some clients do not support recursion eg: calling to_literal in host
   // callbacks. Those clients should return false here.
   virtual bool allows_recursion() const { return true; }
+  virtual bool allows_execute_recursion() const { return allows_recursion(); }
+  virtual bool allow_fallback_for_donation() const { return false; }
 
   // Backend specific handlers for when an oom is detected during execute.
   virtual void CallOomHandlers() const {}
@@ -310,6 +312,7 @@ class PjRtRawLoadedExecutable {
   struct RawExecuteResult {
     std::optional<tsl::Future<>> future;
     tsl::RCReference<PjRtDeviceEvent> primary_execute_event;
+    absl::Status inline_status;
   };
   virtual RawExecuteResult Execute(
       const ExecuteOptions& options,
@@ -421,7 +424,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     return false;
   }
 
-  Result ExecuteLaunch(ExecuteLaunchArgs& launch_args, bool fill_future) const;
+  absl::StatusOr<Result> ExecuteLaunch(ExecuteLaunchArgs& launch_args,
+                                       bool fill_future) const;
 
   // Parameter shapes.
   std::vector<Shape> parameter_device_shapes_;

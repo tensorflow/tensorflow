@@ -1411,6 +1411,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     TF_RET_CHECK(buffer_assignment->HasAllocation(
         *id_to_logical_buffer[logical_buffer_proto.id()]));
   }
+  buffer_assignment->ComputeSummaryStats();
   return buffer_assignment;
 }
 

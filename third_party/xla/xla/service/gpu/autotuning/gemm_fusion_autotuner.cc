@@ -54,7 +54,20 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel_fusion.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/backends/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/backends/gpu/transforms/fusion_wrapper.h"
+#include "xla/backends/gpu/transforms/gemm_rewriter.h"
+#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
+#include "xla/backends/gpu/transforms/nest_gemm_fusion.h"
+#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -85,22 +98,9 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
-#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
-#include "xla/service/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/gpu/transforms/fusion_wrapper.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
-#include "xla/service/gpu/transforms/nest_gemm_fusion.h"
-#include "xla/service/gpu/transforms/priority_fusion.h"
-#include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
@@ -340,7 +340,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
     for (PrimitiveType type :
          {BF16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
-      GpuFloatSupport float_support(gpu_device_info.cuda_compute_capability(),
+      GpuFloatSupport float_support(gpu_device_info.gpu_compute_capability(),
                                     type);
       FloatNormalization float_normalization(&float_support);
       TF_RETURN_IF_ERROR(float_normalization.Run(new_module.get()).status());
@@ -359,14 +359,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   HoistFusedBitcasts hoist_fused_bitcasts;
   TF_RETURN_IF_ERROR(hoist_fused_bitcasts.Run(new_module.get()).status());
-  if (debug_opts.xla_gpu_unsupported_disable_nested_gemm_fusions()) {
-    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
-                                                       mlir_context);
-    RETURN_IF_ERROR(convert_triton_gemm_config.Run(new_module.get()).status());
-  } else {
-    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
-    RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
-  }
+  ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                     mlir_context);
+  RETURN_IF_ERROR(convert_triton_gemm_config.Run(new_module.get()).status());
+  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
+  RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
   return new_module;
 }
 

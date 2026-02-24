@@ -33,12 +33,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_module_util.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
@@ -49,8 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -64,7 +64,7 @@ namespace {
 // 1. output[0] == input[0], output[1] == input[1], output[2] == input[2]
 // 2. output[0] == input[1], output[1] == input[2].
 // 3. output[0] == input[2]
-class BufferDonationTest : public HloTestBase {
+class BufferDonationTest : public HloHardwareIndependentTestBase {
  public:
   BufferDonationTest() {
     client_ = ClientLibrary::LocalClientOrDie();
@@ -87,7 +87,11 @@ class BufferDonationTest : public HloTestBase {
                    absl::Span<bool const> donate_arguments,
                    absl::Span<bool const> expected_runtime_aliasing,
                    const Literal& expected, std::string expected_failure = "") {
-    UpdateEntryComputationLayout(hlo_module.get());
+    Compiler* const absl_nonnull compiler = backend_->compiler();
+    UpdateEntryComputationLayout(
+        hlo_module.get(), [compiler](const Shape& shape) -> Shape {
+          return compiler->DefaultDeviceShapeRepresentation(shape);
+        });
     // Create a copy of the output shape because the HLO module is std::moved
     // into the compiler and may be deallocated.
     const Shape output_shape = hlo_module->result_shape();

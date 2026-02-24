@@ -44,7 +44,7 @@ class HostToDeviceCopyThunk : public CopyThunk {
   HostToDeviceCopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
                         const ShapedSlice& destination_buffer, int64_t mem_size,
                         std::shared_ptr<CopyThunk::AsyncEvents> events,
-                        const HloInstruction* instr);
+                        int64_t instr_id);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -52,7 +52,8 @@ class HostToDeviceCopyThunk : public CopyThunk {
 
   static absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>> FromProto(
       ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations);
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CopyThunk::AsyncEventsMap& async_events_map);
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 
@@ -60,7 +61,7 @@ class HostToDeviceCopyThunk : public CopyThunk {
 
  private:
   std::shared_ptr<CopyThunk::AsyncEvents> async_events_;
-  const HloInstruction* instr_;
+  int64_t instr_id_;
 };
 
 }  // namespace gpu

@@ -434,6 +434,9 @@ TEST_F(TritonTest, DISABLED_FuseMultiplyInEpilogue) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
+  if (device_desc().cuda_compute_capability().IsBlackwell()) {
+    GTEST_SKIP() << "Skipping flaky test for Blackwell GPUs (b/476375458).";
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -705,6 +708,9 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
+  if (device_desc().cuda_compute_capability().IsBlackwell()) {
+    GTEST_SKIP() << "Skipping flaky test for Blackwell GPUs (b/476375458).";
+  }
   // We cannot do triton_gemm and we use cuBLAS instead.
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutWithManyNonContractingDimsReversedLayout

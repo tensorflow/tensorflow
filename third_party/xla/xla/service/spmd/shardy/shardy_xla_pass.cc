@@ -317,7 +317,7 @@ absl::Status runShardingPropagation(HloModule* hloModule,
                                     mlir::sdy::PropagationOptions options,
                                     bool dedupFunctionsFully,
                                     absl::string_view passName) {
-  LOG(INFO) << "Using Shardy for XLA SPMD propagation.";
+  VLOG(1) << "Using Shardy for XLA SPMD propagation.";
 
   const DebugOptions& debugOptions = hloModule->config().debug_options();
   bool isShardyVerbose =
@@ -379,7 +379,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*importFuncCalls=*/true,
-                                  /*liftAndDedupMeshes=*/true);
+                                  /*liftAndDedupMeshes=*/true,
+                                  debugOptions.xla_enable_hlo_sharding_v3());
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
@@ -391,6 +392,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
   stablehloExportPipelineOptions.dedupFunctionsFully = dedupFunctionsFully;
+  stablehloExportPipelineOptions.enableHloShardingV3 =
+      debugOptions.xla_enable_hlo_sharding_v3();
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));

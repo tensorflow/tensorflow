@@ -513,6 +513,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -734,6 +735,7 @@ xla_cc_test(
         ":device_address",
         ":kernel_args",
         ":kernel_args_packing_spec",
+        ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",

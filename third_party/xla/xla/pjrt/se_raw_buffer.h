@@ -59,7 +59,7 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
 
 class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
  public:
-  PjRtStreamExecutorDeviceEventPromise(PjRtMemorySpace* memory_space,
+  PjRtStreamExecutorDeviceEventPromise(PjRtStreamExecutorClient* client,
                                        LocalDeviceState* local_device,
                                        AsyncWorkRunner* async_work_runner);
 
@@ -85,7 +85,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::RCReference<tsl::IndirectAsyncValue>& av() { return av_; }
 
  private:
-  PjRtMemorySpace* memory_space_;
+  PjRtStreamExecutorClient* client_;
   LocalDeviceState* local_device_;
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
@@ -97,14 +97,23 @@ class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
     events_.reserve(reservation);
   }
 
-  void AddEvent(BufferSequencingEvent* event) { events_.insert(event); }
+  void AddEvent(const BufferSequencingEventRef& event) {
+    if (events_.insert(&*event).second) {
+      event_refs_.push_back(event);
+    }
+  }
 
   const absl::flat_hash_set<BufferSequencingEvent*>& events() const {
     return events_;
   }
 
+  std::vector<BufferSequencingEventRef> event_refs() && {
+    return std::move(event_refs_);
+  }
+
  private:
   absl::flat_hash_set<BufferSequencingEvent*> events_;
+  std::vector<BufferSequencingEventRef> event_refs_;
 };
 
 class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {

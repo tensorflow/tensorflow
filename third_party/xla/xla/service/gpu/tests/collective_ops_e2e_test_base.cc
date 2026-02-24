@@ -19,19 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
-#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
@@ -42,9 +37,9 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -52,47 +47,26 @@ limitations under the License.
 namespace xla {
 namespace {
 
-absl::StatusOr<gpu::GpuTargetConfig> GetGpuTargetConfig(PjRtClient* client) {
-  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                   client->GetTopologyDescription());
-  auto it = topology->Attributes().find("target_config");
-  if (it == topology->Attributes().end()) {
-    return absl::InvalidArgumentError(
-        "Topology description does not contain target config");
-  }
-  if (!std::holds_alternative<std::string>(it->second)) {
-    return absl::InvalidArgumentError(
-        "Target config is not a string in topology description");
-  }
-  stream_executor::GpuTargetConfigProto target_config_proto;
-  if (!tsl::protobuf::TextFormat::ParseFromString(
-          std::get<std::string>(it->second), &target_config_proto)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse target config from topology description");
-  }
-  return gpu::GpuTargetConfig::FromProto(target_config_proto);
-}
-
-}  // namespace
-
-void CollectiveOpsE2ETestBase::SetupHloRunner(size_t memory_size,
-                                              size_t collectives_memory_size) {
+std::unique_ptr<PjRtClient> CreatePjRtClient(size_t memory_size,
+                                             size_t collectives_memory_size) {
   xla::GpuClientOptions options;
   options.allocator_config.kind = xla::GpuAllocatorConfig::Kind::kBFC;
   options.allocator_config.gpu_system_memory_size = memory_size;
   options.allocator_config.collective_memory_size = collectives_memory_size;
-  options.use_tfrt_gpu_client =
-      std::getenv("XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT") == nullptr;
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> pjrt_client,
-                       xla::GetXlaPjrtGpuClient(options));
+  options.use_tfrt_gpu_client = true;
 
-  ASSERT_OK_AND_ASSIGN(gpu::GpuTargetConfig target_config,
-                       GetGpuTargetConfig(pjrt_client.get()));
-  gpu_compute_capability_ =
-      target_config.device_description.gpu_compute_capability();
-
-  hlo_runner_ = std::make_unique<HloRunnerPjRt>(std::move(pjrt_client));
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> pjrt_client =
+      xla::GetXlaPjrtGpuClient(options);
+  CHECK_OK(pjrt_client);
+  return *std::move(pjrt_client);
 }
+
+}  // namespace
+
+CollectiveOpsE2ETestBase::CollectiveOpsE2ETestBase(
+    size_t memory_size, size_t collectives_memory_size)
+    : HloPjRtGpuTestBase(
+          CreatePjRtClient(memory_size, collectives_memory_size)) {}
 
 absl::StatusOr<CollectiveOpsE2ETestBase::ExecutionResult>
 CollectiveOpsE2ETestBase::ExecuteReplicated(std::unique_ptr<HloModule> module) {
@@ -120,13 +94,12 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
   ExecutionResult execution_result;
 
-  TF_ASSIGN_OR_RETURN(
-      execution_result.executable,
-      hlo_runner_->CreateExecutable(std::move(module), run_hlo_passes));
+  TF_ASSIGN_OR_RETURN(execution_result.executable,
+                      CreateExecutable(std::move(module), run_hlo_passes));
 
   TF_ASSIGN_OR_RETURN(
       execution_result.optimized_module,
-      hlo_runner_->HloModuleFromWrapped(execution_result.executable.get()));
+      test_runner().HloModuleFromWrapped(execution_result.executable.get()));
 
   TF_ASSIGN_OR_RETURN(execution_result.results,
                       ExecuteReplicated(execution_result.executable.get(),
@@ -140,7 +113,7 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
     OpaqueExecutable* executable,
     const std::vector<std::vector<Literal*>>& arguments, bool run_hlo_passes) {
   ASSIGN_OR_RETURN(const HloModule* module,
-                   hlo_runner_->HloModuleFromWrapped(executable));
+                   test_runner().HloModuleFromWrapped(executable));
 
   int64_t num_replicas = module->config().replica_count();
   int64_t num_partitions = module->config().num_partitions();
@@ -162,7 +135,7 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   options.run_hlo_passes = run_hlo_passes;
   options.use_threads = true;
 
-  return hlo_runner_->ExecuteReplicated(
+  return test_runner().ExecuteReplicated(
       /*executable_provider=*/
       [&](int64_t) { return executable; },
       /*argument_count_provider=*/
@@ -205,8 +178,8 @@ CollectiveOpsWithFlagsBase::CreateExecutable(absl::string_view hlo_string,
 
   TF_ASSIGN_OR_RETURN(auto module,
                       ParseAndReturnVerifiedModule(hlo_string, config));
-  return hlo_runner_->CreateExecutable(std::move(module),
-                                       /*run_hlo_passes=*/true);
+  return test_runner().CreateExecutable(std::move(module),
+                                        /*run_hlo_passes=*/true);
 }
 
 }  // namespace xla

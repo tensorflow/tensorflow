@@ -754,6 +754,10 @@ class BufferAssigner {
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
+
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm =
+            buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
   };
 
   static Colorer DefaultColorer() {

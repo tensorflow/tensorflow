@@ -741,7 +741,6 @@ pywrap_tensorflow_macro(
         "@local_config_python//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@nvtx_archive//:__subpackages__",

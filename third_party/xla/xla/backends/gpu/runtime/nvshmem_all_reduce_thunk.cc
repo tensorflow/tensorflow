@@ -29,12 +29,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -119,7 +120,7 @@ absl::Status NvshmemAllReduceStartThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
+      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
                              config_.config.operand_element_type));
   return ::xla::gpu::RunNvshmemAllReduce(config_.reduction_kind, device_buffers,
                                          stream);

@@ -372,7 +372,8 @@ class DeviceGroupTileAssignment : public TileAssignment {
  public:
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group)
-      : TileAssignment({num_groups, num_devices_per_group}) {}
+      : TileAssignment(
+            absl::Span<const int64_t>{num_groups, num_devices_per_group}) {}
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group,
                                      absl::Span<const int64_t> reshape_dims,
@@ -538,6 +539,12 @@ Shape TileShape(const HloSharding& sharding, const Shape& shape);
 // Returns the tiled shape.
 // REQUIRES: !sharding.IsTuple()
 Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
+
+// Replicate the parameter/output sharding if the sharding does not evenly
+// partition the parameter/output.
+void ReplicateBoundaryShardingsIfIndivisible(
+    HloModule* module, absl::Span<const bool> process_output,
+    absl::Span<const bool> process_parameters);
 
 // Canonicalizes entry_computation_layout by calling
 // module->layout_canonicalization_callback(), which gives canonicalized

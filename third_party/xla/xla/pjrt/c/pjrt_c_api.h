@@ -73,6 +73,7 @@ typedef enum {
   PJRT_Extension_Type_TpuExecutable,
   PJRT_Extension_Type_Megascale,
   PJRT_Extension_Type_Shardings,
+  PJRT_Extension_Type_AbiVersion,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -107,7 +108,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 91
+#define PJRT_API_MINOR 94
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -909,6 +910,10 @@ typedef enum {
 
   // 4-bit MX floating-point format.
   PJRT_Buffer_Type_F4E2M1FN,
+
+  // 1-bit integer types
+  PJRT_Buffer_Type_S1,
+  PJRT_Buffer_Type_U1,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -1332,7 +1337,6 @@ typedef PJRT_Error* PJRT_DeviceDescription_ToString(
     PJRT_DeviceDescription_ToString_Args* args);
 
 // --------------------------------- Devices -----------------------------------
-
 struct PJRT_Device_GetDescription_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -1467,6 +1471,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, poisoned);
 // not finished yet, i.e. makes its output buffers error.
 typedef PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args);
+
+typedef struct PJRT_Device_Attributes PJRT_Device_Attributes;
+
+struct PJRT_Device_GetAttributes_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Device* device;
+  const PJRT_NamedValue* attributes;                                      // out
+  size_t num_attributes;                                                  // out
+  PJRT_Device_Attributes* device_attributes;                              // out
+  void (*attributes_deleter)(PJRT_Device_Attributes* device_attributes);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_GetAttributes_Args, attributes_deleter);
+
+// Returns an array of device attributes.
+typedef PJRT_Error* PJRT_Device_GetAttributes(
+    PJRT_Device_GetAttributes_Args* args);
 
 // --------------------------- AsyncTrackingEvent ------------------------------
 
@@ -2915,9 +2936,12 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DonateWithControlDependency);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_GetAttributes);
 } PJRT_Api;
 
-enum { PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Event_Set) };
+enum {
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Device_GetAttributes)
+};
 
 #undef _PJRT_API_STRUCT_FIELD
 

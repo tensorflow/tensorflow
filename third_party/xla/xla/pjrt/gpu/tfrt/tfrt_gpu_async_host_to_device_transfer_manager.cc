@@ -265,7 +265,7 @@ TfrtGpuAsyncHostToDeviceTransferManager::TransferRawDataToSubBuffer(
   HostMemoryAllocator::OwnedPtr staging_buffer;
   if (client->ShouldStageHostToDeviceTransfers(data, transfer_size)) {
     HostMemoryAllocator* host_memory_allocator =
-        client->host_memory_allocator();
+        client->GetHostMemoryAllocator();
     if (host_memory_allocator == nullptr) {
       return InvalidArgument(
           "host_memory_allocator should be initialized for staging buffer "

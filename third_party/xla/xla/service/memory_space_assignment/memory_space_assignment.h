@@ -403,8 +403,10 @@ class MemorySpaceAssignment {
   // 1), simply forwards b). Runs to fixed point.
   absl::Status SimplifyGraph();
 
-  // FixSchedule inserts asynchronous copies in the schedule.
-  absl::Status FixSchedule();
+  // Places copy-start and copy-done instructions in the schedule, according to
+  // the schedule_before_ and schedule_after_ data structures, making necessary
+  // adjustments to the schedule to ensure correctness.
+  absl::Status SetSchedule();
 
   // Export the alternate memory assignments to the PresetAssignments and color
   // the HLO graph with the determined memory spaces.

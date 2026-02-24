@@ -1197,7 +1197,15 @@ HloSharding ReverseSharding(const HloSharding& sharding,
     return sharding;
   }
 
-  Array<int64_t> new_tile_assignment(sharding.dimensions());
+  // Supporting reverse operation on NamedSharding would require reversing
+  // mesh's device assignment, creating multiple meshes. Instead it's better to
+  // convert to tile-based sharding.
+  HloSharding tile_based_sharding =
+      sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(sharding.named_sharding())
+          : sharding;
+
+  Array<int64_t> new_tile_assignment(tile_based_sharding.dimensions());
   new_tile_assignment.Each(
       [&](absl::Span<const int64_t> indices, int64_t* device) {
         std::vector<int64_t> original_indices(indices.begin(), indices.end());
@@ -1205,14 +1213,14 @@ HloSharding ReverseSharding(const HloSharding& sharding,
           original_indices[d] =
               new_tile_assignment.dim(d) - 1 - original_indices[d];
         }
-        *device = sharding.tile_assignment()(original_indices);
+        *device = tile_based_sharding.tile_assignment()(original_indices);
       });
-  return sharding.ReplicateOnLastTileDim()
+  return tile_based_sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(new_tile_assignment,
-                                        sharding.metadata())
+                                        tile_based_sharding.metadata())
              : HloSharding::Subgroup(new_tile_assignment,
-                                     sharding.subgroup_types(),
-                                     sharding.metadata());
+                                     tile_based_sharding.subgroup_types(),
+                                     tile_based_sharding.metadata());
 }
 
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
@@ -2995,6 +3003,85 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
     result_shape.set_dimensions(i, shape.dimensions(i) / sharding.dimension(i));
   }
   return result_shape;
+}
+
+namespace {
+bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
+  if (!sharding.IsTiled()) {
+    return true;
+  }
+  if (sharding.IsTuple()) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      if (!EvenlyPartitions(ShapeUtil::GetTupleElementShape(shape, i),
+                            sharding.GetSubSharding(shape, {i}))) {
+        return false;
+      }
+    }
+    return true;
+  }
+  for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+    if (shape.dimensions(i) % sharding.dimension(i) != 0) {
+      return false;
+    }
+  }
+  return true;
+};
+}  // namespace
+
+void ReplicateBoundaryShardingsIfIndivisible(
+    HloModule* module, absl::Span<const bool> process_output,
+    absl::Span<const bool> process_parameters) {
+  auto params = module->entry_computation()->parameter_instructions();
+  if (process_parameters.size() == params.size()) {
+    for (int64_t i = 0; i < params.size(); ++i) {
+      if (params[i]->has_sharding() && process_parameters[i] &&
+          !EvenlyPartitions(params[i]->shape(), params[i]->sharding())) {
+        params[i]->set_sharding(HloSharding::Replicate());
+      }
+    }
+  } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
+             params[0]->has_sharding() &&
+             params[0]->shape().tuple_shapes().size() ==
+                 process_parameters.size()) {
+    HloSharding param_sharding = params[0]->sharding();
+    for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
+      if (process_parameters[i] &&
+          !EvenlyPartitions(
+              params[0]->shape().tuple_shapes(i),
+              params[0]->sharding().GetSubSharding(params[0]->shape(), {i}))) {
+        param_sharding.tuple_elements()[i] = HloSharding::Replicate();
+      }
+    }
+    params[0]->set_sharding(std::move(param_sharding));
+  }
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  if (!root->has_sharding()) {
+    return;
+  }
+
+  if (root->shape().IsTuple()) {
+    if (process_output.size() == root->shape().tuple_shapes().size()) {
+      // The output shape is a tuple and sharding propagation is allowed for
+      // at least one of its elements.
+      HloSharding root_sharding = root->sharding();
+      for (int64_t i = 0; i < root->shape().tuple_shapes().size(); ++i) {
+        if (process_output[i] &&
+            !EvenlyPartitions(root->shape().tuple_shapes(i),
+                              root_sharding.tuple_elements()[i])) {
+          root_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      root->set_sharding(std::move(root_sharding));
+    }
+    return;
+  }
+
+  CHECK_EQ(process_output.size(), 1);
+  if (process_output.front() &&
+      !EvenlyPartitions(root->shape(), root->sharding())) {
+    root->set_sharding(HloSharding::Replicate());
+  }
 }
 
 absl::Status CanonicalizeLayoutAfterShardingPropagation(

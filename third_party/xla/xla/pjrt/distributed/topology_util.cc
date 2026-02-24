@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -63,7 +66,8 @@ bool SameDevice(const DeviceProto& a, const DeviceProto& b) {
 
 bool SameLocalTopology(const LocalTopologyProto& a,
                        const LocalTopologyProto& b) {
-  if (a.node_id() != b.node_id() || a.devices_size() != b.devices_size()) {
+  if (a.process_id() != b.process_id() ||
+      a.devices_size() != b.devices_size()) {
     return false;
   }
   for (int i = 0; i < a.devices_size(); ++i) {
@@ -87,6 +91,25 @@ bool HasFabricUuid(absl::Span<LocalTopologyProto> local_topologies) {
   return true;
 }
 
+bool HasPartitionIndex(const LocalTopologyProto& local) {
+  return local.has_partition_index();
+}
+
+// Comparator for sorting LocalTopologyProto by network_nodes.
+// Lexicographic ordering groups topologically-close hosts (sharing
+// more network switches) adjacent in the sorted order.
+struct NetworkProximityComparator {
+  bool operator()(const LocalTopologyProto& a,
+                  const LocalTopologyProto& b) const {
+    for (size_t i = 0; i < a.network_nodes_size() && i < b.network_nodes_size();
+         ++i) {
+      if (a.network_nodes(i) < b.network_nodes(i)) return true;
+      if (a.network_nodes(i) > b.network_nodes(i)) return false;
+    }
+    return a.network_nodes_size() < b.network_nodes_size();
+  }
+};
+
 }  // namespace
 
 // Exists on Linux systems. Unique per OS kernel restart.
@@ -109,6 +132,18 @@ absl::StatusOr<std::string> GetBootIdString() {
   }
 #endif
   return boot_id_str;
+}
+
+absl::StatusOr<std::vector<std::string>> GetNetworkNodes() {
+  // There is no infrastructure-agnostic way to query network topology which
+  // is portable between cloud providers, so we require users to pass it
+  // explicitly via the environment variable.
+  const char* env = std::getenv("XLA_DISTRIBUTED_TOPOLOGY_NETWORK_NODES");
+  if (env == nullptr) {
+    return std::vector<std::string>();
+  }
+
+  return absl::StrSplit(env, ',', absl::SkipWhitespace());
 }
 
 static std::string GetLocalTopologyKey(absl::string_view platform,
@@ -174,31 +209,38 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies,
     bool assign_global_device_ids) {
   CHECK(!local_topologies.empty());
-  bool explicit_partition_indices = local_topologies[0].has_partition_index();
-  if (explicit_partition_indices) {
+
+  bool all_have_partition_index =
+      absl::c_all_of(local_topologies, HasPartitionIndex);
+  bool none_have_partition_index =
+      absl::c_none_of(local_topologies, HasPartitionIndex);
+
+  if (!all_have_partition_index && !none_have_partition_index) {
+    return InvalidArgument(
+        "Either all of or none of the local topologies should explicitly set "
+        "partition_index");
+  }
+
+  if (all_have_partition_index) {
     // Every local topology explicitly declares its partition_index.
     for (LocalTopologyProto& local : local_topologies) {
-      if (!local.has_partition_index()) {
-        return InvalidArgument(
-            "Either all of or none of the local topologies "
-            "should explicitly set partition_index");
-      }
-      int partition_index = local.partition_index();
       for (DeviceProto& device : *local.mutable_devices()) {
-        device.set_partition_index(partition_index);
+        device.set_partition_index(local.partition_index());
       }
     }
   } else {
     // Assign local devices of the same fabric_uuid/boot_id to the same
     // partition_index.
-    const bool has_fabric_uuid = HasFabricUuid(local_topologies);
+    bool has_fabric_uuid = HasFabricUuid(local_topologies);
+
+    // First sort all local topologies according to their network proximity,
+    // this will guarantee that consecutive global devices are close to each
+    // other. It is up to the end user to shard computations in a way that would
+    // maximize communication between "close" global device ids.
+    absl::c_stable_sort(local_topologies, NetworkProximityComparator());
+
     absl::flat_hash_map<std::string, int> id_to_partition_index;
     for (LocalTopologyProto& local : local_topologies) {
-      if (local.has_partition_index()) {
-        return InvalidArgument(
-            "Either all of or none of the local topologies "
-            "should explicitly set partition_index");
-      }
       for (DeviceProto& device : *local.mutable_devices()) {
         // Each new fabric_uuid/boot_id seen is treated as a new partition.
         auto [it, _] = id_to_partition_index.try_emplace(
@@ -208,30 +250,29 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
       }
     }
     if (VLOG_IS_ON(10)) {
-      for (auto it = id_to_partition_index.begin();
-           it != id_to_partition_index.end(); ++it) {
-        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << it->first
-                  << "->" << it->second;
+      for (auto& [id, partition_index] : id_to_partition_index) {
+        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << id << "->"
+                  << partition_index;
       }
     }
   }
 
   if (assign_global_device_ids) {
-    absl::btree_multimap<int, DeviceProto*> slice_id_to_devices;
+    absl::btree_multimap<int, DeviceProto*> partition_to_devices;
     for (LocalTopologyProto& local : local_topologies) {
       for (DeviceProto& device : *local.mutable_devices()) {
-        slice_id_to_devices.emplace(device.partition_index(), &device);
+        partition_to_devices.emplace(device.partition_index(), &device);
       }
     }
     int next_global_device_id = 0;
-    for (auto& [_slice_id, device] : slice_id_to_devices) {
+    for (auto& [_, device] : partition_to_devices) {
       device->set_global_device_id(next_global_device_id++);
     }
   }
 
   GlobalTopologyProto global_topology;
   for (LocalTopologyProto& local : local_topologies) {
-    global_topology.add_nodes()->Swap(&local);
+    global_topology.add_processes()->Swap(&local);
   }
   return global_topology;
 }
@@ -247,7 +288,7 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
   VLOG(3) << "Local Topology for platform" << platform << ":\n"
           << local_topology.DebugString();
   if (num_nodes == 1) {
-    LocalTopologyProto* topology = global_topology->add_nodes();
+    LocalTopologyProto* topology = global_topology->add_processes();
     *topology = local_topology;
     for (DeviceProto& device : *topology->mutable_devices()) {
       device.set_global_device_id(device.local_device_ordinal());
@@ -305,12 +346,12 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
 
 bool IsGpuTopologySymmetric(
     const std::map<int, std::set<int>>& partition_id_to_node_ids,
-    const std::map<int, int>& node_id_to_device_count) {
+    const std::map<int, int>& process_id_to_device_count) {
   CHECK(!partition_id_to_node_ids.empty());
-  CHECK(!node_id_to_device_count.empty());
+  CHECK(!process_id_to_device_count.empty());
 
   int num_hosts_per_partition = partition_id_to_node_ids.begin()->second.size();
-  int num_devices_per_host = node_id_to_device_count.begin()->second;
+  int num_devices_per_host = process_id_to_device_count.begin()->second;
   for (const auto& [partition_id, node_ids] : partition_id_to_node_ids) {
     if (node_ids.size() != num_hosts_per_partition) {
       LOG(INFO) << "GpuTopology is asymmetric as it has different number "
@@ -318,7 +359,7 @@ bool IsGpuTopologySymmetric(
       return false;
     }
   }
-  for (const auto& [node_id, device_count] : node_id_to_device_count) {
+  for (const auto& [node_id, device_count] : process_id_to_device_count) {
     if (device_count != num_devices_per_host) {
       LOG(INFO) << "GpuTopology is asymmetric as it has different number "
                    "of devices per host.";
@@ -332,28 +373,28 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     const GlobalTopologyProto& global_topology) {
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> partition_id_to_node_ids;
-  std::map<int, int> node_id_to_device_count;
-  for (int i = 0; i < global_topology.nodes_size(); ++i) {
-    const LocalTopologyProto& local_topology = global_topology.nodes(i);
+  std::map<int, int> process_id_to_device_count;
+  for (int i = 0; i < global_topology.processes_size(); ++i) {
+    const LocalTopologyProto& local_topology = global_topology.processes(i);
 
-    node_id_to_device_count[local_topology.node_id()] =
+    process_id_to_device_count[local_topology.process_id()] =
         local_topology.devices_size();
     for (const DeviceProto& device : local_topology.devices()) {
       if (gpu_topology.platform_version().empty()) {
         gpu_topology.set_platform_version(device.name());
       }
       partition_id_to_node_ids[device.partition_index()].insert(
-          local_topology.node_id());
+          local_topology.process_id());
     }
   }
 
   if (IsGpuTopologySymmetric(partition_id_to_node_ids,
-                             node_id_to_device_count)) {
+                             process_id_to_device_count)) {
     gpu_topology.set_num_partitions(partition_id_to_node_ids.size());
     gpu_topology.set_num_hosts_per_partition(
         partition_id_to_node_ids.begin()->second.size());
     gpu_topology.set_num_devices_per_host(
-        node_id_to_device_count.begin()->second);
+        process_id_to_device_count.begin()->second);
   } else {
     // If gpu topology is not symmetric, then we don't need to populate
     // the topology with the partition/host/device information.

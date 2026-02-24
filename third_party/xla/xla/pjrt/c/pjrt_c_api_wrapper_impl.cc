@@ -169,7 +169,7 @@ static absl::Status PopulateExecutableParameterShardings(
   for (const auto& sharding : *shardings) {
     std::string serialized;
     if (!sharding.SerializeToString(&serialized)) {
-      return xla::ResourceExhausted(
+      return xla::InvalidArgument(
           "OpSharding serialization failed for executable %s.",
           executable->get()->name());
     }
@@ -263,6 +263,33 @@ static absl::Status EnsureExecutableOutputDimensionsPopulated(
   return absl::OkStatus();
 }
 
+static absl::Status PopulateExecutableParameterLayouts(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> cpp_parameter_layouts,
+      executable->get()->GetParameterLayouts());
+  executable->parameter_layouts.reserve(cpp_parameter_layouts.size());
+  executable->parameter_layouts_pointers.reserve(cpp_parameter_layouts.size());
+  for (std::shared_ptr<const xla::PjRtLayout>& layout : cpp_parameter_layouts) {
+    executable->parameter_layouts.push_back(
+        PJRT_Layouts_MemoryLayout{std::move(layout)});
+  }
+  for (PJRT_Layouts_MemoryLayout& layout : executable->parameter_layouts) {
+    executable->parameter_layouts_pointers.push_back(&layout);
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status EnsureExecutableParameterLayoutsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(executable->mutex);
+  if (!executable->parameter_layouts_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableParameterLayouts(executable));
+    executable->parameter_layouts_ran = true;
+  }
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputLayouts(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(
@@ -306,7 +333,7 @@ static absl::Status PopulateExecutableOutputShardings(
   for (const auto& sharding : *shardings) {
     std::string serialized;
     if (!sharding.SerializeToString(&serialized)) {
-      return xla::ResourceExhausted(
+      return xla::InvalidArgument(
           "OpSharding serialization failed for executable %s.",
           executable->get()->name());
     }
@@ -609,7 +636,7 @@ PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args) {
       PJRT_Client_LookupDevice_Args_STRUCT_SIZE, args->struct_size));
   PJRT_ASSIGN_OR_RETURN(
       xla::PjRtDevice * device,
-      args->client->client->LookupDevice(xla::PjRtGlobalDeviceId(args->id)));
+      args->client->client->LookupDevice(xla::GlobalDeviceId(args->id)));
   args->device = GetCDevice(args->client, device);
   return nullptr;
 }
@@ -621,7 +648,7 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
       PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE, args->struct_size));
   PJRT_ASSIGN_OR_RETURN(xla::PjRtDevice * addressable_device,
                         args->client->client->LookupAddressableDevice(
-                            xla::PjRtLocalDeviceId(args->local_hardware_id)));
+                            xla::LocalDeviceId(args->local_hardware_id)));
   args->addressable_device = GetCDevice(args->client, addressable_device);
   return nullptr;
 }
@@ -2050,7 +2077,6 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   if (args->options->call_location) {
     options.call_location = std::string(args->options->call_location);
   }
-  options.strict_shape_checking = true;
   options.context = args->options->context
                         ? args->options->context->execute_context.get()
                         : nullptr;
@@ -3082,6 +3108,19 @@ PJRT_Error* PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Layouts_PJRT_Executable_GetParameterLayouts(
+    PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args",
+      PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableParameterLayoutsPopulated(args->executable));
+  args->num_parameters = args->executable->parameter_layouts_pointers.size();
+  args->layouts = args->executable->parameter_layouts_pointers.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Layouts_PJRT_Executable_GetOutputLayouts(
     PJRT_Layouts_PJRT_Executable_GetOutputLayouts_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3254,6 +3293,24 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
       CreateWrapperDeviceTopology(cpp_topology.get());
   topo_desc->owned_topology = std::move(cpp_topology);
   return topo_desc;
+}
+
+PJRT_Error* PJRT_Device_GetAttributes(PJRT_Device_GetAttributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Device_GetAttributes_Args",
+      PJRT_Device_GetAttributes_Args_STRUCT_SIZE, args->struct_size));
+
+  auto device_attributes = std::make_unique<PJRT_Device_Attributes>();
+  device_attributes->attributes =
+      PopulatePjrtAttributes(args->device->device->Attributes());
+
+  args->num_attributes = device_attributes->attributes.size();
+  args->attributes = device_attributes->attributes.data();
+  args->attributes_deleter = [](PJRT_Device_Attributes* device_attributes) {
+    delete device_attributes;
+  };
+  args->device_attributes = device_attributes.release();
+  return nullptr;
 }
 
 }  // namespace pjrt
@@ -3507,6 +3564,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_Event_Create=*/pjrt::PJRT_Event_Create,
       /*PJRT_Event_Set=*/pjrt::PJRT_Event_Set,
+      /*PJRT_Device_GetAttributes=*/pjrt::PJRT_Device_GetAttributes,
   };
 }
 
@@ -3529,6 +3587,8 @@ PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
       &PJRT_Layouts_PJRT_Topology_GetDefaultLayout,
       /*PJRT_Layouts_PJRT_Executable_GetOutputLayouts=*/
       &PJRT_Layouts_PJRT_Executable_GetOutputLayouts,
+      /*PJRT_Layouts_PJRT_Executable_GetParameterLayouts=*/
+      &PJRT_Layouts_PJRT_Executable_GetParameterLayouts,
   };
 }
 

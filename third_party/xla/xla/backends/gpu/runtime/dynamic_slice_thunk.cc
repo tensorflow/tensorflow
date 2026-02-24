@@ -433,16 +433,9 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-void DynamicSliceThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-  embedded_thunk_->ForAllThunks(fn);
-}
-
-void DynamicSliceThunk::ForAllThunksMutable(
-    absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  embedded_thunk_->ForAllThunksMutable(fn);
+absl::Status DynamicSliceThunk::WalkNested(
+    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+  return embedded_thunk_->Walk(callback);
 }
 
 absl::Status DynamicSliceThunk::TransformAllNestedThunks(

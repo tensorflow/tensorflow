@@ -64,7 +64,7 @@ class Buckets {
 
   static std::unique_ptr<Buckets> Exponential(double scale,
                                               double growth_factor,
-                                              int bucket_count) {
+                                              int bucket_boundary_count) {
     return std::unique_ptr<Buckets>(new Buckets());
   }
 
@@ -114,11 +114,15 @@ class Sampler {
 
 #else  // IS_MOBILE_PLATFORM
 
-#include <float.h>
-
+#include <array>
+#include <cstdint>
+#include <initializer_list>
+#include <limits>
 #include <map>
 #include <memory>
+#include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -173,16 +177,81 @@ class SamplerCell {
 // mobile_sampler.h.
 class Buckets {
  public:
+  struct DomainMax {
+    // Determines the range of generated bucket boundary values (excluding the
+    // implicit buckets extending to -DBL_MAX and +DBL_MAX). Specifically, the
+    // final finite (i.e. non-DBL_MAX) bucket boundary will be determined such
+    // that `max_expected_value` falls within the greatest finite bucket.
+    double max_expected_value = std::numeric_limits<uint32_t>::max();
+    // Imposes an additional restriction on the number of bucket boundary values
+    // (excluding the implicit -DBL_MAX and +DBL_MAX bounds).
+    // If this limit is reached before a bucket containing `max_expected_value`
+    // has been generated, bucket generation will stop early. In this (rare and
+    // predictable) case, some values <= `max_expected_value` will fall within
+    // the outlier bucket extending to +DBL_MAX instead of falling within any
+    // finite bucket.
+    int max_bucket_boundaries = 255;
+  };
+
   virtual ~Buckets() = default;
 
-  // Sets up buckets of the form:
-  // [-DBL_MAX, ..., scale * growth^i,
-  //   scale * growth_factor^(i + 1), ..., DBL_MAX].
+  // Sets up buckets of the form
+  // {
+  //   [-DBL_MAX, scale),
+  //   [scale, scale * growth_factor),
+  //     ...
+  //   [scale * growth_factor^i, scale * growth_factor^(i+1)),
+  //     ...
+  //   [scale * growth_factor^(N-1), scale * growth_factor^N),
+  //   [scale * growth_factor^N, +DBL_MAX]
+  // }
+  // where N is the number of finite buckets, i.e. `bucket_boundary_count - 1`.
   //
-  // So for powers of 2 with a bucket count of 10, you would say (1, 2, 10)
+  // So, for buckets separated by the first ten powers of 2 (starting with 2^0),
+  // you would pass the args (1.0, 2.0, 10). This would result in nine finite
+  // buckets plus two implicit unbounded buckets.
+  template <typename IntType,
+            std::enable_if_t<std::is_integral_v<IntType> &&
+                                 std::is_convertible_v<IntType, int>,
+                             int> = 0>
   static std::unique_ptr<Buckets> Exponential(double scale,
                                               double growth_factor,
-                                              int bucket_count);
+                                              IntType bucket_boundary_count) {
+    return Exponential<int>(scale, growth_factor, bucket_boundary_count);
+  }
+
+  // Sets up buckets of the form
+  // {
+  //   [-DBL_MAX, scale),
+  //   [scale, scale * growth_factor),
+  //     ...
+  //   [scale * growth_factor^i, scale * growth_factor^(i+1)),
+  //     ...
+  //   [scale * growth_factor^(N-1), scale * growth_factor^N),
+  //   [scale * growth_factor^N, +DBL_MAX]
+  // }
+  // where N is the smallest integer such that
+  //   scale * growth_factor^N > domain_max.max_expected_value
+  static std::unique_ptr<Buckets> Exponential(double scale,
+                                              double growth_factor,
+                                              const DomainMax& domain_max);
+
+  // Sets up buckets of the form
+  // {
+  //   [-DBL_MAX, scale),
+  //   [scale, scale * growth_factor),
+  //     ...
+  //   [scale * growth_factor^i, scale * growth_factor^(i+1)),
+  //     ...
+  //   [scale * growth_factor^(N-1), scale * growth_factor^N),
+  //   [scale * growth_factor^N, +DBL_MAX]
+  // }
+  // where N is the largest integer such that
+  //   scale * growth_factor^N < DBL_MAX
+  static std::unique_ptr<Buckets> Exponential(double scale,
+                                              double growth_factor) {
+    return Exponential(scale, growth_factor, /*domain_max=*/{});
+  }
 
   // Sets up buckets of the form:
   // [-DBL_MAX, ..., bucket_limits[i], bucket_limits[i + 1], ..., DBL_MAX].
@@ -196,6 +265,12 @@ class Buckets {
 
   virtual const std::vector<double>& explicit_bounds() const = 0;
 };
+
+// Declare `int` specialization of function template. (Defined in `sampler.cc`.)
+template <>
+std::unique_ptr<Buckets> Buckets::Exponential<int>(double scale,
+                                                   double growth_factor,
+                                                   int bucket_boundary_count);
 
 // A stateful class for updating a cumulative histogram metric.
 //

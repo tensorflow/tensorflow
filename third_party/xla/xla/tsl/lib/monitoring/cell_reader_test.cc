@@ -53,7 +53,21 @@ auto* test_sampler_with_labels = tsl::monitoring::Sampler<2>::New(
     {"/tsl/monitoring/test/sampler_with_labels", "Test sampler.", "label1",
      "label2"},
     /*buckets=*/tsl::monitoring::Buckets::Exponential(
-        /*scale=*/1, /*growth_factor=*/10, /*bucket_count=*/5));
+        /*scale=*/1.0, /*growth_factor=*/10.0, /*bucket_boundary_count=*/5));
+
+auto* test_exponential_buckets_with_explicit_domain =
+    tsl::monitoring::Sampler<0>::New(
+        {"/tsl/monitoring/test/exponential_buckets_with_explicit_domain",
+         "Test sampler."},
+        /*buckets=*/tsl::monitoring::Buckets::Exponential(
+            /*scale=*/1.5, /*growth_factor=*/2.0, /*domain_max=*/{50.0}));
+
+auto* test_exponential_buckets_with_unbounded_domain =
+    tsl::monitoring::Sampler<0>::New(
+        {"/tsl/monitoring/test/exponential_buckets_with_unbounded_domain",
+         "Test sampler."},
+        /*buckets=*/tsl::monitoring::Buckets::Exponential(
+            /*scale=*/1.0, /*growth_factor=*/100.0));
 
 auto* test_int_gauge = tsl::monitoring::Gauge<int64_t, 0>::New(
     "/tsl/monitoring/test/int_gauge", "Test gauge.");
@@ -885,6 +899,154 @@ TEST(CellReaderTest, SamplerRepeatedReads) {
   EXPECT_FLOAT_EQ(histogram.num(3), 2.0);
   EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
   EXPECT_FLOAT_EQ(histogram.num(5), 1.0);
+}
+
+TEST(CellReaderTest, ExponentialBucketsWithExplicitDomain) {
+  CellReader<Histogram> cell_reader(
+      "/tsl/monitoring/test/exponential_buckets_with_explicit_domain");
+  Histogram histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 0.0);
+
+  auto* cell = test_exponential_buckets_with_explicit_domain->GetCell();
+  ASSERT_NE(cell, nullptr);
+
+  // Cell 0: (-inf, 1.5)
+  cell->Add(-100000000);
+  cell->Add(-1);
+  cell->Add(0);
+  cell->Add(1);
+
+  // Cell 1: [1.5, 3.0)
+  cell->Add(2);
+
+  // Cell 2: [3.0, 6.0)
+  cell->Add(3);
+  cell->Add(4);
+  cell->Add(5);
+
+  // Cell 3: [6.0, 12.0)
+  cell->Add(6);
+  cell->Add(7);
+  cell->Add(8);
+  cell->Add(9);
+  cell->Add(10);
+
+  // Cell 4: [12.0, 24.0)
+  cell->Add(20);
+
+  // Cell 5: [24.0, 48.0)
+  cell->Add(30);
+  cell->Add(40);
+
+  // Cell 6: [48.0, 96.0)
+  cell->Add(50);
+  cell->Add(60);
+  cell->Add(70);
+  cell->Add(80);
+  cell->Add(90);
+
+  // Cell 7: [96.0, +inf)
+  cell->Add(100);
+  cell->Add(500);
+  cell->Add(1000);
+  cell->Add(100000000);
+
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 25.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 2094.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 4.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 3.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 1.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 2.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(7), 4.0);
+}
+
+TEST(CellReaderTest, ExponentialBucketsWithUnboundedDomain) {
+  CellReader<Histogram> cell_reader(
+      "/tsl/monitoring/test/exponential_buckets_with_unbounded_domain");
+  Histogram histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.sum_squares(), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 0.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 0.0);
+
+  auto* cell = test_exponential_buckets_with_unbounded_domain->GetCell();
+  ASSERT_NE(cell, nullptr);
+
+  // Cell 0: (-inf, 1.0)
+  cell->Add(-100000000);
+  cell->Add(-1);
+  cell->Add(0);
+  cell->Add(0.99);
+
+  // Cell 1: [1.0, 100.0)
+  cell->Add(1);
+  cell->Add(5);
+  cell->Add(10);
+  cell->Add(50);
+  cell->Add(99.99);
+
+  // Cell 2: [100.0, 10000.0)
+  cell->Add(100);
+  cell->Add(500);
+  cell->Add(1000);
+  cell->Add(5000);
+  cell->Add(9999.99);
+
+  // Cell 3: [10000.0, 1000000.0)
+  cell->Add(10000);
+  cell->Add(50000);
+  cell->Add(100000);
+  cell->Add(500000);
+  cell->Add(999999.99);
+
+  // Cell 4: [1000000.0, 100000000.0)
+  cell->Add(1000000);
+  cell->Add(5000000);
+  cell->Add(10000000);
+  cell->Add(50000000);
+  cell->Add(99999999.99);
+
+  // Cell 5: [100000000.0, 10000000000.0)  (contains default upper bound 2^32-1)
+  cell->Add(100000000);
+  cell->Add(500000000);
+  cell->Add(1000000000);
+  cell->Add(5000000000);
+  cell->Add(9999999999.99);
+
+  // Cell 6: [10000000000.0, +inf)
+  cell->Add(10000000000);
+  cell->Add(1000000000000);
+  cell->Add(100000000000000);
+
+  histogram = cell_reader.Read();
+  EXPECT_FLOAT_EQ(histogram.num(), 32.0);
+  EXPECT_FLOAT_EQ(histogram.num(0), 4.0);
+  EXPECT_FLOAT_EQ(histogram.num(1), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(2), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(3), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(4), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(5), 5.0);
+  EXPECT_FLOAT_EQ(histogram.num(6), 3.0);
 }
 
 TEST(CellReaderTest, IntGaugeRead) {

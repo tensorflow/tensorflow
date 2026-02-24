@@ -188,11 +188,13 @@ cc_library(
     name = "target_machine_options",
     srcs = ["target_machine_options.cc"],
     hdrs = ["target_machine_options.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/service/cpu:executable_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -213,6 +215,8 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 
@@ -229,6 +233,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

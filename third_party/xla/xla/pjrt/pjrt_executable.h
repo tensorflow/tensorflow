@@ -234,7 +234,7 @@ struct ExecuteOptions {
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
+  bool strict_shape_checking = false;
 
   // Set multi_slice_config when the computation spans multiple slices. The
   // config should match what was used during compilation to generate this

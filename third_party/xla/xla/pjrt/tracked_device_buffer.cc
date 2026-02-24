@@ -354,7 +354,7 @@ void TrackedDeviceBuffer::AddUsageEvent(
 bool TrackedDeviceBuffer::AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
   for (const auto& e : definition_events_) {
     tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(&events)->AddEvent(
-        &*e);
+        e);
   }
   return false;
 }
@@ -362,7 +362,7 @@ bool TrackedDeviceBuffer::AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
 void TrackedDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
   for (const auto& e : usage_events_) {
     tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(&events)->AddEvent(
-        &*e.event);
+        e.event);
   }
 }
 

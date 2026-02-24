@@ -104,6 +104,21 @@ class MMapHandle {
   // Returns true if a mapping exists.
   bool IsMapped() const { return data_ != nullptr; }
 
+  // Tries to lock the mapping in memory.
+  //
+  // Only applicable when the OS supports memory locking.
+  //
+  // WARNING: expects `IsMapped()` to be true.
+  [[nodiscard /*Locking a file can fail.*/]]
+  bool LockMemory();
+
+  // Tries to unlock the mapping in memory.
+  //
+  // Only applicable when the OS supports memory locking.
+  //
+  // WARNING: expects `IsMapped()` to be true.
+  bool UnlockMemory();
+
   // Returns the mapping buffer.
   uint8_t* data() { return data_ + offset_page_adjustment_; }
 

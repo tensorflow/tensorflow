@@ -62,10 +62,13 @@ void CreateTritonXlaPipeline(
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm->addPass(emitters::CreateSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
-  // We need LICM before unswitching loops because loop unswitcher relies on
-  // having loop invariant code to be outside of the loop.
-  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+  pm->addPass(mlir::createCompositeFixedPointPass(
+      "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {
+        // Loop unswitcher needs loop invariant code to be outside of the loop.
+        pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+        pm.addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+        pm.addPass(mlir::createCanonicalizerPass());
+      }));
 }
 
 void CreateTritonCudaPipeline(

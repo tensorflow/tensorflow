@@ -64,7 +64,7 @@ ABSL_CONST_INIT absl::Mutex partitioners_mutex(absl::kConstInit);
 }  // namespace
 
 const CustomCallPartitioner* GetCustomCallPartitioner(
-    const std::string& custom_call_target) {
+    absl::string_view custom_call_target) {
   absl::MutexLock partitioners_lock(partitioners_mutex);
   auto& partitioners = GetPartitioners();
   auto it = partitioners.find(custom_call_target);

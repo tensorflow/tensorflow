@@ -432,7 +432,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
   // Checks for every instruction in instruction_names that the operand at
   // operand_index has the given opcode and memory space.
   void CheckOperandOpcodeAndMemorySpaceForInstructionNames(
-      HloModule* module, std::vector<std::string>& instruction_names,
+      HloModule* module, const std::vector<std::string>& instruction_names,
       int64_t operand_index, HloOpcode operand_opcode,
       int64_t operand_memory_space) {
     for (const std::string& name : instruction_names) {
@@ -447,7 +447,7 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
   // Checks for every instruction in instruction_names the output memory space
   // matches the given memory space.
   void CheckMemorySpaceForInstructionNames(
-      HloModule* module, std::vector<std::string>& instruction_names,
+      HloModule* module, const std::vector<std::string>& instruction_names,
       int64_t memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* instruction = FindInstruction(module, name);

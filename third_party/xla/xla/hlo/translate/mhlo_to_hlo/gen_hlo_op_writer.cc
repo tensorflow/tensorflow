@@ -115,7 +115,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     }
 
     // Otherwise, this is an attribute.
-    auto named_attr = arg.get<NamedAttribute*>();
+    auto named_attr = arg.dyn_cast<NamedAttribute*>();
     os << "  auto xla_arg_" << index << " = "
        << GetDefaultAttrExport(*named_attr) << "(op.get"
        << convertToCamelFromSnakeCase(op.getArgName(index),

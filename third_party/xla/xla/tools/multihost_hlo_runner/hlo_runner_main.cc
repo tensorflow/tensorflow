@@ -138,12 +138,15 @@ ArgumentModeFromString(absl::string_view text) {
     return FunctionalHloRunner::ModuleArgumentMode::kUseZerosAsInput;
   } else if (text == "uninitialized") {
     return FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  } else if (text == "use_random_normal_inputs") {
+    return FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
   }
   return absl::InvalidArgumentError(
       absl::StrCat(R"(Invalid --hlo_argument_mode specified. Expected one of: )"
                    R"("use_device_id_as_input", "use_random_inputs", )"
-                   R"("use_shared_random_inputs", "use_zeros_as_input", or )",
-                   R"("uninitialized". Got: )", text));
+                   R"("use_shared_random_inputs", "use_zeros_as_input", )"
+                   R"("uninitialized", or "use_random_normal_inputs". Got: )",
+                   text));
 }
 
 static absl::StatusOr<FunctionalHloRunner::PreprocessingOptions>
@@ -399,8 +402,8 @@ int main(int argc, char** argv) {
                 "Specify how arguments to the HLO module are generated. "
                 "Accepted values: "
                 "use_device_id_as_input, use_random_inputs, "
-                "use_shared_random_inputs, "
-                "use_zeros_as_input or uninitialized."),
+                "use_shared_random_inputs, use_zeros_as_input, "
+                "uninitialized, or use_random_normal_inputs."),
       tsl::Flag("random_seed", &opts.random_seed,
                 "Seed to be used for generating random inputs when "
                 "`hlo_argument_mode` is set to use_random_inputs or "

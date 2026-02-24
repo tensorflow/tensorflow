@@ -67,8 +67,6 @@ xla/third_party/ducc/threading.cc:
 xla/third_party/ducc/threading.h:
 xla/third_party/eigen3/LICENSE:
 xla/third_party/eigen3/eigen_archive.BUILD:
-xla/third_party/git/BUILD.tpl:
-xla/third_party/git/git_configure.bzl:
 xla/third_party/gpus/check_cuda_libs.py:
 xla/third_party/gpus/compiler_common_tools.bzl:
 xla/third_party/gpus/crosstool/BUILD.rocm.tpl:

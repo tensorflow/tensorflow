@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -63,6 +65,11 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     if (requirements.dev_comm) {
       req.dev_comms.insert(*requirements.dev_comm);
     }
+
+    if (requirements.barrier_reqs.has_value()) {
+      req.barrier_after_module_execution_requested |=
+          requirements.barrier_reqs->module_execution_barrier;
+    }
   }
 
   // XLA compiler guarantees that all collective operations have the same
@@ -72,6 +79,11 @@ absl::Status CollectiveCliqueRequests::RequestClique(
                     std::move(device_groups)};
   if (requirements.dev_comm) {
     req.dev_comms.insert(*requirements.dev_comm);
+  }
+
+  if (requirements.barrier_reqs.has_value()) {
+    req.barrier_after_module_execution_requested |=
+        requirements.barrier_reqs->module_execution_barrier;
   }
 
   cliques_.try_emplace(clique_key, std::move(req));
@@ -110,6 +122,23 @@ CollectiveCliqueRequests::OrderedRequestedCliques() const {
   });
 
   return cliques;
+}
+
+absl::flat_hash_set<GlobalDeviceId>
+CollectiveCliqueRequests::GetDevicesRequiringBarrier() const {
+  absl::flat_hash_set<GlobalDeviceId> result;
+  for (const auto& [key, request] : cliques_) {
+    if (!request.barrier_after_module_execution_requested) {
+      continue;
+    }
+
+    for (const std::vector<GlobalDeviceId>& group : request.device_groups) {
+      for (GlobalDeviceId device : group) {
+        result.insert(device);
+      }
+    }
+  }
+  return result;
 }
 
 }  // namespace xla::gpu

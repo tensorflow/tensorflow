@@ -65,12 +65,16 @@ absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
 
 struct NumpyScalarTypes {
   nanobind::object np_bool;
+  // Remove std::optional once the minimum supported ml_dtypes in JAX has int1.
+  std::optional<nanobind::object> np_int1;
   nanobind::object np_int2;
   nanobind::object np_int4;
   nanobind::object np_int8;
   nanobind::object np_int16;
   nanobind::object np_int32;
   nanobind::object np_int64;
+  // Remove std::optional once the minimum supported ml_dtypes in JAX has uint1.
+  std::optional<nanobind::object> np_uint1;
   nanobind::object np_uint2;
   nanobind::object np_uint4;
   nanobind::object np_uint8;

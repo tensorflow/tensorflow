@@ -1,6 +1,6 @@
 """Build rules for tf.distribute testing."""
 
-load("//tensorflow:py.default.bzl", "py_test")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", _tpu_py_test = "tpu_py_test")
 

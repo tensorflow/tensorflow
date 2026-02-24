@@ -623,8 +623,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
         PrimitiveType_Name(new_element_type));
   }
 
-  int input_bitwidth = primitive_util::BitWidth(old_element_type);
-  int output_bitwidth = primitive_util::BitWidth(new_element_type);
+  int input_bitwidth = primitive_util::StorageBitWidth(old_element_type);
+  int output_bitwidth = primitive_util::StorageBitWidth(new_element_type);
   if (std::max(input_bitwidth, output_bitwidth) %
           std::min(input_bitwidth, output_bitwidth) !=
       0) {

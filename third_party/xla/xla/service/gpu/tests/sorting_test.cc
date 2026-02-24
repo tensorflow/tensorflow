@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
+#include "xla/backends/gpu/transforms/sort_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,10 +37,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -48,8 +49,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest : public GpuCodegenTest,
-                        public ::testing::WithParamInterface<PrimitiveType> {};
+class TypeSupportTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+      public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
   constexpr char kHloTemplate[] = R"(
@@ -94,7 +96,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public GpuCodegenTest {
+class SortingTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   SortingTest() {}
 };
@@ -283,7 +285,7 @@ std::string GetTypeName(PrimitiveType type) {
 }
 
 // Test cub::DeviceRadixSort::SortKeys in XLA
-class CubSortKeysTest : public GpuCodegenTest,
+class CubSortKeysTest : public HloPjRtTestBase,
                         public ::testing::WithParamInterface<
                             std::tuple<std::shared_ptr<Literal>, bool>> {};
 
@@ -321,7 +323,7 @@ ENTRY %main {
 
 // Test cub::DeviceRadixSort::SortPairs in XLA
 class CubSortPairsTest
-    : public GpuCodegenTest,
+    : public HloPjRtTestBase,
       public ::testing::WithParamInterface<
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 

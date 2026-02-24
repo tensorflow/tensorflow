@@ -417,20 +417,19 @@ func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 }
 
 // -----
+
 // CHECK-LABEL: module @main_func_in_out_tuple_shardings
 // CHECK-NOT: xla.sdy.tuple_args_shardings
 // CHECK-NOT: xla.sdy.tuple_results_shardings
 module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = {
-  xla.sdy.meshes = "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>}",
-  xla.sdy.tuple_args_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>, <@mesh, [{\"b\"}]>]>",
+  xla.sdy.tuple_args_shardings = "#sdy.sharding_per_value<[<mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"a\"}]>, <mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"b\"}]>]>",
   xla.sdy.use_tuple_args = "true",
-  xla.sdy.tuple_results_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"c\"}]>]>"}} {
-  // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
+  xla.sdy.tuple_results_shardings = "#sdy.sharding_per_value<[<mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"c\"}]>]>"}} {
   // CHECK-LABEL: func @main(
-  // CHECK-SAME:    %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>},
-  // CHECK-SAME:    %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>}
+  // CHECK-SAME:    %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=8, "b"=8, "c"=8]>, [{"a"}]>},
+  // CHECK-SAME:    %arg1: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=8, "b"=8, "c"=8]>, [{"b"}]>}
   // CHECK-SAME:  ) -> (
-  // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}]>}
+  // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=8, "b"=8, "c"=8]>, [{"c"}]>}
   // CHECK-SAME:  ) {
   func.func @main(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     // CHECK-NEXT: return %arg0 : tensor<32xi32>
@@ -444,3 +443,4 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
     return %arg0 : tensor<32xi32>
   }
 }
+

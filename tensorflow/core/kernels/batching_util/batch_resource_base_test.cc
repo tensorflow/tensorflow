@@ -19,8 +19,12 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#if defined(PLATFORM_GOOGLE)
+#include "base/context.h"
+#endif
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
@@ -54,7 +58,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
 #include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session_options.h"
@@ -102,6 +108,21 @@ class TestBatchResourceBase : public BatchResourceBase {
       combined_outputs->push_back(input);
     }
     done(absl::OkStatus());
+  }
+};
+
+class FailBatchResource : public BatchResourceBase {
+ public:
+  using BatchResourceBase::BatchResourceBase;
+
+  std::string DebugString() const override { return "FailBatchResource"; }
+
+ protected:
+  void ProcessFuncBatchImpl(
+      const BatchResourceBase::BatchTask& last_task,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
+      std::function<void(const absl::Status&)> done) const override {
+    done(absl::CancelledError("Function was cancelled"));
   }
 };
 
@@ -181,7 +202,7 @@ class BatchResourceBaseWithPriorityTest
 
 #if defined(PLATFORM_GOOGLE)
 TEST(BatchTaskCriticalityTest, CriticalitySuccessfullyPropagated) {
-  std::vector<BatchResourceBase::BatchTask> batch_tasks;
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> batch_tasks;
   // Tasks created with the scoped criticalities must have proper criticalities
   // set.
   {
@@ -189,39 +210,39 @@ TEST(BatchTaskCriticalityTest, CriticalitySuccessfullyPropagated) {
         tsl::criticality::Criticality::kCriticalPlus);
     ASSERT_EQ(tsl::criticality::GetCriticality(),
               tsl::criticality::Criticality::kCriticalPlus);
-    batch_tasks.push_back(BatchResourceBase::BatchTask());
+    batch_tasks.push_back(std::make_unique<BatchResourceBase::BatchTask>());
   }
   {
     tsl::criticality::ScopedCriticality scoped_criticality(
         tsl::criticality::Criticality::kCritical);
     ASSERT_EQ(tsl::criticality::GetCriticality(),
               tsl::criticality::Criticality::kCritical);
-    batch_tasks.push_back(BatchResourceBase::BatchTask());
+    batch_tasks.push_back(std::make_unique<BatchResourceBase::BatchTask>());
   }
   {
     tsl::criticality::ScopedCriticality scoped_criticality(
         tsl::criticality::Criticality::kSheddablePlus);
     ASSERT_EQ(tsl::criticality::GetCriticality(),
               tsl::criticality::Criticality::kSheddablePlus);
-    batch_tasks.push_back(BatchResourceBase::BatchTask());
+    batch_tasks.push_back(std::make_unique<BatchResourceBase::BatchTask>());
   }
   {
     tsl::criticality::ScopedCriticality scoped_criticality(
         tsl::criticality::Criticality::kSheddable);
     ASSERT_EQ(tsl::criticality::GetCriticality(),
               tsl::criticality::Criticality::kSheddable);
-    batch_tasks.push_back(BatchResourceBase::BatchTask());
+    batch_tasks.push_back(std::make_unique<BatchResourceBase::BatchTask>());
   }
-  batch_tasks.push_back(BatchResourceBase::BatchTask());
-  EXPECT_EQ(batch_tasks[0].criticality(),
+  batch_tasks.push_back(std::make_unique<BatchResourceBase::BatchTask>());
+  EXPECT_EQ(batch_tasks[0]->criticality(),
             tsl::criticality::Criticality::kCriticalPlus);
-  EXPECT_EQ(batch_tasks[1].criticality(),
+  EXPECT_EQ(batch_tasks[1]->criticality(),
             tsl::criticality::Criticality::kCritical);
-  EXPECT_EQ(batch_tasks[2].criticality(),
+  EXPECT_EQ(batch_tasks[2]->criticality(),
             tsl::criticality::Criticality::kSheddablePlus);
-  EXPECT_EQ(batch_tasks[3].criticality(),
+  EXPECT_EQ(batch_tasks[3]->criticality(),
             tsl::criticality::Criticality::kSheddable);
-  EXPECT_EQ(batch_tasks[4].criticality(),
+  EXPECT_EQ(batch_tasks[4]->criticality(),
             tsl::criticality::Criticality::kCritical);
 }
 
@@ -249,7 +270,8 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
           /*low_priority_max_enqueued_batches=*/num_requests,
           /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
           /*mixed_priority_batching_policy=*/
-          GetParam().mixed_priority_batching_policy);
+          GetParam().mixed_priority_batching_policy,
+          /*enable_priority_aware_batch_scheduler=*/false);
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));
@@ -1006,6 +1028,32 @@ TEST_F(BatchResourceBaseTest, PassesCorrectModelBatchStatsToSbs) {
   my_batch_resource->Unref();
 }
 
+TEST_F(BatchResourceBaseTest, ProcessFuncBatchPropagatesError) {
+  using BatchTask = BatchResourceBase::BatchTask;
+  using SharedBatchScheduler = SharedBatchScheduler<BatchTask>;
+
+  std::shared_ptr<SharedBatchScheduler> batcher;
+  TF_ASSERT_OK(SharedBatchScheduler::Create({}, &batcher));
+
+  tsl::core::RefCountPtr<FailBatchResource> batch_resource(
+      new FailBatchResource(/*has_process_batch_function=*/true, batcher, {},
+                            /*allowed_batch_sizes=*/{}));
+
+  absl::Notification done;
+  TF_ASSERT_OK(batch_resource->RegisterInput(
+      /*guid=*/0, context_.get(), "queue",
+      []() -> absl::StatusOr<std::unique_ptr<BatchTask>> {
+        return std::make_unique<BatchTask>();
+      },
+      [&done]() { done.Notify(); },
+      /*forced_warmup_batch_size=*/0));
+
+  done.WaitForNotification();
+  EXPECT_EQ(context_->status().code(), absl::StatusCode::kCancelled);
+  EXPECT_THAT(context_->status().message(),
+              ::testing::HasSubstr("Function was cancelled"));
+}
+
 TEST_F(BatchResourceBaseTest, ConfiguredBatchPaddingPolicyMetric) {
   tensorflow::monitoring::testing::CellReader<std::string> metric(
       "/tensorflow/serving/batching/configured_batch_padding_policy");
@@ -1250,6 +1298,69 @@ INSTANTIATE_TEST_SUITE_P(
         BatchResourceBaseMaxExecutionBatchSizeTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+TEST(BatchTaskTest, FinishTaskPropagatesErrorStatus) {
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+
+  bool callback_invoked = false;
+  task->set_done_callback([&]() { callback_invoked = true; });
+
+  // Simulate an error
+  absl::Status error = absl::InternalError("Something went wrong");
+  task->FinishTask(error);
+
+  EXPECT_TRUE(callback_invoked);
+  EXPECT_EQ(task->status->status(), error);
+}
+
+TEST(BatchTaskTest, FinishTaskIsIdempotent) {
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+
+  int call_count = 0;
+  task->set_done_callback([&]() { call_count++; });
+
+  // Call it twice
+  task->FinishTask(absl::OkStatus());
+  task->FinishTask(absl::OkStatus());
+
+  // Should only run once
+  EXPECT_EQ(call_count, 1);
+}
+
+#if defined(PLATFORM_GOOGLE)
+TEST(BatchTaskTest, FinishTaskRestoresContext) {
+  base::WithDeadline wd(absl::Now() + absl::Hours(1));
+
+  Context initial_context(ContextKind::kThread);
+
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+
+  // Create a distinct context (default/empty) to propagate.
+  Context unique_context(ContextKind::kDefault);
+
+  // Move the unique context into the task.
+  task->propagated_context = std::move(unique_context);
+
+  bool callback_invoked = false;
+  task->set_done_callback([&]() {
+    callback_invoked = true;
+    // Verify that the callback runs in the propagated context (kDefault).
+    EXPECT_TRUE(Context(ContextKind::kThread) ==
+                Context(ContextKind::kDefault));
+    // Verify it is NOT running in the initial context.
+    EXPECT_FALSE(Context(ContextKind::kThread) == initial_context);
+  });
+
+  task->FinishTask(absl::OkStatus());
+
+  EXPECT_TRUE(callback_invoked);
+  // Verify that the context was restored to the initial context.
+  EXPECT_TRUE(Context(ContextKind::kThread) == initial_context);
+}
+#endif  // defined(PLATFORM_GOOGLE)
 
 }  // namespace
 }  // namespace serving

@@ -24,6 +24,7 @@ limitations under the License.
 #include "riegeli/records/record_writer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
+#include "xla/util/split_proto/split_proto_riegeli_options.h"
 
 namespace xla {
 
@@ -70,7 +71,8 @@ absl::Status WriteRecord(riegeli::RecordWriter<Src>& record_writer, T& record) {
 
 absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
                                      std::unique_ptr<riegeli::Writer> writer) {
-  riegeli::RecordWriter record_writer(std::move(writer));
+  riegeli::RecordWriter record_writer(std::move(writer),
+                                      GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
   TF_RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
 

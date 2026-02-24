@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-typedef std::unordered_map<string, CustomGraphOptimizerRegistry::Creator>
+typedef std::unordered_map<std::string, CustomGraphOptimizerRegistry::Creator>
     RegistrationMap;
 RegistrationMap* registered_optimizers = nullptr;
 RegistrationMap* GetRegistrationMap() {
@@ -35,7 +35,7 @@ RegistrationMap* GetRegistrationMap() {
 
 // This map is a global map for registered plugin optimizers. It contains the
 // device_type as its key, and an optimizer creator as the value.
-typedef std::unordered_map<string, PluginGraphOptimizerRegistry::Creator>
+typedef std::unordered_map<std::string, PluginGraphOptimizerRegistry::Creator>
     PluginRegistrationMap;
 PluginRegistrationMap* GetPluginRegistrationMap() {
   static PluginRegistrationMap* registered_plugin_optimizers =
@@ -45,7 +45,7 @@ PluginRegistrationMap* GetPluginRegistrationMap() {
 
 // This map is a global map for registered plugin configs. It contains the
 // device_type as its key, and ConfigList as the value.
-typedef std::unordered_map<string, ConfigList> PluginConfigMap;
+typedef std::unordered_map<std::string, ConfigList> PluginConfigMap;
 PluginConfigMap* GetPluginConfigMap() {
   static PluginConfigMap* plugin_config_map = new PluginConfigMap;
   return plugin_config_map;
@@ -82,14 +82,15 @@ const ConfigList& DefaultPluginConfigs() {
 }  // namespace
 
 std::unique_ptr<CustomGraphOptimizer>
-CustomGraphOptimizerRegistry::CreateByNameOrNull(const string& name) {
+CustomGraphOptimizerRegistry::CreateByNameOrNull(const std::string& name) {
   const auto it = GetRegistrationMap()->find(name);
   if (it == GetRegistrationMap()->end()) return nullptr;
   return std::unique_ptr<CustomGraphOptimizer>(it->second());
 }
 
-std::vector<string> CustomGraphOptimizerRegistry::GetRegisteredOptimizers() {
-  std::vector<string> optimizer_names;
+std::vector<std::string>
+CustomGraphOptimizerRegistry::GetRegisteredOptimizers() {
+  std::vector<std::string> optimizer_names;
   optimizer_names.reserve(GetRegistrationMap()->size());
   for (const auto& opt : *GetRegistrationMap())
     optimizer_names.emplace_back(opt.first);
@@ -97,7 +98,7 @@ std::vector<string> CustomGraphOptimizerRegistry::GetRegisteredOptimizers() {
 }
 
 void CustomGraphOptimizerRegistry::RegisterOptimizerOrDie(
-    const Creator& optimizer_creator, const string& name) {
+    const Creator& optimizer_creator, const std::string& name) {
   const auto it = GetRegistrationMap()->find(name);
   if (it != GetRegistrationMap()->end()) {
     LOG(FATAL) << "CustomGraphOptimizer is registered twice: " << name;
@@ -107,7 +108,7 @@ void CustomGraphOptimizerRegistry::RegisterOptimizerOrDie(
 
 std::vector<std::unique_ptr<CustomGraphOptimizer>>
 PluginGraphOptimizerRegistry::CreateOptimizers(
-    const std::set<string>& device_types) {
+    const std::set<std::string>& device_types) {
   std::vector<std::unique_ptr<CustomGraphOptimizer>> optimizer_list;
   for (auto it = GetPluginRegistrationMap()->begin();
        it != GetPluginRegistrationMap()->end(); ++it) {
@@ -135,7 +136,7 @@ void PluginGraphOptimizerRegistry::RegisterPluginOptimizerOrDie(
 }
 
 void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
-    const std::set<string>& device_types) {
+    const std::set<std::string>& device_types) {
   bool init = false, conflict = false;
   ConfigList plugin_configs;
   // Check if plugin's configs have conflict.
@@ -166,12 +167,12 @@ void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
     // disable_model_pruning    0
     // remapping                1
     // ...
-    string logs = "";
-    strings::StrAppend(&logs, "disable_model_pruning\t\t",
-                       cur_plugin_configs.disable_model_pruning, "\n");
+    std::string logs = "";
+    absl::StrAppend(&logs, "disable_model_pruning\t\t",
+                    cur_plugin_configs.disable_model_pruning, "\n");
     for (auto const& pair : cur_plugin_configs.toggle_config) {
-      strings::StrAppend(&logs, pair.first, string(32 - pair.first.size(), ' '),
-                         (pair.second != RewriterConfig::OFF), "\n");
+      absl::StrAppend(&logs, pair.first, string(32 - pair.first.size(), ' '),
+                      pair.second != RewriterConfig::OFF, "\n");
     }
     LOG(WARNING) << "Plugin's configs for device_type " << device_type << ":\n"
                  << logs;
@@ -179,7 +180,7 @@ void PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(
 }
 
 ConfigList PluginGraphOptimizerRegistry::GetPluginConfigs(
-    bool use_plugin_optimizers, const std::set<string>& device_types) {
+    bool use_plugin_optimizers, const std::set<std::string>& device_types) {
   if (!use_plugin_optimizers) return DefaultPluginConfigs();
 
   ConfigList ret_plugin_configs = DefaultPluginConfigs();

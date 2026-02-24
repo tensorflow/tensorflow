@@ -37,7 +37,8 @@ class IntelGpuCompiler : public GpuCompiler {
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
-      const se::SemanticVersion& toolkit_version) override;
+      const se::SemanticVersion& toolkit_version,
+      CompilationStats* compilation_stats) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,

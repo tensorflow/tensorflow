@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -33,295 +32,28 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
 #include "mlir/Support/TypeID.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
 
-std::string GetBinaryOpString(SymbolicExprType type) {
-  switch (type) {
-    case SymbolicExprType::kAdd:
-      return "+";
-    case SymbolicExprType::kMul:
-      return "*";
-    case SymbolicExprType::kFloorDiv:
-      return "floordiv";
-    case SymbolicExprType::kCeilDiv:
-      return "ceildiv";
-    case SymbolicExprType::kMod:
-      return "mod";
-    case SymbolicExprType::kMax:
-      return "max";
-    case SymbolicExprType::kMin:
-      return "min";
-    default:
-      LOG(FATAL) << "unknown binary operation on symbolic expressions";
-  }
+// Returns the absolute value of n as a uint64_t. This is safe for
+// n = std::numeric_limits<int64_t>::min().
+uint64_t SafeAbs(int64_t n) {
+  return n < 0 ? -static_cast<uint64_t>(n) : static_cast<uint64_t>(n);
 }
-
-bool IsVariableCharacter(char c) { return absl::ascii_isalnum(c) || c == '_'; }
-
-// Helper class to manage the state of the parser.
-class Parser {
- public:
-  Parser(absl::string_view str, mlir::MLIRContext* context,
-         std::optional<int64_t> num_dims = std::nullopt)
-      : remaining_str_(str), context_(context), num_dims_(num_dims) {}
-
-  Parser(absl::string_view str, mlir::MLIRContext* context,
-         const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map)
-      : remaining_str_(str), context_(context), variable_map_(variable_map) {}
-
-  SymbolicExpr Parse() {
-    SymbolicExpr expr = ParseExpression();
-    SkipWhitespace();
-    if (expr && !remaining_str_.empty()) {
-      return ReportError("Did not parse entire string");
-    }
-    return expr;
-  }
-
-  SymbolicExpr ParsePartial() { return ParseExpression(); }
-
-  absl::string_view GetRemainingStr() const { return remaining_str_; }
-
- private:
-  // TODO: b/459357586 - Consider returning StatusOr instead of failing
-  // gracefully by returning an empty SymbolicExpr.
-  SymbolicExpr ReportError(absl::string_view msg) {
-    LOG(ERROR) << msg << " at: \"" << remaining_str_ << "\"";
-    return SymbolicExpr();
-  }
-
-  std::optional<int64_t> ParseNumber() {
-    size_t num_len = 0;
-    if (!remaining_str_.empty() &&
-        (absl::ascii_isdigit(remaining_str_[0]) || remaining_str_[0] == '-')) {
-      num_len = 1;
-    }
-    while (num_len < remaining_str_.size() &&
-           absl::ascii_isdigit(remaining_str_[num_len])) {
-      num_len++;
-    }
-    if (num_len == 0) {
-      return std::nullopt;
-    }
-    int64_t number;
-    if (!absl::SimpleAtoi(remaining_str_.substr(0, num_len), &number)) {
-      return std::nullopt;
-    }
-    remaining_str_.remove_prefix(num_len);
-    return number;
-  }
-
-  // Handles lowest precedence operators: +
-  SymbolicExpr ParseExpression() {
-    SymbolicExpr lhs = ParseTerm();
-    if (!lhs) {
-      return lhs;
-    }
-    while (true) {
-      SkipWhitespace();
-      if (absl::ConsumePrefix(&remaining_str_, "+")) {
-        SymbolicExpr rhs = ParseTerm();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kAdd, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "-")) {
-        SymbolicExpr rhs = ParseTerm();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = lhs - rhs;
-      } else {
-        break;
-      }
-    }
-    return lhs;
-  }
-
-  // Handles higher precedence operators: *, floordiv, ceildiv
-  SymbolicExpr ParseTerm() {
-    SymbolicExpr lhs = ParseFactor();
-    if (!lhs) {
-      return lhs;
-    }
-    while (true) {
-      SkipWhitespace();
-      if (absl::ConsumePrefix(&remaining_str_, "*")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kMul, lhs, rhs, context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "floordiv")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kFloorDiv, lhs, rhs,
-                                     context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "ceildiv")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs = CreateSymbolicBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs,
-                                     context_);
-      } else if (absl::ConsumePrefix(&remaining_str_, "mod")) {
-        SymbolicExpr rhs = ParseFactor();
-        if (!rhs) {
-          return SymbolicExpr();
-        }
-        lhs =
-            CreateSymbolicBinaryOp(SymbolicExprType::kMod, lhs, rhs, context_);
-      } else {
-        break;
-      }
-    }
-    return lhs;
-  }
-
-  // Attempts to parse a binary function call (e.g., "name(lhs, rhs)")
-  // Returns the parsed expression, or nullptr if `func_name` does not match.
-  SymbolicExpr ParseBinaryFunction(SymbolicExprType type) {
-    std::string func_name = GetBinaryOpString(type);
-    if (!absl::ConsumePrefix(&remaining_str_, absl::StrCat(func_name, "("))) {
-      return {};
-    }
-    SymbolicExpr lhs = ParseExpression();
-    if (!lhs) {
-      return SymbolicExpr();
-    }
-    SkipWhitespace();
-    if (!absl::ConsumePrefix(&remaining_str_, ",")) {
-      return ReportError("Missing ',' in " + func_name + "()");
-    }
-    SymbolicExpr rhs = ParseExpression();
-    if (!rhs) {
-      return SymbolicExpr();
-    }
-    SkipWhitespace();
-    if (!absl::ConsumePrefix(&remaining_str_, ")")) {
-      return ReportError("Missing ')' in " + func_name + "()");
-    }
-    return CreateSymbolicBinaryOp(type, lhs, rhs, context_);
-  }
-
-  SymbolicExpr MaybeParseVariableFromMap() {
-    auto it = absl::c_find_if_not(remaining_str_, IsVariableCharacter);
-    size_t var_len = std::distance(remaining_str_.begin(), it);
-    if (var_len > 0) {
-      auto var_it =
-          variable_map_->find(llvm::StringRef(remaining_str_.data(), var_len));
-      if (var_it != variable_map_->end()) {
-        remaining_str_.remove_prefix(var_len);
-        return var_it->second;
-      }
-    }
-    return SymbolicExpr();
-  }
-
-  SymbolicExpr MaybeParseDimAndSymbolVariables() {
-    if (absl::ConsumePrefix(&remaining_str_, "v") ||
-        absl::ConsumePrefix(&remaining_str_, "d")) {
-      std::optional<int64_t> var_id = ParseNumber();
-      if (!var_id.has_value()) {
-        return ReportError("Cannot parse variable id");
-      }
-      return CreateSymbolicVariable(var_id.value(), context_);
-    }
-    if (absl::ConsumePrefix(&remaining_str_, "s")) {
-      if (!num_dims_.has_value()) {
-        return ReportError(
-            "Symbol cannot be parsed because number of dimensions is not set.");
-      }
-      std::optional<int64_t> sym_id = ParseNumber();
-      // We need to know the number of dimensions to determine a symbol id.
-      if (!sym_id.has_value()) {
-        return ReportError("Cannot parse symbol id after 's'");
-      }
-      return CreateSymbolicVariable(num_dims_.value() + sym_id.value(),
-                                    context_);
-    }
-    return SymbolicExpr();
-  }
-
-  // Handles highest precedence items: numbers, variables, and functions.
-  SymbolicExpr ParseFactor() {
-    SkipWhitespace();
-    if (remaining_str_.empty()) {
-      return ReportError("Unexpected end of expression");
-    }
-
-    // Case 1:Function call like max( ... ) or min( ... )
-    if (absl::StartsWith(remaining_str_, "max(")) {
-      return ParseBinaryFunction(SymbolicExprType::kMax);
-    }
-    if (absl::StartsWith(remaining_str_, "min(")) {
-      return ParseBinaryFunction(SymbolicExprType::kMin);
-    }
-    // Case 2: Parenthesized subexpression
-    if (absl::ConsumePrefix(&remaining_str_, "(")) {
-      SymbolicExpr expr = ParseExpression();
-      if (!expr) {
-        return SymbolicExpr();
-      }
-      SkipWhitespace();
-      if (!absl::ConsumePrefix(&remaining_str_, ")")) {
-        return ReportError("Missing parenthesis");
-      }
-      return expr;
-    }
-
-    // Case 3: Variables from map. If `variable_map_` is provided, variables in
-    // it are checked before standard variables ('d', 's', 'v').
-    if (variable_map_ != nullptr) {
-      if (SymbolicExpr expr = MaybeParseVariableFromMap()) {
-        return expr;
-      }
-    }
-
-    // Case 4: Variable (e.g., "v123", "d0", "s0")
-    char c = remaining_str_[0];
-    if (c == 'v' || c == 'd' || c == 's') {
-      return MaybeParseDimAndSymbolVariables();
-    }
-
-    // Case 5: Number
-    std::optional<int64_t> val = ParseNumber();
-    if (val.has_value()) {
-      return CreateSymbolicConstant(val.value(), context_);
-    }
-    return ReportError("Failed to parse expression");
-  }
-
-  void SkipWhitespace() {
-    remaining_str_ = absl::StripLeadingAsciiWhitespace(remaining_str_);
-  }
-
-  absl::string_view remaining_str_;
-  mlir::MLIRContext* context_;
-  std::optional<int64_t> num_dims_;
-  const llvm::DenseMap<llvm::StringRef, SymbolicExpr>* variable_map_ = nullptr;
-};
 
 // Returns {BASE, COEFF}, where expr is equivalent to BASE * COEFF.
 std::pair<SymbolicExpr, int64_t> GetBaseAndCoeff(SymbolicExpr expr) {
@@ -682,6 +414,48 @@ SymbolicExpr CanonicalizeMod(SymbolicExpr lhs, SymbolicExpr rhs) {
   return (lhs - product).Canonicalize();
 }
 
+uint64_t GetLargestKnownDivisor(SymbolicExpr expr) {
+  uint64_t lhs_largest = 1;
+  uint64_t rhs_largest = 1;
+  if (expr.IsBinaryOp()) {
+    lhs_largest = GetLargestKnownDivisor(expr.GetLHS());
+    rhs_largest = GetLargestKnownDivisor(expr.GetRHS());
+  }
+  switch (expr.GetType()) {
+    case SymbolicExprType::kVariable:
+      return 1;
+    case SymbolicExprType::kConstant:
+      return SafeAbs(expr.GetValue());
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      // This is not necessarily correct. For example, (x + 2*x) is clearly
+      // multiple of 3. But this can be solved by canonicalizing the expression
+      // first.
+      return std::gcd(lhs_largest, rhs_largest);
+    case SymbolicExprType::kMul:
+      return lhs_largest * rhs_largest;
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv: {
+      SymbolicExpr rhs = expr.GetRHS();
+      if (rhs.GetType() == SymbolicExprType::kConstant) {
+        int64_t divisor = rhs.GetValue();
+        if (divisor != 0) {
+          uint64_t abs_divisor = SafeAbs(divisor);
+          if (lhs_largest % abs_divisor == 0) {
+            return lhs_largest / abs_divisor;
+          }
+        }
+      }
+      return 1;
+    }
+    default:
+      LOG(FATAL) << "Unsupported op_type in GetLargestKnownDivisor: "
+                 << GetBinaryOpString(expr.GetType());
+  }
+}
+
 }  // namespace
 
 class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
@@ -785,40 +559,29 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   }
 }
 
-std::string SymbolicExpr::ToString(int64_t num_dims) const {
-  switch (GetType()) {
-    case SymbolicExprType::kConstant:
-      return std::to_string(GetValue());
-    case SymbolicExprType::kVariable: {
-      int64_t var_id = GetValue();
-      if (num_dims == -1) {
-        return absl::StrCat("v", var_id);
-      }
-      // If num_dims is provided, then the first num_dims variables are
-      // dimensions, and the rest are symbols.
-      if (var_id < num_dims) {
-        return absl::StrCat("d", var_id);
-      }
-      return absl::StrCat("s", var_id - num_dims);
-    }
-    case SymbolicExprType::kAdd:
-    case SymbolicExprType::kMul:
-    case SymbolicExprType::kFloorDiv:
-    case SymbolicExprType::kCeilDiv:
-    case SymbolicExprType::kMod: {
-      auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat("(", GetLHS().ToString(num_dims), " ", bin_op_str,
-                          " ", GetRHS().ToString(num_dims), ")");
-    }
-    case SymbolicExprType::kMax:
-    case SymbolicExprType::kMin: {
-      auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(num_dims), ", ",
-                          GetRHS().ToString(num_dims), ")");
-    }
-    default:
-      LOG(FATAL) << "unknown type on symbolic expressions";
-  }
+std::string SymbolicExpr::ToString(std::optional<int64_t> num_dims) const {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  xla::Print(*this, os, num_dims);
+  return os.str();
+}
+
+std::string SymbolicExpr::ToString(
+    absl::Span<const std::string> var_names) const {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  xla::Print(*this, os, var_names);
+  return os.str();
+}
+
+std::string SymbolicExpr::ToString(
+    absl::Span<const std::string> dim_names,
+    absl::Span<const std::string> sym_names) const {
+  llvm::SmallVector<std::string> var_names;
+  var_names.reserve(dim_names.size() + sym_names.size());
+  var_names.append(dim_names.begin(), dim_names.end());
+  var_names.append(sym_names.begin(), sym_names.end());
+  return ToString(var_names);
 }
 
 int64_t SymbolicExpr::Evaluate(
@@ -890,6 +653,11 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
   }
 }
 
+SymbolicExpr SymbolicExpr::ReplaceDims(
+    absl::Span<const SymbolicExpr> dim_replacements) const {
+  return ReplaceVariables(dim_replacements);
+}
+
 SymbolicExpr SymbolicExpr::ReplaceSymbols(
     absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
   llvm::SmallVector<SymbolicExpr> dim_replacements;
@@ -937,6 +705,12 @@ SymbolicExpr SymbolicExpr::Replace(
     return *this;
   }
   return CreateSymbolicBinaryOp(type, new_lhs, new_rhs, GetContext());
+}
+
+bool SymbolicExpr::IsFunctionOfVariable(VariableID var_id) const {
+  llvm::DenseSet<VariableID> used_vars;
+  GetUsedVariables(used_vars);
+  return used_vars.contains(var_id);
 }
 
 void SymbolicExpr::GetUsedVariables(
@@ -1029,6 +803,10 @@ SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
   return BasicAddSimplify(*this, other);
 }
 
+SymbolicExpr operator+(int64_t lhs, SymbolicExpr rhs) {
+  return CreateSymbolicConstant(lhs, rhs.GetContext()) + rhs;
+}
+
 SymbolicExpr SymbolicExpr::operator-() const {
   return (*this * CreateSymbolicConstant(-1, GetContext())).Canonicalize();
 }
@@ -1044,6 +822,10 @@ SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
   // TODO(b/433693782): We should use our own canonicalization here instead of
   // relying on a similar one to AffineMap so tests do not fail.
   return BasicMulSimplify(*this, other);
+}
+
+SymbolicExpr operator*(int64_t lhs, SymbolicExpr rhs) {
+  return CreateSymbolicConstant(lhs, rhs.GetContext()) * rhs;
 }
 
 SymbolicExpr SymbolicExpr::operator%(int64_t v) const {
@@ -1150,28 +932,10 @@ llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
   }
   return exprs;
 }
-SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
-                               mlir::MLIRContext* mlir_context,
-                               std::optional<int64_t> num_dims) {
-  return ParseSymbolicExprAndAdvance(&expr_str, mlir_context, num_dims);
-}
 
-SymbolicExpr ParseSymbolicExprAndAdvance(absl::string_view* expr_str,
-                                         mlir::MLIRContext* mlir_context,
-                                         std::optional<int64_t> num_dims) {
-  Parser parser(*expr_str, mlir_context, num_dims);
-  SymbolicExpr expr = parser.ParsePartial();
-  *expr_str = parser.GetRemainingStr();
-  return expr;
-}
-
-SymbolicExpr ParseSymbolicExprAndAdvance(
-    absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
-    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map) {
-  Parser parser(*expr_str, mlir_context, &variable_map);
-  SymbolicExpr expr = parser.ParsePartial();
-  *expr_str = parser.GetRemainingStr();
-  return expr;
+bool SymbolicExpr::IsMultipleOf(int64_t factor) const {
+  CHECK_NE(factor, 0);
+  return GetLargestKnownDivisor(*this) % SafeAbs(factor) == 0;
 }
 
 void SymbolicExpr::Walk(

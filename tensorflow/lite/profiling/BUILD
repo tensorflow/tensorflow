@@ -175,6 +175,7 @@ cc_library(
     deps = [
         ":memory_info",
         "//tensorflow/lite:minimal_logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],

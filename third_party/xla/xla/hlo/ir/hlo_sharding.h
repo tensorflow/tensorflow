@@ -177,6 +177,12 @@ class HloSharding {
   // Convert NamedSharding (HloShardingV3) to HloShardingV2.
   static HloSharding V3ToV2Sharding(const NamedSharding& named_sharding);
 
+  // Convert HloShardingV1/V2 to NamedSharding (HloShardingV3).
+  static NamedSharding ToNamedSharding(const HloSharding& sharding);
+
+  // Convert HloShardingV1/V2 to HloShardingV3.
+  static HloSharding ToV3Sharding(const HloSharding& sharding);
+
   OpSharding ToProto() const;
 
   // Prints the string representation of this sharding.Note that this string
@@ -344,13 +350,27 @@ class HloSharding {
     });
   }
 
+  // Returns true if the sharding has any subgroup that is not REPLICATED.
+  // REQUIRES: !IsTuple()
+  bool HasNonReplicatedSubgroup() const {
+    DCHECK(!IsTuple());
+    if (UseNamedShardingLeaf()) {
+      return !named_sharding_->manual_axes().empty() ||
+             !named_sharding_->unreduced_axes().empty();
+    }
+    return absl::c_any_of(subgroup_types_, [](OpSharding::Type t) {
+      return t != OpSharding::REPLICATED;
+    });
+  }
+
   // Returns whether the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const {
-    return !IsTileMaximal() && !IsManual() && !IsUnknown();
+    return !IsTileMaximal() && !IsManual() && !IsUnreduced() && !IsUnknown();
   }
   bool IsTiledLeaf() const {
-    return !IsTileMaximalLeaf() && !IsManualLeaf() && !IsUnknownLeaf();
+    return !IsTileMaximalLeaf() && !IsManualLeaf() && !IsUnreducedLeaf() &&
+           !IsUnknownLeaf();
   }
 
   // Returns if the sharding has partial replication and partial sharding. If
@@ -361,6 +381,9 @@ class HloSharding {
   // Returns whether there is any partial replication. This can be using
   // ReplicateOnLastTileDim or subgroups with REPLICATED.
   bool HasPartialReplication() const {
+    if (UseNamedShardingLeaf()) {
+      return named_sharding_->HasPartialReplication();
+    }
     return replicate_on_last_tile_dim_ ||
            absl::c_linear_search(subgroup_types_, OpSharding::REPLICATED);
   }
@@ -481,15 +504,25 @@ class HloSharding {
                            bool overwrite) const;
 
   bool operator==(const HloSharding& other) const {
-    return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
-           manual_ == other.manual_ && unknown_ == other.unknown_ &&
-           unreduced_ == other.unreduced_ &&
-           tile_assignment_ == other.tile_assignment_ &&
-           tuple_elements_ == other.tuple_elements_ &&
-           replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
-           subgroup_types_ == other.subgroup_types_ &&
-           shard_group_ == other.shard_group_ &&
-           named_sharding_ == other.named_sharding_;
+    if (named_sharding_.has_value() == other.named_sharding_.has_value()) {
+      return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
+             manual_ == other.manual_ && unknown_ == other.unknown_ &&
+             unreduced_ == other.unreduced_ &&
+             tile_assignment_ == other.tile_assignment_ &&
+             tuple_elements_ == other.tuple_elements_ &&
+             replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_ &&
+             subgroup_types_ == other.subgroup_types_ &&
+             shard_group_ == other.shard_group_ &&
+             named_sharding_ == other.named_sharding_;
+    }
+
+    // Compare two shardings regardless of their representation in order to
+    // support mixed sharding representations in HLO
+    // TODO (b/485319882): Compare NamedSharding's with different meshes
+    if (named_sharding_.has_value()) {
+      return V3ToV2Sharding(*named_sharding_) == other;
+    }
+    return *this == V3ToV2Sharding(*other.named_sharding_);
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 

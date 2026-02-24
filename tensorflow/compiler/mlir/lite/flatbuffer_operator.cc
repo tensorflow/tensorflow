@@ -518,7 +518,7 @@ static mlir::Attribute BuildStablehlo_PrecisionConfigAttr(
 }
 
 Status mlir::CustomOptionsToAttributes(
-    const std::string& custom_code, const std::vector<uint8_t>& custom_options,
+    const std::string& custom_code, llvm::ArrayRef<uint8_t> custom_options,
     mlir::Builder builder, mlir::Location loc,
     llvm::SmallVectorImpl<mlir::NamedAttribute>* attributes) {
   attributes->emplace_back(

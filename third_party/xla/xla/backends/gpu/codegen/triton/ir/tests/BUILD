@@ -1,4 +1,4 @@
-load("//xla:lit.bzl", "lit_test_suite")  # @unused
+load("//xla:lit.bzl", "lit_test_suite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -13,14 +13,12 @@ package_group(
     ],
 )
 
-# copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
-# lit_test_suite(
-#     name = "mlir_lit_tests",
-#     srcs = glob(["*.mlir"]),
-#     cfg = "//xla:lit.cfg.py",
-#     tools = [
-#         "@llvm-project//llvm:FileCheck",
-#         "//xla/service/gpu/tests:xla-opt",
-#     ],
-# )
-# copybara:uncomment_end
+lit_test_suite(
+    name = "mlir_lit_tests",
+    srcs = glob(["*.mlir"]),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
+        "//xla/service/gpu/tests:xla-opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
+)

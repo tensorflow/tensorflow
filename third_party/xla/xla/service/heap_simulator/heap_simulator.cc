@@ -2003,8 +2003,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
   // Build free_chunks_.
   //
   // Start by initializing FreeChunkRoots at LatestSliceTime().
-  for (const std::pair<const int64_t, int64_t>& free_chunk_pair :
-       free_chunks_per_slice_time.back()) {
+  for (const auto& free_chunk_pair : free_chunks_per_slice_time.back()) {
     Chunk free_chunk =
         Chunk::FromOffsetEnd(free_chunk_pair.first, free_chunk_pair.second);
     if (free_chunk.size == 0) {
@@ -2024,7 +2023,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     // the 2 data structures, increasing the iterator for whichever one points
     // to the greater chunk position.
     auto it = free_chunks_.begin();
-    for (const std::pair<const int64_t, int64_t>& free_chunk_pair :
+    for (const auto& free_chunk_pair :
          free_chunks_per_slice_time[free_chunk_slice_time]) {
       Chunk free_chunk =
           Chunk::FromOffsetEnd(free_chunk_pair.first, free_chunk_pair.second);
@@ -2095,10 +2094,8 @@ std::string GlobalDecreasingSizeBestFitHeap<
     time_by_chunks.push_back({});
   }
 
-  for (const std::pair<const int64_t, FreeChunkRoot>& offset_root_pair :
-       free_chunks_) {
-    for (const std::pair<const int64_t, FreeChunkPiece>& offset_piece_pair :
-         offset_root_pair.second.pieces) {
+  for (const auto& offset_root_pair : free_chunks_) {
+    for (const auto& offset_piece_pair : offset_root_pair.second.pieces) {
       for (int64_t slice_time =
                offset_piece_pair.second.earliest_free_slice_time;
            slice_time <= LatestSliceTime(); ++slice_time) {

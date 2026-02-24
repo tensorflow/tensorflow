@@ -161,13 +161,10 @@ cc_library(
     hdrs = ["numbers.h"],
     deps = [
         ":stringpiece",
-        ":stringprintf",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@xla//xla/tsl/platform:logging",
-        "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -177,13 +174,15 @@ cc_library(
     hdrs = ["path.h"],
     deps = [
         ":mutex",
+        ":platform",
         ":scanner",
         ":str_util",
         ":strcat",
         ":stringpiece",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@xla//xla/tsl/platform:logging",
-        "@xla//xla/tsl/platform:types",
     ],
     alwayslink = True,
 )
@@ -668,7 +667,10 @@ filegroup(
 cc_library(
     name = "net",
     textual_hdrs = ["net.h"],
-    deps = tf_windows_aware_platform_deps("net") + ["@com_google_absl//absl/base:core_headers"],
+    deps = tf_windows_aware_platform_deps("net") + [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -767,7 +769,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -778,11 +779,8 @@ cc_library(
         ":numbers",
         ":stringpiece",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
-        "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1014,7 +1012,6 @@ cc_library(
     deps = [
         ":platform",
         ":stringpiece",
-        "@xla//xla/tsl/platform:types",
     ] + tf_fingerprint_deps(),
 )
 
@@ -1321,6 +1318,7 @@ tsl_cc_test(
     ],
     deps = [
         ":net",
+        ":platform",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:test",

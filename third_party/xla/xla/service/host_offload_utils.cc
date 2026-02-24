@@ -56,8 +56,7 @@ bool CustomCallReusesBuffer(const HloInstruction* custom_call,
   // Check the custom call's output_to_operand_aliasing.
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
       aliases = custom_call->output_operand_aliasing();
-  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>& alias :
-       aliases) {
+  for (const auto& alias : aliases) {
     int64_t alias_operand_index = alias.second.first;
     if (alias_operand_index == operand_index) {
       // This operand aliases with the output.

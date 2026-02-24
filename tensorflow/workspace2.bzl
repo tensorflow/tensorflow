@@ -16,7 +16,6 @@ load("@xla//third_party/farmhash:workspace.bzl", farmhash = "repo")
 load("@xla//third_party/fmt:workspace.bzl", fmt = "repo")
 load("@xla//third_party/FP16:workspace.bzl", FP16 = "repo")
 load("@xla//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
-load("@xla//third_party/git:git_configure.bzl", "git_configure")
 load("@xla//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("@xla//third_party/gpus:sycl_configure.bzl", "sycl_configure")
 load("@xla//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
@@ -28,9 +27,9 @@ load("@xla//third_party/nasm:workspace.bzl", nasm = "repo")
 load("@xla//third_party/nvshmem:workspace.bzl", nvshmem = "repo")
 load("@xla//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
 load("@xla//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
-load("@xla//third_party/raft:workspace.bzl", raft = "repo")
-load("@xla//third_party/rapids_logger:workspace.bzl", rapids_logger = "repo")
-load("@xla//third_party/rmm:workspace.bzl", rmm = "repo")
+load("@xla//third_party/raft:workspace.bzl", raft = "tensorflow_repo")
+load("@xla//third_party/rapids_logger:workspace.bzl", rapids_logger = "tensorflow_repo")
+load("@xla//third_party/rmm:workspace.bzl", rmm = "tensorflow_repo")
 load("@xla//third_party/robin_map:workspace.bzl", robin_map = "repo")
 load("@xla//third_party/rocm_device_libs:workspace.bzl", rocm_device_libs = "repo")
 load("@xla//third_party/shardy:workspace.bzl", shardy = "repo")
@@ -40,6 +39,7 @@ load("@xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
+load("@xla//third_party/xxd:workspace.bzl", xxd = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -50,6 +50,7 @@ load("@xla//tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 load("//third_party/com_google_highway:workspace.bzl", com_google_highway = "repo")
 load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
@@ -116,14 +117,12 @@ def _initialize_third_party():
     tensorrt()
     nvshmem()
     triton()
+    xxd()
 
     # copybara: tsl vendor
 
 # Toolchains & platforms required by Tensorflow to build.
 def _tf_toolchains():
-    native.register_execution_platforms("@local_execution_config_platform//:platform")
-    native.register_toolchains("@local_execution_config_python//:py_toolchain")
-
     # Loads all external repos to configure RBE builds.
     initialize_rbe_configs()
 
@@ -176,18 +175,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "44bf8a258cfd0d7b500b6058a2bb5c7387c8cebba295cfca985a68d16513f7c8",
-        strip_prefix = "XNNPACK-25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/25b42dfddb0ee22170d73ff0d4b333ea1e6edfeb.zip"),
+        sha256 = "6c25b52b7cac58f5507bc3ac023f582ab0a3d8c96dde3bab90a4a2b727218bc2",
+        strip_prefix = "XNNPACK-9d47c4a7fd08370a1d4eb191b6f01244b1240907",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/9d47c4a7fd08370a1d4eb191b6f01244b1240907.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "5e922c9afb7a0c881fc4359b58488f3faa840e8435de1a2207a6525935ed83c2",
-        strip_prefix = "kleidiai-63205aa90afa6803d8f58bc3081b69288e9f1906",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/63205aa90afa6803d8f58bc3081b69288e9f1906.zip"),
+        sha256 = "be1d6fb524b2a5e3772b38472a24d660e22b210f6b53b73bd8a5437ac2d882a7",
+        strip_prefix = "kleidiai-d41219d3db13758074a6440d7b55a87487334c8b",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/d41219d3db13758074a6440d7b55a87487334c8b.zip"),
     )
 
     tf_http_archive(
@@ -312,10 +311,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "ef516fb84824a597c4d5d0d6d330daedb18363b5a99eda87d027e6bdd9cba299",
-        strip_prefix = "re2-03da4fc0857c285e3a26782f6bc8931c4c950df4",
+        sha256 = "8635bc46ac8d73974b4198229805287c8d620245f2081af155d7d96d4988a3a5",
+        strip_prefix = "re2-927f5d53caf8111721e734cf24724686bb745f55",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/03da4fc0857c285e3a26782f6bc8931c4c950df4.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/927f5d53caf8111721e734cf24724686bb745f55.tar.gz"),
+        repo_mapping = {
+            "@abseil-cpp": "@com_google_absl",
+        },
     )
 
     tf_http_archive(
@@ -468,13 +470,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "dd6a2fa311ba8441bbefd2764c55b99136ff10f7ea42954be96006a2723d33fc",
-        strip_prefix = "grpc-1.74.0",
+        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
+        strip_prefix = "grpc-1.78.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
     )
 
     tf_http_archive(

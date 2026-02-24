@@ -106,12 +106,12 @@ struct NcclManager::CommunicatorMember {
 struct NcclManager::Communicator {
  public:
   explicit Communicator(std::vector<CommunicatorMember> members,
-                        const string& key)
+                        const std::string& key)
       : num_devices(members.size()), members(std::move(members)), key(key) {}
 
   const int num_devices;
   std::vector<CommunicatorMember> members;
-  const string key;
+  const std::string key;
 };
 
 namespace {
@@ -137,7 +137,7 @@ ncclDataType_t ToNcclType(DataType t) {
   }
 }
 
-void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
+void StringToNcclUniqueId(const std::string& str_id, ncclUniqueId* nccl_id) {
   if (str_id.size() == NCCL_UNIQUE_ID_BYTES) {
     memcpy(nccl_id->internal, str_id.data(), NCCL_UNIQUE_ID_BYTES);
   }
@@ -155,10 +155,10 @@ void StringToNcclUniqueId(const string& str_id, ncclUniqueId* nccl_id) {
 // 3 nodes with 4 GPUs each would have a `Collective` per node, each of which is
 // tracking the 4 GPUs local to that node.
 struct NcclManager::Collective : public core::RefCounted {
-  Collective(const string& collective_key_in, DataType data_type_in,
+  Collective(const std::string& collective_key_in, DataType data_type_in,
              CollectiveType type_in, ncclRedOp_t reduction_op_in,
              int num_local_devices_in, int num_global_devices_in,
-             const string& communicator_key_in)
+             const std::string& communicator_key_in)
       : collective_key(collective_key_in),
         data_type(data_type_in),
         type(type_in),
@@ -180,14 +180,14 @@ struct NcclManager::Collective : public core::RefCounted {
 #endif
   }
 
-  const string collective_key;  // A unique key for debugging.
+  const std::string collective_key;  // A unique key for debugging.
   const DataType data_type;
   const CollectiveType type;
   const ncclRedOp_t reduction_op;  // applies when <type> is a reduction.
   const int num_local_devices;     // devices local to this node
   const int num_global_devices;    // devices across all nodes
   const bool single_node;          // true if all devices are at one node
-  const string communicator_key;
+  const std::string communicator_key;
 
   Communicator* communicator = nullptr;
 
@@ -215,9 +215,9 @@ struct NcclManager::Collective : public core::RefCounted {
   // trace_context is used by tracing system to associate collective
   // scheduling and execution (cooperative kernel launch), which happen
   // on different threads.
-  uint64 trace_context = 0;
+  uint64_t trace_context = 0;
 
-  Status status;
+  absl::Status status;
 };
 
 NcclManager::NcclManager() {
@@ -253,14 +253,15 @@ NcclManager* NcclManager::instance() {
   return instance;
 }
 
-string NcclManager::GenerateCommunicatorKey() {
+std::string NcclManager::GenerateCommunicatorKey() {
   ncclUniqueId nccl_id;
   ncclGetUniqueId(&nccl_id);
-  return string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
+  return std::string(nccl_id.internal, NCCL_UNIQUE_ID_BYTES);
 }
 
-Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
-                                    NcclManager::Communicator** communicator) {
+absl::Status NcclManager::GetCommunicator(
+    NcclManager::Collective* collective,
+    NcclManager::Communicator** communicator) {
   // Sort by device ID, executor, and global rank to make ordering of
   // participants deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
@@ -313,7 +314,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
         }
         if (i == collective->num_local_devices) {
           *communicator = comm.get();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -333,7 +334,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
     for (auto& comm : communicators_) {
       if (comm->key == collective->communicator_key) {
         *communicator = comm.get();
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
   }
@@ -429,7 +430,7 @@ Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
   communicators_.emplace_back(
       new Communicator(std::move(members), collective->communicator_key));
   *communicator = communicators_.back().get();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void NcclManager::AddToAllReduce(std::unique_ptr<Participant> participant,
@@ -482,7 +483,7 @@ void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 
-void NcclManager::SignalMultiNodeReady(const string& collective_key) {
+void NcclManager::SignalMultiNodeReady(const std::string& collective_key) {
   Collective* to_run = nullptr;
   {
     mutex_lock l(mu_);
@@ -507,7 +508,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
                                  ncclRedOp_t reduction_op) {
   Collective* to_run = nullptr;
   DataType data_type;
-  Status nccl_manager_status;
+  absl::Status nccl_manager_status;
   if (participant->input != nullptr) {
     data_type = participant->input->dtype();
   } else {
@@ -612,7 +613,7 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
   if (to_run != nullptr) RunCollective(to_run);
 }
 
-bool NcclManager::CheckReady(const string& collective_key,
+bool NcclManager::CheckReady(const std::string& collective_key,
                              Collective* collective) {
   if (collective->available_participants == collective->num_local_devices) {
     if (collective->num_global_devices == collective->num_local_devices ||
@@ -632,7 +633,7 @@ void NcclManager::RunCollective(Collective* collective) {
 
   static mutex collective_mu(LINKER_INITIALIZED);
 
-  Status status = collective->status;
+  absl::Status status = collective->status;
   if (status.ok()) {
     status = GetCommunicator(collective, &collective->communicator);
   }
@@ -905,7 +906,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
               << collective->collective_key << " participant " << p_idx
               << " ncclResult " << nccl_result;
       if (nccl_result == ncclSuccess) {
-        collective->participants[p_idx]->done_callback(OkStatus());
+        collective->participants[p_idx]->done_callback(absl::OkStatus());
       } else {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.
@@ -918,8 +919,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
   }
 }
 
-void NcclManager::StartAbort(const Status& s) {
-  absl::flat_hash_map<string, Collective*> collectives;
+void NcclManager::StartAbort(const absl::Status& s) {
+  absl::flat_hash_map<std::string, Collective*> collectives;
   std::vector<std::unique_ptr<Communicator>> communicators;
   {
     mutex_lock l(mu_);
@@ -970,7 +971,7 @@ void NcclManager::StartAbort(const Status& s) {
 
 void NcclManager::Reset() {
   mutex_lock l(mu_);
-  status_ = Status();
+  status_ = absl::Status();
   VLOG(2) << "Reset NcclManager " << this;
 }
 

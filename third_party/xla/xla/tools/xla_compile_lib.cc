@@ -81,7 +81,7 @@ static absl::StatusOr<std::string> AotCompileCpuExecutable(
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       cpu_compiler.Compile(std::move(hlo_module), {nullptr}, compile_options));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
                       cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
 }
@@ -112,7 +112,7 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     aot_options.set_run_backend_only(true);
 
     TF_ASSIGN_OR_RETURN(
-        std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+        std::vector<std::unique_ptr<CompiledModule>> aot_results,
         gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
     TF_ASSIGN_OR_RETURN(std::string compile_result,
                         aot_results[0]->SerializeAsString());

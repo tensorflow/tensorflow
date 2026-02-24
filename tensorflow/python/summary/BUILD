@@ -110,6 +110,7 @@ tf_py_strict_test(
     srcs = ["summary_v2_test.py"],
     deps = [
         ":summary_py",
+        ":tb_summary",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -118,7 +119,6 @@ tf_py_strict_test(
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:training_util",
-        "@pypi//tb_nightly",
     ],
 )
 

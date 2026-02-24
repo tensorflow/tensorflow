@@ -103,7 +103,7 @@ class TiledHloInstruction {
       return absl::FailedPreconditionError(
           "tile_offsets_indexing was not computed. It is likely that "
           "`compute_all_tile_offset_indexing_maps` should be set to true in "
-          "`SymbolicTileAnalysis::ComputeTiledHloInstructions`.");
+          "`SymbolicTileAnalysis::ComputeTiledComputation`.");
     }
     return *tile_offsets_indexing_;
   }

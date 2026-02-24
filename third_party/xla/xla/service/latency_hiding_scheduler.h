@@ -185,6 +185,12 @@ class LatencyEstimator {
   virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
+
+  // Returns the latency cycles of the instruction if it is specified in the
+  // frontend attributes. Otherwise, returns std::nullopt.
+  std::optional<TimeCost> GetLatencyFromMetadata(
+      const HloInstruction& instruction) const;
+
   virtual ~LatencyEstimator() = default;
 
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {

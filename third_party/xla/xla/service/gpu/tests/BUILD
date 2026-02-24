@@ -73,11 +73,52 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_gpu_test_base_interface",
+    hdrs = ["hlo_gpu_test_base_interface.h"],
+    deps = [
+        "//xla/backends/gpu/target_config",
+        "//xla/service:compiler",
+        "//xla/stream_executor:device_description",
+    ],
+)
+
+cc_library(
+    name = "gpu_pjrt_codegen_test",
+    testonly = True,
+    srcs = ["gpu_pjrt_codegen_test.cc"],
+    hdrs = ["gpu_pjrt_codegen_test.h"],
+    deps = [
+        ":hlo_pjrt_gpu_test_base",
+        "//xla:shape_util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:gpu_plugin",
+        "//xla/service:gpu_topology",
+        "//xla/service:hlo_module_config",
+        "//xla/service:llvm_compiler",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/tests:codegen_utils",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_for_library",
+        "@tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
     name = "hlo_pjrt_gpu_test_base",
     testonly = True,
     srcs = ["hlo_pjrt_gpu_test_base.cc"],
     hdrs = ["hlo_pjrt_gpu_test_base.h"],
     deps = [
+        ":hlo_gpu_test_base_interface",
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
@@ -97,6 +138,25 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "hlo_legacy_gpu_test_base",
+    testonly = True,
+    hdrs = ["hlo_legacy_gpu_test_base.h"],
+    deps = [
+        ":hlo_gpu_test_base_interface",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/service:backend",
+        "//xla/service:compiler",
+        "//xla/service:interpreter_plugin",  # reference backend
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -618,11 +678,10 @@ xla_test(
     name = "gpu_atomic_test",
     srcs = ["gpu_atomic_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
-        ":gpu_codegen_test",
+        ":gpu_pjrt_codegen_test",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -701,18 +760,17 @@ xla_test(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     shard_count = 15,
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
-        ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/transforms:sort_rewriter",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/transforms:sort_rewriter",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -784,40 +842,38 @@ lit_test_suite_for_gpus(
     ],
 )
 
-# copybara:uncomment_begin(triton-opt tool doesn't build in OSS)
-# cc_binary(
-#     name = "xla-opt",
-#     srcs = ["xla-opt.cc"],
-#     deps = [
-#         "@llvm-project//llvm:Support",
-#         "@llvm-project//mlir:AllExtensions",
-#         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
-#         "@llvm-project//mlir:FuncDialect",
-#         "@llvm-project//mlir:FuncExtensions",
-#         "@llvm-project//mlir:LLVMIRTransforms",
-#         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-#         "@llvm-project//mlir:MemRefDialect",
-#         "@llvm-project//mlir:MlirOptLib",
-#         "@llvm-project//mlir:Pass",
-#         "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
-#         "@llvm-project//mlir:Support",
-#         "@llvm-project//mlir:TensorDialect",
-#         "@stablehlo//:stablehlo_ops",
-#         "//xla/backends/gpu/codegen/emitters/transforms:passes",
-#         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
-#         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-#         "//xla/backends/gpu/codegen/triton/transforms:passes",
-#         "//xla/codegen/emitters/ir:xla",
-#         "//xla/codegen/emitters/transforms:passes",
-#         "//xla/codegen/xtile/ir:xtile",
-#         "//xla/stream_executor:device_description",
-#         "//xla/stream_executor/cuda:cuda_compute_capability",
-#         "//xla/stream_executor/rocm:rocm_compute_capability",
-#         "@triton//:AllPassesAndDialects",
-#         "@triton//third_party/amd:TestAMDAnalysis",  # buildcleaner: keep
-#     ],
-# )
-# copybara:uncomment_end
+cc_binary(
+    name = "xla-opt",
+    srcs = ["xla-opt.cc"],
+    deps = [
+        "//xla/backends/gpu/codegen/emitters/transforms:passes",
+        "//xla/backends/gpu/codegen/triton:compilation_pipeline",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/backends/gpu/codegen/triton/transforms:passes",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:passes",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllExtensions",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:LLVMIRTransforms",
+        "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllExtensions",  # buildcleaner: keep
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@stablehlo//:stablehlo_ops",
+        "@triton//:AllPassesAndDialects",
+        "@triton//third_party/amd:TestAMDAnalysis",  # buildcleaner: keep
+    ],
+)
 
 xla_test(
     name = "kernel_launch_test",
@@ -921,10 +977,10 @@ xla_test(
         "//xla:error_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/transforms:sort_rewriter",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
-        "//xla/service/gpu/transforms:sort_rewriter",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:status_macros",
@@ -1120,6 +1176,7 @@ cc_library(
     srcs = ["collective_ops_e2e_test_base.cc"],
     hdrs = ["collective_ops_e2e_test_base.h"],
     deps = [
+        ":hlo_pjrt_gpu_test_base",
         "//xla:literal",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/target_config",
@@ -1170,6 +1227,8 @@ xla_test(
         "//xla:literal_util",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:xla_internal_test_main",
@@ -1178,5 +1237,6 @@ xla_test(
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ],
 )

@@ -46,6 +46,10 @@ const absl::flat_hash_map<HloOpcode, ynn_binary_operator>& GetYnnBinaryOpMap();
 // Returns `InvalidArgument` if the opcode is not supported.
 absl::StatusOr<ynn_binary_operator> YnnBinaryOperator(const HloOpcode& opcode);
 
+// Returns the YNNPACK reduce operator corresponding to the given HLO opcode.
+// Returns `InvalidArgument` if the opcode is not supported.
+absl::StatusOr<ynn_reduce_operator> YnnReduceOperator(const HloOpcode& opcode);
+
 // Returns true if the shape either doesn't have a layout or the layout is
 // descending. Shapes without layout are accepted to make HLO tests less
 // verbose.
@@ -67,11 +71,11 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
     const Shape& rhs_shape, const Shape& out_shape);
 absl::StatusOr<bool> IsDotSupportedByYnn(const HloInstruction* hlo);
 
-// Returns true if the reduce op is supported by YNNPACK.
-bool IsReduceOpSupportedByYnn(const HloInstruction* hlo);
+// Returns true if the reduce or reduce window op is supported by YNNPACK.
+bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo);
 
-// Returns true if the reduce op will be offloaded to YNNPACK.
-bool IsReduceOpOffloadedToYnn(const HloInstruction* hlo);
+// Returns true if the reduce or reduce window op will be offloaded to YNNPACK.
+bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo);
 
 // Returns true if the convolution op is supported by YNNPACK.
 bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr);

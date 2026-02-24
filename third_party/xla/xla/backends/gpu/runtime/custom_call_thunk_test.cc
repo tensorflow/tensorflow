@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/ffi/type_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -139,7 +138,7 @@ TEST(CustomCallThunkTest, SimpleCustomCall) {
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-      stream.get(), stream.get(), nullptr, nullptr);
+      stream.get(), stream.get(), nullptr, nullptr, nullptr);
   EXPECT_THAT(thunk->ExecuteOnStream(Thunk::ExecuteParams(params)),
               absl_testing::IsOk());
   EXPECT_TRUE(was_called);
@@ -159,7 +158,8 @@ TEST(CustomCallThunkTest, CustomCallOnCustomStream) {
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-      stream.get(), stream.get(), nullptr, nullptr, additional_compute_streams);
+      stream.get(), stream.get(), nullptr, nullptr, nullptr,
+      additional_compute_streams);
 
   CustomCallThunk::CustomCallTarget target =
       [&](se::Stream* stream_in_callback, void** args, const char* target_name,
@@ -217,7 +217,7 @@ TEST(CustomCallThunkTest, ResolvesFFICustomCall) {
       /*stream=*/stream.get(),
       /*command_buffer_trace_stream=*/stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr);
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
   EXPECT_THAT(thunk->ExecuteOnStream(params),
               StatusIs(absl::StatusCode::kUnknown,
                        HasSubstr("Custom call was executed!")));
@@ -259,7 +259,7 @@ TEST(CustomCallThunkTest, ResolvesLegacyCustomCall) {
       /*stream=*/stream.get(),
       /*command_buffer_trace_stream=*/stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr);
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
   EXPECT_THAT(thunk->ExecuteOnStream(params),
               StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("Legacy Custom call was executed!")));
@@ -317,7 +317,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
   initialize_params.buffer_allocations = &buffer_allocations;
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
-      stream.get(), nullptr, nullptr);
+      stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallThunk> thunk,
@@ -383,7 +383,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
   Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), buffer_allocations, stream.get(),
-      stream.get(), nullptr, nullptr);
+      stream.get(), nullptr, nullptr, nullptr);
 
   // Optional handlers are null and shouldn't be invoked.
   TF_ASSERT_OK_AND_ASSIGN(
@@ -407,7 +407,7 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutExecute) {
   stream_executor::StreamExecutorAddressAllocator allocator(executor);
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-      stream.get(), stream.get(), nullptr, nullptr);
+      stream.get(), stream.get(), nullptr, nullptr, nullptr);
 
   EXPECT_THAT(CustomCallThunk::Create(
                   Thunk::ThunkInfo(), "target_name", std::move(bundle),
@@ -512,7 +512,7 @@ TEST(CustomCallThunkTest, ProtoConversion) {
       /*stream=*/stream.get(),
       /*command_buffer_trace_stream=*/stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr);
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr);
   EXPECT_THAT(new_thunk->ExecuteOnStream(params), IsOk());
 }
 
@@ -687,8 +687,8 @@ TEST(CustomCallThunkTest, LegacyCustomCallRoundTrip) {
       ServiceExecutableRunOptions(), empty_unused_allocations,
       /*stream=*/stream.get(),
       /*command_buffer_trace_stream=*/stream.get(),
-      /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr);
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
 
   // We check that the new thunk behaves like the original one (returning
   // internal error with specific message).

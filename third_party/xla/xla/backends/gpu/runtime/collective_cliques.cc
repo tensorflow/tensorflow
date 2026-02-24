@@ -85,13 +85,42 @@ absl::StatusOr<GpuCommunicator*> CollectiveCliques::GetComm(
   return GetComm(clique_key, *rank);
 }
 
+absl::StatusOr<GpuDeviceCommunicator*> CollectiveCliques::GetDeviceComm(
+    const GpuCliqueKey& clique_key, RankId rank,
+    const GpuDeviceCommunicator::Requirements& reqs) const {
+  // Check that we locked access to a clique for `clique_key`.
+  auto clique = cliques_map_.find(clique_key);
+  if (clique == cliques_map_.end()) {
+    return NotFound("No clique found for clique key: %v", clique_key);
+  }
+
+  auto device_comm = (*clique->second)->device_comm(rank, reqs);
+  if (!device_comm.has_value()) {
+    return Internal(
+        "Device communicator for rank %v and requirements %v not found in a "
+        "NCCL clique %v",
+        rank, reqs, clique_key);
+  }
+
+  return *device_comm;
+}
+
+absl::StatusOr<GpuDeviceCommunicator*> CollectiveCliques::GetDeviceComm(
+    const GpuCliqueKey& clique_key, GlobalDeviceId global_device_id,
+    const GpuDeviceCommunicator::Requirements& reqs) const {
+  std::optional<RankId> rank = clique_key.rank(global_device_id);
+  if (!rank.has_value()) {
+    return InvalidArgument("Rank not found for device %v", global_device_id);
+  }
+  return GetDeviceComm(clique_key, *rank, reqs);
+}
+
 absl::StatusOr<bool> CollectiveCliques::peer_access_enabled(
     const GpuCliqueKey& clique_key) const {
   // Check that we locked access to a clique for `clique_key`.
   auto clique = cliques_map_.find(clique_key);
   if (clique == cliques_map_.end()) {
-    return NotFound("No clique found for clique key: %s",
-                    clique_key.ToString());
+    return NotFound("No clique found for clique key: %v", clique_key);
   }
 
   return (*clique->second)->peer_access_enabled();
@@ -105,21 +134,19 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     return CollectiveCliques();
   }
 
-  VLOG(2) << absl::StreamFormat(
-      "[%d] [run=%v] Acquire %d collective cliques for global device id %v; "
+  XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
+      "[run=%v] Acquire %d collective cliques for global device id %v; "
       "max number of channels for collectives %d; max number of "
       "channels for p2p %d",
-      params.executor->device_ordinal(), params.run_id, ordered_cliques.size(),
-      params.global_device_id, params.collective_max_nchannels,
-      params.p2p_max_nchannels);
+      params.run_id, ordered_cliques.size(), params.global_device_id,
+      params.collective_max_nchannels, params.p2p_max_nchannels);
 
   for (size_t i = 0; i < ordered_cliques.size(); ++i) {
     const CollectiveCliqueRequests::CliqueRequest& r = ordered_cliques[i];
-    VLOG(2) << absl::StreamFormat(
-        "[%d]    clique #%d (global device %v): "
-        "num_local_participants=%d; id=%d; key=%s; dev_comms=[%s]",
-        params.executor->device_ordinal(), i, params.global_device_id,
-        r.key.num_local_participants(), r.id, r.key.ToString(),
+    XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
+        "    clique #%d (global device %v): num_local_participants=%d; id=%d; "
+        "key=%v; dev_comms=[%s]",
+        i, params.global_device_id, r.key.num_local_participants(), r.id, r.key,
         absl::StrJoin(r.dev_comms, ", "));
   }
 
@@ -135,8 +162,8 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     std::optional<RankId> rank = r.key.rank(params.global_device_id);
 
     if (!rank.has_value()) {
-      return Internal("Can't find global device id %v in clique key %s",
-                      params.global_device_id, r.key.ToString());
+      return Internal("Can't find global device id %v in clique key %v",
+                      params.global_device_id, r.key);
     }
 
     // Default clique id callback that generates a unique clique id for the
@@ -175,10 +202,9 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
   }
 
   auto end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(2) << absl::StreamFormat(
-      "[%d] [global_device=%v] [run=%v] Acquired %d collective cliques in %s; ",
-      params.executor->device_ordinal(), params.global_device_id, params.run_id,
-      cliques_map.size(),
+  XLA_VLOG_DEVICE(2, params.executor->device_ordinal()) << absl::StreamFormat(
+      "[global_device=%v] [run=%v] Acquired %d collective cliques in %s; ",
+      params.global_device_id, params.run_id, cliques_map.size(),
       absl::FormatDuration(absl::Microseconds(end_micros - start_micros)));
 
   // After we acquired all GPU cliques, check if they already have required
@@ -196,9 +222,9 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
         continue;
       }
 
-      VLOG(2) << absl::StreamFormat(
-          "[%d] Create device communicator: rank=%v clique=%s",
-          params.executor->device_ordinal(), *rank, r.key.ToString());
+      XLA_VLOG_DEVICE(2, params.executor->device_ordinal())
+          << absl::StreamFormat("Create device communicator: rank=%v clique=%v",
+                                *rank, r.key);
 
       auto* comm = dynamic_cast<GpuCommunicator*>(*(*clique)->comm(*rank));
       DCHECK(comm) << "Communicator must be in the acquired clique";

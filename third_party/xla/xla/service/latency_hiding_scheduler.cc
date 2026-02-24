@@ -288,6 +288,28 @@ bool LatencyEstimator::IsP2pPair(const HloGraphNode& from,
           target.GetInstr().opcode() == HloOpcode::kRecvDone);
 }
 
+std::optional<LatencyEstimator::TimeCost>
+LatencyEstimator::GetLatencyFromMetadata(
+    const HloInstruction& instruction) const {
+  const auto& attrs = instruction.frontend_attributes().map();
+  const auto it = attrs.find("latency_metadata");
+  if (it == attrs.end()) {
+    return std::nullopt;
+  }
+  int64_t latency_ns;
+  if (!absl::SimpleAtoi(it->second, &latency_ns)) {
+    LOG(WARNING) << "Failed to parse latency from custom call for "
+                 << instruction.name()
+                 << " from latency_metadata:" << it->second;
+    return std::nullopt;
+  }
+  VLOG(10)
+      << "LatencyEstimator::GetLatencyFromMetadata: Returning latency from "
+         "custom call for "
+      << instruction.name() << ": " << latency_ns << " ns";
+  return (TimeCost)latency_ns * CyclesPerMicrosecond() / 1000.0;
+}
+
 LatencyEstimator::TimeCost ApproximateLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   if (IsAsyncPair(from, target)) {
@@ -576,13 +598,13 @@ AsyncTracker::RecursivelyComputeResourceMap(
                                      seen_resources_per_inst.end());
     }
     for (const HloComputation* called_comp : instr->called_computations()) {
-      for (auto& called_per_opcode_pair :
+      for (const auto& [type, usage] :
            RecursivelyComputeResourceMap(called_comp)) {
-        if (seen_resources_per_comp.contains(called_per_opcode_pair.first)) {
+        if (seen_resources_per_comp.contains(type)) {
           continue;
         }
-        (*m)[called_per_opcode_pair.first] += called_per_opcode_pair.second;
-        seen_resources_per_comp.insert(called_per_opcode_pair.first);
+        (*m)[type] += usage;
+        seen_resources_per_comp.insert(type);
       }
     }
   }
@@ -618,11 +640,9 @@ AsyncTracker::RecursivelyComputeResourceMapForScheduledComputation(
       }
     }
     for (const HloComputation* called_comp : inst->called_computations()) {
-      for (auto& called_per_opcode_pair :
+      for (const auto& [type, usage] :
            RecursivelyComputeResourceMap(called_comp)) {
-        int64_t type = called_per_opcode_pair.first;
-        int64_t current_usage =
-            inflight_resource_usage[type] + called_per_opcode_pair.second;
+        int64_t current_usage = inflight_resource_usage[type] + usage;
         int64_t& max_usage = res_map[type];
         max_usage = std::max(max_usage, current_usage);
       }
@@ -1817,14 +1837,14 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
       const HloComputation* comp =
           sched_state.sched_graph.GetOriginalInstrList()[0]->parent();
 
-      for (const auto& pair : skipped_nodes_and_reasons) {
-        if (pair.second == SkipNodeReason::kAnnotationGroupNotReady) {
-          int64_t annotation = pair.first->GetAnnotation();
+      for (const auto& [node, reason] : skipped_nodes_and_reasons) {
+        if (reason == SkipNodeReason::kAnnotationGroupNotReady) {
+          int64_t annotation = node->GetAnnotation();
           int64_t current_annotation_size =
               annotation_tracker_->GetNumInstructions(comp, annotation);
           if (current_annotation_size < min_annotation_size) {
             min_annotation_size = current_annotation_size;
-            node_to_deannotate = pair.first;
+            node_to_deannotate = node;
           }
         }
       }
@@ -1911,8 +1931,7 @@ bool DefaultSchedulerCore::DeleteOccupierFromResource(
           }) == false) {
     return false;
   }
-  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>::iterator it =
-      occupiers.begin();
+  auto it = occupiers.begin();
   int64_t num_occupiers = occupiers.size();
   HloGraphNode::TimeCost prev_time = current_time;
   HloGraphNode::TimeCost accumulated_saved_time = 0;
@@ -1957,8 +1976,7 @@ bool DefaultSchedulerCore::AddOccupierToResource(
     std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers) {
   CHECK(new_edge.OriginalLatency() > 0 && current_time >= 0);
   auto new_edge_remaining = new_edge.OriginalLatency();
-  std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>::iterator it =
-      occupiers.begin();
+  auto it = occupiers.begin();
   int64_t num_occupiers = occupiers.size();
   HloGraphNode::TimeCost prev_time = current_time;
   HloGraphNode::TimeCost accumulated_delay = 0;
@@ -3178,11 +3196,10 @@ absl::StatusOr<bool> DefaultSchedulerCore::TryScheduleOneAnnotationGroup(
 absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
 DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
   const HloSchedule& module_schedule = computation->parent()->schedule();
-  std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker =
-      std::make_unique<MemoryPressureTracker>(
-          scheduling_context_->GetAliasAnalysis().get(),
-          module_pressure_state_->buffer_tracker(),
-          module_pressure_state_->pressure_state_cache());
+  auto memory_pressure_tracker = std::make_unique<MemoryPressureTracker>(
+      scheduling_context_->GetAliasAnalysis().get(),
+      module_pressure_state_->buffer_tracker(),
+      module_pressure_state_->pressure_state_cache());
   memory_pressure_tracker->Initialize(
       computation,
       module_pressure_state_->GetPressureStateForComputation(computation)

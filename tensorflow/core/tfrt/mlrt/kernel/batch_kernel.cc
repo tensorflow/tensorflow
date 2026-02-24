@@ -202,6 +202,9 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
       batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
     }
+    if (options.enable_priority_aware_batch_scheduler) {
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
@@ -217,7 +220,8 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_batch_timeout_micros,
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
-            options.mixed_priority_batching_policy),
+            options.mixed_priority_batching_policy,
+            options.enable_priority_aware_batch_scheduler),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -518,6 +522,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("Tout: list(type)")
     .Attr("enable_large_batch_splitting: bool = false")
     .Attr("disable_padding: bool = false")
+    .Attr("enable_priority_aware_batch_scheduler: bool = false")
     // An opaque function handle, which is an int64_t, for passing the batch
     // function.
     .Attr("opaque_function_handle: int")

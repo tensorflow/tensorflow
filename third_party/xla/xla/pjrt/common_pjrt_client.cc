@@ -543,6 +543,24 @@ absl::Status CommonPjRtClient::PrepareArguments(
             i, replica, tfrt_buffer->device()->DebugString(),
             device->DebugString());
       }
+
+      const Shape& expected_shape = parameter_device_shapes[i];
+      const Shape& on_device_shape = tfrt_buffer->on_device_shape();
+
+      if (options.strict_shape_checking &&
+          // Skip shape check for non-array shapes (e.g. tuples).
+          expected_shape.IsArray() && on_device_shape.IsArray() &&
+          // Dynamic shapes cannot be compared directly.
+          expected_shape.is_static() && on_device_shape.is_static() &&
+          !xla::Shape::Equal().IgnoreMemorySpaceInLayout()(expected_shape,
+                                                           on_device_shape)) {
+        return InvalidArgument(
+            "Buffer passed to Execute() as argument %d to replica %d has "
+            "unexpected shape: %s (expected %s).",
+            i, replica, on_device_shape.ToString(/*print_layout=*/true),
+            expected_shape.ToString(/*print_layout=*/true));
+      }
+
       const bool donated_param =
           donate_it != donated_params.end() && *donate_it == i;
       if (donated_param) {
@@ -551,9 +569,8 @@ absl::Status CommonPjRtClient::PrepareArguments(
       const bool donation_denied_at_runtime =
           options.non_donatable_input_indices.contains(i);
       if (donated_param && donation_denied_at_runtime &&
-          tfrt_buffer->on_device_shape().has_layout() &&
-          tfrt_buffer->on_device_shape().layout().memory_space() ==
-              Layout::kHostMemorySpace) {
+          on_device_shape.has_layout() &&
+          on_device_shape.layout().memory_space() == Layout::kHostMemorySpace) {
         return absl::UnimplementedError(
             "pinned_host buffers do not support donation denial at runtime via "
             "`ExecuteOptions::non_donatable_input_indices`");
@@ -590,14 +607,10 @@ absl::Status CommonPjRtClient::PrepareArguments(
       }
       auto* device_buffer = hold.buffer();
 
-      const bool is_handle_dynamic_shape =
-          handle->on_device_shape().is_dynamic();
-
-      const Shape& expected_shape = parameter_device_shapes[i];
       if (device_buffer->raw_buffer()) {
         tsl::RCReference<CommonPjRtRawBuffer> actual_buffer =
             device_buffer->raw_buffer();
-        if (is_handle_dynamic_shape && !expected_shape.is_dynamic()) {
+        if (on_device_shape.is_dynamic() && !expected_shape.is_dynamic()) {
           TF_ASSIGN_OR_RETURN(auto handle_logical_device_shape,
                               handle->logical_on_device_shape());
           auto status_or_buffer =
@@ -883,7 +896,8 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
       options, argument_handles, ParametersThatMustBeDonated(),
       *launch_args.extra_deps, *launch_args.control_deps,
       launch_args.input_buffers, launch_args.device_buffers, device, replica,
-      partition, parameter_device_shapes_, is_error));
+      partition, parameter_device_shapes_, is_error,
+      client()->allow_fallback_for_donation()));
 
   absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
       output_leaf_buffers;
@@ -941,8 +955,9 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
-PjRtLoadedExecutable::Result CommonPjRtLoadedExecutable::ExecuteLaunch(
-    ExecuteLaunchArgs& launch_args, bool fill_future) const {
+absl::StatusOr<PjRtLoadedExecutable::Result>
+CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
+                                          bool fill_future) const {
   CHECK(launch_args.extra_deps.get()) << "extra_deps is nullptr";
   CHECK(launch_args.control_deps.get()) << "control_deps is nullptr";
   auto results =
@@ -963,6 +978,9 @@ PjRtLoadedExecutable::Result CommonPjRtLoadedExecutable::ExecuteLaunch(
       }
     }
   }
+
+  TF_RETURN_IF_ERROR(results.inline_status);
+
   return PjRtLoadedExecutable::Result(
       {/*future=*/std::move(results.future),
        /*buffers=*/client()->CreateOutputs(
@@ -1031,6 +1049,8 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<tsl::Future<void>>& returned_future, bool fill_future) const {
+  RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                        : RunId::CreateUniqueId();
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecuteSharded");
   for (int i = 0; i < addressable_devices_.size(); ++i) {
     if (addressable_devices_[i] == device) {
@@ -1038,7 +1058,7 @@ CommonPjRtLoadedExecutable::ExecuteSharded(
           options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
       TF_ASSIGN_OR_RETURN(auto result,
                           ExecuteHelperOnSingleDevice(
-                              argument_handles, RunId(options.launch_id),
+                              argument_handles, run_id,
                               addressable_device_logical_ids_[i].replica,
                               addressable_device_logical_ids_[i].partition,
                               options, fill_future));
@@ -1072,11 +1092,13 @@ CommonPjRtLoadedExecutable::ExecutePortable(
       options.send_callbacks, options.recv_callbacks, /*num_devices=*/1));
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
+  RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                        : RunId::CreateUniqueId();
   TF_ASSIGN_OR_RETURN(auto result,
-                      ExecuteHelperOnSingleDevice(
-                          argument_handles, RunId(options.launch_id),
-                          /*replica=*/0,
-                          /*partition=*/0, options, fill_future, device));
+                      ExecuteHelperOnSingleDevice(argument_handles, run_id,
+                                                  /*replica=*/0,
+                                                  /*partition=*/0, options,
+                                                  fill_future, device));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }
@@ -1088,15 +1110,19 @@ CommonPjRtLoadedExecutable::Execute(
     std::optional<std::vector<tsl::Future<void>>>& returned_futures) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::Execute");
   VLOG(1) << "CommonPjRtLoadedExecutable::Execute";
-  if (!client()->allows_recursion() && ThisThreadIsInsideHostCallback()) {
+  if (!client()->allows_execute_recursion() &&
+      ThisThreadIsInsideHostCallback()) {
     // Because TPU is single threaded, and the host callback currently blocking
     // the TPU, we should not initiate any outstanding computations because that
     // risks deadlocking the TPU.
     return InvalidArgument("Execute() called from inside host callback.");
   }
 
+  RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                        : RunId::CreateUniqueId();
   tsl::profiler::TraceMeProducer producer("CommonPjRtLoadedExecutable::Execute",
-                                          tsl::profiler::ContextType::kPjRt);
+                                          tsl::profiler::ContextType::kPjRt,
+                                          run_id.ToInt());
 
   const int num_addressable_devices = addressable_devices_.size();
 
@@ -1117,7 +1143,6 @@ CommonPjRtLoadedExecutable::Execute(
       options.send_callbacks, options.recv_callbacks,
       addressable_devices_.size()));
 
-  xla::RunId run_id(options.launch_id);
   std::vector<absl::StatusOr<Result>> results(num_addressable_devices);
   if (num_addressable_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
@@ -1604,7 +1629,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyToMemorySpaceSyncThroughLiteral(
     PjRtMemorySpace* dst_memory_space) {
   // Copy across PjRtClients by copying through host
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
+                      PjRtBuffer::ToLiteral().Await());
   absl::InlinedVector<int64_t, 4> byte_strides(
       literal->shape().dimensions().size());
   TF_RETURN_IF_ERROR(ShapeUtil::UnpackedByteStrides(

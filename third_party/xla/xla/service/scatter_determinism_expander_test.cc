@@ -16,18 +16,23 @@ limitations under the License.
 #include "xla/service/scatter_determinism_expander.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class ScatterDeterminismExpanderTest : public HloPjRtTestBase {};
+class ScatterDeterminismExpanderTest
+    : public HloPjRtTestBase,
+      public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_F(ScatterDeterminismExpanderTest,
        DoNotEliminateScatterWithAssociativeCombiner) {
@@ -59,9 +64,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_FALSE(result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        EliminateScatterWithNonAssociativeCombiner) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -72,7 +78,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY fused_computation {
       bitcast.2335 = f32[4096] parameter(0)
-      pad.96 = s32[4096,1] parameter(1)
+      pad.96 = $0[4096,1] parameter(1)
      bitcast.2748 = f32[4096] parameter(2)
       ROOT scatter.48 = f32[4096] scatter(bitcast.2335, pad.96, bitcast.2748),
         update_window_dims={}, inserted_window_dims={0},
@@ -80,8 +86,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -89,9 +96,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_TRUE(result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        EliminateNonScalarScatterWithNonAssociativeCombiner) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinisic_expander
 
     scatter_computation {
@@ -102,7 +110,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY fused_computation {
       bitcast.2335 = f32[1,4096] parameter(0)
-      pad.96 = s32[4096,2] parameter(1)
+      pad.96 = $0[4096,2] parameter(1)
      bitcast.2748 = f32[4096,1,1] parameter(2)
       ROOT scatter.48 = f32[1,4096] scatter(bitcast.2335, pad.96, bitcast.2748),
         update_window_dims={1,2}, inserted_window_dims={},
@@ -110,8 +118,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -178,8 +187,9 @@ TEST_F(ScatterDeterminismExpanderTest, DoNotEliminateScatterWithOneUpdate) {
   EXPECT_FALSE(result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -190,7 +200,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
 
     ENTRY scatter_add_computation {
       operand = f32[4] constant({0, 0, 0, 0})
-      indices = s32[7,1] constant({{0}, {1}, {2}, {3}, {1}, {1}, {2}})
+      indices = $0[7,1] constant({{0}, {1}, {2}, {3}, {1}, {1}, {2}})
       updates = f32[7] constant({2, 1, 5, 3, 8, 7, 9})
       ROOT scatter.48 = f32[4] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0},
@@ -198,8 +208,9 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -220,9 +231,10 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScalarScatterAddOutOfBoundCorrectnessTest) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -233,7 +245,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[4] constant({0, 0, 0, 0})
-      indices = s32[7,1] constant({{0}, {1}, {5}, {4}, {1}, {1}, {2}})
+      indices = $0[7,1] constant({{0}, {1}, {5}, {4}, {1}, {1}, {2}})
       updates = f32[7] constant({2, 1, 5, 3, 8, 7, 9})
       ROOT scatter.48 = f32[4] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0},
@@ -241,8 +253,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -263,9 +276,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexCorrectnessTest) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -276,7 +290,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[3, 2] constant({{0, 0}, {1, 1}, {2,2}})
+      indices = $0[3, 2] constant({{0, 0}, {1, 1}, {2,2}})
       updates = f32[3] constant({2, 1, 3})
       ROOT scatter.48 = f32[3,3] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0, 1},
@@ -284,8 +298,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -306,9 +321,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarUpdateCorrectnessTest) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -319,7 +335,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[4] constant({0, 0, 0, 0})
-      indices = s32[3, 1] constant({{1}, {2}, {3}})
+      indices = $0[3, 1] constant({{1}, {2}, {3}})
       updates = f32[3, 2] constant({{1, 2}, {4, 7}, {10, 13}})
       ROOT scatter.48 = f32[4] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={},
@@ -327,8 +343,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -348,9 +365,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithImplicitInsertedDimensions) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -361,7 +379,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
-      indices = s32[3] constant({0, 3, 9})
+      indices = $0[3] constant({0, 3, 9})
       updates = f32[3] constant({1, 2, 3})
       ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0, 1},
@@ -369,8 +387,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -390,9 +409,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarUpdateAndImplicitInsertedDimensions) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -403,7 +423,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[2, 4] constant({{0, 0, 0, 0}, {0, 0, 0, 0}})
-      indices = s32[3] constant({1, 2, 3})
+      indices = $0[3] constant({1, 2, 3})
       updates = f32[3, 2] constant({{1, 2}, {3, 4}, {5, 6}})
       ROOT scatter.48 = f32[2, 4] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={0},
@@ -411,8 +431,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -432,9 +453,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest1) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -445,7 +467,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={0},
@@ -453,8 +475,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -475,9 +498,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest2) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -488,7 +512,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={1},
@@ -496,8 +520,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -518,9 +543,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest3) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -531,7 +557,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={0},
@@ -539,8 +565,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -561,9 +588,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness2DTest4) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -574,7 +602,7 @@ TEST_F(ScatterDeterminismExpanderTest,
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={1},
@@ -582,8 +610,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
                           Execute(std::move(cloned_module), {}));
@@ -604,9 +633,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness3DTest1) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -625,7 +655,7 @@ TEST_F(ScatterDeterminismExpanderTest,
                                        {{0, 0, 0},
                                         {0, 0, 0},
                                         {0, 0, 0}}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={1, 2},
@@ -633,8 +663,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
@@ -656,9 +687,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness3DTest2) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -677,7 +709,7 @@ TEST_F(ScatterDeterminismExpanderTest,
                                        {{0, 0, 0},
                                         {0, 0, 0},
                                         {0, 0, 0}}})
-      indices = s32[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
+      indices = $0[4, 2] constant({{0, 0}, {0, 1}, {1, 1}, {1, 2}})
       updates = f32[4, 2] constant({{1, 2}, {4, 7}, {10, 13}, {21, 27}})
       ROOT scatter.48 = f32[3, 3, 3] scatter(operand, indices, updates),
         update_window_dims={1}, inserted_window_dims={1, 2},
@@ -685,8 +717,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
@@ -708,9 +741,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness3DTest3) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -729,7 +763,7 @@ TEST_F(ScatterDeterminismExpanderTest,
                                        {{0, 0, 0},
                                         {0, 0, 0},
                                         {0, 0, 0}}})
-      indices = s32[2, 2] constant({{0, 0}, {1, 1}})
+      indices = $0[2, 2] constant({{0, 0}, {1, 1}})
       updates = f32[2, 2, 2] constant({{{1, 2}, {4, 7}}, {{10, 13}, {21, 27}}})
       ROOT scatter.48 = f32[3, 3, 3] scatter(operand, indices, updates),
         update_window_dims={1, 2}, inserted_window_dims={1},
@@ -737,8 +771,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
@@ -760,9 +795,10 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest,
+TEST_P(ScatterDeterminismExpanderTest,
        ScatterAddWithNonScalarIndexAndUpdateCorrectness3DTest4) {
-  const char* const kModuleStr = R"(
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -781,7 +817,7 @@ TEST_F(ScatterDeterminismExpanderTest,
                                        {{0, 0, 0},
                                         {0, 0, 0},
                                         {0, 0, 0}}})
-      indices = s32[2, 2] constant({{0, 0}, {1, 1}})
+      indices = $0[2, 2] constant({{0, 0}, {1, 1}})
       updates = f32[2, 2, 2] constant({{{1, 2}, {4, 7}}, {{10, 13}, {21, 27}}})
       ROOT scatter.48 = f32[3, 3, 3] scatter(operand, indices, updates),
         update_window_dims={1, 2}, inserted_window_dims={2},
@@ -789,8 +825,9 @@ TEST_F(ScatterDeterminismExpanderTest,
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   auto cloned_module = module->Clone();
   TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
@@ -812,8 +849,9 @@ TEST_F(ScatterDeterminismExpanderTest,
   EXPECT_EQ(actual_result, expected_result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest, ComplicatedMultiDimensionalScatterTest) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, ComplicatedMultiDimensionalScatterTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
   HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -824,13 +862,14 @@ TEST_F(ScatterDeterminismExpanderTest, ComplicatedMultiDimensionalScatterTest) {
 
     ENTRY fused_computation {
       p0 = f32[1,1,3072,3]{3,2,1,0} parameter(0)
-      p1 = s32[1,1,128,2,3]{4,3,2,1,0} parameter(1)
+      p1 = $0[1,1,128,2,3]{4,3,2,1,0} parameter(1)
       p2 = f32[1,1,128,2,3]{4,3,2,1,0} parameter(2)
       ROOT scatter.50 = f32[1,1,3072,3]{3,2,1,0} scatter(p0, p1, p2), update_window_dims={4}, inserted_window_dims={0,1,2}, scatter_dims_to_operand_dims={0,1,2}, index_vector_dim=4, to_apply=scatter_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -838,8 +877,9 @@ TEST_F(ScatterDeterminismExpanderTest, ComplicatedMultiDimensionalScatterTest) {
   EXPECT_TRUE(result);
 }
 
-TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -850,7 +890,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
 
     ENTRY scatter_add_computation {
       operand = f32[2] constant({0, 0})
-      indices = s32[2,1] constant({{1}, {1}})
+      indices = $0[2,1] constant({{1}, {1}})
       updates = f32[2] constant({2, 1})
       ROOT scatter.48 = f32[2] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0},
@@ -858,35 +898,35 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
         to_apply=scatter_computation
   })";
 
-  const char* const kExpectedPattern = R"(
+  const char* const kExpectedPatternTemplate = R"(
     CHECK: ENTRY %scatter_add_computation () -> f32[2] {
-    CHECK-DAG:   %[[INDICES:.*]] = s32[2,1]{1,0} constant({ {1}, {1} })
-    CHECK-DAG:   %[[RESHAPE:.*]] = s32[2]{0} reshape(%[[INDICES]])
-    CHECK-DAG:   %[[IOTA:.*]] = s32[2]{0} iota(), iota_dimension=0
+    CHECK-DAG:   %[[INDICES:.*]] = $0[2,1]{1,0} constant({ {1}, {1} })
+    CHECK-DAG:   %[[RESHAPE:.*]] = $0[2]{0} reshape(%[[INDICES]])
+    CHECK-DAG:   %[[IOTA:.*]] = $0[2]{0} iota(), iota_dimension=0
     CHECK-DAG:   %[[OPERAND:.*]] = f32[2]{0} constant({0, 0})
-    CHECK-DAG:   %[[RESHAPE1:.*]] = s32[2]{0} reshape(%[[INDICES]])
-    CHECK-DAG:   %[[RESHAPE2:.*]] = s32[2,1]{1,0} reshape(%[[RESHAPE1]])
-    CHECK-DAG:   %[[RESHAPE4:.*]] = s32[2]{0} reshape(%[[RESHAPE2]])
+    CHECK-DAG:   %[[RESHAPE1:.*]] = $0[2]{0} reshape(%[[INDICES]])
+    CHECK-DAG:   %[[RESHAPE2:.*]] = $0[2,1]{1,0} reshape(%[[RESHAPE1]])
+    CHECK-DAG:   %[[RESHAPE4:.*]] = $0[2]{0} reshape(%[[RESHAPE2]])
     CHECK-DAG:   %[[UPDATES:.*]] = f32[2]{0} constant({2, 1})
     CHECK-DAG:   %[[TRANSPOSE:.*]] = f32[2]{0} transpose(%[[UPDATES]]), dimensions={0}
     CHECK-DAG:   %[[RESHAPE3:.*]] = f32[2]{0} reshape(%[[TRANSPOSE]])
-    CHECK-DAG:   %[[SORT:.*]] = (s32[2]{0}, f32[2]{0}) sort(%[[RESHAPE4]], %[[RESHAPE3]]), dimensions={0}, to_apply=%sorting_computation
-    CHECK-DAG:   %[[GET_TUPLE_ELEMENT:.*]] = s32[2]{0} get-tuple-element(%[[SORT]]), index=0
-    CHECK-DAG:   %[[SLICE2:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
-    CHECK-DAG:   %[[SLICE3:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[1:2]}
+    CHECK-DAG:   %[[SORT:.*]] = ($0[2]{0}, f32[2]{0}) sort(%[[RESHAPE4]], %[[RESHAPE3]]), dimensions={0}, to_apply=%sorting_computation
+    CHECK-DAG:   %[[GET_TUPLE_ELEMENT:.*]] = $0[2]{0} get-tuple-element(%[[SORT]]), index=0
+    CHECK-DAG:   %[[SLICE2:.*]] = $0[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
+    CHECK-DAG:   %[[SLICE3:.*]] = $0[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[1:2]}
     CHECK-DAG:   %[[COMPARE2:.*]] = pred[1]{0} compare(%[[SLICE2]], %[[SLICE3]]), direction=NE
     CHECK-DAG:   %[[CONSTANT3:.*]] = pred[] constant(true)
     CHECK-DAG:   %[[BROADCAST2:.*]] = pred[1]{0} broadcast(%[[CONSTANT3]]), dimensions={}
     CHECK-DAG:   %[[CONCATENATE2:.*]] = pred[2]{0} concatenate(%[[COMPARE2]], %[[BROADCAST2]]), dimensions={0}
     CHECK-DAG:   %[[BROADCAST3:.*]] = pred[2,1]{1,0} broadcast(%[[CONCATENATE2]]), dimensions={0}
-    CHECK-DAG:   %[[RESHAPE5:.*]] = s32[2,1]{1,0} reshape(%[[GET_TUPLE_ELEMENT]])
-    CHECK-DAG:   %[[CONSTANT:.*]] = s32[1]{0} constant({2})
-    CHECK-DAG:   %[[BROADCAST0:.*]] = s32[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
-    CHECK-DAG:   %[[SELECT1:.*]] = s32[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
-    CHECK-DAG:   %[[CONSTANT2:.*]] = s32[] constant(2)
-    CHECK-DAG:   %[[BROADCAST1:.*]] = s32[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
-    CHECK-DAG:   %[[SLICE1:.*]] = s32[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
-    CHECK-DAG:   %[[CONCATENATE1:.*]] = s32[2]{0} concatenate(%[[BROADCAST1]], %[[SLICE1]]), dimensions={0}
+    CHECK-DAG:   %[[RESHAPE5:.*]] = $0[2,1]{1,0} reshape(%[[GET_TUPLE_ELEMENT]])
+    CHECK-DAG:   %[[CONSTANT:.*]] = $0[1]{0} constant({2})
+    CHECK-DAG:   %[[BROADCAST0:.*]] = $0[2,1]{1,0} broadcast(%[[CONSTANT]]), dimensions={1}
+    CHECK-DAG:   %[[SELECT1:.*]] = $0[2,1]{1,0} select(%[[BROADCAST3]], %[[RESHAPE5]], %[[BROADCAST0]])
+    CHECK-DAG:   %[[CONSTANT2:.*]] = $0[] constant(2)
+    CHECK-DAG:   %[[BROADCAST1:.*]] = $0[1]{0} broadcast(%[[CONSTANT2]]), dimensions={}
+    CHECK-DAG:   %[[SLICE1:.*]] = $0[1]{0} slice(%[[GET_TUPLE_ELEMENT]]), slice={[0:1]}
+    CHECK-DAG:   %[[CONCATENATE1:.*]] = $0[2]{0} concatenate(%[[BROADCAST1]], %[[SLICE1]]), dimensions={0}
     CHECK-DAG:   %[[COMPARE1:.*]] = pred[2]{0} compare(%[[GET_TUPLE_ELEMENT]], %[[CONCATENATE1]]), direction=EQ
     CHECK-DAG:   %[[GET_TUPLE_ELEMENT1:.*]] = f32[2]{0} get-tuple-element(%[[SORT]]), index=1
     CHECK-DAG:   %[[CONSTANT1:.*]] = f32[] constant(0)
@@ -905,12 +945,17 @@ TEST_F(ScatterDeterminismExpanderTest, ScatterAddHloVerificationTest) {
     CHECK-SAME:   to_apply=%scatter_computation
   )";
 
-  RunAndFilecheckHloRewrite(kModuleStr, ScatterDeterminismExpander(),
-                            kExpectedPattern);
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  const std::string expected =
+      absl::Substitute(kExpectedPatternTemplate,
+                       primitive_util::LowercasePrimitiveTypeName(index_type));
+  RunAndFilecheckHloRewrite(hlo, ScatterDeterminismExpander(), expected);
 }
 
-TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -921,7 +966,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
 
     ENTRY scatter_add_computation {
       operand = f32[3] constant({0, 0, 0})
-      indices = s32[100,1] constant({{0}, {3}, {0}, {1}, {0}, {3}, {1}, {2}, {1}, {2}, {2}, {2}, {0}, {2}, {1},
+      indices = $0[100,1] constant({{0}, {3}, {0}, {1}, {0}, {3}, {1}, {2}, {1}, {2}, {2}, {2}, {0}, {2}, {1},
                                     {0}, {1}, {1}, {2}, {0}, {2}, {1}, {2}, {1}, {2}, {2}, {3}, {2}, {2}, {0},
                                     {3}, {0}, {3}, {2}, {0}, {3}, {3}, {3}, {3}, {3}, {2}, {3}, {3}, {0}, {0},
                                     {3}, {3}, {3}, {2}, {3}, {2}, {3}, {0}, {0}, {2}, {0}, {1}, {3}, {1}, {3},
@@ -949,8 +994,9 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -982,8 +1028,9 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
   }
 }
 
-TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -994,7 +1041,7 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
 
     ENTRY scatter_add_computation {
       operand = f32[3, 3] constant({{0, 0, 0}, {0, 0, 0}, {0, 0, 0}})
-      indices = s32[50, 2] constant({{0, 0}, {0, 1}, {1, 1}, {2, 2}, {0, 1}, {1, 0}, {2, 1}, {1, 2}, {0, 2}, {2, 0},
+      indices = $0[50, 2] constant({{0, 0}, {0, 1}, {1, 1}, {2, 2}, {0, 1}, {1, 0}, {2, 1}, {1, 2}, {0, 2}, {2, 0},
                                      {1, 1}, {2, 2}, {0, 0}, {0, 1}, {2, 1}, {1, 2}, {2, 0}, {0, 2}, {1, 0}, {1, 1},
                                      {1, 2}, {2, 1}, {0, 0}, {1, 1}, {0, 2}, {2, 0}, {1, 0}, {2, 2}, {1, 2}, {0, 1},
                                      {2, 1}, {1, 0}, {0, 2}, {2, 0}, {0, 1}, {2, 1}, {1, 1}, {1, 0}, {2, 2}, {0, 0},
@@ -1022,8 +1069,9 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
         to_apply=scatter_computation
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1055,8 +1103,9 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
   }
 }
 
-TEST_F(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
-  const char* const kModuleStr = R"(
+TEST_P(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
+  auto index_type = GetParam();
+  const char* const kModuleTemplate = R"(
     HloModule scatter_determinism_expander
 
     scatter_computation {
@@ -1067,7 +1116,7 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
 
     ENTRY fused_computation {
       operand = f32[2,128,128] parameter(0)
-      indices = s32[2,128,3] parameter(1)
+      indices = $0[2,128,3] parameter(1)
       updates = f32[2,128] parameter(2)
       ROOT %scatter.33751 = f32[2,128,128] scatter(operand, indices, updates),
         update_window_dims={}, inserted_window_dims={0,1,2},
@@ -1075,8 +1124,9 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarUpdateChangesVectorDim) {
         to_apply=scatter_computation
     }
   )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
+  const std::string hlo = absl::Substitute(
+      kModuleTemplate, primitive_util::LowercasePrimitiveTypeName(index_type));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
 
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1148,6 +1198,10 @@ TEST_F(ScatterDeterminismExpanderTest, UnsupportedVariadicScatter) {
       bool result, RunHloPass(&scatter_determinism_expander, module.get()));
   EXPECT_FALSE(result);
 }
+
+INSTANTIATE_TEST_SUITE_P(ScatterDeterminismExpanderTestSuite,
+                         ScatterDeterminismExpanderTest,
+                         ::testing::Values(S32, S64));
 
 }  // namespace
 }  // namespace xla

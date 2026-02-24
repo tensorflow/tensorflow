@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
@@ -285,7 +286,7 @@ absl::string_view TfrtGpuClient::platform_version() const {
 }
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
-    PjRtGlobalDeviceId global_device_id) const {
+    GlobalDeviceId global_device_id) const {
   auto it = id_to_device_.find(global_device_id);
   if (it != id_to_device_.end()) {
     return it->second;
@@ -295,7 +296,7 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
-    PjRtLocalDeviceId local_device_id) const {
+    LocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
       return device;
@@ -744,6 +745,12 @@ TfrtGpuClient::LoadInternal(
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
+  if (IsEarlyExitCompilation(compile_options)) {
+    return InvalidArgument(
+        "Executable compiled with xla_early_exit_with_layouts cannot be "
+        "loaded.");
+  }
+
   const auto& ex_options = compile_options.executable_build_options;
   const bool xla_dump_hlo_unoptimized_snapshots =
       ex_options.has_debug_options() &&
@@ -909,7 +916,7 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int64_t device_id = (*device_assignment)(replica, partition);
-        PjRtGlobalDeviceId global_device_id(device_id);
+        GlobalDeviceId global_device_id(device_id);
 
         TF_ASSIGN_OR_RETURN(PjRtDevice * device,
                             LookupDevice(global_device_id));
@@ -1034,8 +1041,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   bool use_staging_buffer = must_use_staging_buffer ||
                             ShouldStageHostToDeviceTransfers(data, packed_size);
 
-  auto copy_to_staging_buffer = [allocator = host_memory_allocator(), byte_size,
-                                 type, packed_size,
+  auto copy_to_staging_buffer = [allocator = GetHostMemoryAllocator(),
+                                 byte_size, type, packed_size,
                                  transpose{std::move(transpose)},
                                  should_pack](const void* src_buf) mutable {
     tsl::profiler::TraceMe traceme("BufferFromHostBuffer::H2D_staging_copy");

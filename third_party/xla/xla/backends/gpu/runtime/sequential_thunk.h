@@ -45,8 +45,9 @@ class SequentialThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status WalkNested(
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
+
   absl::Status TransformAllNestedThunks(
       absl::FunctionRef<
           absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>

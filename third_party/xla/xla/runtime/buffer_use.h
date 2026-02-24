@@ -68,7 +68,10 @@ class BufferUse {
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access,
             ContentValidity content_validity, Shape shape)
-      : slice_(slice), access_(access), content_validity_(content_validity) {}
+      : slice_(slice),
+        shape_(shape),
+        access_(access),
+        content_validity_(content_validity) {}
 
   static BufferUse Read(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kRead,

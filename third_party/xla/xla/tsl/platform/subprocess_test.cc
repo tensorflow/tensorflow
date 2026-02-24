@@ -18,12 +18,22 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/strcat.h"
+
+#ifndef _WIN32
+#include <limits.h>
+#endif
 
 #ifdef PLATFORM_WINDOWS
 #define WIFEXITED(code) ((code) != 3)
@@ -54,9 +64,21 @@ std::string NoopProgram() {
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
+std::string PwdProgram() {
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_pwd");
+  return tsl::io::AppendDotExeIfWindows(path);
+}
+
 std::string StdErrProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_stderr");
+  return tsl::io::AppendDotExeIfWindows(path);
+}
+
+std::string CrashProgram() {
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_crash");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
@@ -229,5 +251,205 @@ TEST_F(SubProcessTest, KillProc) {
   EXPECT_FALSE(proc.Kill(SIGKILL));
 }
 
+TEST_F(SubProcessTest, ExitCallbackNormal) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  absl::Notification notification;
+  proc.SetExitCallback([&](SubProcess* p) { notification.Notify(); });
+
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_TRUE(notification.HasBeenNotified());
+}
+
+TEST_F(SubProcessTest, ExitCallbackChildKilled) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  absl::Notification notification;
+  proc.SetExitCallback([&](SubProcess* p) { notification.Notify(); });
+
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_TRUE(notification.HasBeenNotified());
+}
+
+TEST_F(SubProcessTest, ExitCallbackChildCrash) {
+  tsl::SubProcess proc;
+  proc.SetProgram(CrashProgram(), {CrashProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  absl::Notification notification;
+  proc.SetExitCallback([&](SubProcess* p) { notification.Notify(); });
+
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_TRUE(notification.HasBeenNotified());
+}
+
+TEST_F(SubProcessTest, CheckRunningBeforeStart) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  EXPECT_FALSE(proc.CheckRunning());
+}
+
+TEST_F(SubProcessTest, CheckRunningWhileRunning) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.CheckRunning());  // Should be running, waiting for stdin
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_FALSE(proc.CheckRunning());  // Should be false now
+}
+
+TEST_F(SubProcessTest, CheckRunningReapsProcess) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  absl::Notification notification;
+  proc.SetExitCallback([&](SubProcess* p) { notification.Notify(); });
+
+  EXPECT_TRUE(proc.Start());
+  // Poll until process exits and CheckRunning returns false.
+  while (proc.CheckRunning()) {
+    absl::SleepFor(absl::Milliseconds(10));
+  }
+  EXPECT_TRUE(notification.HasBeenNotified());
+  // Since CheckRunning reaped it, Wait should return false.
+  EXPECT_FALSE(proc.Wait());
+}
+
+TEST_F(SubProcessTest, ConcurrentWaitAndCheckRunning) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  absl::Notification start_signal;
+  absl::Notification wait_finished;
+
+  std::unique_ptr<tsl::Thread> wait_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "WaitThread", [&]() {
+        start_signal.WaitForNotification();
+        proc.Wait();
+        wait_finished.Notify();
+      }));
+
+  std::unique_ptr<tsl::Thread> check_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "CheckThread", [&]() {
+        start_signal.WaitForNotification();
+        // Keep checking until Wait() finishes, even if CheckRunning returns
+        // false to test race condition.
+        while (!wait_finished.HasBeenNotified()) {
+          proc.CheckRunning();
+          absl::SleepFor(absl::Milliseconds(1));
+        }
+        while (proc.CheckRunning()) {
+          absl::SleepFor(absl::Milliseconds(10));
+        }
+      }));
+
+  start_signal.Notify();
+  absl::SleepFor(absl::Milliseconds(100));
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  wait_thread.reset();  // Join threads
+  check_thread.reset();
+  EXPECT_FALSE(proc.CheckRunning());
+}
+
+TEST_F(SubProcessTest, ConcurrentCheckRunning) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  absl::Notification start_signal;
+  absl::Notification kill_signal;
+  std::vector<std::unique_ptr<tsl::Thread>> threads;
+
+  for (int i = 0; i < 2; ++i) {
+    threads.emplace_back(tsl::Env::Default()->StartThread(
+        tsl::ThreadOptions(), "CheckThread", [&]() {
+          start_signal.WaitForNotification();
+          // Loop until kill signal even if CheckRunning returns false to
+          // test race condition.
+          while (!kill_signal.HasBeenNotified()) {
+            proc.CheckRunning();
+            absl::SleepFor(absl::Milliseconds(1));
+          }
+          // After kill signal, loop until CheckRunning returns false
+          while (proc.CheckRunning()) {
+            absl::SleepFor(absl::Milliseconds(1));
+          }
+        }));
+  }
+
+  start_signal.Notify();
+  absl::SleepFor(absl::Milliseconds(100));
+  kill_signal.Notify();
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+
+  for (auto& thread : threads) {
+    thread.reset();  // Join threads
+  }
+  EXPECT_FALSE(proc.CheckRunning());
+}
+
+TEST_F(SubProcessTest, SetDirectory) {
+  tsl::SubProcess proc;
+  proc.SetProgram(PwdProgram(), {PwdProgram()});
+
+  std::string dir = io::JoinPath(::testing::TempDir(), "setdir_test");
+  TF_ASSERT_OK(Env::Default()->CreateDir(dir));
+
+  if (!proc.SetDirectory(dir)) {
+    GTEST_SKIP() << "SetDirectory not supported on this platform.";
+  }
+
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
+  EXPECT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ(dir, out);
+  EXPECT_EQ("", err);
+}
+
+TEST_F(SubProcessTest, ExitStatusNormal) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  EXPECT_FALSE(proc.CheckRunning());
+  EXPECT_TRUE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_status(), 0);
+}
+
+TEST_F(SubProcessTest, KillStatus) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.CheckRunning());  // Should be running, waiting for stdin
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_FALSE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_status(), SIGKILL);
+}
+
+TEST_F(SubProcessTest, ExitStderr) {
+  tsl::SubProcess proc;
+  const char test_string[] = "failure!";
+  proc.SetProgram(StdErrProgram(), {StdErrProgram(), test_string});
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  proc.Communicate(nullptr, nullptr, nullptr);
+  EXPECT_NE(proc.exit_status(), 0);
+  EXPECT_FALSE(proc.exit_normal());
+}
 }  // namespace
 }  // namespace tsl

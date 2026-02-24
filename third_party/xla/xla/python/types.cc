@@ -69,8 +69,10 @@ struct CustomDtypes {
   nb_dtype float8_e5m2;
   nb_dtype float8_e5m2fnuz;
   nb_dtype float8_e8m0fnu;
+  std::optional<nb_dtype> int1;
   nb_dtype int2;
   nb_dtype int4;
+  std::optional<nb_dtype> uint1;
   nb_dtype uint2;
   nb_dtype uint4;
 };
@@ -99,6 +101,12 @@ const CustomDtypes& GetCustomDtypes() {
     dtypes->uint4 = nb_dtype::from_args(ml_dtypes.attr("uint4"));
     dtypes->int2 = nb_dtype::from_args(ml_dtypes.attr("int2"));
     dtypes->uint2 = nb_dtype::from_args(ml_dtypes.attr("uint2"));
+    if (nb::hasattr(ml_dtypes, "int1")) {
+      dtypes->int1 = nb_dtype::from_args(ml_dtypes.attr("int1"));
+    }
+    if (nb::hasattr(ml_dtypes, "uint1")) {
+      dtypes->uint1 = nb_dtype::from_args(ml_dtypes.attr("uint1"));
+    }
     return dtypes;
   });
   return custom_dtypes;
@@ -157,8 +165,14 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
     map->emplace(custom_dtypes.float8_e5m2fnuz, F8E5M2FNUZ);
     map->emplace(custom_dtypes.float8_e8m0fnu, F8E8M0FNU);
+    if (custom_dtypes.int1.has_value()) {
+      map->emplace(custom_dtypes.int1.value(), S1);
+    }
     map->emplace(custom_dtypes.int2, S2);
     map->emplace(custom_dtypes.int4, S4);
+    if (custom_dtypes.uint1.has_value()) {
+      map->emplace(custom_dtypes.uint1.value(), U1);
+    }
     map->emplace(custom_dtypes.uint2, U2);
     map->emplace(custom_dtypes.uint4, U4);
     return map;
@@ -182,9 +196,13 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
   switch (type) {
     case PRED:
       return to_nb_dtype(NPY_BOOL);
+    case S1:
+      if (custom_dtypes.int1.has_value()) {
+        return *custom_dtypes.int1;
+      }
+      break;
     case S2:
       return custom_dtypes.int2;
-      break;
     case S4:
       return custom_dtypes.int4;
     case S8:
@@ -195,9 +213,13 @@ absl::StatusOr<nb_dtype> PrimitiveTypeToNbDtype(PrimitiveType type) {
       return to_nb_dtype(NPY_INT32);
     case S64:
       return to_nb_dtype(NPY_INT64);
+    case U1:
+      if (custom_dtypes.uint1.has_value()) {
+        return *custom_dtypes.uint1;
+      }
+      break;
     case U2:
       return custom_dtypes.uint2;
-      break;
     case U4:
       return custom_dtypes.uint4;
     case U8:
@@ -258,6 +280,11 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
   switch (dtype.kind()) {
     case ifrt::DType::kPred:
       return to_nb_dtype(NPY_BOOL);
+    case ifrt::DType::kS1:
+      if (custom_dtypes.int1.has_value()) {
+        return *custom_dtypes.int1;
+      }
+      break;
     case ifrt::DType::kS2:
       return custom_dtypes.int2;
     case ifrt::DType::kS4:
@@ -270,6 +297,11 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
       return to_nb_dtype(NPY_INT32);
     case ifrt::DType::kS64:
       return to_nb_dtype(NPY_INT64);
+    case ifrt::DType::kU1:
+      if (custom_dtypes.uint1.has_value()) {
+        return *custom_dtypes.uint1;
+      }
+      break;
     case ifrt::DType::kU2:
       return custom_dtypes.uint2;
     case ifrt::DType::kU4:
@@ -353,12 +385,18 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     nb::module_ numpy = nb::module_::import_("numpy");
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     dtypes->np_bool = nb::object(numpy.attr("bool_"));
+    if (nb::hasattr(ml_dtypes, "int1")) {
+      dtypes->np_int1 = nb::object(ml_dtypes.attr("int1"));
+    }
     dtypes->np_int2 = nb::object(ml_dtypes.attr("int2"));
     dtypes->np_int4 = nb::object(ml_dtypes.attr("int4"));
     dtypes->np_int8 = nb::object(numpy.attr("int8"));
     dtypes->np_int16 = nb::object(numpy.attr("int16"));
     dtypes->np_int32 = nb::object(numpy.attr("int32"));
     dtypes->np_int64 = nb::object(numpy.attr("int64"));
+    if (nb::hasattr(ml_dtypes, "uint1")) {
+      dtypes->np_uint1 = nb::object(ml_dtypes.attr("uint1"));
+    }
     dtypes->np_uint2 = nb::object(ml_dtypes.attr("uint2"));
     dtypes->np_uint4 = nb::object(ml_dtypes.attr("uint4"));
     dtypes->np_uint8 = nb::object(numpy.attr("uint8"));

@@ -81,7 +81,7 @@ class FunctionMetadata {
   // Creates a new instance of the `FunctionMetadata` class, fetching function
   // from a context argument.
   static absl::Status Create(tensorflow::OpKernelConstruction* ctx,
-                             const string& func_name, Params params,
+                             const std::string& func_name, Params params,
                              std::shared_ptr<FunctionMetadata>* out_metadata);
 
   // Creates a new instance of the `FunctionMetadata` class, using the provided
@@ -155,7 +155,7 @@ class CapturedFunction {
   // inputs from a context argument.
   static absl::Status Create(OpKernelContext* ctx,
                              std::shared_ptr<const FunctionMetadata> metadata,
-                             const string& argument_name,
+                             const std::string& argument_name,
                              std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided

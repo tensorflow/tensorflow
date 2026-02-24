@@ -124,19 +124,12 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-void SequentialThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
+absl::Status SequentialThunk::WalkNested(
+    absl::FunctionRef<absl::Status(Thunk*)> callback) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunks(fn);
+    TF_RETURN_IF_ERROR(thunk->Walk(callback));
   }
-}
-
-void SequentialThunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunksMutable(fn);
-  }
+  return absl::OkStatus();
 }
 
 absl::Status SequentialThunk::TransformAllNestedThunks(

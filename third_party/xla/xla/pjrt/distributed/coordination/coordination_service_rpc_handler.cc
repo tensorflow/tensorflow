@@ -67,7 +67,7 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
   const IncarnationId incarnation(request->incarnation());
   const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
   response->set_leader_incarnation(leader_incarnation.value());
-  service_->RegisterTaskAsync(task, incarnation, done);
+  service_->RegisterTaskAsync(task.task_id(), incarnation, done);
 }
 
 void CoordinationServiceRpcHandler::HeartbeatAsync(
@@ -82,7 +82,7 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
   const CoordinatedTask& task = request->source_task();
   const IncarnationId incarnation(request->incarnation());
   const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
-  absl::Status s = service_->RecordHeartbeat(task, incarnation);
+  absl::Status s = service_->RecordHeartbeat(task.task_id(), incarnation);
   if (!s.ok()) {
     done(s);
     return;
@@ -100,7 +100,7 @@ void CoordinationServiceRpcHandler::ShutdownTaskAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  service_->ShutdownTaskAsync(request->source_task(),
+  service_->ShutdownTaskAsync(request->source_task().task_id(),
                               [done](absl::Status s) { done(s); });
 }
 
@@ -113,7 +113,7 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  done(service_->ResetTask(request->source_task()));
+  done(service_->ResetTask(request->source_task().task_id()));
 }
 
 void CoordinationServiceRpcHandler::WatchJobStateAsync(
@@ -131,7 +131,7 @@ void CoordinationServiceRpcHandler::WatchJobStateAsync(
     version_number.emplace(request->version_number());
   }
   service_->WatchJobState(
-      request->job_name(), version_number,
+      version_number,
       [response, done](std::vector<tensorflow::CoordinatedTaskStateInfo> info,
                        int64_t version_number) {
         absl::c_move(info, tsl::protobuf::RepeatedFieldBackInserter(
@@ -252,11 +252,13 @@ void CoordinationServiceRpcHandler::BarrierAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
-                                        request->tasks().end()};
+  std::vector<CoordinationService::TaskId> tasks;
+  for (const tensorflow::CoordinatedTask& task : request->tasks()) {
+    tasks.push_back(task.task_id());
+  }
   service_->BarrierAsync(request->barrier_id(), request->counter(),
                          absl::Milliseconds(request->barrier_timeout_in_ms()),
-                         request->source_task(), tasks,
+                         request->source_task().task_id(), tasks,
                          [done = std::move(done), response](
                              const absl::Status& status, int64_t counter) {
                            response->set_counter(counter);
@@ -274,7 +276,7 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
     return;
   }
   done(service_->CancelBarrier(request->barrier_id(), request->counter(),
-                               request->source_task()));
+                               request->source_task().task_id()));
 }
 
 void CoordinationServiceRpcHandler::GetAliveTasksAsync(
@@ -287,16 +289,19 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
     return;
   }
 
-  std::vector<CoordinatedTask> tasks = {request->tasks().begin(),
-                                        request->tasks().end()};
+  std::vector<CoordinationService::TaskId> tasks;
+  for (const tensorflow::CoordinatedTask& task : request->tasks()) {
+    tasks.push_back(task.task_id());
+  }
   service_->GetAliveTasksAsync(
-      request->requesting_task(), tasks,
+      request->requesting_task().task_id(), tasks,
       [done = std::move(done), response](
           const absl::Status& status,
-          const std::vector<tensorflow::CoordinatedTask>& alive_tasks,
+          const std::vector<CoordinationService::TaskId>& alive_tasks,
           const std::vector<IncarnationId>& incarnations) {
-        *response->mutable_alive_tasks() = {alive_tasks.begin(),
-                                            alive_tasks.end()};
+        for (const CoordinationService::TaskId task : alive_tasks) {
+          response->add_alive_tasks()->set_task_id(task);
+        }
         for (IncarnationId id : incarnations) {
           response->add_incarnations(id.value());
         }
@@ -314,7 +319,7 @@ void CoordinationServiceRpcHandler::PollForErrorAsync(
     return;
   }
   service_->PollForErrorAsync(
-      request->source_task(),
+      request->source_task().task_id(),
       [done = std::move(done)](const absl::Status& status) { done(status); });
 }
 

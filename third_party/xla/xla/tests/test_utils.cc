@@ -202,8 +202,12 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<const HloUse> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices) {
   int64_t index_bound = INT64_MAX;
+  // Used for operations like DUS / DS which need to be aligned when they appear
+  // in a fusion.
+  std::optional<int64_t> index_alignment = std::nullopt;
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
@@ -219,13 +223,28 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
                                        : use->operand(1)->shape();
         const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
+        const int64_t sliced_dim = hlo_use.operand_number - first_index;
         if (hlo_use.operand_number >= first_index) {
-          index_bound = std::min(
-              index_bound,
-              ShapeUtil::GetDimension(indexed_shape,
-                                      hlo_use.operand_number - first_index) -
-                  ShapeUtil::GetDimension(
-                      slice_shape, hlo_use.operand_number - first_index));
+          index_bound =
+              std::min(index_bound,
+                       ShapeUtil::GetDimension(indexed_shape, sliced_dim) -
+                           ShapeUtil::GetDimension(slice_shape, sliced_dim));
+          const int64_t physical_sliced_dim = PositionInContainer(
+              use->shape().layout().minor_to_major(), sliced_dim);
+          switch (physical_sliced_dim) {
+            // Lanes
+            case 0:
+              index_alignment = std::max(index_alignment.value_or(1),
+                                         static_cast<int64_t>(128));
+              break;
+            // Sublanes
+            case 1:
+              index_alignment = std::max(index_alignment.value_or(1),
+                                         static_cast<int64_t>(8));
+              break;
+            default:
+              break;
+          }
         }
         break;
       }
@@ -274,6 +293,9 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
             use->ToString());
     }
   }
+  if (!generate_aligned_ds_indices) {
+    index_alignment = std::nullopt;
+  }
   int constraint_count = 0;
   constraint_count += no_duplicates ? 1 : 0;
   constraint_count += (index_bound != INT64_MAX) ? 1 : 0;
@@ -285,7 +307,7 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     return MakeFakeLiteral(param_shape, engine,
                            std::pair<int64_t, int64_t>(0, index_bound),
                            needs_sorted_indices, no_duplicates, use_large_range,
-                           max_bits_of_precision);
+                           max_bits_of_precision, index_alignment);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -314,12 +336,13 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
     const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
-  return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
-                                         engine, use_large_range,
-                                         max_bits_of_precision);
+  return CreateLiteralForConstrainedUses(
+      constrained_uses, param, param_shape, engine, use_large_range,
+      max_bits_of_precision, generate_aligned_ds_indices);
 }
 
 }  // namespace
@@ -327,27 +350,30 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine,
+    bool generate_aligned_ds_indices) {
   if (!pseudo_random) {
-    return MakeFakeArguments(module, nullptr, use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+    return MakeFakeArguments(
+        module, nullptr, use_large_range, treat_gte_as_data_formatting,
+        max_bits_of_precision, generate_aligned_ds_indices);
   }
   if (engine == nullptr) {
     auto new_engine =
         pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-    return MakeFakeArguments(module, new_engine.get(), use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+    return MakeFakeArguments(
+        module, new_engine.get(), use_large_range, treat_gte_as_data_formatting,
+        max_bits_of_precision, generate_aligned_ds_indices);
   }
   return MakeFakeArguments(module, engine, use_large_range,
-                           treat_gte_as_data_formatting, max_bits_of_precision);
+                           treat_gte_as_data_formatting, max_bits_of_precision,
+                           generate_aligned_ds_indices);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -364,10 +390,10 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
                                    : params[i]->shape();
 
     TF_ASSIGN_OR_RETURN(
-        arguments[i],
-        MakeConstrainedArgument(*dataflow, *params[i], param_shape, engine,
-                                use_large_range, treat_gte_as_data_formatting,
-                                max_bits_of_precision));
+        arguments[i], MakeConstrainedArgument(
+                          *dataflow, *params[i], param_shape, engine,
+                          use_large_range, treat_gte_as_data_formatting,
+                          max_bits_of_precision, generate_aligned_ds_indices));
   }
   return std::move(arguments);
 }

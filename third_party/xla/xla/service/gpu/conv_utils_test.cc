@@ -289,7 +289,7 @@ TEST_F(ConvUtilsTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   HloConvolutionInstruction* root_conv =
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction());
   root_conv->set_conv_kind(ConvKind::DGRAD);
-  const WindowDimension& backward_conv_col_dim =
+  const WindowDimension backward_conv_col_dim =
       RestoreWindowFromBackwardInput(root_conv)->dimensions(1);
   const ConvolutionDimensionNumbers restored_dims =
       RestoreDimNumberFromBackwardInput(root_conv);

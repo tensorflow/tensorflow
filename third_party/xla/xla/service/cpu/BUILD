@@ -856,7 +856,7 @@ cc_library(
         "//xla/codegen/emitters:computation_fingerprint",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:resource_use",
         "//xla/runtime:work_group",

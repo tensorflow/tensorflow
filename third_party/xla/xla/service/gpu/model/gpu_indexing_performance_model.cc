@@ -589,7 +589,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
                                                  real_root_tile_sizes.end())}});
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tiling));
+                      analysis.ComputeTiledComputation(tiling));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);
@@ -656,11 +656,10 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   for (const auto& tiling : tilings) {
     // TODO(b/372454662): This needs to be adjusted if we want to support more
     // than one "real root" (i.e. a root without users).
-    // Currently ComputeTiledHloInstructions() may fail and return an
+    // Currently ComputeTiledComputation() may fail and return an
     // Unimplemented error for cases of multi-output fusion that we do not
     // support yet.
-    auto maybe_tiled_hlo_computation =
-        analysis.ComputeTiledHloInstructions(tiling);
+    auto maybe_tiled_hlo_computation = analysis.ComputeTiledComputation(tiling);
     if (!maybe_tiled_hlo_computation.ok()) {
       if (maybe_tiled_hlo_computation.status().code() ==
               absl::StatusCode::kUnimplemented &&

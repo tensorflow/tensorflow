@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla;
 
 import "google/protobuf/any.proto";
+import "xla/backends/autotuner/backends.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
 
@@ -61,18 +62,6 @@ message ThunkBufferDebugFilter {
 // field presence is available to support merging between command-line flags and
 // stored instances. This is enforced via a unit test.
 message DebugOptions {
-  // Enum to define all backends that can be autotuned.
-  enum AutotuneBackend {
-    AUTOTUNE_BACKEND_ALL = 0;
-    AUTOTUNE_BACKEND_CUDNN = 1;
-    AUTOTUNE_BACKEND_TRITON = 2;
-    AUTOTUNE_BACKEND_CUBLAS = 3;
-    AUTOTUNE_BACKEND_CUBLASLT = 4;
-    AUTOTUNE_BACKEND_ROCBLAS = 5;
-    AUTOTUNE_BACKEND_HIPBLASLT = 6;
-    AUTOTUNE_BACKEND_MIOPEN = 7;
-  }
-
   // Enum to define all collective ops
   // that xla supports.
   enum CollectiveOpType {
@@ -164,6 +153,8 @@ message DebugOptions {
   // Return an error if HostOffloader would have automatically offloaded some
   // compute to the host.
   optional bool xla_disable_automatic_host_compute_offload = 408;
+  // Use HloShardingV3 which is a mesh and axis based sharding representation.
+  optional bool xla_enable_hlo_sharding_v3 = 452;
   // Setting xla_enable_scoped_logging_timers to false will disable some of the
   // timers (not all places support this). This is useful during autotuning
   // compilation, where we want to avoid the overhead of the timers.
@@ -360,6 +351,16 @@ message DebugOptions {
   // Limits the thunk buffer debug instrumentation to specific thunks.
   optional ThunkBufferDebugFilter
       xla_gpu_experimental_thunk_buffer_debug_filter = 424;
+
+  // List of autotuner backends to enable. If empty, all backends are enabled.
+  // Backends not relevant to the platform will be ignored, e.g. cuDNN on AMD.
+  // If xla_gpu_experimental_disable_binary_libraries is set, all binary
+  // libraries (CUBLAS, CUBLASLT, CUDNN, with fission) are disabled.
+  // xla_gpu_enable_cublaslt controls if cuBLASLT or cuBLAS is enabled.
+  // The NATIVE_EMITTER and the BLOCK_LEVEL_EMITTER are always enabled for the
+  // fusion autuning pass, and are not affected by this flag, use
+  // --xla_gpu_experimental_enable_fusion_autotuner for that pass.
+  repeated autotuner.Backend xla_gpu_experimental_autotune_backends = 442;
 
   // If true, every time an HLO module is run, we will dump an
   // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
@@ -638,6 +639,20 @@ message DebugOptions {
   // Timeout to issue a warning on stuck rendez-vous.
   optional int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
 
+  // Timeout to terminate XLA:GPU execution if it doesn't complete successfully.
+  //
+  // If XLA:GPU executable doesn't complete it's execution within some
+  // reasonable time frame it probably means that it deadlocked in one of the
+  // GPU kernels or collective communication. It is nearly impossible to recover
+  // from such deadlock, and it is typically better to kill the current process
+  // and let the higher level job scheduling to retry the run.
+  //
+  // Parses a duration string consisting of a possibly signed sequence of
+  // decimal numbers, each with an optional fractional part and a unit
+  // suffix. The valid suffixes are "ns", "us" "ms", "s", "m", and "h".
+  // Simple examples include "300ms", "-1.5h", and "2h45m". Default is "inf".
+  optional string xla_gpu_execution_terminate_timeout = 451;
+
   optional bool xla_gpu_exhaustive_tiling_search = 219;
 
   // If true, autotune all fusions with block level emitter.
@@ -653,9 +668,6 @@ message DebugOptions {
   // includes the generated Thunks. In contrast, the legacy flow only compiles
   // up to the HLO optimization stage, before Thunk generation.
   optional bool xla_gpu_experimental_aot_compiled_thunks = 435;
-
-  // List of autotuner backends to enable. If empty, all backends are enabled.
-  repeated AutotuneBackend xla_gpu_experimental_autotune_backends = 442;
 
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
@@ -804,10 +816,10 @@ message DebugOptions {
 
   optional bool xla_gpu_fused_attention_use_cudnn_rng = 235;
 
-  // Does not work anymore.
-  // TODO(446874531): Delete this and add a generalized override mechanism.
-  optional string xla_gpu_gemm_autotuner_override_file = 434
-      [deprecated = true];
+  // A textproto file to override triton configs considered by autotuner. See
+  // also `xla_gpu_override_gemm_autotuner` to override with a single config.
+  // Use xla_gpu_cublas_fallback to allow/disallow fallback to cuBLAS.
+  optional string xla_gpu_gemm_autotuner_override_file = 434;
 
   // Threshold to rewrite matmul to cuBLAS or Triton (minimum combined number of
   // elements of both matrices in non-batch dimensions to be considered for a
@@ -893,15 +905,20 @@ message DebugOptions {
   // xla_gpu_threshold_for_windowed_einsum_mib will be ignored.
   optional int64 xla_gpu_operand_bytes_threshold_for_windowed_einsum = 339;
 
-  // Does not work anymore.
-  // TODO(446874531): Delete this and add a generalized override mechanism.
-  optional string xla_gpu_override_gemm_autotuner = 295 [deprecated = true];
+  // If set, override triton configs considered by autotuner. Use a textproto
+  // format matching AutotuneResult::TritonGemmKey. Use xla_gpu_cublas_fallback
+  // to allow/disallow fallback to cuBLAS.
+  optional string xla_gpu_override_gemm_autotuner = 295;
 
   optional string xla_gpu_per_fusion_autotune_cache_dir = 310;
 
   optional PGLEStrictnessLevel xla_gpu_pgle_accuracy_checker = 341;
 
   optional string xla_gpu_pgle_profile_file_or_directory_path = 210;
+
+  // Prints statistics about the HLO passes: how many times each pass
+  // was run, and how long it took.
+  optional bool xla_gpu_print_compilation_stats = 454;
 
   // Paths to files with ptx code.
   repeated string xla_gpu_ptx_file = 127;
@@ -930,6 +947,10 @@ message DebugOptions {
   // e.g., command buffer updates to ensure correctness when running in
   // multi-thread mode.
   optional bool xla_gpu_require_exclusive_lock = 347;
+
+  // Maximum number of trace events for ROCm GPU profiling. Limits memory
+  // usage during profiling on AMD GPUs.
+  optional int64 xla_gpu_rocm_max_trace_events = 449;
 
   optional ShapeChecks xla_gpu_shape_checks = 170;
 
@@ -1289,6 +1310,11 @@ message DebugOptions {
   // Whether to enable checks for Inf values in computations.
   optional DetectionMode xla_gpu_detect_inf = 428;
 
+  // Whether to log min/max values from buffers in computations.
+  //
+  // This will log the values for all thunks affected by float checks.
+  optional bool xla_gpu_log_minmax = 453;
+
   // If true, large constants will be printed out when dumping HLOs.
   optional bool xla_dump_large_constants = 290;
 
@@ -1371,10 +1397,13 @@ message DebugOptions {
   // If true, use third-party library raft::matrix::select_k to implement TopK.
   optional bool xla_gpu_experimental_use_raft_select_k = 413;
 
+  // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
+  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 449
+  // Next id: 455
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

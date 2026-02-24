@@ -12,7 +12,7 @@ bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
-bazel_dep(name = "grpc", version = "1.74.1", repo_name = "com_github_grpc_grpc")
+bazel_dep(name = "grpc", version = "1.78.0", repo_name = "com_github_grpc_grpc")
 bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil")
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
@@ -21,13 +21,14 @@ bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf"
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
-bazel_dep(name = "re2", version = "2024-07-02.bcr.1", repo_name = "com_googlesource_code_re2")
+bazel_dep(name = "re2", version = "2025-11-05", repo_name = "com_googlesource_code_re2")
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.6.0")
+bazel_dep(name = "rules_python", version = "1.6.3")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
+bazel_dep(name = "xxd", version = "9.1.0917")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.5")
 # go/keep-sorted end
 
@@ -44,9 +45,9 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-VMGjV/cfYR79tIkevUvL5K6236fkc/FP1+ytUGIJZhY=",
-    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz"],
+    integrity = "sha256-KIfZtJ4Y7132+HQ4pNmXWUCNIaH0Y8YfS+arMdiS3Ig=",
+    strip_prefix = "rules_ml_toolchain-de6fc6c38ea0368a198daa3f8c7cb829cc8db185",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/de6fc6c38ea0368a198daa3f8c7cb829cc8db185.tar.gz"],
 )
 
 # TODO: Upstream the patch?
@@ -54,6 +55,7 @@ single_version_override(
     module_name = "grpc",
     patch_strip = 1,
     patches = ["//third_party/grpc:grpc.patch"],
+    version = "1.78.0",
 )
 
 # TODO: Upstream those patch?
@@ -64,7 +66,6 @@ single_version_override(
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
-        "//third_party/absl:rules_cc.patch",
     ],
 )
 
@@ -90,6 +91,7 @@ use_repo(
     "XNNPACK",
     "cpuinfo",
     "cudnn_frontend_archive",
+    "cutlass_archive",
     "dlpack",
     "ducc",
     "eigen_archive",
@@ -107,6 +109,7 @@ use_repo(
     "nvshmem",
     "onednn",
     "pthreadpool",
+    "raft",
     "riegeli",
     "rocm_device_libs",
     "shardy",
@@ -117,6 +120,17 @@ use_repo(
 
 ##############################################################
 # Python toolchain and pypi dependencies
+
+single_version_override(
+    module_name = "rules_python",
+    patch_strip = 1,
+    patches = [
+        "//third_party/py:rules_python_pip_version.patch",
+        "//third_party/py:rules_python_freethreaded.patch",
+        "//third_party/py:rules_python_versions.patch",
+    ],
+    version = "1.6.3",
+)
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.defaults(python_version = "3.11")

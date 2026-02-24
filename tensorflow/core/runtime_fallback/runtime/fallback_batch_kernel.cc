@@ -132,6 +132,11 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
     disable_padding_ = false;
   }
 
+  if (c->HasAttr("enable_priority_aware_batch_scheduler")) {
+    OP_REQUIRES_OK(c, c->GetAttr("enable_priority_aware_batch_scheduler",
+                                 &enable_priority_aware_batch_scheduler_));
+  }
+
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
   // `OP_REQUIRES_OK`, which exits the current function upon error.
   // So validate status of `op-kernel-construction`.

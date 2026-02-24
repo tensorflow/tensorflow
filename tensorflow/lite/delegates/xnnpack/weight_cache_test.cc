@@ -668,6 +668,17 @@ TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
   EXPECT_FALSE(cache_provider.IsBuilding());
 }
 
+TEST_P(BuildMMapWeightCacheProviderTest, MemoryLockCacheWorks) {
+  enum { kWeightIndex, kBiasIndex };
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1, kWeightIndex,
+                  kBiasIndex);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
+
+  EXPECT_TRUE(cache_provider.LockMemory());
+  EXPECT_TRUE(cache_provider.UnlockMemory());
+}
+
 struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
 

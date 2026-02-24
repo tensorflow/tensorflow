@@ -154,10 +154,9 @@ class CoordinationServiceAgentTest : public ::testing::Test {
 
   // Should be called after mocking service responses, before testing the agent.
   void InitializeAgent(CoordinationServiceAgent::Config config = {}) {
-    config.service_leader = "test_leader";
     TF_ASSERT_OK_AND_ASSIGN(
         agent_, CoordinationServiceAgent::Create(
-                    tsl::Env::Default(), /*job_name=*/"test_job",
+                    tsl::Env::Default(),
                     /*task_id=*/0, config, std::move(client_),
                     /*error_fn=*/[](absl::Status s) {
                       LOG(ERROR) << "Coordination agent is set to error: " << s;
@@ -478,17 +477,7 @@ TEST_F(CoordinationServiceAgentTest,
 
 TEST_F(CoordinationServiceAgentTest, GetOwnTask) {
   InitializeAgent();
-
-  auto result = agent_->GetOwnTask();
-
-  TF_ASSERT_OK(result.status());
-  CoordinatedTask actual_task = *result;
-  // These fields are from the arguments used in InitializeAgent().
-  CoordinatedTask expected_task;
-  expected_task.set_job_name("test_job");
-  expected_task.set_task_id(0);
-  EXPECT_EQ(actual_task.job_name(), expected_task.job_name());
-  EXPECT_EQ(actual_task.task_id(), expected_task.task_id());
+  EXPECT_EQ(agent_->task_id(), 0);
 }
 
 TEST_F(CoordinationServiceAgentTest, GetEnv_SucceedsAfterInit) {

@@ -302,7 +302,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   DotRequirements lhs_requirements(kNoSplitRequirement);
   for (const Scope scope :
        {Scope::LHS, Scope::RHS, Scope::LHS_SCALE, Scope::RHS_SCALE}) {
-    int operand_number = static_cast<int>(scope);
+    auto operand_number = static_cast<int>(scope);
     if (operand_number >= dot.operand_count()) {
       continue;  // Scale operands are optional.
     }

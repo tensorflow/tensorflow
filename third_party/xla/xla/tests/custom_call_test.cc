@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -26,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/dynamic_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -37,10 +35,7 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/backends/cpu/ffi.h"
-#include "xla/client/client_library.h"
-#include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
-#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -52,14 +47,8 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
-#include "xla/service/platform_util.h"
-#include "xla/service/service.h"
-#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/platform.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -1663,84 +1652,6 @@ TEST_F(CustomCallTest, FfiExecutionStateExecuteWithAttribute) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
-}
-
-//===----------------------------------------------------------------------===//
-// XLA:FFI handler with execution context
-//===----------------------------------------------------------------------===//
-
-// Arbitrary user-defined context passed via the execution context side channel
-// to a custom call handlers.
-struct SomeExtraContext {
-  explicit SomeExtraContext(int32_t value) : value(value) {}
-  int32_t value;
-  bool executed = false;
-};
-
-template <ffi::ExecutionStage stage>
-static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
-                                     SomeExtraContext* ctx) {
-  if (ctx->value != 42) return absl::InternalError("Unexpected value");
-  if constexpr (stage == ffi::ExecutionStage::kExecute) {
-    ctx->executed = true;
-  }
-
-  return absl::OkStatus();
-}
-
-XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
-                       ExecutionContext<ffi::ExecutionStage::kExecute>,
-                       ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
-                           .Ret<ffi::AnyBuffer>()
-                           .Ctx<ffi::UserData<SomeExtraContext>>());
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.cpu.ffi_execution_context",
-                         PLATFORM,
-                         {
-                             /*instantiate=*/nullptr,
-                             /*prepare=*/nullptr,
-                             /*initialize=*/nullptr,
-                             /*execute=*/kExecutionContextExecute,
-                         });
-
-static absl::StatusOr<LocalClient*> CreateClient() {
-  TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                      PlatformUtil::GetPlatform(PLATFORM));
-  LocalClientOptions client_options(platform, 1, 1, std::nullopt);
-  return xla::ClientLibrary::GetOrCreateLocalClient(client_options);
-}
-
-TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
-  XlaBuilder b(TestName());
-  const Shape shape = ShapeUtil::MakeShape(F32, {});
-  CustomCall(&b, "xla.cpu.ffi_execution_context", /*operands=*/{}, shape,
-             /*opaque=*/"",
-             /*has_side_effect=*/false,
-             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
-             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
-             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto local_client, CreateClient());
-  EXPECT_NE(local_client->device_count(), 0);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      local_client->Compile(computation, /*argument_layouts=*/{},
-                            /*options=*/{}));
-
-  ffi::ExecutionContext execution_context;
-  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
-
-  ExecutableRunOptions run_options;
-  run_options.set_allocator(local_client->backend().memory_allocator());
-  run_options.set_ffi_execution_context(&execution_context);
-
-  std::vector<const xla::ShapedBuffer*> args;
-  TF_ASSERT_OK_AND_ASSIGN(auto result, executable[0]->Run(args, run_options));
-  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
-                          execution_context.Lookup<SomeExtraContext>());
-  EXPECT_TRUE(user_context->executed);
 }
 
 }  // namespace

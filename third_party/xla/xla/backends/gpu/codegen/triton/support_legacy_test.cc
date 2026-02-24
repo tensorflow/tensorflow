@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/codegen/triton/support_test_base.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
@@ -36,12 +37,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -70,8 +75,26 @@ bool CombinationCrashesTriton(PrimitiveType lhs_type, PrimitiveType rhs_type,
   return false;
 }
 
-class DotTest : public TritonSupportTestBaseWithParam {
+class DotTest : public SupportTestBase,
+                public ::testing::WithParamInterface<
+                    std::tuple<PrimitiveType, HloOpcode>>,
+                public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
+  DotTest()
+      : SupportTestBase(
+            [this](absl::string_view hlo_text)
+                -> absl::StatusOr<std::unique_ptr<VerifiedHloModule>> {
+              return ParseAndReturnVerifiedModule(hlo_text);
+            }) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // It's necessary to set this manually, because it's disabled in optimized
+    // builds and there are some ASAN builds that run on TAP with -c opt.
+    options.set_xla_gpu_llvm_verification_level(1);
+    return options;
+  }
+
   void TestDotWithTypes(PrimitiveType lhs_type, PrimitiveType rhs_type,
                         PrimitiveType output_type) {
     if (lhs_type == BF16 && !SupportsBF16(GetComputeCapability())) {
@@ -178,7 +201,7 @@ INSTANTIATE_TEST_SUITE_P(DotTestTestSuite, DotTest,
                          ::testing::Combine(::testing::Values(F16, F32, BF16,
                                                               F8E5M2, F8E4M3FN),
                                             ::testing::Values(HloOpcode::kDot)),
-                         TritonSupportTestTypeAndOpcodeToString);
+                         SupportTestTypeAndOpcodeToString);
 
 struct DynamicSliceTestParam {
   PrimitiveType data_type;
@@ -206,8 +229,25 @@ std::string DynamicSliceTestParamToString(
 // ::testing::ConvertGenerator, which broke the build in some OSS
 // configurations.
 class DynamicSliceTest
-    : public TritonSupportTestBase,
-      public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType> {};
+    : public SupportTestBase,
+      public ::testing::WithParamInterface<DynamicSliceTestParam::TupleType>,
+      public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+ public:
+  DynamicSliceTest()
+      : SupportTestBase(
+            [this](absl::string_view hlo_text)
+                -> absl::StatusOr<std::unique_ptr<VerifiedHloModule>> {
+              return ParseAndReturnVerifiedModule(hlo_text);
+            }) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // It's necessary to set this manually, because it's disabled in optimized
+    // builds and there are some ASAN builds that run on TAP with -c opt.
+    options.set_xla_gpu_llvm_verification_level(1);
+    return options;
+  }
+};
 
 TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSlice) {
   const DynamicSliceTestParam param(GetParam());
@@ -301,8 +341,26 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::Bool()),
     DynamicSliceTestParamToString);
 
-TEST_F(TritonSupportTestBase,
-       UnsupportedDotOutputTypeFailsCanTritonHandleGEMM) {
+class SupportLegacyTest : public HloHardwareIndependentTestBase,
+                          public SupportTestBase {
+ public:
+  SupportLegacyTest()
+      : SupportTestBase(
+            [this](absl::string_view hlo_text)
+                -> absl::StatusOr<std::unique_ptr<VerifiedHloModule>> {
+              return ParseAndReturnVerifiedModule(hlo_text);
+            }) {}
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto options = HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    // It's necessary to set this manually, because it's disabled in optimized
+    // builds and there are some ASAN builds that run on TAP with -c opt.
+    options.set_xla_gpu_llvm_verification_level(1);
+    return options;
+  }
+};
+
+TEST_F(SupportLegacyTest, UnsupportedDotOutputTypeFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
 lhs {
   ROOT p0 = f32[92,11]{1,0} parameter(0)
@@ -341,7 +399,7 @@ ENTRY e {
       ::testing::HasSubstr("Unsupported output data type for Dot op."));
 }
 
-TEST_F(TritonSupportTestBase, UnsupportedIntFloatDotFailsCanTritonHandleGEMM) {
+TEST_F(SupportLegacyTest, UnsupportedIntFloatDotFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
 lhs {
   ROOT p0 = s8[92,11]{1,0} parameter(0)
@@ -381,7 +439,7 @@ ENTRY e {
                            "types are not supported."));
 }
 
-TEST_F(TritonSupportTestBase,
+TEST_F(SupportLegacyTest,
        UnsupportedDifferentOperandTypesDotFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
 lhs {
@@ -421,8 +479,7 @@ ENTRY e {
       ::testing::HasSubstr("input types must be the same"));
 }
 
-TEST_F(TritonSupportTestBase,
-       DotWithMultipleBatchDimensionsIsSupportedWithTriton) {
+TEST_F(SupportLegacyTest, DotWithMultipleBatchDimensionsIsSupportedWithTriton) {
   const std::string kHloTest = R"(
 lhs {
   ROOT p0 = f32[2,2,2,2] parameter(0)
@@ -474,7 +531,7 @@ ENTRY e {
                              data_layout_, llvm_ctx_, mlir_context_));
 }
 
-TEST_F(TritonSupportTestBase,
+TEST_F(SupportLegacyTest,
        UnsupportedDotWithNoNonContractingDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
 lhs {

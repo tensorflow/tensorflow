@@ -1,7 +1,7 @@
 # Targets related to hlo_module_splitting, linking, and more generally
 # incremental compilation of HLO.
 
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -72,16 +72,16 @@ cc_library(
 
 # Tests below
 
-xla_test(
+xla_cc_test(
     name = "hlo_module_splitting_test",
     size = "small",
     srcs = ["hlo_module_splitting_test.cc"],
-    backends = ["cpu"],
     deps = [
         ":hlo_module_splitting",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
+        "//xla/service:cpu_plugin",  # fixdeps: keep
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",
         "//xla/tsl/lib/core:status_test_util",
@@ -93,11 +93,10 @@ xla_test(
     ],
 )
 
-xla_test(
+xla_cc_test(
     name = "hlo_module_linking_test",
     size = "small",
     srcs = ["hlo_module_linking_test.cc"],
-    backends = ["cpu"],
     deps = [
         ":hlo_linking_manifest",
         ":hlo_module_linking",
@@ -105,6 +104,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:compiler",
+        "//xla/service:cpu_plugin",  # fixdeps: keep
         "//xla/service:hlo_verifier",
         "//xla/service:platform_util",
         "//xla/stream_executor:platform",

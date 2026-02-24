@@ -494,11 +494,11 @@ std::string SanitizeFileName(std::string file_name) {
   return file_name;
 }
 
-std::string SanitizeOpName(std::string op_name, char separator,
-                           const std::string& replace_with) {
+std::string SanitizeOpName(absl::string_view op_name, char separator,
+                           absl::string_view replace_with) {
   auto pos = op_name.rfind(separator);
-  if (pos > 0 && pos != std::string::npos) {
-    std::string suffix = op_name.substr(pos + 1);
+  if (pos > 0 && pos != absl::string_view::npos) {
+    absl::string_view suffix = op_name.substr(pos + 1);
     if (std::all_of(suffix.begin(), suffix.end(), absl::ascii_isdigit)) {
       op_name = op_name.substr(0, pos);
     }

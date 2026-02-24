@@ -41,18 +41,12 @@ limitations under the License.
 namespace tflite {
 namespace xnnpack {
 
-void DynamicallyQuantizedTransposeConvTester::Test(
-    TfLiteDelegate* delegate) const {
+void DynamicallyQuantizedTransposeConvTester::Test(TfLiteDelegate* delegate) {
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto f32rng = std::bind(std::uniform_real_distribution<float>(-10, 10), rng);
 
-  const std::vector<int8_t> kernel_data = GenerateKernelData();
-  const std::vector<float> bias_data = GenerateBiasData();
-  const std::vector<float> kernel_scale_data = GenerateKernelScaleData();
-  std::vector<char> buffer =
-      CreateTfLiteModel(kernel_data, bias_data, kernel_scale_data);
-  const Model* model = GetModel(buffer.data());
+  const Model* model = GetModel();
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
@@ -84,7 +78,7 @@ void DynamicallyQuantizedTransposeConvTester::Test(
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
-    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+    TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache_);
   }
 
   const int input_data_size =
@@ -180,9 +174,11 @@ DynamicallyQuantizedTransposeConvTester::GenerateKernelScaleData() const {
   return kernel_scale;
 }
 
-std::vector<char> DynamicallyQuantizedTransposeConvTester::CreateTfLiteModel(
-    const std::vector<int8_t>& filter_data, const std::vector<float>& bias_data,
-    const std::vector<float>& kernel_scale) const {
+std::vector<char> DynamicallyQuantizedTransposeConvTester::CreateTfLiteModel()
+    const {
+  const std::vector<int8_t> filter_data = GenerateKernelData();
+  const std::vector<float> bias_data = GenerateBiasData();
+  const std::vector<float> kernel_scale = GenerateKernelScaleData();
   /*************************** Define operator codes **************************/
   flatbuffers::FlatBufferBuilder builder;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes{

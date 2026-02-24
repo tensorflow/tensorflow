@@ -36,7 +36,7 @@ namespace {
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription ddh100_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+  se::DeviceDescription ddh100_{TestGpuDeviceInfo::H100SXMDeviceInfo()};
 };
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {

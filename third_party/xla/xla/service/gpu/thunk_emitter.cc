@@ -56,6 +56,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
-#include "xla/backends/gpu/runtime/collective_metadata_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/core/host_offloading/host_offloading_executable.pb.h"
 #include "xla/ffi/attribute_map.h"
@@ -132,6 +133,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/collective_opt_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/custom_kernel_emitter.h"
@@ -144,12 +146,10 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -265,115 +265,6 @@ std::optional<const HloInstruction*> GetCollectiveHeroForDynamicSliceFusion(
   return HloBfsFindIf(
       {instruction->fused_instructions_computation()->root_instruction()},
       [](const HloInstruction* instr) { return IsCollective(instr); });
-}
-
-// Find the canonical send/recv start op for one of send, recv,
-// send-done, or recv-done. For trivial cases send/recv and
-// send-done/recv-done come in pairs and the canonical start op is
-// the send/recv op of the pair. If send/recv is partially
-// pipelined, we will use the send/recv leading into the while loop
-// as the canonical start op, which will serve as a key for the
-// async events.
-//
-// Example:
-// ```
-// send_ctx = send(src, ...)  <-- canonical start op
-// send_ctx_final = while(send_ctx) {
-//   send_ctx_in = parameter(0)
-//   send-done(send_ctx_in)
-//   ...
-//   ROOT send_ctx_out = send(next_src, ...)
-// }
-// send-done(send_ctx_final)
-// ```
-static const HloInstruction* FindCanonicalSendRecvStartOp(
-    const HloInstruction* inst) {
-  CHECK(inst->opcode() == HloOpcode::kSend ||
-        inst->opcode() == HloOpcode::kRecv ||
-        inst->opcode() == HloOpcode::kSendDone ||
-        inst->opcode() == HloOpcode::kRecvDone);
-  // If the instruction is wrapped in an async computation, return
-  // the instruction itself.
-  if (inst->parent()->IsAsyncComputation()) {
-    return inst;
-  }
-
-  // Find container while loop and index for the send/recv case or
-  // return canonical start op directly.
-  const HloInstruction* while_op = nullptr;
-  int64_t i = -1;
-  if (inst->opcode() == HloOpcode::kSend ||
-      inst->opcode() == HloOpcode::kRecv) {
-    CHECK_EQ(inst->users().size(), 1);
-    const HloInstruction* unique_user = inst->users().front();
-
-    // Return send/recv inst directly if this is a simple send/recv
-    // pair.
-    if (unique_user->opcode() == HloOpcode::kSendDone ||
-        unique_user->opcode() == HloOpcode::kRecvDone) {
-      return inst;
-    }
-
-    // Find while loop and index, otherwise.
-    CHECK(unique_user->opcode() == HloOpcode::kTuple ||
-          unique_user->opcode() == HloOpcode::kWhile);
-    if (unique_user->IsRoot()) {
-      // send/recv op in the loop body.
-      auto maybe_while_op =
-          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
-      CHECK(maybe_while_op);
-      while_op = *maybe_while_op;
-      i = unique_user->operand_index(inst);
-    } else {
-      // send/recv leading into the loop.
-      CHECK_EQ(unique_user->users().size(), 1);
-      CHECK(unique_user->users().front()->opcode() == HloOpcode::kWhile);
-      while_op = unique_user->users().front();
-      i = unique_user->operand_index(inst);
-    }
-  }
-
-  // Find container while loop and index for the send-done/recv-done
-  // case or return canonical start op directly.
-  if (inst->opcode() == HloOpcode::kSendDone ||
-      inst->opcode() == HloOpcode::kRecvDone) {
-    const HloInstruction* operand = inst->operand(0);
-
-    // Return send/recv inst directly if this is a simple send/recv
-    // pair.
-    if (operand->opcode() == HloOpcode::kSend ||
-        operand->opcode() == HloOpcode::kRecv) {
-      return operand;
-    }
-
-    // Find while loop and index, otherwise.
-    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
-    const auto* gte = Cast<HloGetTupleElementInstruction>(operand);
-    const HloInstruction* iter_tuple = operand->operand(0);
-    if (iter_tuple->opcode() == HloOpcode::kParameter) {
-      // send-done/recv-done in the loop body.
-      CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
-      auto maybe_while =
-          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
-      CHECK(maybe_while);
-      while_op = *maybe_while;
-      i = gte->tuple_index();
-    } else {
-      // send-done/recv-done proceeding the loop.
-      CHECK(iter_tuple->opcode() == HloOpcode::kWhile);
-      while_op = iter_tuple;
-      i = gte->tuple_index();
-    }
-  }
-
-  // Extract canonical start op from while loop's init.
-  CHECK(while_op != nullptr);
-  CHECK(0 <= i && i < while_op->shape().tuple_shapes().size());
-  const HloInstruction* init = while_op->operand(0);
-  const HloInstruction* canonical_start_op = init->operand(i);
-  CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
-        canonical_start_op->opcode() == HloOpcode::kRecv);
-  return canonical_start_op;
 }
 
 }  // namespace
@@ -1383,7 +1274,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(
   thunks.push_back(std::make_unique<WaitForStreamsThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      async_streams.destination_stream_id, async_streams.source_stream_id));
+      async_streams.async_stream_id, async_streams.parent_stream_id));
   thunks.push_back(std::move(sequential_thunk));
   return thunks;
 }
@@ -1449,38 +1340,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncCustomCallStart(
   ThunkSequence thunks = GetThunkSequence(std::make_unique<WaitForStreamsThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           instr, ir_emitter_context_->GetNextThunkId()),
-      streams.destination_stream_id, streams.source_stream_id));
+      streams.async_stream_id, streams.parent_stream_id));
   TF_ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id,
                       stream_assignment.GetSyncExecutionStreamId(wrapped));
 
-  auto* custom_call = Cast<HloCustomCallInstruction>(wrapped);
-  if (IsLegacyCublasMatmul(*wrapped)) {
-    TF_ASSIGN_OR_RETURN(auto gemm_thunks, EmitGemmThunk(custom_call));
-    CHECK_EQ(gemm_thunks.size(), 1);
-    gemm_thunks.back()->set_execution_stream_id(execution_stream_id);
-    AppendThunkSequence(thunks, gemm_thunks);
-    return thunks;
+  TF_ASSIGN_OR_RETURN(auto custom_call_thunks, EmitCustomCallSwitch(wrapped));
+  for (int64_t i = 0; i < custom_call_thunks.size(); ++i) {
+    custom_call_thunks[i]->set_execution_stream_id(execution_stream_id);
   }
-  if (IsCublasLtMatmul(*wrapped)) {
-    TF_ASSIGN_OR_RETURN(auto cublas_lt_matmul_thunks,
-                        EmitCublasLtMatmulThunk(custom_call));
-    CHECK_EQ(cublas_lt_matmul_thunks.size(), 1);
-    cublas_lt_matmul_thunks.back()->set_execution_stream_id(
-        execution_stream_id);
-    AppendThunkSequence(thunks, cublas_lt_matmul_thunks);
-    return thunks;
-  }
-  if (IsCublasLtMatmulF8(*wrapped)) {
-    TF_ASSIGN_OR_RETURN(auto cublas_lt_matmul_thunks,
-                        EmitCublasLtMatmulThunkF8(custom_call));
-    CHECK_EQ(cublas_lt_matmul_thunks.size(), 1);
-    cublas_lt_matmul_thunks.back()->set_execution_stream_id(
-        execution_stream_id);
-    AppendThunkSequence(thunks, cublas_lt_matmul_thunks);
-    return thunks;
-  }
-  return Internal("Unsupported async custom call instruction: %s",
-                  HloOpcodeString(wrapped->opcode()));
+  AppendThunkSequence(thunks, custom_call_thunks);
+  return thunks;
 }
 
 absl::Status ThunkEmitter::AssertNonDeterminismIsOkay(
@@ -1620,29 +1489,6 @@ bool IsNvshmemCollective(const HloInstruction* instr) {
     return backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
   }
   return false;
-}
-
-absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectiveMetadata(
-    const HloInstruction* instr) {
-  std::vector<CollectiveMetadataThunk::Buffer> buffers;
-  buffers.reserve(instr->operands().size());
-  for (const HloInstruction* operand : instr->operands()) {
-    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        GetAllocationSliceForHlo(operand, {}));
-    buffers.push_back({slice, operand->shape().layout().memory_space()});
-  }
-
-  // Operation result should be a tuple where the last element is the buffer for
-  // the metadata.
-  ShapeIndex result_shape_index = {static_cast<int64_t>(buffers.size())};
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result,
-                      GetAllocationSliceForHlo(instr, result_shape_index));
-
-  return GetThunkSequence(std::make_unique<CollectiveMetadataThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          instr, ir_emitter_context_->GetNextThunkId()),
-      CollectiveMetadataThunk::GetCollectiveConfig(*instr), std::move(buffers),
-      result));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
@@ -2185,7 +2031,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
                       GetAllocationSliceForHlo(src, {}));
   const Shape& shape = copy_start_instr->shape();
   CHECK(shape.IsTuple());
-  int host_memory_space = static_cast<int>(stream_executor::MemorySpace::kHost);
+  auto host_memory_space =
+      static_cast<int>(stream_executor::MemorySpace::kHost);
   TF_ASSIGN_OR_RETURN(bool is_dst_host_memory,
                       ShapeHasHostMemorySpace(shape, 0, host_memory_space));
   TF_ASSIGN_OR_RETURN(bool is_src_host_memory,
@@ -2206,11 +2053,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
   // source and destination stream IDs differ. If the IDs are the
   // same, the memcpy operation is synchronous within that stream.
   ThunkSequence thunks;
-  if (streams.destination_stream_id != streams.source_stream_id) {
+  if (streams.async_stream_id != streams.parent_stream_id) {
     thunks.push_back(std::make_unique<WaitForStreamsThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-        streams.destination_stream_id, streams.source_stream_id));
+        streams.async_stream_id, streams.parent_stream_id));
   }
   if (is_dst_host_memory) {
     auto thunk = std::make_unique<DeviceToHostCopyThunk>(
@@ -2220,8 +2067,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
         /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
-        /*copy_start_instr=*/copy_start_instr);
-    thunk->set_execution_stream_id(streams.destination_stream_id);
+        /*copy_start_instr=*/copy_start_instr->unique_id());
+    thunk->set_execution_stream_id(streams.async_stream_id);
     thunks.push_back(std::move(thunk));
   } else {
     auto thunk = std::make_unique<HostToDeviceCopyThunk>(
@@ -2231,8 +2078,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
         /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
         /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
         /*copy_events=*/copy_events_,
-        /*copy_start_instr=*/copy_start_instr);
-    thunk->set_execution_stream_id(streams.destination_stream_id);
+        /*instr_id=*/copy_start_instr->unique_id());
+    thunk->set_execution_stream_id(streams.async_stream_id);
     thunks.push_back(std::move(thunk));
   }
   return thunks;
@@ -2244,11 +2091,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyDoneThunk(
   CHECK(copy_start_instr->opcode() == HloOpcode::kCopyStart);
 
   return GetThunkSequence(std::make_unique<CopyDoneThunk>(
-      Thunk::kCopyDone,
       Thunk::ThunkInfo::WithProfileAnnotation(
           copy_start_instr, ir_emitter_context_->GetNextThunkId()),
       /*copy_events=*/copy_events_,
-      /*copy_start_instr=*/copy_start_instr));
+      /*instr_id=*/copy_start_instr->unique_id()));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
@@ -2517,7 +2363,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncDone(
       thunks.push_back(std::make_unique<WaitForStreamsThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
-          streams.source_stream_id, streams.destination_stream_id));
+          streams.parent_stream_id, streams.async_stream_id));
       return thunks;
     }
     default:
@@ -2576,7 +2422,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncStart(
           GetThunkSequence(std::make_unique<WaitForStreamsThunk>(
               Thunk::ThunkInfo::WithProfileAnnotation(
                   instr, ir_emitter_context_->GetNextThunkId()),
-              streams.destination_stream_id, streams.source_stream_id));
+              streams.async_stream_id, streams.parent_stream_id));
 
       TF_ASSIGN_OR_RETURN(ThunkSequence fusion_thunks,
                           EmitFusion(Cast<HloFusionInstruction>(wrapped)));
@@ -2658,6 +2504,64 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncStart(
   }
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallSwitch(
+    const HloInstruction* hlo) {
+  auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+  if (IsLegacyCublasMatmul(*hlo)) {
+    return EmitGemmThunk(custom_call);
+  }
+  if (IsCublasLtMatmul(*hlo)) {
+    return EmitCublasLtMatmulThunk(custom_call);
+  }
+  if (IsCublasLtMatmulF8(*hlo)) {
+    return EmitCublasLtMatmulThunkF8(custom_call);
+  }
+  if (IsCudnnConvolutionReorder(*hlo)) {
+    return EmitConvolutionReorderThunk(custom_call);
+  }
+  if (IsCustomCallToDnnNorm(*hlo)) {
+    return EmitNormThunk(custom_call);
+  }
+  if (IsCustomCallTofMHA(*hlo) || IsCustomCallTofMHAF8(*hlo) ||
+      IsCustomCallToBlockScaledDot(*hlo)) {
+    return EmitCuDnnThunk(custom_call);
+  }
+  if (IsCustomCallToPtxKernel(*hlo)) {
+    return EmitPtxCustomCall(custom_call);
+  }
+  if (IsCustomCallToTopK(*hlo)) {
+    return EmitTopKCustomCall(custom_call);
+  }
+  if (IsCustomCallToDnnConvolution(*hlo)) {
+    return EmitConvolutionThunk(custom_call);
+  }
+  if (IsTriangularSolve(*hlo)) {
+    return EmitTriangularSolveCustomCall(hlo);
+  }
+  if (IsCubDeviceRadixSort(*hlo)) {
+    return EmitCubDeviceRadixSort(custom_call);
+  }
+  if (custom_call->custom_call_target() == "PadToStatic") {
+    return EmitPadToStatic(custom_call);
+  }
+  if (hlo->custom_call_target() == "SliceToDynamic") {
+    return EmitSliceToDynamic(custom_call);
+  }
+  if (hlo->custom_call_target() == "__gpu$xla.gpu.triton") {
+    // TODO(slebedev): Remove this after June 15th 2025.
+    return EmitTritonCustomCall(custom_call);
+  }
+  if (hlo->custom_call_target() == kNopCustomCallTarget) {
+    return ThunkSequence{};
+  }
+  if (hlo->custom_call_target() == kPinCustomCallTarget ||
+      hlo->custom_call_target() == kUnpinCustomCallTarget ||
+      hlo->custom_call_target() == kCreateBufferCustomCallTarget) {
+    return ThunkSequence{};
+  }
+  return EmitCustomCallThunk(custom_call);
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     const HloInstruction* hlo, bool emit_group_thunks) {
   switch (hlo->opcode()) {
@@ -2702,65 +2606,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
       return EmitConditional(hlo);
     case HloOpcode::kConstant:
       return EmitConstant(Cast<HloConstantInstruction>(hlo));
-    case HloOpcode::kCustomCall: {
-      auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
-      if (IsLegacyCublasMatmul(*hlo)) {
-        return EmitGemmThunk(custom_call);
-      }
-      if (IsCublasLtMatmul(*hlo)) {
-        return EmitCublasLtMatmulThunk(custom_call);
-      }
-      if (IsCublasLtMatmulF8(*hlo)) {
-        return EmitCublasLtMatmulThunkF8(custom_call);
-      }
-      if (IsCudnnConvolutionReorder(*hlo)) {
-        return EmitConvolutionReorderThunk(custom_call);
-      }
-      if (IsCustomCallToDnnNorm(*hlo)) {
-        return EmitNormThunk(custom_call);
-      }
-      if (IsCustomCallTofMHA(*hlo) || IsCustomCallTofMHAF8(*hlo) ||
-          IsCustomCallToBlockScaledDot(*hlo)) {
-        return EmitCuDnnThunk(custom_call);
-      }
-      if (IsCustomCallToPtxKernel(*hlo)) {
-        return EmitPtxCustomCall(custom_call);
-      }
-      if (IsCustomCallToTopK(*hlo)) {
-        return EmitTopKCustomCall(custom_call);
-      }
-      if (IsCustomCallToDnnConvolution(*hlo)) {
-        return EmitConvolutionThunk(custom_call);
-      }
-      if (IsTriangularSolve(*hlo)) {
-        return EmitTriangularSolveCustomCall(hlo);
-      }
-      if (IsCubDeviceRadixSort(*hlo)) {
-        return EmitCubDeviceRadixSort(custom_call);
-      }
-      if (custom_call->custom_call_target() == "PadToStatic") {
-        return EmitPadToStatic(custom_call);
-      }
-      if (hlo->custom_call_target() == "SliceToDynamic") {
-        return EmitSliceToDynamic(custom_call);
-      }
-      if (hlo->custom_call_target() == "__gpu$xla.gpu.triton") {
-        // TODO(slebedev): Remove this after June 15th 2025.
-        return EmitTritonCustomCall(custom_call);
-      }
-      if (hlo->custom_call_target() == kNopCustomCallTarget) {
-        return ThunkSequence{};
-      }
-      if (hlo->custom_call_target() == kPinCustomCallTarget ||
-          hlo->custom_call_target() == kUnpinCustomCallTarget ||
-          hlo->custom_call_target() == kCreateBufferCustomCallTarget) {
-        return ThunkSequence{};
-      }
-      if (hlo->custom_call_target() == kCollectiveMetadataCustomCallTarget) {
-        return EmitCollectiveMetadata(hlo);
-      }
-      return EmitCustomCallThunk(custom_call);
-    }
+    case HloOpcode::kCustomCall:
+      return EmitCustomCallSwitch(hlo);
     case HloOpcode::kFusion:
       return EmitFusion(Cast<HloFusionInstruction>(hlo));
     case HloOpcode::kCopy:

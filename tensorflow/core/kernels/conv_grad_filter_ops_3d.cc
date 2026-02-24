@@ -135,7 +135,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -193,7 +193,7 @@ class Conv3DBackpropFilterOp : public OpKernel {
                       "filter_sizes shape must be rank 1 but is rank ",
                       filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  filter_sizes.vec<int32>(), &filter_shape));
+                                  filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
@@ -247,8 +247,8 @@ class Conv3DBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;
@@ -274,7 +274,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -332,7 +332,7 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
                       "filter_sizes shape must be rank 1 but is rank ",
                       filter_sizes.shape().dims()));
       OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                  filter_sizes.vec<int32>(), &filter_shape));
+                                  filter_sizes.vec<int32_t>(), &filter_shape));
     } else {
       filter_shape = context->input(1).shape();
     }
@@ -560,8 +560,8 @@ class Conv3DCustomBackpropFilterOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;
@@ -673,7 +673,7 @@ DECLARE_GPU_SPEC(double);
 
 // A dummy type to group backward filter autotune results together.
 struct Conv3dBackwardFilterAutotuneGroup {
-  static string name() { return "Conv3dBwdFilter"; }
+  static std::string name() { return "Conv3dBwdFilter"; }
 };
 
 typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
@@ -683,8 +683,8 @@ typedef AutotuneSingleton<Conv3dBackwardFilterAutotuneGroup, ConvParameters,
 template <typename T>
 void LaunchConvBackpropFilterOpImpl(
     OpKernelContext* context, bool cudnn_use_autotune, const Tensor& input,
-    const Tensor& out_backprop, const std::vector<int32>& dilation,
-    const std::vector<int32>& stride, const Padding& padding,
+    const Tensor& out_backprop, const std::vector<int32_t>& dilation,
+    const std::vector<int32_t>& stride, const Padding& padding,
     Tensor* filter_backprop, TensorFormat data_format) {
   const TensorShape& input_shape = input.shape();
   const TensorShape& out_backprop_shape = out_backprop.shape();
@@ -717,10 +717,10 @@ void LaunchConvBackpropFilterOpImpl(
       dims.dilation(2) == 1 && dims.dilation(1) == 1 && dims.dilation(0) == 1 &&
       dims.stride(2) == 1 && dims.stride(1) == 1 && dims.stride(0) == 1 &&
       data_format == FORMAT_NHWC) {
-    const uint64 m = dims.in_depth;
-    const uint64 k = dims.batch_size * dims.input_size(1) * dims.input_size(2) *
-                     dims.input_size(0);
-    const uint64 n = dims.out_depth;
+    const uint64_t m = dims.in_depth;
+    const uint64_t k = dims.batch_size * dims.input_size(1) *
+                       dims.input_size(2) * dims.input_size(0);
+    const uint64_t n = dims.out_depth;
 
     // The shape of output backprop is
     //   [batch, out_z, out_y, out_x, out_depth]
@@ -751,10 +751,10 @@ void LaunchConvBackpropFilterOpImpl(
              dims.filter_size(1) == dims.input_size(1) &&
              dims.filter_size(2) == dims.input_size(2) &&
              padding == Padding::VALID && data_format == FORMAT_NHWC) {
-    const uint64 m = dims.input_size(0) * dims.input_size(1) *
-                     dims.input_size(2) * dims.in_depth;
-    const uint64 k = dims.batch_size;
-    const uint64 n = dims.out_depth;
+    const uint64_t m = dims.input_size(0) * dims.input_size(1) *
+                       dims.input_size(2) * dims.in_depth;
+    const uint64_t k = dims.batch_size;
+    const uint64_t n = dims.out_depth;
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                 input.template flat<T>().size());
@@ -963,7 +963,7 @@ void LaunchConvBackpropFilterOpImpl(
 
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                         context);
-  Status cudnn_launch_status = LaunchAutotunedConv(
+  absl::Status cudnn_launch_status = LaunchAutotunedConv(
       autotune_entry, &scratch_allocator,
       se::dnn::ConvolutionKind::BACKWARD_FILTER, stream, input_desc, input_ptr,
       filter_desc, filter_backprop_ptr, conv_desc, output_desc,
@@ -984,8 +984,8 @@ template <typename T>
 struct LaunchConvBackpropFilterOp {
   static void launch(OpKernelContext* context, bool cudnn_use_autotune,
                      const Tensor& input, const Tensor& out_backprop,
-                     const std::vector<int32>& dilation,
-                     const std::vector<int32>& stride, const Padding& padding,
+                     const std::vector<int32_t>& dilation,
+                     const std::vector<int32_t>& stride, const Padding& padding,
                      Tensor* filter_backprop, TensorFormat data_format) {
     LaunchConvBackpropFilterOpImpl<T>(context, cudnn_use_autotune, input,
                                       out_backprop, dilation, stride, padding,
@@ -997,8 +997,8 @@ template <>
 struct LaunchConvBackpropFilterOp<Eigen::bfloat16> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input, const Tensor& out_backprop,
-                     const std::vector<int32>& dilation,
-                     const std::vector<int32>& stride, const Padding& padding,
+                     const std::vector<int32_t>& dilation,
+                     const std::vector<int32_t>& stride, const Padding& padding,
                      Tensor* filter_backprop, TensorFormat data_format) {
     auto* stream = ctx->op_device_context()->stream();
 
@@ -1050,7 +1050,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         takes_shape_(type_string().find("V2") != std::string::npos) {
     // data_format is only available in V2.
     if (takes_shape_) {
-      string data_format;
+      std::string data_format;
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
       OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                   errors::InvalidArgument("Invalid data format"));
@@ -1117,8 +1117,8 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilation_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> dilation_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
   bool takes_shape_;

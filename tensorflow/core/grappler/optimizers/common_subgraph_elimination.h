@@ -42,7 +42,7 @@ class CommonSubgraphElimination : public GraphOptimizer {
 
   ~CommonSubgraphElimination() override {}
 
-  string name() const override { return "common_subgraph_elimination"; };
+  std::string name() const override { return "common_subgraph_elimination"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -61,7 +61,7 @@ class CommonSubgraphElimination : public GraphOptimizer {
   RewriterConfig::Toggle opt_level_;
 
   bool fetch_nodes_known_ = false;
-  std::unordered_set<string> nodes_to_preserve_;
+  std::unordered_set<std::string> nodes_to_preserve_;
 };
 
 }  // end namespace grappler

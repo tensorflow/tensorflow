@@ -20,7 +20,6 @@ def repo():
             "//third_party/absl:btree.patch",
             "//third_party/absl:build_dll.patch",
             "//third_party/absl:endian.patch",
-            "//third_party/absl:rules_cc.patch",
         ],
         repo_mapping = {
             "@google_benchmark": "@com_google_benchmark",

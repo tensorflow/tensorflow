@@ -51,7 +51,7 @@ class ChangeOpDataType : public HloModulePass {
       absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types,
       HloPredicate op_matcher, HloCloner cloner = nullptr)
       : op_matcher_(op_matcher), cloner_(cloner) {
-    for (const std::pair<PrimitiveType, PrimitiveType>& pair : from_to_types) {
+    for (const auto& pair : from_to_types) {
       to_type_map_[pair.first] = pair.second;
     }
   }

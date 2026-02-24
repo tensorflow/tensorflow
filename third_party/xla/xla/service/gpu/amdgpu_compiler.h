@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 #define XLA_SERVICE_GPU_AMDGPU_COMPILER_H_
 
-#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,8 +23,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/alias_info.h"
@@ -49,34 +46,20 @@ class AMDGPUCompiler : public GpuCompiler {
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
-      const se::SemanticVersion& toolkit_version) override;
+      const se::SemanticVersion& toolkit_version,
+      CompilationStats* compilation_stats) override;
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const GpuAliasInfo* alias_info,
-      tsl::thread::ThreadPool* thread_pool) override;
-
-  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetCodegenBackends(se::StreamExecutor* stream_exec,
-                     const Compiler::GpuTargetConfig* target_config,
-                     const AliasInfo* alias_info,
-                     const DebugOptions& debug_options,
-                     mlir::MLIRContext* mlir_context) override;
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+      CompilationStats* compilation_stats) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const se::DeviceDescription& device_description, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options,
       std::optional<int> shard_number) override;
-
-  absl::Status AddFusionAutotuningPass(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-      stream_executor::StreamExecutor* stream_executor,
-      const Compiler::GpuTargetConfig* target_config,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const MultiProcessKeyValueStore& key_value_store) override;
 
  private:
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;

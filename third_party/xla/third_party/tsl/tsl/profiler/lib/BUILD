@@ -178,6 +178,7 @@ cc_library(
     visibility = internal_visibility([
         "@xla//xla/tsl:internal",
         "//third_party/py/jax:__subpackages__",
+        "@xla//xla/tsl/profiler:friends",
     ]),
     deps = [
         "//tsl/platform",

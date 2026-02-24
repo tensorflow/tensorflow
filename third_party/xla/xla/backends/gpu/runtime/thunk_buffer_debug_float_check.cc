@@ -23,18 +23,18 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log.pb.h"
 #include "xla/backends/gpu/runtime/buffer_debug_log_entry_metadata_store.h"
@@ -132,7 +132,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
       continue;
     }
     if (slice.element_type() != PrimitiveType::F32 &&
-        slice.element_type() != PrimitiveType::BF16) {
+        slice.element_type() != PrimitiveType::BF16 &&
+        slice.element_type() != PrimitiveType::F64) {
       VLOG(1) << "Buffer " << buffer_idx << " in thunk "
               << thunk->thunk_info().thunk_id
               << " has unsupported element type "
@@ -181,26 +182,121 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
   return wrapped_thunk;
 }
 
-void LogHloInstructionWithId(const HloModule* hlo_module, const std::string& id,
-                             absl::string_view check_type) {
+const HloInstruction* FindHloInstructionWithId(const HloModule* hlo_module,
+                                               const std::string& id) {
   for (const HloComputation* computation : hlo_module->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->name() == id) {
-        LOG(ERROR) << "Found " << check_type << " in HLO instruction " << id
-                   << ":\nStack trace:\n"
-                   << instruction->GetStackTraceStringFromMetadata(4) << "\n\n"
-                   << instruction->ToString() << "\n\n";
-        if (instruction->opcode() == HloOpcode::kFusion) {
-          auto fusion = xla::Cast<HloFusionInstruction>(instruction);
-          LOG(ERROR) << "HLO fusion instruction computation:\n\n"
-                     << fusion->fused_instructions_computation()->ToString()
-                     << "\n\n";
-        }
-        return;
+        return instruction;
       }
     }
   }
-  LOG(ERROR) << "HLO instruction with id " << id << " was not found";
+  return nullptr;
+}
+
+struct EnabledChecks {
+  // Should log found NaNs?
+  bool check_nans = false;
+  // Should crash on found NaNs?
+  bool check_nans_fatal = false;
+  // Should log found Infs?
+  bool check_infs = false;
+  // Should crash on found Infs?
+  bool check_infs_fatal = false;
+  // Should log min/max values from buffers?
+  bool log_minmax = false;
+};
+
+struct FloatCheckReportResult {
+  // Did we report finding a NaN?
+  bool reported_nan = false;
+  // Did we report finding an Inf?
+  bool reported_inf = false;
+};
+
+// Print a report for the given `entry` if `enabled_checks` requires it.
+// If a fatal check fails, set `*out_should_crash` to true, otherwise leave it
+// unchanged.
+//
+// `reported_nans` and `reported_infs` are caches used to avoid printing the
+// same instruction multiple times.
+// `enabled_checks` is a bitmask of `EnabledChecks` enum values.
+FloatCheckReportResult ReportFloatCheckResult(
+    const HloModule* hlo_module, const BufferDebugFloatCheckEntry& entry,
+    const BufferDebugLogEntryMetadataStore::Metadata& metadata,
+    const EnabledChecks& enabled_checks,
+    const std::unordered_set<std::string>& reported_nans,
+    const std::unordered_set<std::string>& reported_infs) {
+  if (metadata.check_type !=
+      BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS) {
+    VLOG(1) << "Entry ID " << entry.entry_id
+            << " for float check has unsupported check type "
+            << BufferDebugLogEntryProto::CheckType_Name(metadata.check_type);
+    return {};
+  }
+
+  const bool has_nans = entry.result.nan_count > 0;
+  const bool has_infs = entry.result.inf_count > 0;
+
+  if (!(enabled_checks.check_nans && has_nans &&
+        !absl::c_contains(reported_nans, metadata.profile_annotation)) &&
+      !(enabled_checks.check_infs && has_infs &&
+        !absl::c_contains(reported_infs, metadata.profile_annotation)) &&
+      !enabled_checks.log_minmax) {
+    VLOG(2) << "No findings for enabled checks for entry ID " << entry.entry_id;
+    return {};
+  }
+
+  // Short summary
+  LOG(ERROR) << "Float check: "
+             << (enabled_checks.check_nans && has_nans ? "found NaN, " : "")
+             << (enabled_checks.check_infs && has_infs ? "found Inf, " : "")
+             << "entry ID " << entry.entry_id << ", module "
+             << hlo_module->name() << " (ID: " << hlo_module->unique_id()
+             << "), execution with metadata: " << metadata.profile_annotation
+             << ", result: " << entry.result;
+
+  // Instruction/module details
+  const HloInstruction* instruction =
+      FindHloInstructionWithId(hlo_module, metadata.profile_annotation);
+  if (!instruction) {
+    LOG(ERROR) << "HLO instruction with id " << metadata.profile_annotation
+               << " was not found";
+  } else {
+    LOG(ERROR) << "In HLO instruction with id " << metadata.profile_annotation
+               << " of HLO module " << hlo_module->name() << ":\nStack trace:\n"
+               << instruction->GetStackTraceStringFromMetadata(4) << "\n\n"
+               << instruction->ToString() << "\n\n";
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      auto fusion = xla::Cast<HloFusionInstruction>(instruction);
+      LOG(ERROR) << "HLO fusion instruction computation:\n\n"
+                 << fusion->fused_instructions_computation()->ToString()
+                 << "\n\n";
+    }
+  }
+
+  return FloatCheckReportResult{
+      /*reported_nan=*/enabled_checks.check_nans && has_nans,
+      /*reported_inf=*/enabled_checks.check_infs && has_infs,
+  };
+}
+
+EnabledChecks GetEnabledChecks(const HloModule* absl_nonnull hlo_module) {
+  DebugOptions::DetectionMode nan_detection_mode =
+      hlo_module->config().debug_options().xla_gpu_detect_nan();
+  DebugOptions::DetectionMode inf_detection_mode =
+      hlo_module->config().debug_options().xla_gpu_detect_inf();
+
+  return EnabledChecks{
+      /*check_nans=*/nan_detection_mode != DebugOptions::DETECTION_MODE_NONE,
+      /*check_nans_fatal=*/nan_detection_mode ==
+          DebugOptions::DETECTION_MODE_FAIL,
+      /*check_infs=*/inf_detection_mode != DebugOptions::DETECTION_MODE_NONE,
+      /*check_infs_fatal=*/inf_detection_mode ==
+          DebugOptions::DETECTION_MODE_FAIL,
+      /*log_minmax=*/
+      hlo_module->config().debug_options().xla_gpu_log_minmax(),
+  };
 }
 
 absl::Status BufferDebugFloatCheck(
@@ -212,12 +308,8 @@ absl::Status BufferDebugFloatCheck(
   VLOG(1) << "HLO module ptr: " << hlo_module;
   VLOG(1) << "HLO module name: " << hlo_module->name();
   CHECK(hlo_module != nullptr);
-  bool nan_check_enabled =
-      hlo_module->config().debug_options().xla_gpu_detect_nan() !=
-      DebugOptions::DETECTION_MODE_NONE;
-  bool inf_check_enabled =
-      hlo_module->config().debug_options().xla_gpu_detect_inf() !=
-      DebugOptions::DETECTION_MODE_NONE;
+
+  const EnabledChecks enabled_checks = GetEnabledChecks(hlo_module);
 
   auto buffer_debug_log = se::gpu::BufferDebugLog<BufferDebugFloatCheckEntry>::
       FromDeviceAddressUnchecked(log_buffer.device_memory());
@@ -232,12 +324,12 @@ absl::Status BufferDebugFloatCheck(
 
   VLOG(1) << "read " << entries.size() << " entries";
   auto entries_metadata = metadata_store->GetEntryMetadataBatch(entry_ids);
-  int non_zero_nan_check_modules_count = 0;
-  int non_zero_inf_check_modules_count = 0;
   CHECK_EQ(entries.size(), entries_metadata.size());
 
-  absl::flat_hash_set<std::string> reported_nan_thunks;
-  absl::flat_hash_set<std::string> reported_inf_thunks;
+  std::unordered_set<std::string> reported_nans;
+  std::unordered_set<std::string> reported_infs;
+
+  bool should_crash = false;
   for (int i = 0; i < entries.size(); ++i) {
     const auto& entry = entries[i];
     const auto& metadata = entries_metadata[i];
@@ -246,59 +338,23 @@ absl::Status BufferDebugFloatCheck(
               << " for float check not found in metadata";
       continue;
     }
-    if (metadata->check_type !=
-        BufferDebugLogEntryProto::CHECK_TYPE_FLOAT_CHECKS) {
-      VLOG(1) << "Entry ID " << entry.entry_id
-              << " for float check has unsupported check type "
-              << BufferDebugLogEntryProto::CheckType_Name(metadata->check_type);
-      continue;
+    const FloatCheckReportResult result =
+        ReportFloatCheckResult(hlo_module, entry, *metadata, enabled_checks,
+                               reported_nans, reported_infs);
+    if (result.reported_nan) {
+      reported_nans.insert(metadata->profile_annotation);
     }
-    if (nan_check_enabled && entry.nan_count > 0) {
-      if (reported_nan_thunks.contains(metadata->profile_annotation)) {
-        VLOG(1) << "Skipping entry with non zero nan count " << entry.nan_count
-                << " for thunk " << entry.entry_id << " and execution "
-                << "with metadata: " << metadata->profile_annotation;
-        continue;
-      }
-      reported_nan_thunks.insert(metadata->profile_annotation);
-      LOG(ERROR) << "Found entry with non zero nan count " << entry.nan_count
-                 << " for thunk " << entry.entry_id << " and execution "
-                 << "with metadata: " << metadata->profile_annotation;
-      non_zero_nan_check_modules_count++;
-      LogHloInstructionWithId(hlo_module, metadata->profile_annotation, "NaN");
+    if (result.reported_inf) {
+      reported_infs.insert(metadata->profile_annotation);
     }
-    if (inf_check_enabled && entry.inf_count > 0) {
-      if (reported_inf_thunks.contains(metadata->profile_annotation)) {
-        VLOG(1) << "Skipping entry with non zero inf count " << entry.inf_count
-                << " for thunk " << entry.entry_id << " with execution_id "
-                << metadata->execution_id
-                << " and profile annotation: " << metadata->profile_annotation;
-        continue;
-      }
-      reported_inf_thunks.insert(metadata->profile_annotation);
-      LOG(ERROR) << "Found entry with non zero inf count " << entry.inf_count
-                 << " for thunk " << entry.entry_id << " with execution_id "
-                 << metadata->execution_id
-                 << " and profile annotation: " << metadata->profile_annotation;
-      non_zero_inf_check_modules_count++;
-      LogHloInstructionWithId(hlo_module, metadata->profile_annotation, "Inf");
+    if ((result.reported_nan && enabled_checks.check_nans_fatal) ||
+        (result.reported_inf && enabled_checks.check_infs_fatal)) {
+      should_crash = true;
     }
   }
-  if (non_zero_nan_check_modules_count > 0 &&
-      hlo_module->config().debug_options().xla_gpu_detect_nan() ==
-          DebugOptions::DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Crash execution as requested by the xla_gpu_detect_nan flag "
-                  "because "
-               << non_zero_nan_check_modules_count
-               << " NaN values were found in buffers.";
-  }
-  if (non_zero_inf_check_modules_count > 0 &&
-      hlo_module->config().debug_options().xla_gpu_detect_inf() ==
-          DebugOptions::DETECTION_MODE_FAIL) {
-    LOG(FATAL) << "Crash execution as requested by the xla_gpu_detect_inf flag "
-                  "because "
-               << non_zero_inf_check_modules_count
-               << " infinite values were found in buffers.";
+
+  if (should_crash) {
+    LOG(FATAL) << "Float check failed, aborting.";
   }
   return absl::OkStatus();
 }

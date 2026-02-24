@@ -116,9 +116,9 @@ class OpNameDomainCreator {
     if (instruction->metadata().op_name() == root->metadata().op_name()) {
       return nullptr;
     }
-    std::unique_ptr<DomainMetadata> operand_side_metadata =
+    auto operand_side_metadata =
         std::make_unique<OpNameMetadata>(root->metadata().op_name());
-    std::unique_ptr<DomainMetadata> user_side_metadata =
+    auto user_side_metadata =
         std::make_unique<OpNameMetadata>(instruction->metadata().op_name());
     return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
         operand->shape(), operand, std::move(operand_side_metadata),

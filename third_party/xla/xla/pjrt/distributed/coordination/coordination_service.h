@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -65,6 +64,10 @@ namespace xla {
 // tasks. Each task interacts with the service through CoordinationServiceAgent.
 class CoordinationService {
  public:
+  // TODO(mwhittaker): Make this a strongly typed integer?
+  // TODO(mwhittaker): Rename to ProcessId?
+  using TaskId = int;
+
   struct Config {
     // Maximum wait time for all members in the cluster to be registered.
     absl::Duration cluster_register_timeout = absl::Minutes(60);
@@ -80,9 +83,6 @@ class CoordinationService {
     // service recording the state change and the agent stopping heartbeats.
     absl::Duration heartbeat_timeout = absl::Seconds(10);
 
-    // The name of the job.
-    std::string job_name;
-
     // The number of tasks in the job.
     int32_t num_tasks;
 
@@ -96,31 +96,19 @@ class CoordinationService {
     // silently. This is useful when we know that a task can immediately resume
     // work upon re-connecting to the service.
     bool allow_new_incarnation_to_reconnect = false;
+
+    // If true, a job can continue running even if some tasks have failed, and
+    // tasks are allowed to rejoin. If false, tasks share fate. As soon as one
+    // task fails, all tasks are permanently failed.
+    bool recoverable = false;
   };
 
   using StatusOrValueCallback =
       std::function<void(const absl::StatusOr<absl::string_view>&)>;
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
-  using GetAliveTasksCallback = std::function<void(
-      const absl::Status&, const std::vector<tensorflow::CoordinatedTask>&,
-      const std::vector<IncarnationId> incarnations)>;
-
-  // Convenience structs to allow using CoordinatedTask as container keys.
-  struct CoordinatedTaskHash {
-    uint64_t operator()(const tensorflow::CoordinatedTask& task) const {
-      return absl::HashOf(task.job_name(), task.task_id());
-    }
-  };
-  struct CoordinatedTaskEqual {
-    bool operator()(const tensorflow::CoordinatedTask& lhs,
-                    const tensorflow::CoordinatedTask& rhs) const {
-      return lhs.job_name() == rhs.job_name() && lhs.task_id() == rhs.task_id();
-    }
-  };
-
-  using CoordinatedTaskSet =
-      absl::flat_hash_set<tensorflow::CoordinatedTask, CoordinatedTaskHash,
-                          CoordinatedTaskEqual>;
+  using GetAliveTasksCallback =
+      std::function<void(const absl::Status&, const std::vector<TaskId>&,
+                         const std::vector<IncarnationId> incarnations)>;
 
   CoordinationService(tsl::Env* env, const Config& config);
 
@@ -136,10 +124,9 @@ class CoordinationService {
   //   - Aborted: (1) task is in error state, or (2) task is in connected state
   //       with a different incarnation, indicating that it restarted.
   //   - DeadlineExceeded: waited too long for straggler tasks to register.
-  absl::Status RegisterTask(const tensorflow::CoordinatedTask& task,
-                            IncarnationId incarnation);
-  void RegisterTaskAsync(const tensorflow::CoordinatedTask& task,
-                         IncarnationId incarnation, tsl::StatusCallback done);
+  absl::Status RegisterTask(TaskId task, IncarnationId incarnation);
+  void RegisterTaskAsync(TaskId task, IncarnationId incarnation,
+                         tsl::StatusCallback done);
 
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
   // specified in the config, blocks until all tasks reach the barrier before
@@ -148,33 +135,29 @@ class CoordinationService {
   //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
-  void ShutdownTaskAsync(const tensorflow::CoordinatedTask& task,
-                         tsl::StatusCallback done);
+  void ShutdownTaskAsync(TaskId task, tsl::StatusCallback done);
 
   // Disconnects task from the service and cleans up its internal error state.
   // Possible service errors:
   //   - Internal: Service has shut down.
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
-  absl::Status ResetTask(const tensorflow::CoordinatedTask& task);
+  absl::Status ResetTask(TaskId task);
 
   // Update the heartbeat timestamp of a task. This should only be invoked on
   // the leader of the cluster.
   //   - Internal: Service has shut down.
-  absl::Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
-                               IncarnationId incarnation);
+  absl::Status RecordHeartbeat(TaskId task, IncarnationId incarnation);
 
   // Set a task in error state permanently.
   //
   // TODO: mwhittaker - Remove this. It's only used for testing.
-  absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
-                               const absl::Status& error);
+  absl::Status ReportTaskError(TaskId task, const absl::Status& error);
 
   // Watches the state and the error status of the job.
   using WatchJobStateCallback = absl::AnyInvocable<void(
       std::vector<tensorflow::CoordinatedTaskStateInfo>, int64_t)>;
-  void WatchJobState(absl::string_view job_name,
-                     std::optional<int64_t> version_number,
+  void WatchJobState(std::optional<int64_t> version_number,
                      WatchJobStateCallback);
 
   // Insert a configuration key-value in the coordination service.
@@ -243,11 +226,10 @@ class CoordinationService {
   // TODO(b/342448688): Allow re-use of ids by specifying different counters.
   // The counter field is mostly ignored at the moment with no user-facing
   // effect.
-  void BarrierAsync(
-      std::string barrier_id, int64_t counter, absl::Duration timeout,
-      const tensorflow::CoordinatedTask& task,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
-      BarrierCallback done);
+  void BarrierAsync(std::string barrier_id, int64_t counter,
+                    absl::Duration timeout, TaskId task,
+                    const std::vector<TaskId>& participating_tasks,
+                    BarrierCallback done);
 
   // Aborts the barrier if it is ongoing.
   // Current and future WaitAtBarrier() calls with the same id will return a
@@ -258,7 +240,7 @@ class CoordinationService {
   // The counter field is mostly ignored at the moment with no user-facing
   // effect.
   absl::Status CancelBarrier(std::string barrier_id, int64_t counter,
-                             const tensorflow::CoordinatedTask& task);
+                             TaskId task);
 
   // Returns the set of currently alive tasks. More specifically, given a set of
   // tasks T, GetAliveTasks(T) returns the subset T of alive tasks. Note that
@@ -289,8 +271,8 @@ class CoordinationService {
   // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
   // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
   // barrier across tasks A, B, and C. Task D, which failed, is ignored.
-  void GetAliveTasksAsync(const tensorflow::CoordinatedTask& requesting_task,
-                          const std::vector<tensorflow::CoordinatedTask>& tasks,
+  void GetAliveTasksAsync(TaskId requesting_task,
+                          const std::vector<TaskId>& tasks,
                           GetAliveTasksCallback done);
 
   // Gets error from the coordination service. Block until the service
@@ -300,8 +282,7 @@ class CoordinationService {
   // coordination service, so once an error occurs after the first call, the
   // service will use the error polling mode to propagate the error to all
   // connected tasks instead of simply shutting down.
-  void PollForErrorAsync(const tensorflow::CoordinatedTask& task,
-                         tsl::StatusCallback done);
+  void PollForErrorAsync(TaskId task, tsl::StatusCallback done);
 
  private:
   friend class CoordinationServiceRpcHandler;
@@ -315,18 +296,17 @@ class CoordinationService {
   const tensorflow::DeviceInfo& ListClusterDevices()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   IncarnationId GetServiceIncarnation();
-  void BarrierAsyncLocked(
-      absl::string_view barrier_id, int64_t counter, absl::Duration timeout,
-      const tensorflow::CoordinatedTask& task,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
-      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  BarrierCallback ConnectAfterBarrierPasses(absl::string_view task_name,
+  void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
+                          absl::Duration timeout, TaskId task,
+                          const std::vector<TaskId>& participating_tasks,
+                          BarrierCallback done)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  BarrierCallback ConnectAfterBarrierPasses(TaskId task,
                                             IncarnationId incarnation,
                                             tsl::StatusCallback done);
   // Connects a task to the service, and leaves any previously ongoing barriers
   // for recoverable tasks.
-  void ConnectTask(const tensorflow::CoordinatedTask& task,
-                   IncarnationId incarnation)
+  void ConnectTask(TaskId task, IncarnationId incarnation)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Checks if any task has stopped sending heartbeats.
   void CheckHeartbeatTimeout();
@@ -342,29 +322,19 @@ class CoordinationService {
   // Report error from a task to all other connected tasks if the task is not
   // recoverable.
   // Note: SetTaskError() must be called before propagating its error.
-  void PropagateError(
-      const absl::Status& error,
-      const std::vector<tensorflow::CoordinatedTask>& source_tasks,
-      bool is_reported_by_task = false)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void PropagateError(const absl::Status& error,
-                      const std::vector<absl::string_view>& source_task_names,
                       bool is_reported_by_task = false)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  // Checks if all tasks are from recoverable jobs.
-  bool AllTasksAreRecoverable(
-      const std::vector<tensorflow::CoordinatedTask>& tasks)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void SetTaskError(absl::string_view task_name, const absl::Status& error)
+  void SetTaskError(TaskId task, const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Used for cluster-wide errors (e.g. register or shutdown barrier fails).
   void SetAllTasksError(const absl::Status& error)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  absl::Status DisconnectTask(const tensorflow::CoordinatedTask& task)
+  absl::Status DisconnectTask(TaskId task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void DisconnectAllNonRecoverableTasks()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  std::vector<tensorflow::CoordinatedTask> GetTasksForShutdownBarrier();
+  std::vector<TaskId> GetTasksForShutdownBarrier();
 
   struct BarrierState {
     std::string id = "";
@@ -378,18 +348,12 @@ class CoordinationService {
     uint64_t deadline_in_micros = 0;
     int num_pending_tasks = 0;
     // Specifies which tasks have called the barrier so far.
-    absl::flat_hash_map<tensorflow::CoordinatedTask, bool, CoordinatedTaskHash,
-                        CoordinatedTaskEqual>
-        tasks_at_barrier;
-    absl::flat_hash_set<tensorflow::CoordinatedTask, CoordinatedTaskHash,
-                        CoordinatedTaskEqual>
-        recoverable_tasks_restarted_during_barrier;
-    absl::flat_hash_map<tensorflow::CoordinatedTask, BarrierCallback,
-                        CoordinatedTaskHash, CoordinatedTaskEqual>
-        done_callbacks;
+    absl::flat_hash_map<TaskId, bool> tasks_at_barrier;
+    absl::flat_hash_set<TaskId> recoverable_tasks_restarted_during_barrier;
+    absl::flat_hash_map<TaskId, BarrierCallback> done_callbacks;
     // Specifies the task that initiated the barrier (the first task to call the
     // barrier).
-    tensorflow::CoordinatedTask initiating_task;
+    TaskId initiating_task;
   };
   bool BarrierIsUninitialized(const BarrierState& barrier) {
     return barrier.id.empty() && barrier.counter == 0 && !barrier.passed &&
@@ -403,47 +367,40 @@ class CoordinationService {
   }
   // Initializes a new barrier. Returns false if the barrier should fail
   // immediately.
-  absl::Status InitializeBarrier(
-      BarrierState* barrier, absl::string_view barrier_id, int64_t counter,
-      absl::Duration timeout, const tensorflow::CoordinatedTask& task,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks)
+  absl::Status InitializeBarrier(BarrierState* barrier,
+                                 absl::string_view barrier_id, int64_t counter,
+                                 absl::Duration timeout, TaskId task,
+                                 const std::vector<TaskId>& participating_tasks)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Initialize `BarrierState`'s tasks_at_barrier map.
   absl::Status InitializeTasksAtBarrier(
-      BarrierState* barrier,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks)
+      BarrierState* barrier, const std::vector<TaskId>& participating_tasks)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Adds a callback to be called when the barrier is done.
   // If there is an existing callback for that task, it will be overwritten,
   // cancelling the previous callback.
-  void AddBarrierCallback(BarrierState* barrier,
-                          const tensorflow::CoordinatedTask& task,
+  void AddBarrierCallback(BarrierState* barrier, TaskId task,
                           BarrierCallback done)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Ends the barrier with a result (ok or error).
   void PassBarrier(BarrierState* barrier, const absl::Status& result)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // A task reaches the barrier.
-  void ReachBarrier(BarrierState* barrier,
-                    const tensorflow::CoordinatedTask& task)
+  void ReachBarrier(BarrierState* barrier, TaskId task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   void FailBarrierWithCounterMismatch(BarrierState* barrier, int64_t counter)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Propagates same result back to task.
-  void RepeatBarrierResult(BarrierState* barrier,
-                           const tensorflow::CoordinatedTask& task)
+  void RepeatBarrierResult(BarrierState* barrier, TaskId task)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Leaves any ongoing barriers.
   // If the task is non-recoverable, the barrier exits with an error.
   // If the task is recoverable, the barrier will 'unregister' a task and allow
   // it to join back again later before the timeout.
-  void LeaveOngoingBarriers(const tensorflow::CoordinatedTask& task,
-                            absl::string_view reason)
+  void LeaveOngoingBarriers(TaskId task, absl::string_view reason)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Post-barrier hook to connect all tasks.
   void ConnectAllTasks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  // Post-barrier hook to aggregate device info.
-  void AggregateClusterDevices() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Post-shutdown barrier hook to disconnect tasks that acked and propagate
   // errors to those that have not.
   void CompleteShutdownAfterBarrier(const absl::Status& result,
@@ -451,9 +408,8 @@ class CoordinationService {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Checks if the participating tasks are specified correctly across barrier
   // calls and that the caller task is one of the participating tasks.
-  bool ValidateTaskArgs(
-      BarrierState* barrier, const tensorflow::CoordinatedTask& caller_task,
-      const std::vector<tensorflow::CoordinatedTask>& tasks_args)
+  bool ValidateTaskArgs(BarrierState* barrier, TaskId caller_task,
+                        const std::vector<TaskId>& tasks_args)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   bool isRecoverableJob(absl::string_view task_name) const;
   // Sends responses to error polling requests when an error is encountered.
@@ -489,28 +445,24 @@ class CoordinationService {
     const absl::Status& GetError() const { return error_; }
     // Returns true if the task has sent request to poll for error from the
     // service.
-    bool IsTaskPolling(absl::string_view task_name) const {
-      return polling_task_names_.contains(task_name);
+    bool IsTaskPolling(TaskId task) const {
+      return polling_tasks_.contains(task);
     }
     // Adds a task to the error polling state.
-    void AddTask(const tensorflow::CoordinatedTask& task,
-                 tsl::StatusCallback&& done);
+    void AddTask(TaskId task, tsl::StatusCallback&& done);
 
     // Removes a task from the error polling state.
     // If an existing polling request is present, we will invoke the callback
     // with the `reason` argument.
     // Note: for disconnected tasks, this does not actually propagate the error
     // back, but prevents memory leaks by removing stale callbacks.
-    void RemoveTask(const tensorflow::CoordinatedTask& task,
-                    absl::string_view reason);
+    void RemoveTask(TaskId task, absl::string_view reason);
 
    private:
     bool responded_ = false;
     absl::Status error_ = absl::OkStatus();
-    absl::flat_hash_map<tensorflow::CoordinatedTask, tsl::StatusCallback,
-                        CoordinatedTaskHash, CoordinatedTaskEqual>
-        done_callbacks_;
-    absl::flat_hash_set<std::string> polling_task_names_;
+    absl::flat_hash_map<TaskId, tsl::StatusCallback> done_callbacks_;
+    absl::flat_hash_set<TaskId> polling_tasks_;
   };
 
   class TaskState {
@@ -525,25 +477,24 @@ class CoordinationService {
     // When task state becomes ERROR, propagate this status to other CONNECTED
     // tasks in the cluster.
 
-    explicit TaskState(absl::string_view task) { task_name_ = task; }
+    explicit TaskState(TaskId task_id) : task_id_(task_id) {}
 
     tensorflow::CoordinatedTaskState GetState() const { return state_; }
     absl::Status GetStatus() const { return status_; }
-    bool IsRecoverable() const { return recoverable_; }
-    void SetRecoverable(bool recoverable) { recoverable_ = recoverable; }
     IncarnationId GetTaskIncarnation() const { return task_incarnation_; }
     void SetTaskIncarnation(IncarnationId task_incarnation) {
       task_incarnation_ = task_incarnation;
     }
     void Connect() {
       SetConnected(task_incarnation_);
-      LOG(INFO) << task_name_
+      LOG(INFO) << task_id_
                 << " has connected to coordination service. Incarnation: "
                 << task_incarnation_;
     }
     void SetConnected(IncarnationId task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
-    absl::Status RecordHeartbeat(IncarnationId task_incarnation);
+    absl::Status RecordHeartbeat(IncarnationId task_incarnation,
+                                 bool recoverable);
     int64_t TimeSinceLastHeartbeatMs();
     // Sets the error and returns true if the task state is not ERROR.
     // Otherwise, don't overwrite the error and return false.
@@ -564,7 +515,7 @@ class CoordinationService {
     bool IsDisconnectedBeyondGracePeriod();
 
    private:
-    std::string task_name_;
+    TaskId task_id_;
     // Incarnation ID for CPU:0 on remote task.
     IncarnationId task_incarnation_{0};
 
@@ -581,28 +532,26 @@ class CoordinationService {
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
-    // TODO(b/342448688): Re-use config's recoverable jobs instead.
-    bool recoverable_ = false;
   };
 
   // AlivenessState tracks the state of pending GetAliveTasks calls.
   struct AlivenessState {
     // All tasks that can participate in the GetAliveTasks barrier.
-    CoordinatedTaskSet tasks;
+    absl::flat_hash_set<TaskId> tasks;
     // All tasks currently blocked on the barrier.
-    CoordinatedTaskSet in_barrier;
+    absl::flat_hash_set<TaskId> in_barrier;
     // Done callbacks for the tasks blocked on the barrier.
     std::vector<GetAliveTasksCallback> dones;
   };
 
   // Returns the set of alive tasks drawn from the provided set of tasks.
-  CoordinatedTaskSet AliveTasks(const CoordinatedTaskSet& tasks) const
+  absl::flat_hash_set<TaskId> AliveTasks(
+      const absl::flat_hash_set<TaskId>& tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Returns the incarnation ids of the provided tasks, in the same order.
-  std::vector<IncarnationId> IncarnationIds(
-      absl::Span<const tensorflow::CoordinatedTask> tasks) const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  std::vector<IncarnationId> IncarnationIds(absl::Span<const TaskId> tasks)
+      const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Refreshes the AlivenessStates of all pending GetAliveTasks call,
   // potentially finishing some of the pending calls. The AlivenessStates should
@@ -610,11 +559,11 @@ class CoordinationService {
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   static tensorflow::CoordinatedTaskStateInfo CreateTaskStateInfo(
-      const tensorflow::CoordinatedTask& task, const TaskState& state);
+      TaskId task, const TaskState& state);
 
-  // Gets the task states for the provided job.
-  std::vector<tensorflow::CoordinatedTaskStateInfo> GetJobState(
-      absl::string_view job) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  // Gets the task states.
+  std::vector<tensorflow::CoordinatedTaskStateInfo> GetJobState()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Notifies all callbacks registered via WatchJobState.
   void NotifyWatchJobStateCallbacks() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
@@ -632,15 +581,14 @@ class CoordinationService {
 
   const std::string shutdown_barrier_id_ =
       absl::StrCat("Shutdown::", service_incarnation_.value());
-  std::vector<tensorflow::CoordinatedTask> shutdown_barrier_tasks_
-      ABSL_GUARDED_BY(state_mu_);
+  std::vector<TaskId> shutdown_barrier_tasks_ ABSL_GUARDED_BY(state_mu_);
 
   absl::Mutex state_mu_;
-  absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
+  absl::flat_hash_map<TaskId, std::unique_ptr<TaskState>> cluster_state_
       ABSL_GUARDED_BY(state_mu_);
   int64_t cluster_state_version_number_ ABSL_GUARDED_BY(state_mu_) = 0;
-  std::vector<std::tuple<std::string, WatchJobStateCallback>>
-      watch_job_state_callbacks_ ABSL_GUARDED_BY(state_mu_);
+  std::vector<WatchJobStateCallback> watch_job_state_callbacks_
+      ABSL_GUARDED_BY(state_mu_);
   tensorflow::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
   KeyValueStore store_;
@@ -662,7 +610,7 @@ class CoordinationService {
   // the first cluster initialization.
   // The service will remove them from the set when the tasks pass a
   // barrier with other tasks.
-  absl::flat_hash_set<std::string> unsynced_recoverable_jobs_
+  absl::flat_hash_set<TaskId> unsynced_recoverable_jobs_
       ABSL_GUARDED_BY(state_mu_);
   // Whether the agents are polling for error from the service. It will be set
   // to true when the service sees the first error polling request. Once set to

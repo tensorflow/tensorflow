@@ -15,21 +15,23 @@ limitations under the License.
 
 #include "xla/service/collective_opt_utils.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <functional>
+#include <limits>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
@@ -166,6 +168,84 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
   return true;
 }
 
+// Infers the tightest bounds on an instruction's result we can at compile time.
+std::optional<std::pair<int64_t, int64_t>> GetKnownRange(
+    const HloInstruction* hlo) {
+  const HloInstruction* cur = hlo;
+  while (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kReshape,
+                          HloOpcode::kBitcast, HloOpcode::kCopy>(cur)) {
+    cur = cur->operand(0);
+  }
+  if (IsTableLookup(cur)) {
+    const HloInstruction* table = cur->operand(0);
+
+    if (table->IsConstant()) {
+      int64_t size = table->shape().dimensions(0);
+      int64_t min_v = std::numeric_limits<int64_t>::max();
+      int64_t max_v = std::numeric_limits<int64_t>::min();
+      for (int64_t i = 0; i < size; ++i) {
+        std::optional<int64_t> v = table->literal().GetIntegralAsS64({i});
+        if (!v.has_value()) {
+          return std::nullopt;
+        }
+        min_v = std::min(min_v, *v);
+        max_v = std::max(max_v, *v);
+      }
+      return std::make_pair(min_v, max_v);
+    }
+  }
+  if (cur->IsConstant() && ShapeUtil::IsEffectiveScalar(cur->shape())) {
+    std::optional<int64_t> v = GetScalarInt64Value(cur);
+    if (v.has_value()) {
+      return std::make_pair(*v, *v);
+    }
+  }
+  return std::nullopt;
+}
+
+// Backtracks through no-ops to find the "base" instruction responsible for
+// some instruction's value.
+const HloInstruction* BacktrackToBase(const HloInstruction* instruction) {
+  const HloInstruction* cur = instruction;
+
+  while (true) {
+    if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
+                         HloOpcode::kCopy>(cur)) {
+      cur = cur->operand(0);
+      continue;
+    }
+
+    if (cur->opcode() == HloOpcode::kConvert) {
+      if (cur->operand(0)->shape().AreAllLeavesIntegers() &&
+          cur->shape().AreAllLeavesIntegers() &&
+          primitive_util::BitWidth(cur->operand(0)->shape().element_type()) <=
+              primitive_util::BitWidth(cur->shape().element_type())) {
+        cur = cur->operand(0);
+        continue;
+      }
+    }
+
+    if (cur->opcode() == HloOpcode::kClamp) {
+      // For some clamp ops it's possible to prove they are no-ops at compile
+      // time.
+      std::optional<int64_t> lower_bound = GetScalarInt64Value(cur->operand(0));
+      std::optional<int64_t> upper_bound = GetScalarInt64Value(cur->operand(2));
+      std::optional<std::pair<int64_t, int64_t>> range =
+          GetKnownRange(cur->operand(1));
+      if (lower_bound.has_value() && upper_bound.has_value() &&
+          range.has_value() && range->first >= *lower_bound &&
+          range->second <= *upper_bound) {
+        cur = cur->operand(1);
+        continue;
+      }
+    }
+
+    break;
+  }
+
+  return cur;
+}
+
 // Checks that `offset` used in dynamic-slice matches the sequential sharding
 // across devices within the same replica group.
 // Specifically, it checks if the offset for j-th device in a replica group
@@ -178,6 +258,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    bool use_global_device_ids) {
   const bool iota_group = instruction->replica_groups().empty() ||
                           (is_cross_module && !use_global_device_ids);
+
+  offset = BacktrackToBase(offset);
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
@@ -216,20 +298,6 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
     if (id_mapping_is_identity) {
       return true;
     }
-  }
-  if (offset->opcode() == HloOpcode::kBitcast ||
-      offset->opcode() == HloOpcode::kReshape ||
-      offset->opcode() == HloOpcode::kCopy) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
-  }
-
-  if (offset->opcode() == HloOpcode::kConvert &&
-      offset->operand(0)->shape().AreAllLeavesIntegers() &&
-      primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
-          primitive_util::BitWidth(offset->shape().element_type())) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
   }
 
   if (offset->opcode() == HloOpcode::kClamp) {
@@ -270,24 +338,19 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
           VLOG(2) << "Found subtraction pattern with table lookup";
 
           // Verify that the table lookup uses the same ID as the multiplication
-          auto* table_lookup = offset->operand(1);
-          while (table_lookup->opcode() == HloOpcode::kReshape ||
-                 table_lookup->opcode() == HloOpcode::kBitcast ||
-                 table_lookup->opcode() == HloOpcode::kCopy) {
-            table_lookup = table_lookup->operand(0);
+          const HloInstruction* id_base = BacktrackToBase(id_operand);
+          const HloInstruction* table_lookup =
+              BacktrackToBase(offset->operand(1));
+          if (table_lookup->opcode() != HloOpcode::kDynamicSlice) {
+            VLOG(2) << "Table lookup is not dynamic slice: "
+                    << table_lookup->ToString();
+            return false;
           }
-
-          bool index_matches = false;
-          if (table_lookup->operand(1) == id_operand) {
-            index_matches = true;
-          } else if (table_lookup->operand(1)->opcode() ==
-                         HloOpcode::kConvert &&
-                     table_lookup->operand(1)->operand(0) == id_operand) {
-            index_matches = true;
-          } else if (id_operand->opcode() == HloOpcode::kConvert &&
-                     id_operand->operand(0) == table_lookup->operand(1)) {
-            index_matches = true;
-          }
+          const HloInstruction* table_base =
+              BacktrackToBase(table_lookup->operand(0));
+          const HloInstruction* table_idx_base =
+              BacktrackToBase(table_lookup->operand(1));
+          const bool index_matches = id_base == table_idx_base;
 
           if (index_matches) {
             const int64_t num_groups =
@@ -301,38 +364,40 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                         ? j
                         : instruction->replica_groups()[i].replica_ids(j);
 
-                // Calculate expected offset: (id * slice_size) -
-                // table_lookup[id]
-                int64_t expected_mult = id * slice_size;
-
                 // Get table lookup value - use the original ID operand for
                 // mapping
-                const HloInstruction* index_operand = table_lookup->operand(1);
-                if (index_operand->opcode() == HloOpcode::kConvert) {
-                  index_operand = index_operand->operand(0);
-                }
-                int64_t table_index = GetIndexForId(index_operand, id, map_id);
+                int64_t table_index = GetIndexForId(table_idx_base, id, map_id);
                 if (table_index < 0) {
                   VLOG(2) << "Failed to get table index for ID " << id;
                   return false;
                 }
-
                 int64_t table_value;
-                if (table_lookup->operand(0)->opcode() == HloOpcode::kIota) {
+                if (table_base->opcode() == HloOpcode::kIota) {
                   table_value = table_index;
                 } else {
-                  table_value =
-                      *table_lookup->operand(0)->literal().GetIntegralAsS64(
-                          {table_index});
+                  std::optional<int64_t> table_value_opt =
+                      table_base->literal().GetIntegralAsS64({table_index});
+                  if (!table_value_opt.has_value()) {
+                    VLOG(2) << "Failed to get table value for index "
+                            << table_index;
+                    return false;
+                  }
+                  table_value = *table_value_opt;
                 }
 
-                int64_t expected_offset = expected_mult - table_value;
+                int64_t mult_id = GetIndexForId(id_base, id, map_id);
+                if (mult_id < 0) {
+                  VLOG(2) << "Failed to get multiply ID for global ID " << id;
+                  return false;
+                }
+                int64_t expected_offset = (mult_id * slice_size) - table_value;
 
                 // Check if this matches the expected pattern for reduce-scatter
                 if (expected_offset != shard_size * j) {
                   VLOG(2) << "Subtraction pattern offset " << expected_offset
                           << " doesn't match expected " << (shard_size * j)
-                          << " for ID " << id;
+                          << " for ID " << id << ", slice size " << slice_size
+                          << ", table value " << table_value;
                   return false;
                 }
               }
@@ -971,7 +1036,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
                                                  reshape->shape());
     // Map each unmodified output dim of reshape to the corresponding input dim.
     absl::flat_hash_map<int64_t, int64_t> unmodified_output_to_input_map;
-    for (const std::pair<int64_t, int64_t>& io_pair : unmodified_dims) {
+    for (const auto& io_pair : unmodified_dims) {
       unmodified_output_to_input_map.insert({io_pair.second, io_pair.first});
     }
 
@@ -1151,6 +1216,94 @@ bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
   return Match(ds_hlo,
                m::DynamicSlice().WithOperand(
                    0, m::Pad(pad_hlo, m::AllGather(ag_hlo), m::Constant())));
+}
+
+const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kSend ||
+        hlo->opcode() == HloOpcode::kRecv ||
+        hlo->opcode() == HloOpcode::kSendDone ||
+        hlo->opcode() == HloOpcode::kRecvDone);
+  // If the instruction is wrapped in an async computation, return
+  // the instruction itself.
+  if (hlo->parent()->IsAsyncComputation()) {
+    return hlo;
+  }
+
+  // Find container while loop and index for the send/recv case or
+  // return canonical start op directly.
+  const HloInstruction* while_op = nullptr;
+  int64_t i = -1;
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+    CHECK_EQ(hlo->users().size(), 1);
+    const HloInstruction* unique_user = hlo->users().front();
+
+    // Return send/recv inst directly if this is a simple send/recv
+    // pair.
+    if (unique_user->opcode() == HloOpcode::kSendDone ||
+        unique_user->opcode() == HloOpcode::kRecvDone) {
+      return hlo;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(unique_user->opcode() == HloOpcode::kTuple ||
+          unique_user->opcode() == HloOpcode::kWhile);
+    if (unique_user->IsRoot()) {
+      // send/recv op in the loop body.
+      auto maybe_while_op =
+          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while_op);
+      while_op = *maybe_while_op;
+      i = unique_user->operand_index(hlo);
+    } else {
+      // send/recv leading into the loop.
+      CHECK_EQ(unique_user->users().size(), 1);
+      CHECK(unique_user->users().front()->opcode() == HloOpcode::kWhile);
+      while_op = unique_user->users().front();
+      i = unique_user->operand_index(hlo);
+    }
+  }
+
+  // Find container while loop and index for the send-done/recv-done
+  // case or return canonical start op directly.
+  if (hlo->opcode() == HloOpcode::kSendDone ||
+      hlo->opcode() == HloOpcode::kRecvDone) {
+    const HloInstruction* operand = hlo->operand(0);
+
+    // Return send/recv hlo directly if this is a simple send/recv
+    // pair.
+    if (operand->opcode() == HloOpcode::kSend ||
+        operand->opcode() == HloOpcode::kRecv) {
+      return operand;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
+    const auto* gte = Cast<HloGetTupleElementInstruction>(operand);
+    const HloInstruction* iter_tuple = operand->operand(0);
+    if (iter_tuple->opcode() == HloOpcode::kParameter) {
+      // send-done/recv-done in the loop body.
+      CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
+      auto maybe_while =
+          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while);
+      while_op = *maybe_while;
+      i = gte->tuple_index();
+    } else {
+      // send-done/recv-done proceeding the loop.
+      CHECK(iter_tuple->opcode() == HloOpcode::kWhile);
+      while_op = iter_tuple;
+      i = gte->tuple_index();
+    }
+  }
+
+  // Extract canonical start op from while loop's init.
+  CHECK(while_op != nullptr);
+  CHECK(0 <= i && i < while_op->shape().tuple_shapes().size());
+  const HloInstruction* init = while_op->operand(0);
+  const HloInstruction* canonical_start_op = init->operand(i);
+  CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
+        canonical_start_op->opcode() == HloOpcode::kRecv);
+  return canonical_start_op;
 }
 
 }  // namespace xla

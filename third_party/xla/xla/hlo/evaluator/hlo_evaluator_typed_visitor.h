@@ -1126,10 +1126,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   }
 
   absl::Status HandleDot(const HloInstruction* dot) override {
+    const PrimitiveType accumulation_type =
+        primitive_util::NativeToPrimitiveType<ElementwiseT>();
     if (dot->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
         parent_->use_fast_path_ &&
-        ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
-        ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) {
+        ((ShapeUtil::SameElementType(dot->operand(0)->shape(), dot->shape()) &&
+          ShapeUtil::SameElementType(dot->operand(1)->shape(), dot->shape())) ||
+         dot->shape().element_type() == accumulation_type)) {
       return HandleDot<ElementwiseT>(dot);
     }
     return HandleDotSlowPath(dot);
@@ -1148,9 +1151,6 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
 
     const int64_t lhs_rank = lhs->shape().dimensions().size();
     const int64_t rhs_rank = rhs->shape().dimensions().size();
-
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
-    CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
     // There must be 1 and only 1 Contracting dimension for lhs and rhs.
     const int64_t lhs_contracting_dimension =
@@ -1178,12 +1178,12 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
       return HandleDotSlowPath(dot);
     }
 
-    const PrimitiveType native_ty =
+    const PrimitiveType accumulation_ty =
         primitive_util::NativeToPrimitiveType<NativeT>();
     Literal lhs_literal =
-        parent_->GetEvaluatedLiteralFor(lhs).Convert(native_ty).value();
+        parent_->GetEvaluatedLiteralFor(lhs).Convert(accumulation_ty).value();
     Literal rhs_literal =
-        parent_->GetEvaluatedLiteralFor(rhs).Convert(native_ty).value();
+        parent_->GetEvaluatedLiteralFor(rhs).Convert(accumulation_ty).value();
     const int64_t contracted_dimension_size =
         lhs->shape().dimensions(lhs_contracting_dimension);
     Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
@@ -1194,7 +1194,8 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     rhs_array.SetValues(rhs_literal.data<NativeT>());
     std::unique_ptr<Array2D<NativeT>> result_array =
         HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    Literal result(
+        ShapeUtil::MakeShape(accumulation_ty, dot->shape().dimensions()));
     result.PopulateR2FromArray2D(*result_array);
     parent_->SetEvaluatedLiteralFor(
         dot, std::move(result).Convert(dot->shape().element_type()).value());

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Re-exports the APIs of TF2 summary that live in TensorBoard."""
 
 from tensorflow.python.util.tf_export import tf_export
@@ -23,10 +22,26 @@ _TENSORBOARD_NOT_INSTALLED_ERROR = (
 
 
 class TBNotInstalledError(Exception):
-
   def __init__(self, summary_api):
     self.error_message = f"{_TENSORBOARD_NOT_INSTALLED_ERROR} {summary_api}"
     super().__init__(self.error_message)
+
+try:
+  from tensorboard.summary.v2 import audio as audio_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.summary.v2 import histogram as histogram_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.summary.v2 import image as image_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.summary.v2 import text as text_v2  # pylint: disable=g-import-not-at-top
+  TENSORBOARD_AVAILABLE = True
+except ImportError:
+  def _tb_not_installed(*args, **kwargs):
+    raise TBNotInstalledError("tf.summary")
+  audio_v2 = _tb_not_installed
+  histogram_v2 = _tb_not_installed
+  image_v2 = _tb_not_installed
+  scalar_v2 = _tb_not_installed
+  text_v2 = _tb_not_installed
+  TENSORBOARD_AVAILABLE = False
 
 
 @tf_export("summary.audio", v1=[])
@@ -62,19 +77,13 @@ def audio(
       if you want "wav" in particular, set this explicitly.
     description: Optional long-form description for this summary, as a constant
       `str`. Markdown is supported. Defaults to empty.
-
   Returns:
     True on success, or false if no summary was emitted because no default
     summary writer was available.
-
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import audio as audio_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.audio") from exc
   return audio_v2(
       name=name,
       data=data,
@@ -153,10 +162,6 @@ def histogram(name, data, step=None, buckets=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import histogram as histogram_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.histogram") from exc
   return histogram_v2(
       name=name, data=data, step=step, buckets=buckets, description=description
   )
@@ -231,10 +236,6 @@ def image(name, data, step=None, max_outputs=3, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import image as image_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.image") from exc
   return image_v2(
       name=name,
       data=data,
@@ -296,10 +297,6 @@ def scalar(name, data, step=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.scalar") from exc
   return scalar_v2(name=name, data=data, step=step, description=description)
 
 
@@ -367,8 +364,5 @@ def text(name, data, step=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import text as text_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.text") from exc
   return text_v2(name=name, data=data, step=step, description=description)
+

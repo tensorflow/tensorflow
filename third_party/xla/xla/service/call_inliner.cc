@@ -438,21 +438,6 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     module->schedule().GetOrCreateSequence(computation) =
         HloInstructionSequence(inlined_instructions);
   }
-  if (did_node_mutate && uniquify_channel_ids_) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (!HloChannelInstruction::ClassOf(instruction)) {
-        continue;
-      }
-      // Channel IDs for host transfers are part of the ABI, and can never be
-      // uniquified.
-      HloSendRecvInstruction* send_recv =
-          DynCast<HloSendRecvInstruction>(instruction);
-      if (send_recv && send_recv->is_host_transfer()) {
-        continue;
-      }
-      instruction->set_channel_id(next_unique_channel_id_++);
-    }
-  }
   return did_node_mutate;
 }
 
@@ -460,9 +445,6 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  if (uniquify_channel_ids_) {
-    next_unique_channel_id_ = hlo_query::NextChannelId(*module);
-  }
 
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.

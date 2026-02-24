@@ -172,6 +172,10 @@ struct PJRT_Executable {
   std::vector<PJRT_Layouts_MemoryLayout> out_layouts;
   std::vector<PJRT_Layouts_MemoryLayout*> out_layouts_pointers;
 
+  bool parameter_layouts_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<PJRT_Layouts_MemoryLayout> parameter_layouts;
+  std::vector<PJRT_Layouts_MemoryLayout*> parameter_layouts_pointers;
+
   bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
   std::vector<const char*> memory_kinds;
   std::vector<size_t> memory_kind_sizes;
@@ -235,6 +239,10 @@ struct PJRT_SerializedCompileOptions {
 
 struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
+};
+
+struct PJRT_Device_Attributes {
+  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_SerializedTopology {

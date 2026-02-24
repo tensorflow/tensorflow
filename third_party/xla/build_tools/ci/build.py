@@ -128,7 +128,7 @@ class BuildType(enum.Enum):
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
-  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
   JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
@@ -310,6 +310,7 @@ def nvidia_gpu_build_with_compute_capability(
     multi_gpu: bool = False,
 ) -> Build:
   """Returns a build for a Nvidia GPU build with the given compute capability."""
+  repo_env = {"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"}
   if multi_gpu:
     options = {
         "//xla/tsl:ci_build": True,
@@ -327,6 +328,7 @@ def nvidia_gpu_build_with_compute_capability(
         nvidia_only_multi_gpu_filters
         + _tag_filters_only_for_compute_capability(compute_capability)
     )
+    repo_env["REMOTE_GPU_TESTING"] = 0
   else:
     options = {
         "run_under": "//build_tools/ci:parallel_gpu_execute",
@@ -347,7 +349,7 @@ def nvidia_gpu_build_with_compute_capability(
       test_tag_filters=test_tag_filters,
       build_tag_filters=build_tag_filters,
       options=options,
-      repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
+      repo_env=repo_env,
       extra_setup_commands=(["nvidia-smi"],),
   )
 
@@ -744,9 +746,9 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
     repo="google/jax",
-    configs=("rbe_linux_x86_64",),
+    configs=("rbe_linux_x86_64", "bzlmod"),
     target_patterns=(
         "//tests:cpu_tests",
         "//tests:backend_independent_tests",
@@ -754,14 +756,16 @@ Build(
         "//tests/multiprocess:cpu_tests",
         "//jax/experimental/jax2tf/tests/multiprocess:cpu_tests",
         "//jaxlib/tools:check_cpu_wheel_sources_test",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
     ),
     test_env=dict(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    override_repository=dict(
-        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
-    ),
+    override_repository={
+        "xla~": f"{_GITHUB_WORKSPACE}/openxla/xla",
+    },
     options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
@@ -777,6 +781,8 @@ Build(
         "//tests/multiprocess:cpu_tests",
         "//jax/experimental/jax2tf/tests/multiprocess:cpu_tests",
         "//jaxlib/tools:check_cpu_wheel_sources_test",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
     ),
     test_env=dict(
         JAX_NUM_GENERATED_CASES=25,
@@ -803,6 +809,10 @@ Build(
         "//tests/pallas:gpu_tests",
         "//tests/pallas:backend_independent_tests",
         "//jaxlib/tools:check_gpu_wheel_sources_test",
+        "//jaxlib/tools:jax_cuda_plugin_wheel_size_test",
+        "//jaxlib/tools:jax_cuda_pjrt_wheel_size_test",
+        "//jaxlib/tools:jaxlib_wheel_size_test",
+        "//:jax_wheel_size_test",
     ),
     build_tag_filters=("-multiaccelerator",),
     test_tag_filters=("-multiaccelerator",),

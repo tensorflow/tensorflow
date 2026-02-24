@@ -43,10 +43,12 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -150,7 +152,7 @@ class PjRtCApiDevice : public PjRtDevice {
 
   bool IsAddressable() const override;
 
-  PjRtLocalHardwareId local_hardware_id() const override;
+  LocalChipId local_hardware_id() const override;
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(
@@ -186,12 +188,20 @@ class PjRtCApiDevice : public PjRtDevice {
     return description_;
   }
 
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
 
  private:
+  // Initializes device specific attributes.
+  void InitAttributes();
+
   friend class PjRtCApiClient;
 
   PjRtCApiClient* client_ = nullptr;
@@ -199,6 +209,7 @@ class PjRtCApiDevice : public PjRtDevice {
   PJRT_Device* device_;
   PjRtCApiDeviceDescription description_;
   std::vector<PjRtMemorySpace*> memory_spaces_;
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
 class PjRtCApiCompiler : public PjRtCompiler {
@@ -278,25 +289,24 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       const override;
   absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override;
   absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override;
-  absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const override;
-  absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
-  LogicalDeviceOfDefaultTypeIdsOnProcess(
-      PjRtProcessId process_id) const override;
-  absl::StatusOr<std::pair<PjRtProcessId, int>>
-  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const override;
-  absl::StatusOr<std::pair<PjRtProcessId, int>>
+  absl::StatusOr<PjRtIdContainer<ProcessId>> ProcessIds() const override;
+  absl::StatusOr<PjRtIdContainer<GlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(ProcessId process_id) const override;
+  absl::StatusOr<std::pair<ProcessId, int>> ProcessIdAndIndexOnProcessForChip(
+      GlobalChipId chip_id) const override;
+  absl::StatusOr<std::pair<ProcessId, int>>
   ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const override;
+      xla::GlobalDeviceId device_id) const override;
   absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
-      PjRtProcessId process_id) const override;
-  absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+      ProcessId process_id) const override;
+  absl::StatusOr<GlobalChipId> ChipIdFromCoord(
       const PjRtDeviceDimensions& chip) const override;
-  absl::StatusOr<xla::PjRtGlobalDeviceId>
+  absl::StatusOr<xla::GlobalDeviceId>
   LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
       const PjRtDeviceDimensions& chip, int core_index) const override;
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const override;
+      xla::GlobalDeviceId device_id) const override;
   absl::StatusOr<PjRtDeviceDimensions> ChipsPerProcessBounds() const override;
   absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
   absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
@@ -350,10 +360,10 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override;
+      GlobalDeviceId global_device_id) const override;
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override;
+      LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
       absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
@@ -365,6 +375,9 @@ class PjRtCApiClient : public PjRtClient {
   absl::string_view platform_name() const override { return platform_name_; };
 
   absl::string_view platform_version() const override;
+
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
+      const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
@@ -441,13 +454,13 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
-      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      absl::Span<const GlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
-      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      absl::Span<const GlobalDeviceId> src_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
@@ -682,6 +695,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
 
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override;
+
   absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override;
 
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
@@ -705,6 +721,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   absl::StatusOr<std::string> FingerprintExecutable() const override;
 
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const override;
+
   // TODO(b/438000615): Move this to PjRtLoadedExecutable.
   absl::StatusOr<std::string> GetSerializedExecutableMetadata() const;
 
@@ -719,6 +738,8 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
  public:
   PjRtCApiLoadedExecutable(PjRtCApiClient* client,
                            PJRT_LoadedExecutable* executable);
+
+  PjRtExecutable* GetExecutable() const override { return executable_.get(); }
 
   PjRtClient* client() const override { return client_; }
   absl::string_view name() const override { return executable_->name(); }
@@ -764,6 +785,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   std::optional<std::vector<OpSharding>> GetParameterShardings()
       const override {
     return executable_->GetParameterShardings();
+  }
+
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override {
+    return executable_->GetParameterLayouts();
   }
 
   absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override {
@@ -904,6 +930,47 @@ class CApiCopyToDeviceStream : public CopyToDeviceStream {
  private:
   PJRT_CopyToDeviceStream* c_stream_;
   const PJRT_Api* c_api_;
+};
+
+class PjRtCApiRuntimeAbiVersion : public PjRtRuntimeAbiVersion {
+ public:
+  PjRtCApiRuntimeAbiVersion(PJRT_RuntimeAbiVersion* c_abi_version,
+                            const PJRT_Api* c_api,
+                            const PJRT_AbiVersion_Extension* extension);
+  ~PjRtCApiRuntimeAbiVersion() override;
+
+  absl::Status IsCompatibleWith(
+      const PjRtRuntimeAbiVersion& runtime_abi_version) const override;
+  absl::Status IsCompatibleWith(
+      const PjRtExecutableAbiVersion& executable_abi_version) const override;
+
+  absl::StatusOr<PjRtRuntimeAbiVersionProto> ToProto() const override;
+  PjRtPlatformId platform_id() const override;
+
+  PJRT_RuntimeAbiVersion* c_abi_version() const { return c_abi_version_; }
+
+ private:
+  PJRT_RuntimeAbiVersion* c_abi_version_;
+  const PJRT_Api* c_api_;
+  const PJRT_AbiVersion_Extension* extension_;
+};
+
+class PjRtCApiExecutableAbiVersion : public PjRtExecutableAbiVersion {
+ public:
+  PjRtCApiExecutableAbiVersion(PJRT_ExecutableAbiVersion* c_abi_version,
+                               const PJRT_Api* c_api,
+                               const PJRT_AbiVersion_Extension* extension);
+  ~PjRtCApiExecutableAbiVersion() override;
+
+  absl::StatusOr<PjRtExecutableAbiVersionProto> ToProto() const override;
+  PjRtPlatformId platform_id() const override;
+
+  PJRT_ExecutableAbiVersion* c_abi_version() const { return c_abi_version_; }
+
+ private:
+  PJRT_ExecutableAbiVersion* c_abi_version_;
+  const PJRT_Api* c_api_;
+  const PJRT_AbiVersion_Extension* extension_;
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(

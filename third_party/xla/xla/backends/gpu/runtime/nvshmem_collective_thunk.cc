@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -107,8 +108,14 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
                           *params.collective_params->device_assn,
                           config().replica_groups, config().group_mode));
 
+  // Any NVSHMEM collective will need to require a barrier at the end of
+  // graph execution to make sure all reads and writes to symmetrics buffers
+  // are finished and ready for the next iteration of executable.
+  CollectiveCliqueRequests::CliqueRequirements clique_reqs;
+  clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements{
+      /*module_execution_barrier=*/true};
   return params.collective_clique_requests->RequestClique(
-      clique_key, std::move(device_groups));
+      clique_key, std::move(device_groups), clique_reqs);
 }
 
 absl::Status NvshmemCollectiveThunk::Initialize(
@@ -116,10 +123,6 @@ absl::Status NvshmemCollectiveThunk::Initialize(
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
-  // Any nvshmem collective will need to require a barrier at the end of
-  // graph execution to make sure all reads and writes to symmetrics buffers
-  // are finished and ready for the next iteration of executable.
-  params.collective_params->need_barrier = true;
   return absl::OkStatus();
 }
 

@@ -867,9 +867,9 @@ absl::Status RunPjRtExecutable(
   const DeviceType& device_type = GetDeviceType(ctx);
   const int pjrt_device_id =
       tsl::GetDeviceIdFromDeviceParsedName(ctx->device()->parsed_name());
-  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
-                      pjrt_client->LookupAddressableDevice(
-                          xla::PjRtLocalDeviceId(pjrt_device_id)));
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * device,
+      pjrt_client->LookupAddressableDevice(xla::LocalDeviceId(pjrt_device_id)));
 
   gpu::GpuServingDeviceSelectorResource* device_selector_resource = nullptr;
   if (device_type == DEVICE_GPU) {

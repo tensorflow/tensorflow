@@ -153,7 +153,7 @@ class KnownTripCountWhileThunkTest : public HloPjRtTestBase {
     stream_executor::StreamExecutorAddressAllocator allocator(executor);
     Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
         ServiceExecutableRunOptions(), BufferAllocations({}, 0, &allocator),
-        stream.get(), stream.get(), nullptr, nullptr);
+        stream.get(), stream.get(), nullptr, nullptr, nullptr);
     return thunk.ExecuteOnStream(Thunk::ExecuteParams(params));
   }
 

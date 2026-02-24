@@ -472,6 +472,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     MemorySpace memory_space;
     int64_t time;
     AliasedOffset* offset = nullptr;
+    // The source of the required memory assignment. Required memory assignments
+    // are created for various reasons, this field is used to identify the
+    // reason for the required memory assignment. It improves logging and helps
+    // debugging.
+    std::string required_assignment_source;
 
     bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
       return memory_space == other.memory_space && offset == other.offset;
@@ -940,24 +945,29 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(const HloInstruction* instruction,
                                     ShapeIndex index,
-                                    const Allocation* aliased_allocation);
+                                    const Allocation* aliased_allocation,
+                                    std::string required_assignment_source);
 
   // This sets a required assignment. CHECK fails if there is a conflicting
   // required assignment at the same time.
   void AddRequiredAssignment(const HloValue* value,
                              const HloInstruction* instruction,
                              MemorySpace memory_space, int64_t time,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloPosition& position,
                              MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
 

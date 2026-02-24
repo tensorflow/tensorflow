@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -47,9 +47,9 @@ class HloOpProfiler {
 
   static absl::Span<const HloOpcode> AllSupportedOps();
 
-  static const std::unordered_set<HloOpcode>& Unsupported();
+  static const absl::flat_hash_set<HloOpcode>& Unsupported();
 
-  static const std::unordered_set<HloOpcode>& TooFastToMeasure();
+  static const absl::flat_hash_set<HloOpcode>& TooFastToMeasure();
 
   static absl::Span<const PrimitiveType> AllSupportedDtypes();
 

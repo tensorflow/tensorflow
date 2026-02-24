@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -39,7 +40,7 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
-    ScopedShapedBuffer shaped_buffer, const std::string& tag) {
+    ScopedShapedBuffer shaped_buffer, absl::string_view tag) {
   absl::MutexLock lock(mutex_);
   VLOG(2) << "Register";
   std::vector<ScopedShapedBuffer> replicated_buffers;
@@ -48,8 +49,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
 }
 
 absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers,
-    const std::string& tag) {
+    std::vector<ScopedShapedBuffer> replicated_buffers, absl::string_view tag) {
   absl::MutexLock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
@@ -65,7 +65,7 @@ static ShapedBuffer ReleaseIfScopedShapedBuffer(ScopedShapedBuffer b) {
 
 template <typename ShapedBufferTy>
 absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag) {
+    std::vector<ShapedBufferTy> replicated_buffers, absl::string_view tag) {
   static_assert(std::is_same<ShapedBufferTy, ShapedBuffer>::value ||
                     std::is_same<ShapedBufferTy, ScopedShapedBuffer>::value,
                 "ShapedBufferTy must be ShapedBuffer or ScopedShapedBuffer.");

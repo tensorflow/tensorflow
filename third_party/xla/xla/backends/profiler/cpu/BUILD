@@ -14,6 +14,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/backends/profiler:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":host_tracer_impl",
@@ -54,6 +55,7 @@ cc_library(
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
         # copybara:uncomment "//tensorflow:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":python_tracer_impl",

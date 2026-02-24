@@ -54,6 +54,7 @@ class MockStreamExecutor : public StreamExecutor {
   MockStreamExecutor() = default;
   MOCK_METHOD(absl::Status, Init, (), (override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
+  MOCK_METHOD(int, numa_node, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, LoadKernel,
               (const KernelLoaderSpec& spec), (override));
   MOCK_METHOD(std::unique_ptr<ActivateContext>, Activate, (), (override));

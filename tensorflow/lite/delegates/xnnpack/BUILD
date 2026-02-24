@@ -462,6 +462,7 @@ cc_library(
     deps = [
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -609,6 +610,7 @@ cc_library(
     srcs = ["dynamically_quantized_fully_connected_tester.cc"],
     hdrs = ["dynamically_quantized_fully_connected_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -629,6 +631,7 @@ cc_library(
     srcs = ["dynamically_quantized_conv_2d_tester.cc"],
     hdrs = ["dynamically_quantized_conv_2d_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -649,6 +652,7 @@ cc_library(
     srcs = ["dynamically_quantized_transpose_conv_tester.cc"],
     hdrs = ["dynamically_quantized_transpose_conv_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -825,6 +829,7 @@ cc_library(
     srcs = ["quantized_conv_2d_tester.cc"],
     hdrs = ["quantized_conv_2d_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -833,7 +838,6 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -846,6 +850,7 @@ cc_library(
     srcs = ["quantized_depthwise_conv_2d_tester.cc"],
     hdrs = ["quantized_depthwise_conv_2d_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -854,7 +859,6 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -867,6 +871,7 @@ cc_library(
     srcs = ["quantized_fully_connected_tester.cc"],
     hdrs = ["quantized_fully_connected_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -875,7 +880,6 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -1232,6 +1236,7 @@ cc_library(
     srcs = ["quantized_transpose_conv_tester.cc"],
     hdrs = ["quantized_transpose_conv_tester.h"],
     deps = [
+        ":test_util",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/lite:framework",
@@ -1239,9 +1244,7 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

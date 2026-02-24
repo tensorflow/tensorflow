@@ -17,7 +17,8 @@
 
 ### Major Features and Improvements
 
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.lite`
+    * Adds support for QUI4 (Quantized Unsigned 4-bit) in Dequantize operator.
 
 ### Bug Fixes and Other Changes
 

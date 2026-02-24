@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
@@ -74,16 +75,13 @@ class RangeEvaluator {
   // Checks whether an `SymbolicExpr` always describes a non-negative value.
   bool IsAlwaysPositiveOrZero(SymbolicExpr expr);
   // TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use IsAlwaysPositiveOrZero(SymbolicExpr) instead")
   bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
-
-  // Checks whether an `SymbolicExpr` always describes a non-positive value.
-  bool IsAlwaysNegativeOrZero(SymbolicExpr expr);
-  // TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
-  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
 
   // Computes the range of expression using its subexpression ranges.
   Interval ComputeExpressionRange(SymbolicExpr expr);
   // TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use ComputeExpressionRange(SymbolicExpr) instead")
   Interval ComputeExpressionRange(mlir::AffineExpr expr);
 
   // Return MLIR context.
@@ -138,11 +136,13 @@ class IndexingMap {
 
   // TODO: b/446858351 - Remove AffineMap constructors once all the users are
   // migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use IndexingMap(SymbolicMap, ...) instead")
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<Variable> dimensions,
       std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
       absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
 
+  ABSL_DEPRECATED("Use IndexingMap(SymbolicMap, ...) instead")
   IndexingMap(mlir::AffineMap affine_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
               const llvm::MapVector<mlir::AffineExpr, Interval>& constraints);
@@ -155,8 +155,15 @@ class IndexingMap {
   // Returns an undefined indexing map.
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
+  // TODO: b/446858351 - Remove AffineMap-based factory functions once all the
+  // users are migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use FromTensorSizes(SymbolicMap, ...) instead")
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+      absl::Span<const int64_t> symbol_upper_bounds);
+
+  static IndexingMap FromTensorSizes(
+      SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
 
   // Returns true if the indexing map is valid.
@@ -174,6 +181,7 @@ class IndexingMap {
 
   // Returns the affine map.
   // TODO: b/446856820 - Remove once all the users are migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use GetSymbolicMap() instead")
   mlir::AffineMap GetAffineMap() const {
     // To avoid recomputing affine_map_ is a cached conversion from
     // symbolic_map_ that gets invalidated when the symbolic_map_ changes.
@@ -225,6 +233,7 @@ class IndexingMap {
   // TODO: b/446856820 - Remove this method once we fully migrate to
   // SymbolicMap and rename the GetSymbolicConstraints to GetConstraints.
   // Getters for affine expression constraints.
+  ABSL_DEPRECATED("Use GetSymbolicConstraints() instead")
   llvm::MapVector<mlir::AffineExpr, Interval> GetConstraints() const;
 
   // Getters for symbolic expression constraints.
@@ -238,6 +247,7 @@ class IndexingMap {
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
   // TODO: b/446858351 - Remove once fully migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use AddConstraint(SymbolicExpr, Interval) instead")
   void AddConstraint(mlir::AffineExpr expr, Interval range);
   void AddConstraint(SymbolicExpr expr, Interval range);
   void ClearConstraints() { constraints_.clear(); }
@@ -246,6 +256,7 @@ class IndexingMap {
   // Evaluates the constraints at a given point and returns `true` if all
   // constraints are satisfied.
   // Deprecated. TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use the overload with SymbolicExpr arguments instead")
   bool ConstraintsSatisfied(
       llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
       llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
@@ -255,6 +266,7 @@ class IndexingMap {
       llvm::ArrayRef<SymbolicExpr> symbol_const_exprs) const;
 
   // Deprecated. TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
+  ABSL_DEPRECATED("Use the overload with SymbolicExpr arguments instead")
   llvm::SmallVector<int64_t, 4> Evaluate(
       llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
       llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const {
@@ -323,10 +335,6 @@ class IndexingMap {
   IndexingMap(SymbolicMap symbolic_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
               const llvm::MapVector<SymbolicExpr, Interval>& constraints);
-
-  static IndexingMap FromTensorSizes(
-      SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
-      absl::Span<const int64_t> symbol_upper_bounds);
 
   // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.

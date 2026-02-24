@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -49,8 +49,8 @@ class RocblasBackend : public GpuCodegenBackend {
                           const DebugOptions* debug_options, Compiler* compiler,
                           const Compiler::GpuTargetConfig* target_config,
                           bool fp8_lt_fallback = false)
-      : GpuCodegenBackend("Rocblas", debug_options, compiler, target_config,
-                          stream_executor),
+      : GpuCodegenBackend(autotuner::Backend::ROCBLAS, debug_options, compiler,
+                          target_config, stream_executor),
         fp8_lt_fallback_(fp8_lt_fallback) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

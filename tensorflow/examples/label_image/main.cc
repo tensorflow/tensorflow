@@ -112,7 +112,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                              Tensor* output) {
-  tensorflow::uint64 file_size = 0;
+  uint64_t file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
 
   string contents;

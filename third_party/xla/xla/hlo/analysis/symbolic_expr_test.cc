@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
@@ -68,83 +69,16 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
                   "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)"));
 }
 
-TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
-  SymbolicExpr expr = v0 * 2 + v1;
-
-  EXPECT_THAT(expr.ToString(), MatchIndexingString("((v0 * 2) + v1)"));
-  // Only symbols
-  EXPECT_THAT(expr.ToString(0), MatchIndexingString("((s0 * 2) + s1)"));
-  // One dimension and one symbol
-  EXPECT_THAT(expr.ToString(1), MatchIndexingString("((d0 * 2) + s0)"));
-  // Only dimensions
-  EXPECT_THAT(expr.ToString(2), MatchIndexingString("((d0 * 2) + d1)"));
+TEST_F(SymbolicExprTest, PrintWithVariableNames) {
+  SymbolicExpr expr = v0 + v1;
+  EXPECT_THAT(expr.ToString({"foo", "bar"}),
+              MatchIndexingString("(foo + bar)"));
 }
 
-TEST_F(SymbolicExprTest, ParseAndPrint) {
-  const std::string kStringContainingAllOperators =
-      "(((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5)";
-  SymbolicExpr parsed_expr =
-      ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
-  ASSERT_NE(parsed_expr, nullptr);
-  EXPECT_THAT(parsed_expr.ToString(),
-              MatchIndexingString(kStringContainingAllOperators));
-}
-
-TEST_F(SymbolicExprTest, ParseAndPrint_Invalid) {
-  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
-  log.StartCapturingLogs();
-
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Unexpected end of expression at: \"\""));
-  EXPECT_EQ(ParseSymbolicExpr("1 + ", &ctx), SymbolicExpr());
-
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Failed to parse expression at: \")\""));
-  EXPECT_EQ(ParseSymbolicExpr("max(1, )", &ctx), SymbolicExpr());
-
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Missing parenthesis at: \"\""));
-  EXPECT_EQ(ParseSymbolicExpr("(1 + 2", &ctx), SymbolicExpr());
-
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Failed to parse expression at: \"foo(3, 4)\""));
-  EXPECT_EQ(ParseSymbolicExpr("foo(3, 4)", &ctx), SymbolicExpr());
-}
-
-TEST_F(SymbolicExprTest, ParseWithVariableMap) {
-  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map;
-  variable_map["foo"] = v0;
-  // Purposely use a variable name that starts with a 'd' to test that the
-  // dim/symbol parsing is not triggered when the variable map is provided.
-  variable_map["dim_bar"] = v1;
-
-  absl::string_view expr_str = "foo + dim_bar * 2";
-  SymbolicExpr expr =
-      ParseSymbolicExprAndAdvance(&expr_str, &ctx, variable_map);
-  EXPECT_EQ(expr, v0 + v1 * 2);
-  EXPECT_TRUE(expr_str.empty());
-
-  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
-  log.StartCapturingLogs();
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Failed to parse expression at: \"baz\""));
-  expr_str = "baz";
-  EXPECT_EQ(ParseSymbolicExprAndAdvance(&expr_str, &ctx, variable_map),
-            SymbolicExpr());
-}
-
-TEST_F(SymbolicExprTest, ParseDimsAndSymbols) {
-  EXPECT_EQ(ParseSymbolicExpr("d0", &ctx), v0);
-  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx, /*num_dims=*/2),
-            CreateSymbolicVariable(2, &ctx));
-  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx, /*num_dims=*/0), v0);
-
-  absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
-  log.StartCapturingLogs();
-  EXPECT_CALL(log, Log(absl::LogSeverity::kError, testing::_,
-                       "Symbol cannot be parsed because number of dimensions "
-                       "is not set. at: \"0\""));
-  EXPECT_EQ(ParseSymbolicExpr("s0", &ctx), SymbolicExpr());
+TEST_F(SymbolicExprTest, PrintWithDimAndSymbolNames) {
+  SymbolicExpr expr = v0 + v1;
+  EXPECT_THAT(expr.ToString({"foo"}, {"bar"}),
+              MatchIndexingString("(foo + bar)"));
 }
 
 TEST_F(SymbolicExprTest, ConstantFolding) {
@@ -208,6 +142,16 @@ TEST_F(SymbolicExprTest, ReplaceVariables) {
                                           ParseSymbolicExpr("(v2 * 10)", &ctx)};
   SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions);
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
+}
+
+TEST_F(SymbolicExprTest, ReplaceDims) {
+  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
+  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result = expr_to_sub.ReplaceDims({c7});
+  EXPECT_EQ(result.ToString(), "((7 + (v1 * 2)) * v2)");
 }
 
 TEST_F(SymbolicExprTest, ReplaceSymbols) {
@@ -299,9 +243,9 @@ TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
   auto c3 = CreateSymbolicConstant(3, &ctx);
 
   // x + 0 = x
-  EXPECT_EQ(v0 + c0, v0);
-  EXPECT_EQ(c0 + v0, v0);
-  EXPECT_EQ(c2 + c1, c3);
+  EXPECT_EQ(v0 + 0, v0);
+  EXPECT_EQ(0 + v0, v0);
+  EXPECT_EQ(2 + c1, c3);
 
   // TODO(b/459357586): This will be canonicalized to (v0 + 2) in the future.
   EXPECT_NE(v0 + c2, c2 + v0);
@@ -321,7 +265,7 @@ TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
 
   // No associativity if constant is on LHS of outer mul.
   // TODO(b/459357586): This will be canonicalized to (v0 * 6) in the future.
-  SymbolicExpr mul_2_v0 = CreateSymbolicConstant(2, &ctx) * v0;
+  SymbolicExpr mul_2_v0 = 2 * v0;
   SymbolicExpr mul_2_v0_3 = mul_2_v0 * 3;
   EXPECT_EQ(mul_2_v0_3.ToString(), "((2 * v0) * 3)");
 }
@@ -419,6 +363,27 @@ TEST_F(SymbolicExprTest, Walk) {
 
   EXPECT_THAT(visited_exprs, ::testing::ElementsAre("v0", "42", "(v0 + 42)",
                                                     "v1", "((v0 + 42) * v1)"));
+}
+
+TEST_F(SymbolicExprTest, IsMultipleOf) {
+  EXPECT_TRUE(CreateSymbolicConstant(10, &ctx).IsMultipleOf(5));
+  EXPECT_FALSE(CreateSymbolicConstant(11, &ctx).IsMultipleOf(5));
+  EXPECT_TRUE((v0 * 5).IsMultipleOf(5));
+  EXPECT_TRUE((5 * v0).IsMultipleOf(5));
+  EXPECT_TRUE((v0 * 2 * 3).IsMultipleOf(6));
+  EXPECT_FALSE((v0 * 2 + 1).IsMultipleOf(2));
+  EXPECT_TRUE(((v0 * 2) + (v1 * 4)).IsMultipleOf(2));
+  EXPECT_FALSE(v0.IsMultipleOf(2));
+  EXPECT_TRUE((v0 % 10).IsMultipleOf(1));
+  EXPECT_TRUE(((v0 * 6).min(v1 * 4)).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 6).min(v1 * 4)).IsMultipleOf(3));
+  EXPECT_TRUE(((v0 * 6).max(v1 * 4)).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 6).max(v1 * 4)).IsMultipleOf(3));
+  EXPECT_TRUE(((v0 * 10).floorDiv(5)).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 10).floorDiv(2)).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 10).floorDiv(v1)).IsMultipleOf(2));
+  EXPECT_TRUE(((v0 * 10).ceilDiv(5)).IsMultipleOf(2));
+  EXPECT_FALSE(((v0 * 10).ceilDiv(2)).IsMultipleOf(2));
 }
 
 TEST_F(SymbolicExprTest, Hashing) {

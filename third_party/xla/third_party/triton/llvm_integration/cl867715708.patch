@@ -1,0 +1,12 @@
+
+--- a/python/test/unit/language/test_core.py	2026-01-21 01:19:21.000000000 -0800
++++ b/python/test/unit/language/test_core.py	2026-02-09 12:27:06.000000000 -0800
+@@ -1384,7 +1384,7 @@
+     # atom.add.bf16 is unsupported prior to Hopper so instead we generate an
+     # atom.cas add loop on Ampere and prior
+     if dst_type == 'bfloat16' and torch.cuda.get_device_capability()[0] < 9:
+-        assert f"atom.{sem_str}.gpu.global.cas" in h.asm["ptx"]
++        assert "atom.relaxed.gpu.global.cas" in h.asm["ptx"]
+         return
+ 
+     assert f"atom.global.gpu.{sem_str}" in h.asm["ptx"]

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
@@ -172,9 +173,19 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   }
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
   TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
-      [](Shape shape) { return LayoutUtil::GetWithDefaultLayout(shape); },
+      [allow_auto_layout](Shape shape) {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return LayoutUtil::GetWithDefaultLayout(shape);
+      },
       options.argument_layouts, &options.executable_build_options,
       &argument_layout_pointers));
 
@@ -186,6 +197,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_pjrt_allow_auto_layout_in_hlo(true);
   UpdateEntryComputationLayout(
       hlo_module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
                                   gpu_compiler, std::placeholders::_1));

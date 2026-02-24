@@ -84,6 +84,7 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
     if (left < n) {
       return absl::OutOfRangeError("");
     }
+
     return absl::OkStatus();
   }
 
@@ -119,19 +120,24 @@ class RamFileSystem : public FileSystem {
  public:
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
+  explicit RamFileSystem(absl::string_view scheme) : scheme_(scheme) {}
+  RamFileSystem() : RamFileSystem("ram://") {}
+
   absl::Status NewRandomAccessFile(
       const std::string& fname_, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
-      return absl::NotFoundError("");
+      return absl::NotFoundError(
+          absl::StrCat("Could not open ", fname_, " for reading."));
     }
     if (fs_[fname] == nullptr) {
       return absl::InvalidArgumentError(
           absl::StrCat(fname_, " is a directory."));
     }
+
     *result = std::unique_ptr<RandomAccessFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
     return absl::OkStatus();
@@ -141,7 +147,7 @@ class RamFileSystem : public FileSystem {
                                TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
@@ -150,6 +156,9 @@ class RamFileSystem : public FileSystem {
       return absl::InvalidArgumentError(
           absl::StrCat(fname_, " is a directory."));
     }
+
+    // Per POSIX, files opened for writing should truncate.
+    fs_[fname]->clear();
     *result = std::unique_ptr<WritableFile>(
         new RamRandomAccessFile(fname, fs_[fname]));
     return absl::OkStatus();
@@ -159,7 +168,7 @@ class RamFileSystem : public FileSystem {
       const std::string& fname_, TransactionToken* token,
       std::unique_ptr<WritableFile>* result) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
       fs_[fname] = std::make_shared<std::string>();
@@ -182,7 +191,7 @@ class RamFileSystem : public FileSystem {
   absl::Status FileExists(const std::string& fname_,
                           TransactionToken* token) override {
     FileStatistics stat;
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     return Stat(fname, token, &stat);
   }
@@ -190,7 +199,7 @@ class RamFileSystem : public FileSystem {
   absl::Status GetChildren(const std::string& dir_, TransactionToken* token,
                            std::vector<std::string>* result) override {
     absl::MutexLock m(mu_);
-    auto dir = StripRamFsPrefix(dir_);
+    auto dir = StripSchemePrefix(dir_);
 
     auto it = fs_.lower_bound(dir);
     while (it != fs_.end() && StartsWith(it->first, dir)) {
@@ -209,12 +218,12 @@ class RamFileSystem : public FileSystem {
                                 TransactionToken* token,
                                 std::vector<std::string>* results) override {
     absl::MutexLock m(mu_);
-    auto pattern = StripRamFsPrefix(pattern_);
+    auto pattern = StripSchemePrefix(pattern_);
 
     Env* env = Env::Default();
     for (auto it = fs_.begin(); it != fs_.end(); ++it) {
       if (env->MatchPath(it->first, pattern)) {
-        results->push_back("ram://" + it->first);
+        results->push_back(scheme_ + it->first);
       }
     }
     return absl::OkStatus();
@@ -223,7 +232,7 @@ class RamFileSystem : public FileSystem {
   absl::Status Stat(const std::string& fname_, TransactionToken* token,
                     FileStatistics* stat) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     auto it = fs_.lower_bound(fname);
     if (it == fs_.end() || !StartsWith(it->first, fname)) {
@@ -246,7 +255,7 @@ class RamFileSystem : public FileSystem {
   absl::Status DeleteFile(const std::string& fname_,
                           TransactionToken* token) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
       fs_.erase(fname);
@@ -259,7 +268,7 @@ class RamFileSystem : public FileSystem {
   absl::Status CreateDir(const std::string& dirname_,
                          TransactionToken* token) override {
     absl::MutexLock m(mu_);
-    auto dirname = StripRamFsPrefix(dirname_);
+    auto dirname = StripSchemePrefix(dirname_);
 
     auto it = fs_.find(dirname);
     if (it != fs_.end() && it->second != nullptr) {
@@ -273,7 +282,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status RecursivelyCreateDir(const std::string& dirname_,
                                     TransactionToken* token) override {
-    auto dirname = StripRamFsPrefix(dirname_);
+    auto dirname = StripSchemePrefix(dirname_);
 
     std::vector<std::string> dirs = StrSplit(dirname, "/");
     absl::Status last_status;
@@ -290,7 +299,7 @@ class RamFileSystem : public FileSystem {
   absl::Status DeleteDir(const std::string& dirname_,
                          TransactionToken* token) override {
     absl::MutexLock m(mu_);
-    auto dirname = StripRamFsPrefix(dirname_);
+    auto dirname = StripSchemePrefix(dirname_);
 
     auto it = fs_.find(dirname);
     if (it == fs_.end()) {
@@ -307,7 +316,7 @@ class RamFileSystem : public FileSystem {
   absl::Status GetFileSize(const std::string& fname_, TransactionToken* token,
                            uint64_t* file_size) override {
     absl::MutexLock m(mu_);
-    auto fname = StripRamFsPrefix(fname_);
+    auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
       if (fs_[fname] == nullptr) {
@@ -322,8 +331,8 @@ class RamFileSystem : public FileSystem {
   absl::Status RenameFile(const std::string& src_, const std::string& target_,
                           TransactionToken* token) override {
     absl::MutexLock m(mu_);
-    auto src = StripRamFsPrefix(src_);
-    auto target = StripRamFsPrefix(target_);
+    auto src = StripSchemePrefix(src_);
+    auto target = StripSchemePrefix(target_);
 
     if (fs_.find(src) != fs_.end()) {
       fs_[target] = fs_[src];
@@ -333,12 +342,12 @@ class RamFileSystem : public FileSystem {
     return absl::NotFoundError("");
   }
 
-  RamFileSystem() {}
   ~RamFileSystem() override {}
 
  private:
   absl::Mutex mu_;
   std::map<std::string, std::shared_ptr<std::string>> fs_;
+  std::string scheme_;
 
   std::vector<std::string> StrSplit(std::string s, std::string delim) {
     std::vector<std::string> ret;
@@ -362,8 +371,8 @@ class RamFileSystem : public FileSystem {
     return s;
   }
 
-  std::string StripRamFsPrefix(std::string name) {
-    std::string s = StripPrefix(name, "ram://");
+  std::string StripSchemePrefix(std::string name) {
+    std::string s = StripPrefix(name, scheme_);
     if (*(s.rbegin()) == '/') {
       s.pop_back();
     }

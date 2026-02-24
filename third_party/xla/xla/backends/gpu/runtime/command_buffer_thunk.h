@@ -56,8 +56,8 @@ class CommandBufferThunk : public Thunk {
   absl::StatusOr<se::DeviceAddressBase> GetCommandBufferAllocationAddress(
       const ExecuteParams& params, int64_t index);
 
-  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
+  absl::Status WalkNested(
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
 
   std::string ToString(int indent) const override;
 

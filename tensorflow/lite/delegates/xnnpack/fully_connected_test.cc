@@ -36,11 +36,14 @@ TEST_F(FullyConnectedTest, 1D) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 1DKeepDims) {
@@ -51,12 +54,15 @@ TEST_F(FullyConnectedTest, 1DKeepDims) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 2D) {
@@ -70,11 +76,14 @@ TEST_F(FullyConnectedTest, 2D) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 2DKeepDims) {
@@ -88,12 +97,15 @@ TEST_F(FullyConnectedTest, 2DKeepDims) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 3D) {
@@ -108,11 +120,14 @@ TEST_F(FullyConnectedTest, 3D) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 3DReshape) {
@@ -127,11 +142,14 @@ TEST_F(FullyConnectedTest, 3DReshape) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(width * input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 3DKeepDims) {
@@ -146,12 +164,15 @@ TEST_F(FullyConnectedTest, 3DKeepDims) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, width, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 4D) {
@@ -167,11 +188,14 @@ TEST_F(FullyConnectedTest, 4D) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, height, width, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, 4DKeepDims) {
@@ -187,12 +211,15 @@ TEST_F(FullyConnectedTest, 4DKeepDims) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, height, width, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, height, width, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .KeepDims(true)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, NoBias) {
@@ -206,12 +233,15 @@ TEST_F(FullyConnectedTest, NoBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, FP16Weights) {
@@ -225,12 +255,15 @@ TEST_F(FullyConnectedTest, FP16Weights) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .FP16Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, FP16WeightsNoBias) {
@@ -244,13 +277,16 @@ TEST_F(FullyConnectedTest, FP16WeightsNoBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .FP16Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, DynamicWeights) {
@@ -264,12 +300,15 @@ TEST_F(FullyConnectedTest, DynamicWeights) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .DynamicWeights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, DynamicWeightsNoBias) {
@@ -283,13 +322,16 @@ TEST_F(FullyConnectedTest, DynamicWeightsNoBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .DynamicWeights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, DynamicBias) {
@@ -303,12 +345,15 @@ TEST_F(FullyConnectedTest, DynamicBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .DynamicBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, DynamicWeightsAndBias) {
@@ -322,13 +367,16 @@ TEST_F(FullyConnectedTest, DynamicWeightsAndBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .DynamicWeights()
       .DynamicBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, TensorWiseQuantizedInt8Weights) {
@@ -342,12 +390,15 @@ TEST_F(FullyConnectedTest, TensorWiseQuantizedInt8Weights) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .TensorWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, TensorWiseQuantizedInt8WeightsNoBias) {
@@ -361,13 +412,16 @@ TEST_F(FullyConnectedTest, TensorWiseQuantizedInt8WeightsNoBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .TensorWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, ChannelWiseQuantizedInt8Weights) {
@@ -381,12 +435,15 @@ TEST_F(FullyConnectedTest, ChannelWiseQuantizedInt8Weights) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ChannelWiseQuantizedInt8Weights()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, ChannelWiseQuantizedInt8WeightsNoBias) {
@@ -400,13 +457,16 @@ TEST_F(FullyConnectedTest, ChannelWiseQuantizedInt8WeightsNoBias) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ChannelWiseQuantizedInt8Weights()
       .NoBias()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, ReluActivation) {
@@ -420,12 +480,15 @@ TEST_F(FullyConnectedTest, ReluActivation) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluActivation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, Relu6Activation) {
@@ -439,12 +502,15 @@ TEST_F(FullyConnectedTest, Relu6Activation) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .Relu6Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, ReluMinus1To1Activation) {
@@ -458,12 +524,15 @@ TEST_F(FullyConnectedTest, ReluMinus1To1Activation) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .ReluMinus1To1Activation()
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, MultiThreading) {
@@ -482,11 +551,14 @@ TEST_F(FullyConnectedTest, MultiThreading) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 TEST_F(FullyConnectedTest, WeightsCache) {
@@ -509,12 +581,15 @@ TEST_F(FullyConnectedTest, WeightsCache) {
   const auto input_channels = channels_rng();
   const auto output_channels = channels_rng();
 
-  FullyConnectedTester()
-      .InputShape({batch, input_channels})
+  FullyConnectedTester tester;
+  tester.InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
       .WeightsCache(weights_cache.get())
-      .Test(xnnpack_delegate.get());
+      .ReuseGeneratedModel(true);
+  tester.Test(xnnpack_delegate.get());
+  // Second run to test cache lookup runs.
+  tester.Test(xnnpack_delegate.get());
 }
 
 }  // namespace xnnpack

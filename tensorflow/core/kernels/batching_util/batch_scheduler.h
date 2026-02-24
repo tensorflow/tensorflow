@@ -39,6 +39,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
@@ -96,6 +98,19 @@ class BatchTask {
   // kCritical.
   virtual tsl::criticality::Criticality criticality() const {
     return tsl::criticality::Criticality::kCritical;
+  }
+
+  // Called when the task is finished, either successfully or with an error.
+  //
+  // BatchScheduler guarantees that this method is invoked exactly once for each
+  // BatchTask. This frees the task implementation from worrying about thread
+  // safety or idempotency of this method.
+  void FinishTask(const absl::Status& status) { FinishTaskImpl(status); }
+
+ protected:
+  // TODO: Make this method pure-virtual once all subclasses implement it.
+  virtual void FinishTaskImpl(const absl::Status& status) {
+    // Default implementation does nothing. Subclasses should override.
   }
 };
 

@@ -65,11 +65,10 @@ inline int64_t GetBarrierCounterFromError(const absl::Status& s) {
 // errors), and indicate error origin.
 // Errors reported via the agent API by the user should set `is_reported_error`
 // to true.
-inline absl::Status MakeCoordinationError(
-    absl::Status s, const tensorflow::CoordinatedTask& origin,
-    bool is_reported_error = false) {
+inline absl::Status MakeCoordinationError(absl::Status s, int task_id,
+                                          bool is_reported_error = false) {
   tensorflow::CoordinationServiceError error;
-  *error.mutable_source_task() = origin;
+  error.mutable_source_task()->set_task_id(task_id);
   error.set_is_reported_error(is_reported_error);
   s.SetPayload(CoordinationErrorPayloadKey(),
                absl::Cord(error.SerializeAsString()));

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include <cstddef>
 
+// Clang can't always unroll all loops, and it's not clear yet why.
+// Silence the warning for now to avoid build breaks with -Werror.
+#pragma clang diagnostic ignored "-Wpass-failed"
+
 #include "cub/device/device_radix_sort.cuh"
 #include "cub/device/device_segmented_radix_sort.cuh"
 #include "third_party/gpus/cuda/include/cuda.h"

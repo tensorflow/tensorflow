@@ -95,7 +95,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    std::minstd_rand0* engine = nullptr);
+    std::minstd_rand0* engine = nullptr,
+    bool generate_aligned_ds_indices = false);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
@@ -103,7 +104,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
-    std::optional<int64_t> max_bits_of_precision = std::nullopt);
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    bool generate_aligned_ds_indices = false);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.

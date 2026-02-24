@@ -39,8 +39,13 @@ cc_library(
     name = "sycl_platform",
     srcs = ["sycl_platform.cc"],
     hdrs = ["sycl_platform.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
     visibility = ["//visibility:public"],
     deps = [
+        ":sycl_executor",
         ":sycl_platform_id",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",
@@ -52,21 +57,27 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
-xla_cc_test(
+xla_test(
     name = "sycl_platform_test",
     srcs = ["sycl_platform_test.cc"],
-    fail_if_no_test_linked = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
-    fail_if_no_test_selected = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
     deps = [
         ":sycl_platform",
         ":sycl_platform_id",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -280,30 +291,39 @@ cc_library(
         "oneapi-only",
     ],
     deps = [
+        ":sycl_context",
+        ":sycl_event",
+        ":sycl_gpu_runtime",
         ":sycl_kernel",
         ":sycl_stream",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:generic_memory_allocation",
+        "//xla/stream_executor:generic_memory_allocator",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:memory_space",
+        "//xla/stream_executor:module_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_executor_header",
-        "//xla/stream_executor/platform:initialize",
-        "//xla/tsl/util:env_var",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:env",
-        "@tsl//tsl/platform:errors",
+        "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:fingerprint",
-        "@tsl//tsl/platform:numbers",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 

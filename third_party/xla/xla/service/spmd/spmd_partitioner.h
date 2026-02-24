@@ -140,7 +140,7 @@ struct SpmdPartitionerOptions {
 // transformation.
 class SpmdBuilder : public HloComputation::Builder {
  public:
-  SpmdBuilder(const std::string& name, HloInstruction* hlo)
+  SpmdBuilder(absl::string_view name, HloInstruction* hlo)
       : HloComputation::Builder(name) {
     visiting_hlo_ = hlo;
   }
@@ -750,6 +750,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleCustomCallTopK(HloInstruction* hlo);
   // Convenient custom ops defined by the partitioner itself.
   absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
 
   virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 

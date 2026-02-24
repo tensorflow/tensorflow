@@ -24,8 +24,8 @@ on:
         required: true
         default: 'no'
         options:
-        - 'yes'
-        - 'no'
+          - 'yes'
+          - 'no'
   push:
     branches:
       - main
@@ -82,49 +82,51 @@ jobs:
       - name: Print GitHub Context
         run: |
           echo "GitHub SHA: ${{ github.sha }}"
-          echo "GitHub Ref: ${{ github.ref }}"
-          echo "GitHub Ref Name: ${{ github.ref_name }}"
-          echo "GitHub Head Ref: ${{ github.head_ref }})"
-          echo "GitHub Base Ref: ${{ github.base_ref }})"
+          echo "GitHub Ref: ${GITHUB_REF}"
+          echo "GitHub Ref Name: ${GITHUB_REF_NAME}"
+          echo "GitHub Head Ref: ${GITHUB_HEAD_REF})"
+          echo "GitHub Base Ref: ${GITHUB_BASE_REF})"
           echo "GitHub Repository: ${{ github.repository }}"
           echo "GitHub Run ID: ${{ github.run_id }}"
           echo "GitHub Run Number: ${{ github.run_number }}"
-          echo "GitHub Workflow: ${{ github.workflow }}"
-          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Workflow: ${GITHUB_WORKFLOW}"
+          echo "GitHub Actor: ${GITHUB_ACTOR}"
           echo "GitHub Event Name: ${{ github.event_name }}"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "Pull Request Number: ${{ github.event.pull_request.number }}"
-            echo "Pull Request Head Ref: ${{ github.event.pull_request.head.ref }}"
-            echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
+            echo "Pull Request Head Ref: ${GITHUB_EVENT_PULL_REQUEST_HEAD_REF}"
+            echo "Pull Request Base Ref: ${GITHUB_EVENT_PULL_REQUEST_BASE_REF}"
           fi
+        env:
+          GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@v1.3.3
+      - uses: jwalton/gh-find-current-pr@89ee5799558265a1e0e31fab792ebb4ee91c016b # ratchet:jwalton/gh-find-current-pr@v1.3.3
         id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
           state: all
       # This will echo "Your PR is 7", or be skipped if there is no current PR.
-      - run: echo "PR_NUMBER=${{ steps.find_pr.outputs.pr }}"
+      - run: echo "PR_NUMBER=${STEPS_FIND_PR_OUTPUTS_PR}"
         if: success() && steps.find_pr.outputs.number
         env:
           PR: ${{ steps.find_pr.outputs.pr }}
-
+          STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
       - name: Checkout OpenXLA
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - name: Wait For Connection
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
-
       - name: Configure GPU backend
         if: ${{ matrix.job_info.platform == 'GPU' }}
         run: |
           ./configure.py --backend=CUDA --cuda_compiler=nvcc
-
       - name: "Run build.py"
         run: |
           ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
-
       # Run the corresponding HLO tests based on platform
       - name: Run HLO tests
         run: |
@@ -147,10 +149,12 @@ jobs:
             $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
           else
             echo "Unsupported platform: $platform"
+
             exit 1
           fi
           cat "$output_file"
           echo "Output written to: $output_file"
+
           echo "XSpace file written to: $xspace_file"
           echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
           echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
@@ -163,10 +167,12 @@ jobs:
           FILENAME=$(basename "$OUTPUT_FILE")
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
-          PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
+          PR_NUMBER="${STEPS_FIND_PR_OUTPUTS_PR}"
           PLATFORM="${{ matrix.job_info.platform }}"
+
           POOL="${{ matrix.job_info.pool }}"
           PR_SUFFIX=""
+
           if [[ -n "$PR_NUMBER" ]]; then
             PR_SUFFIX="_pr_${PR_NUMBER}"
           fi
@@ -176,14 +182,15 @@ jobs:
           echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE" # Verify the file exists
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
-
+        env:
+          STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
       - name: Download Gemma Hlo Files
         run: |
           mkdir -p tmp_hlo
           cd tmp_hlo
+
           wget https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo
           cd ..
-
       - name: Run Gemma HLO tests
         if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
@@ -197,20 +204,23 @@ jobs:
 
           if [[ "$platform" == "CPU" ]]; then
             $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+
             $binary_dir/compute_xspace_stats_main --input="$xspace_file" --device_type=CPU >> "$output_file"
+
           elif [[ "$platform" == "GPU" ]]; then
             $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
             $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
           else
             echo "Unsupported platform: $platform"
+
             exit 1
           fi
           cat "$output_file"
           echo "Output written to: $output_file"
           echo "XSpace file written to: $xspace_file"
           echo "OUTPUT_FILE=$output_file" >> "$GITHUB_ENV"
-          echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
 
+          echo "XSPACE_FILE=$xspace_file" >> "$GITHUB_ENV"
       - name: Upload gemma HLO test output to a GCS bucket
         if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
@@ -220,7 +230,8 @@ jobs:
           FILENAME="gemma3_1b_flax_call.hlo"
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
-          PR_NUMBER="${{ steps.find_pr.outputs.pr }}"
+
+          PR_NUMBER="${STEPS_FIND_PR_OUTPUTS_PR}"
           PLATFORM="${{ matrix.job_info.platform }}"
           POOL="${{ matrix.job_info.pool }}"
           PR_SUFFIX=""
@@ -233,9 +244,36 @@ jobs:
           echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE" # Verify the file exists
           gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+        env:
+          STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
         with:
           name: xspace-artifacts-${{ matrix.job_info.pool }}-${{ matrix.job_info.platform }}
           path: ${{ env.XSPACE_FILE }}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

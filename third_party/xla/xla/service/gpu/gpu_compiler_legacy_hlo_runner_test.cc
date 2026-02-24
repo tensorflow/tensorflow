@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/service/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
@@ -72,7 +72,7 @@ se::Platform* GpuPlatform() {
   return se::PlatformManager::PlatformWithName(name).value();
 }
 
-class AotCompilationTest : public HloPjRtGpuTestBase,
+class AotCompilationTest : public HloLegacyGpuTestBase,
                            public ::testing::WithParamInterface<bool> {
  protected:
   AotCompilationTest()
@@ -208,7 +208,7 @@ TEST_P(AotCompilationTest, EarlyExitWithLayouts) {
                                &CompiledModule::optimized_module, NotNull()))));
 }
 
-class KernelCacheTest : public HloPjRtGpuTestBase {
+class KernelCacheTest : public HloLegacyGpuTestBase {
  public:
   void SetUp() override {
     CHECK(tsl::Env::Default()->LocalTempFilename(&cache_file_name_));

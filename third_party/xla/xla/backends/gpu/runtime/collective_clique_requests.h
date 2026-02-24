@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -35,6 +36,25 @@ namespace xla::gpu {
 // initialize stage.
 class CollectiveCliqueRequests {
  public:
+  // Allows to request additional barrier with acquired cliques.
+  struct BarrierRequirements {
+    template <typename Sink>
+    friend void AbslStringify(Sink& sink, const BarrierRequirements& reqs) {
+      absl::Format(&sink, "{module_execution_barrier: %d}",
+                   reqs.module_execution_barrier);
+    }
+
+    bool operator==(const BarrierRequirements& other) const {
+      return other.module_execution_barrier == module_execution_barrier;
+    }
+
+    bool operator<(const BarrierRequirements& other) const {
+      return other.module_execution_barrier < module_execution_barrier;
+    }
+
+    bool module_execution_barrier = false;
+  };
+
   // For each requested clique key, we also assign a monotonically increasing
   // id, that allows us to deterministically order clique requests.
   //
@@ -84,6 +104,9 @@ class CollectiveCliqueRequests {
     // to guarantee that all ranks create device communicators in the same
     // order, otherwise it might lead to deadlocks.
     absl::btree_set<GpuDeviceCommunicator::Requirements> dev_comms;
+
+    // Requirements for barriers.
+    bool barrier_after_module_execution_requested = false;
   };
 
   // An extra set of requirements for the collective clique. When XLA runtime
@@ -93,14 +116,21 @@ class CollectiveCliqueRequests {
     template <typename Sink>
     friend void AbslStringify(Sink& sink, const CliqueRequirements& reqs) {
       if (reqs.dev_comm) {
-        absl::Format(&sink, "{dev_comm: %v}", *reqs.dev_comm);
+        absl::Format(&sink, "{dev_comm: %v, ", *reqs.dev_comm);
       } else {
-        absl::Format(&sink, "{dev_comm: n/a}");
+        absl::Format(&sink, "{dev_comm: n/a, ");
+      }
+
+      if (reqs.barrier_reqs) {
+        absl::Format(&sink, "barrier_req: %v}", *reqs.barrier_reqs);
+      } else {
+        absl::Format(&sink, "barrier_req: n/a}");
       }
     }
 
     // Create a device communicator for the given collective clique.
     std::optional<GpuDeviceCommunicator::Requirements> dev_comm;
+    std::optional<BarrierRequirements> barrier_reqs;
   };
 
   // Adds a clique key to the list of requested cliques.
@@ -118,6 +148,9 @@ class CollectiveCliqueRequests {
   std::vector<CliqueRequest> OrderedRequestedCliques() const;
 
   size_t size() const { return cliques_.size(); }
+
+  // Returns devices which requested a barrier after module execution.
+  absl::flat_hash_set<GlobalDeviceId> GetDevicesRequiringBarrier() const;
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

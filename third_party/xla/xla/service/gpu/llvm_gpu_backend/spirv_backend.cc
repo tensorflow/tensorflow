@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -94,7 +96,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options) {
   static absl::once_flag backend_init_flag;
-  static std::vector<std::string> spirv_extensions{};
+  static absl::NoDestructor<std::vector<std::string>> spirv_extensions;
   absl::call_once(backend_init_flag, SPIRVBackendInit);
   auto llvm_opts = GetSPIRVBackendOptions(debug_options);
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
@@ -164,8 +166,8 @@ absl::StatusOr<std::string> CompileToSPIRV(
   // the needed translation support.
   const std::vector<std::string> unsupported_extensions = {
       "SPV_KHR_float_controls2"};
-  if (spirv_extensions.empty()) {
-    spirv_extensions = RemoveUnsupportedExtensionsFromAll(
+  if (spirv_extensions->empty()) {
+    *spirv_extensions = RemoveUnsupportedExtensionsFromAll(
         default_target_triple, unsupported_extensions);
   }
   std::unique_ptr<llvm::TargetMachine> target_machine =
@@ -185,7 +187,7 @@ absl::StatusOr<std::string> CompileToSPIRV(
   std::string spirv_err_msg;
   std::vector<std::string> spirv_options{default_target_triple.str()};
   bool spirv_success = llvm::SPIRVTranslateModule(
-      module, spirv_str, spirv_err_msg, spirv_extensions, spirv_options);
+      module, spirv_str, spirv_err_msg, *spirv_extensions, spirv_options);
   if (!spirv_success) {
     return absl::AbortedError("Failed to translate LLVM module to SPIRV.");
   }

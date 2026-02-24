@@ -53,6 +53,7 @@ message ComputationDiffPatternProto {
 // Represents the summary of the diff between two HLO modules.
 message DiffSummaryProto {
   repeated ComputationDiffPatternProto computation_diff_patterns = 1;
+  string report_url = 2;
 }
 
 // Represents the result or error of computing the diff between two HLO modules.

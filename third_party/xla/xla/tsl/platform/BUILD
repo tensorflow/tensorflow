@@ -350,16 +350,21 @@ tsl_cc_test(
     size = "small",
     srcs = ["subprocess_test.cc"],
     data = [
+        "//xla/tsl/platform/testdata:test_crash",
         "//xla/tsl/platform/testdata:test_echo",
         "//xla/tsl/platform/testdata:test_echo_argv_1",
         "//xla/tsl/platform/testdata:test_noop",
+        "//xla/tsl/platform/testdata:test_pwd",
         "//xla/tsl/platform/testdata:test_stderr",
     ],
-    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
+    tags = ["no_windows"],
     deps = [
+        ":env",
         ":subprocess",
         ":test",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:strcat",
@@ -419,6 +424,8 @@ tsl_cc_test(
         ":env",
         "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -911,4 +918,35 @@ cc_library(
     name = "debug_me_context",
     hdrs = ["debug_me_context.h"],
     deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
+
+cc_library(
+    name = "ram_file_system",
+    hdrs = ["ram_file_system.h"],
+    deps = [
+        ":env",
+        ":errors",
+        ":file_statistics",
+        ":types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "ram_file_system_test",
+    srcs = ["ram_file_system_test.cc"],
+    deps = [
+        ":env",
+        ":ram_file_system",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

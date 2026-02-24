@@ -320,7 +320,7 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
-    const std::string& result_tag, ExecutionProfile* profile) {
+    absl::string_view result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 

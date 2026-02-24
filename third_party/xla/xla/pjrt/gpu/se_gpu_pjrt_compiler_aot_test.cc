@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -262,6 +263,44 @@ TEST(StreamExecutorGpuCompilerTest, UnloadedExecutableMemoryStats) {
   EXPECT_EQ(compiled_memory_stats.host_temp_size_in_bytes, 0);
   EXPECT_EQ(compiled_memory_stats.host_output_size_in_bytes, 16);
   EXPECT_GT(compiled_memory_stats.peak_memory_in_bytes, 0);
+}
+
+TEST(StreamExecutorGpuCompilerTest, AutoLayoutIsSupported) {
+  const char* hlo_text = R"(
+  HloModule DotLayout,
+    entry_computation_layout={(f32[2,3,5],f32[3,4,5])->f32[5,2,4]{2,1,0}}
+
+  ENTRY dot {
+    p0 = f32[2,3,5]{2,1,0} parameter(0)
+    p1 = f32[3,4,5]{2,1,0} parameter(1)
+    ROOT dot.1330.10585 = f32[5,2,4]{2,1,0} dot(p0, p1),
+      lhs_batch_dims={2}, lhs_contracting_dims={1},
+      rhs_batch_dims={2}, rhs_contracting_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
+  StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          se_client->GetTopologyDescription());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo_text, {}, HloParserOptions().set_fill_missing_layouts(false)));
+
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
+  XlaComputation computation = m->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable, compiler.Compile(compile_options, computation, *topology,
+                                        /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto layouts, executable->GetParameterLayouts());
+  // Check that the assigned layouts are not default.
+  EXPECT_NE(layouts[0]->ToString(), "{2,1,0}");
+  EXPECT_NE(layouts[1]->ToString(), "{2,1,0}");
 }
 
 }  // namespace

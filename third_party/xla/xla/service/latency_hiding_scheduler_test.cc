@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -148,6 +149,59 @@ class TestLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kMediumCost = 1000.0;
   static constexpr TimeCost kHighCost = 5000.0;
 };
+
+TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
+  TestLatencyEstimator estimator;
+  auto hlo_module =
+      VerifiedHloModule("test_module", HloModuleConfig(),
+                        /*verifier_layout_sensitive=*/false,
+                        /*allow_mixed_precision_in_hlo_verifier=*/true,
+                        /*shape_size_function=*/{});
+  HloComputation::Builder builder("test_computation");
+  auto* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p0"));
+  auto* instruction = hlo_module.AddEntryComputation(builder.Build(param));
+
+  // Test case 1: Metadata present and valid.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["latency_metadata"] = "1000";
+    custom_call->set_frontend_attributes(attributes);
+
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    ASSERT_TRUE(latency.has_value());
+    // 1000 ns * 1 cycle/us / 1000 = 1 cycle.
+    EXPECT_NEAR(*latency, 1.0, 1e-6);
+  }
+
+  // Test case 2: Metadata present but invalid.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["latency_metadata"] = "invalid";
+    custom_call->set_frontend_attributes(attributes);
+
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    EXPECT_FALSE(latency.has_value());
+  }
+
+  // Test case 3: Metadata missing.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    EXPECT_FALSE(latency.has_value());
+  }
+}
 
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),

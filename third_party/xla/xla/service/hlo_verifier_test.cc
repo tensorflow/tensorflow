@@ -5211,12 +5211,12 @@ TEST_F(HloVerifierTest, Scan) {
   ENTRY entry {
     init = f32[2] constant({0, 0})
     input = f32[4,2] parameter(0)
-    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, is_associative=true, to_apply=add
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  EXPECT_OK(verifier().Run(module.get()).status());
 }
 
 }  // namespace

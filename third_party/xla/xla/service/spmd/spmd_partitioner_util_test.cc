@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/service/spmd/spmd_partitioner_util_internal.h"
 
 namespace xla {
 namespace spmd {
@@ -138,9 +139,7 @@ TEST(SPMDPartitionerUtilTest, ExpandPartitionGroupListAcrossReplicas) {
   IotaReplicaGroupList partition_group_list =
       IotaReplicaGroupList(10, 5, {2, 5, 5}, {0, 2, 1});
   IotaReplicaGroupList expanded_partition_group_list =
-      ExpandPartitionGroupListAcrossReplicas(partition_group_list, 2, 50)
-          .iota_replica_group_list()
-          .value();
+      ExpandPartitionGroupListAcrossReplicas(partition_group_list, 2, 50);
   EXPECT_EQ(expanded_partition_group_list.num_replica_groups(), 20);
   EXPECT_EQ(expanded_partition_group_list.num_devices_per_group(), 5);
   EXPECT_THAT(expanded_partition_group_list.reshape_dims(),

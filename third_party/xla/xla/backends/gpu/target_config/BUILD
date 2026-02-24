@@ -1,9 +1,8 @@
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/backends/gpu/target_config:build_defs.bzl", "embed_files")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/util:build_defs.bzl", "embed_files")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -60,15 +59,5 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
-    ],
-)
-
-bzl_library(
-    name = "build_defs_bzl",
-    srcs = ["build_defs.bzl"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//xla/tsl:package_groups_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
     ],
 )

@@ -72,6 +72,7 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":split_proto_cc",
+        ":split_proto_riegeli_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
@@ -102,6 +103,7 @@ cc_library(
     hdrs = ["split_gpu_executable_writer.h"],
     deps = [
         ":split_proto_cc",
+        ":split_proto_riegeli_options",
         "//xla/service/gpu:gpu_executable_proto_cc",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
@@ -122,4 +124,14 @@ xla_cc_test(
         "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/bytes:string_writer",
     ],
+)
+
+cc_library(
+    name = "split_proto_riegeli_options",
+    hdrs = ["split_proto_riegeli_options.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = ["@riegeli//riegeli/records:record_writer"],
 )

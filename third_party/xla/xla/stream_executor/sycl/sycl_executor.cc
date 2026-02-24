@@ -17,31 +17,45 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
+#include <variant>
 
-#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/numeric/int128.h"
 #include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/generic_memory_allocation.h"
+#include "xla/stream_executor/generic_memory_allocator.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/memory_space.h"
+#include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/util/env_var.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/sycl/sycl_context.h"
+#include "xla/stream_executor/sycl/sycl_event.h"
+#include "xla/stream_executor/sycl/sycl_gpu_runtime.h"
+#include "xla/stream_executor/sycl/sycl_kernel.h"
+#include "xla/stream_executor/sycl/sycl_stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor::sycl {
 
@@ -311,8 +325,7 @@ void* DeviceAllocate(SyclContext* context, uint64_t bytes) {
   return ptr;
 }
 
-// Deallocates memory on the GPU device that was previously allocated via
-// DeviceAllocate.
+// Deallocates memory allocated on the host, device or shared memory.
 void DeviceDeallocate(SyclContext* context, void* location) {
   auto free_status = SyclFree(context->device_ordinal(), location);
   if (!free_status.ok()) {
@@ -324,6 +337,42 @@ void DeviceDeallocate(SyclContext* context, void* location) {
   VLOG(2) << absl::StrFormat(
       "Successfully deallocated device memory at %p for device ordinal %d",
       location, context->device_ordinal());
+}
+
+absl::StatusOr<void*> HostAllocate(SyclContext* context, int device_ordinal,
+                                   uint64_t bytes) {
+  TF_ASSIGN_OR_RETURN(void* host_mem, SyclMallocHost(device_ordinal, bytes));
+  if (host_mem == nullptr) {
+    // Allocation failed, possibly due to out-of-memory.
+    return absl::InternalError(
+        absl::StrFormat("HostAllocate: failed to allocate %u bytes of host "
+                        "memory for device ordinal %d.",
+                        bytes, device_ordinal));
+  }
+  return host_mem;
+}
+
+// Allocate host memory accessible by the host and mappable for device access.
+absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
+    SyclContext* sycl_context, int device_ordinal, uint64_t size) {
+  TF_ASSIGN_OR_RETURN(void* host_mem,
+                      HostAllocate(sycl_context, device_ordinal, size));
+  VLOG(2) << "Allocated host memory for ptr " << host_mem
+          << " using device ordinal " << device_ordinal << " for " << size
+          << " bytes";
+  return std::make_unique<GenericMemoryAllocation>(
+      host_mem, size,
+      [sycl_context, device_ordinal](void* location, uint64_t size) {
+        absl::Status free_status = SyclFree(device_ordinal, location);
+        if (!free_status.ok()) {
+          LOG(ERROR) << absl::StrFormat(
+              "AllocateHostMemory: failed to free host memory at %p, got %s",
+              location, free_status.ToString());
+        } else {
+          VLOG(2) << "Successfully deallocated host memory for ptr " << location
+                  << " using device ordinal " << device_ordinal;
+        }
+      });
 }
 
 }  // namespace
@@ -576,8 +625,21 @@ SyclExecutor::CreateOrShareConstant(Stream* stream,
 }
 
 DeviceMemoryBase SyclExecutor::Allocate(uint64_t size, int64_t memory_space) {
-  CHECK_EQ(memory_space, 0);
-  return DeviceMemoryBase(DeviceAllocate(sycl_context_.get(), size), size);
+  switch (static_cast<MemoryType>(memory_space)) {
+    case MemoryType::kCollective:
+    case MemoryType::kDevice: {
+      return DeviceMemoryBase(DeviceAllocate(sycl_context_.get(), size), size);
+    }
+    case MemoryType::kHost: {
+      auto result = HostAllocate(sycl_context_.get(), device_ordinal(), size);
+      return (result.ok() ? DeviceMemoryBase(*result, size)
+                          : DeviceMemoryBase(nullptr, 0));
+    }
+    default: {
+      LOG(FATAL) << "SyclExecutor::Allocate: unsupported memory space: "
+                 << memory_space;
+    }
+  }
 }
 
 void SyclExecutor::Deallocate(DeviceMemoryBase* mem) {
@@ -587,6 +649,67 @@ void SyclExecutor::Deallocate(DeviceMemoryBase* mem) {
     return;
   }
   DeviceDeallocate(sycl_context_.get(), mem->opaque());
+}
+
+absl::StatusOr<std::unique_ptr<MemoryAllocator>>
+SyclExecutor::CreateMemoryAllocator(MemoryType type) {
+  switch (type) {
+    case MemoryType::kUnified:
+      return std::make_unique<GenericMemoryAllocator>(
+          [this](uint64_t size)
+              -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+            // Shared memory is visible to both CPU and GPU.
+            TF_ASSIGN_OR_RETURN(void* ptr,
+                                SyclMallocShared(device_ordinal(), size));
+            VLOG(2) << "Allocated shared memory for ptr " << ptr
+                    << " using device_ordinal " << device_ordinal() << " for "
+                    << size << " bytes";
+            return std::make_unique<GenericMemoryAllocation>(
+                ptr, size, [this](void* location, uint64_t size) {
+                  absl::Status res = SyclFree(device_ordinal(), location);
+                  if (res != absl::OkStatus()) {
+                    LOG(ERROR) << "Error deallocating shared memory at "
+                               << location << ": " << res;
+                  } else {
+                    VLOG(2) << "Deallocated shared memory for ptr " << location
+                            << " using device_ordinal " << device_ordinal();
+                  }
+                });
+          });
+    case MemoryType::kCollective:
+      return std::make_unique<GenericMemoryAllocator>(
+          [this](uint64_t size)
+              -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
+            // At the allocation level, collective memory is the same as device
+            // memory.
+            TF_ASSIGN_OR_RETURN(void* ptr,
+                                SyclMallocDevice(device_ordinal(), size));
+            VLOG(2) << "Allocated collective/device memory for ptr " << ptr
+                    << " using device_ordinal " << device_ordinal() << " for "
+                    << size << " bytes";
+            return std::make_unique<GenericMemoryAllocation>(
+                ptr, size, [this](void* location, uint64_t size) {
+                  absl::Status res = SyclFree(device_ordinal(), location);
+                  if (res != absl::OkStatus()) {
+                    LOG(ERROR) << "Error deallocating collective/device memory "
+                                  "at "
+                               << location << ": " << res;
+                  } else {
+                    VLOG(2) << "Deallocated collective/device memory for ptr "
+                            << location << " using device_ordinal "
+                            << device_ordinal();
+                  }
+                });
+          });
+    case MemoryType::kHost:
+      return std::make_unique<GenericMemoryAllocator>([this](uint64_t size) {
+        return AllocateHostMemory(sycl_context_.get(), device_ordinal(), size);
+      });
+    default:
+      return absl::UnimplementedError(absl::StrFormat(
+          "SyclExecutor::CreateMemoryAllocator: unsupported memory type %d",
+          type));
+  }
 }
 
 bool SyclExecutor::SynchronizeAllActivity() {
@@ -646,8 +769,7 @@ absl::StatusOr<std::unique_ptr<Event>> SyclExecutor::CreateEvent() {
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 SyclExecutor::HostMemoryAllocate(uint64_t size) {
-  return absl::InternalError(
-      "SyclExecutor::HostMemoryAllocate is not implemented.");
+  return AllocateHostMemory(sycl_context_.get(), device_ordinal(), size);
 }
 
 void SyclExecutor::DeallocateStream(Stream* stream) {

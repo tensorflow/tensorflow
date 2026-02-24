@@ -4198,6 +4198,8 @@ def TFL_GeluOp: TFL_Op<"gelu", [
 
 def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
     Pure,
+    QuantizableResult,
+    SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "DynamicUpdateSlice.";
@@ -4218,6 +4220,11 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
 
   let results = (
     outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$output);
+
+  let extraClassDeclaration = [{
+    // Quantized axes are verified in the Verify function.
+    bool RequiredSameQuantizedAxes() { return false; }
+  }];
 
   let hasFolder = 1;
 }
@@ -4296,7 +4303,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoMemoryEffect]> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI2, QI4, QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI2, QI4, QUI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 
@@ -4359,7 +4366,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
     ElementsAttr:$value
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value),
@@ -4390,7 +4397,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
     ElementsAttr:$compressed_data
   );
 
-  let results = (outs TFL_TensorOf<[QUI8, QI8, QI16, QUI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QUI8, QI8, QUI4, QI16, QUI16, TFL_Quint8]>:$output);
 
   let builders = [
     OpBuilder<(ins "TypeAttr":$qtype, "Attribute":$value,
@@ -4416,11 +4423,11 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
-  let results = (outs TFL_TensorOf<[QI4, QI8, QUI8, QI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QI4, QUI4, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 }
 
 def TFL_DensifyOp: TFL_Op<"densify", [

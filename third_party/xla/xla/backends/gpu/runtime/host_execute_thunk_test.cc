@@ -143,7 +143,7 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -224,7 +224,7 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -306,7 +306,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -381,7 +381,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -442,7 +442,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -511,7 +511,7 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK(
       thunk->Initialize(Thunk::InitializeParams{/*executor=*/stream_executor}));
@@ -541,7 +541,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnAvailableEvent) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto available_event,
@@ -572,7 +572,7 @@ TEST(HostExecuteDoneThunkTest, WaitingOnErrorEvent) {
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       service_executable_run_options, allocations, stream.get(), stream.get(),
-      nullptr, nullptr);
+      nullptr, nullptr, nullptr);
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto error_event,

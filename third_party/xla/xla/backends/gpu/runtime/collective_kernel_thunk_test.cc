@@ -28,12 +28,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/future.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -262,8 +264,14 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
       CollectiveParams collective_params,
       CollectiveParams::Create(run_options, /*async_streams=*/{},
                                LocalDeviceId(executor->device_ordinal())));
+
+  // We always allocate from collective memory space because we want to be able
+  // to test multimem kernels. In XLA programs it's up to the compiler to assign
+  // correct memory space to kernel parameters and results buffers.
   std::vector<se::DeviceAddressBase> allocated_buffers = {
-      executor->AllocateArray<uint64_t>(metadata.total_buffer_size)};
+      executor->AllocateArray<uint64_t>(
+          metadata.total_buffer_size,
+          /*memory_space=*/static_cast<int>(se::MemorySpace::kCollective))};
 
   se::DeviceAddressBase input_buffer =
       allocated_buffers[0].GetByteSlice(0, metadata.aligned_input_size_bytes);
@@ -281,17 +289,16 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests,   &multimem_registry,
+                                      &memory_requests,   nullptr,
                                       executor,           &buffer_allocations};
 
   TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
-
-  TF_RETURN_IF_ERROR(multimem_registry.Build());
+  TF_ASSIGN_OR_RETURN(CollectiveMemory collective_memory,
+                      AcquireCollectiveMemory(collective_params, /*cliques=*/{},
+                                              memory_requests));
 
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;
@@ -299,7 +306,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   initialize_params.buffer_allocations = &buffer_allocations;
   initialize_params.collective_params = &collective_params;
   initialize_params.src = {kKernelSource};
-  initialize_params.multicast_memory_registry = &multimem_registry;
+  initialize_params.collective_memory = &collective_memory;
 
   GpuExecutableRunOptions::DeviceIdMap global_device_id_map = {
       {LocalDeviceId(0), GlobalDeviceId(0)}};
@@ -321,33 +328,27 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   auto execute_params = Thunk::ExecuteParams::Create(
       run_options, buffer_allocations, stream.get(),
       /*command_buffer_trace_stream=*/nullptr, &collective_params,
-      /*collective_cliques=*/nullptr);
+      /*collective_cliques=*/nullptr, /*collective_memory=*/&collective_memory);
   TF_RETURN_IF_ERROR(metadata.thunk->ExecuteOnStream(execute_params));
   return output_buffer;
 }
 
-std::vector<absl::StatusOr<se::DeviceAddressBase>>
+absl::StatusOr<std::vector<se::DeviceAddressBase>>
 RunCollectiveKernelThunkOnDevices(CollectiveKernelThunkMetadata& metadata,
                                   bool emulate_multiprocess = false) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "device_threads",
                                       metadata.num_devices);
-  std::vector<tsl::Future<se::DeviceAddressBase>> futures;
-  for (int device_number = 0; device_number < metadata.num_devices;
-       ++device_number) {
-    futures.push_back(tsl::MakeFutureOn<se::DeviceAddressBase>(
-        *thread_pool.AsExecutor(),
-        [&metadata, device_number, emulate_multiprocess] {
-          return RunCollectiveKernelThunk(metadata,
-                                          GetGpuExecutor(device_number), {},
+
+  std::vector<tsl::Future<se::DeviceAddressBase>> futures(metadata.num_devices);
+  for (int d = 0; d < metadata.num_devices; ++d) {
+    futures[d] = tsl::MakeFutureOn<se::DeviceAddressBase>(
+        *thread_pool.AsExecutor(), [&metadata, d, emulate_multiprocess] {
+          return RunCollectiveKernelThunk(metadata, GetGpuExecutor(d), {},
                                           emulate_multiprocess);
-        }));
+        });
   }
 
-  std::vector<absl::StatusOr<se::DeviceAddressBase>> results;
-  for (auto& future : futures) {
-    results.push_back(std::move(future).Await());
-  }
-  return results;
+  return JoinFutures<se::DeviceAddressBase>(futures).Await();
 }
 
 class CollectiveKernelThunkParameterizedTest
@@ -399,10 +400,7 @@ TEST(CollectiveKernelThunkTest, MultimemSetupTest) {
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
       /*is_multimem_enabled=*/true, /*use_ptx=*/true);
-  for (absl::StatusOr<se::DeviceAddressBase> result :
-       RunCollectiveKernelThunkOnDevices(metadata)) {
-    TF_ASSERT_OK(result);
-  }
+  TF_ASSERT_OK(RunCollectiveKernelThunkOnDevices(metadata));
 }
 
 TEST(CollectiveKernelThunkTest, MultiprocessTest) {
@@ -411,11 +409,9 @@ TEST(CollectiveKernelThunkTest, MultiprocessTest) {
   CollectiveKernelThunkMetadata metadata = CreateCollectiveKernelThunk(
       /*num_devices=*/kDevicesCount, /*num_elements=*/kNumElements,
       /*is_multimem_enabled=*/false, /*use_ptx=*/true);
-  for (absl::StatusOr<se::DeviceAddressBase> result :
-       RunCollectiveKernelThunkOnDevices(metadata,
-                                         /*emulate_multiprocess=*/true)) {
-    EXPECT_THAT(result, StatusIs(absl::StatusCode::kInvalidArgument));
-  }
+  EXPECT_THAT(RunCollectiveKernelThunkOnDevices(metadata,
+                                                /*emulate_multiprocess=*/true),
+              StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

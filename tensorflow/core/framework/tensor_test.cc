@@ -2003,6 +2003,20 @@ void BM_CreateAndDestroyHostScalarOptimized(
 }
 BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
 
+void BM_AsProtoField_Bfloat16(::testing::benchmark::State& state) {
+  const int size = 1024;
+  Tensor t(DT_BFLOAT16, TensorShape({size}));
+  auto flat = t.flat<bfloat16>();
+  for (int i = 0; i < size; ++i) {
+    flat(i) = static_cast<bfloat16>(i);
+  }
+  TensorProto proto;
+  for (auto s : state) {
+    t.AsProtoField(&proto);
+  }
+}
+BENCHMARK(BM_AsProtoField_Bfloat16);
+
 void BM_FromProto(::testing::benchmark::State& state) {
   const int size = state.range(0);
 

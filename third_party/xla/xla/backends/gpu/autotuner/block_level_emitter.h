@@ -23,13 +23,13 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -48,8 +48,8 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
       const Compiler::GpuTargetConfig* target_config,
       bool use_default_config = false)
-      : GpuCodegenBackend("BlockLevelEmitter", debug_options, compiler,
-                          target_config),
+      : GpuCodegenBackend(autotuner::Backend::BLOCK_LEVEL_EMITTER,
+                          debug_options, compiler, target_config),
         use_default_config_(use_default_config),
         shape_size_fn_(std::move(shape_size_fn)) {}
 

@@ -102,9 +102,10 @@ TEST_F(HloOpProfilesTest, GetProfileA6000) {
 }
 
 TEST_F(HloOpProfilesTest, GetProfileH100) {
-  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfiles,
-                                             /*default_profile_name=*/"sm_100");
-  auto device_info_sm_85 = TestGpuDeviceInfo::RTXH100SXMDeviceInfo(
+  auto hlo_op_profiles =
+      HloOpProfiles::Load(kDeviceHloOpProfiles,
+                          /*default_profile_name=*/"sm_100_B200");
+  auto device_info_sm_85 = TestGpuDeviceInfo::H100SXMDeviceInfo(
       stream_executor::CudaComputeCapability(9, 0));
 
   const auto& op_profile = hlo_op_profiles->GetProfile(device_info_sm_85);

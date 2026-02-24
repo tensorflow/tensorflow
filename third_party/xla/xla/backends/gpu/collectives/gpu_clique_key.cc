@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>

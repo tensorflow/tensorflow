@@ -281,6 +281,7 @@ common:rocm_base --repo_env TF_NEED_ROCM=1
 
 common:rocm_clang_official --config=rocm_base
 common:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
+common:rocm_clang_official --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
 common:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
 common:rocm_clang_official --linkopt="-fuse-ld=lld"
 common:rocm_clang_official --host_linkopt="-fuse-ld=lld"

@@ -55,10 +55,9 @@ class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsE2ETestBase {
       const std::string& hlo_text, const int64_t num_partitions = 2,
       bool enable_enzyme_comms_opt = false) {
     const int64_t num_replicas = 1;
-    if (hlo_runner_->device_count() < num_replicas * num_partitions) {
+    if (device_count() < num_replicas * num_partitions) {
       GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
-                   << " devices (" << hlo_runner_->device_count()
-                   << " available)";
+                   << " devices (" << device_count() << " available)";
     }
 
     TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,

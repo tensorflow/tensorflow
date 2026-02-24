@@ -611,6 +611,7 @@ bzl_library(
         "@local_config_tensorrt//:build_defs_bzl",
         "@xla//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_sycl//sycl:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
     ],
 )

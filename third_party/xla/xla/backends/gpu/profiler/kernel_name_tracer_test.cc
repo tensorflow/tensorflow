@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -182,7 +183,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
   BufferAllocations allocations({a, b, c}, 0, &allocator);
 
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream, stream, nullptr, nullptr);
+      run_options, allocations, stream, stream, nullptr, nullptr, nullptr);
 
   // This is where we're getting the 'AddI32' kernel from.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,

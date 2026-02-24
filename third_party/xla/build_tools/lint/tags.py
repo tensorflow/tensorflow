@@ -70,6 +70,8 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm80-only": "Requires exactly sm80.",
     "requires-gpu-sm90-only": "Requires exactly sm90.",
     "requires-gpu-sm100-only": "Requires exactly sm100.",
+    "full": "Test requires a full GPU, not a partitioned one. No effect in"
+            " OSS.",
     "gpu": "Catch-all tag for targets that should be built/tested on GPU CI",
     "cpu": "Catch-all tag for targets that should be built/tested on CPU CI.",
     "cuda-only": "Targets that require the CUDA backend to be enabled.",

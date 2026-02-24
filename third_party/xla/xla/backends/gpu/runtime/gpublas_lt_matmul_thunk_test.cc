@@ -36,6 +36,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
@@ -214,7 +214,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
   auto thread_func = [&](se::Stream* stream) -> absl::Status {
     auto thunk_params = Thunk::ExecuteParams::Create(
-        run_options, *allocs, stream, stream, nullptr, nullptr);
+        run_options, *allocs, stream, stream, nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {

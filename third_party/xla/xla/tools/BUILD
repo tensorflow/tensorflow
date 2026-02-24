@@ -521,7 +521,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
-        "//xla/service:hlo_runner",
         "//xla/service:hlo_runner_interface",
         "//xla/service:hlo_verifier",
         "//xla/tests:test_utils",
@@ -536,7 +535,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:status",
     ],
 )
 
@@ -779,6 +777,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/utils:hlo_query",
@@ -788,7 +787,6 @@ cc_library(
         "//xla/service:hlo_module_config",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
-        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/tools/multihost_hlo_runner:create_client",
         "//xla/tools/multihost_hlo_runner:functional_hlo_runner",
         "//xla/tsl/platform:env",
@@ -802,6 +800,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -896,8 +895,8 @@ xla_test(
     use_legacy_runtime = True,
     deps = [
         ":collective_perf_table_gen",
+        "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
@@ -940,6 +939,7 @@ xla_test(
         "manual",
         "notap",
     ],
+    use_legacy_runtime = True,
     deps = [
         ":matmul_perf_table_gen",
         ":matmul_perf_table_gen_main_lib",
@@ -1172,6 +1172,7 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
+        "//xla/service:hlo_runner_interface",
         "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
@@ -1210,6 +1211,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
+        "//xla/service:platform_util",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/stream_executor:device_description_proto_cc",
@@ -1247,7 +1249,7 @@ xla_cc_binary(
     deps = [
         ":hlo_module_loader",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:command_line_flags",

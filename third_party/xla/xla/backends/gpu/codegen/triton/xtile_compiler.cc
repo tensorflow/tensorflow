@@ -189,55 +189,11 @@ absl::Status CreateInternalError(absl::string_view message,
   return absl::InternalError(err);
 }
 
-absl::Status IsTritonSupportedFusion(const HloFusionInstruction& fusion,
-                                     const se::DeviceDescription& device_info) {
-  const HloComputation* computation = fusion.fused_instructions_computation();
-  for (const HloInstruction* hlo : computation->instructions()) {
-    // Skip generating nested fusions, they are emitted by their consumer.
-    if (hlo->parent()->IsFusionComputation() &&
-        hlo->opcode() == HloOpcode::kFusion) {
-      if (hlo->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_scaled_dot_with_triton()) {
-        continue;
-      }
-      CodegenDecision decision = IsTritonSupportedInstruction(
-          *hlo, device_info.gpu_compute_capability());
-      if (!decision.CanFuse()) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Fusion ", hlo->ToString(),
-                         " is not supported: ", decision.Explain()));
-      }
-      VLOG(1) << "Skipping nested fusion: " << hlo->ToString();
-      continue;
-    }
-
-    if (hlo->opcode() == HloOpcode::kPad) {
-      if (!IsTritonSupportedInstruction(*hlo,
-                                        device_info.gpu_compute_capability())) {
-        return absl::FailedPreconditionError(
-            absl::StrCat("Pad is not supported: ", hlo->ToString()));
-      }
-    }
-
-    if (hlo->opcode() == HloOpcode::kReduce && hlo->dimensions().size() != 1) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Reduction with only a single dimension is supported: ",
-                       hlo->ToString()));
-    }
-  }
-
-  return absl::OkStatus();
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     MLIRContext& mlir_context) {
-  TF_RETURN_IF_ERROR(IsTritonSupportedFusion(*fusion, device_info));
-
   LoadMlirDialectsForTriton(mlir_context);
   RegisterSymbolicExprStorage(&mlir_context);
 
@@ -543,6 +499,12 @@ absl::StatusOr<absl::InlinedVector<int64_t, 4>> DotTilingParameters(
     const HloInstruction* hlo,
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters) {
+  if (absl::c_all_of(hlo->operands(), [](const HloInstruction* operand) {
+        return operand->opcode() != HloOpcode::kFusion;
+      })) {
+    ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
+    return FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
+  }
   const HloInstruction* lhs = hlo->operand(0);
   // When encountering a `dot`, we always expect its operands to be nests.
   auto backend_config = lhs->backend_config<GpuBackendConfig>();

@@ -433,6 +433,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:topology_util",
+        "//xla/pjrt/distributed/coordination:coordination_service",
         "//xla/pjrt/distributed/coordination:coordination_service_agent",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",

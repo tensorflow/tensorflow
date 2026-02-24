@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/platform_util.h"
@@ -150,7 +150,7 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    CommandExecutor::SynchronizationMode::kSerialize;
 
 }  // namespace
 
@@ -183,18 +183,19 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   commands.Emplace<MemcpyDeviceToDeviceCmd>(
       ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -242,18 +243,19 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   CommandSequence commands;
   commands.Emplace<MemzeroCmd>(ShapedSlice{slice_a, shape});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it zeroes the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -288,18 +290,19 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{84});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -341,8 +344,8 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
   CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{12});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   constexpr bool kProfileCommandBuffersEnabled = false;
   // Construct a thunk with command sequence.
@@ -351,11 +354,12 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
                            kProfileCommandBuffersEnabled);
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
@@ -399,8 +403,8 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
   CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{12});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   constexpr bool kProfileCommandBuffersEnabled = true;
   // Construct a thunk with command sequence.
@@ -409,11 +413,12 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
                            kProfileCommandBuffersEnabled);
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
@@ -451,18 +456,19 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
   commands.Emplace<Memset32Cmd>(slice0, int32_t{12});
   commands.Emplace<Memset32Cmd>(slice1, int32_t{34});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -511,18 +517,19 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -617,18 +624,19 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -738,18 +746,19 @@ TEST(CommandBufferThunkTest, GemmCmd) {
                             slice_workspace,
                             /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -859,25 +868,26 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
                                   slice_out, slice_workspace,
                                   /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor child_executor,
-      CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
+      CommandExecutor child_executor,
+      CommandExecutor::Create(std::move(child_commands), serialize));
 
   CommandSequence commands;
   commands.Emplace<ChildCmd>(std::move(child_executor));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -995,8 +1005,8 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
                                   slice_out, slice_workspace,
                                   /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor embed_executor,
-      CommandBufferCmdExecutor::Create(std::move(embed_commands), serialize));
+      CommandExecutor embed_executor,
+      CommandExecutor::Create(std::move(embed_commands), serialize));
 
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
@@ -1027,18 +1037,19 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
       std::move(embed_executor), arguments, std::move(fake_allocations),
       offsets, orig_shapes, sliced_shapes, offset_primitive_types);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -1149,8 +1160,8 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
       std::nullopt, std::nullopt, slice_workspace));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
@@ -1182,11 +1193,12 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
     TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
     ServiceExecutableRunOptions run_options;
-    se::StreamExecutorMemoryAllocator allocator(stream_executor);
+    stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
     BufferAllocations allocations({a, b, c, d, workspace}, 0, &allocator);
 
-    Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-        run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+    Thunk::ExecuteParams params =
+        Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                     stream.get(), nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     TF_ASSERT_OK(thunk.Initialize(
@@ -1293,18 +1305,19 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c, d}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1426,30 +1439,31 @@ TEST(CommandBufferThunkTest, CaseCmd) {
                                             /*shmem_bytes=*/0);
   }
 
-  std::vector<CommandBufferCmdExecutor> branches(2);
-  TF_ASSERT_OK_AND_ASSIGN(branches[0],
-                          CommandBufferCmdExecutor::Create(
-                              std::move(branches_sequence[0]), serialize));
-  TF_ASSERT_OK_AND_ASSIGN(branches[1],
-                          CommandBufferCmdExecutor::Create(
-                              std::move(branches_sequence[1]), serialize));
+  std::vector<CommandExecutor> branches(2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      branches[0],
+      CommandExecutor::Create(std::move(branches_sequence[0]), serialize));
+  TF_ASSERT_OK_AND_ASSIGN(
+      branches[1],
+      CommandExecutor::Create(std::move(branches_sequence[1]), serialize));
 
   // Prepare commands sequence for thunk.
   CommandSequence commands;
   commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({index, a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1534,8 +1548,8 @@ TEST(CommandBufferThunkTest, WhileCmd) {
                                    LaunchDimensions(1, 1),
                                    /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor cond_executor,
-      CommandBufferCmdExecutor::Create(std::move(cond_commands), serialize));
+      CommandExecutor cond_executor,
+      CommandExecutor::Create(std::move(cond_commands), serialize));
 
   // Prepare commands sequence for loop `body`.
   CommandSequence body_commands;
@@ -1543,27 +1557,28 @@ TEST(CommandBufferThunkTest, WhileCmd) {
                                    LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor body_executor,
-      CommandBufferCmdExecutor::Create(std::move(body_commands), serialize));
+      CommandExecutor body_executor,
+      CommandExecutor::Create(std::move(body_commands), serialize));
 
   // Prepare commands sequence for thunk.
   CommandSequence commands;
   commands.Emplace<WhileCmd>(slice_pred, std::move(cond_executor),
                              std::move(body_executor));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({pred, loop_cnt, num_iters, a, b}, 0,
                                 &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1596,8 +1611,8 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{42});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
   std::vector<std::unique_ptr<Thunk>> thunks;
   thunks.emplace_back(
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 42, slice_a));

@@ -147,7 +147,7 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     min_distances.fill(std::numeric_limits<float>::infinity());
     Eigen::VectorXf min_distances_cumsum(num_points);
 
-    auto draw_one_sample = [&]() -> int64 {
+    auto draw_one_sample = [&]() -> int64_t {
       if (sampled_indices.empty()) return rng.Uniform64(num_points);
       int64_t index = 0;
       do {

@@ -1436,8 +1436,8 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
   EXPECT_EQ(client->device_count(), devices_per_host * num_nodes);
   for (int i = 0; i < client->device_count(); i++) {
     auto device = client->devices()[i];
-    auto partition_index =
-        std::get<int64_t>(device->Attributes().at("partition_index"));
+    auto partition_index = std::get<int64_t>(
+        device->description().Attributes().at("partition_index"));
     auto host_index = device->process_index();
     EXPECT_EQ(partition_index, host_index);
   }
@@ -2285,7 +2285,9 @@ TEST(StreamExecutorGpuClientTest, ProfileExecution) {
   ExecutionProfile profile;
   ExecuteOptions opts;
   opts.execution_profile = &profile;
-  TF_ASSERT_OK(executable->Execute(/*argument_handles=*/{{}}, opts));
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          executable->Execute(/*argument_handles=*/{{}}, opts));
+  TF_ASSERT_OK(results[0][0]->GetReadyFuture().Await());
   EXPECT_GT(profile.compute_time_ns(), 0);
 }
 
@@ -3017,9 +3019,9 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
 
   // Try to send some data, giving an extra dst_global_device_id.
   EXPECT_THAT(
-      client->CrossHostSendBuffers(
-          {buffer.get()}, {PjRtGlobalDeviceId(1), PjRtGlobalDeviceId(2)},
-          {CrossHostTransferKey(0)}),
+      client->CrossHostSendBuffers({buffer.get()},
+                                   {GlobalDeviceId(1), GlobalDeviceId(2)},
+                                   {CrossHostTransferKey(0)}),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
           ::testing::StrEq("CrossHostSendBuffers: buffers, "
@@ -3029,7 +3031,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostSendArgsSizeMismatch) {
   // Try to send some data, giving and extra transfer key.
   EXPECT_THAT(
       client->CrossHostSendBuffers(
-          {buffer.get()}, {PjRtGlobalDeviceId(1)},
+          {buffer.get()}, {GlobalDeviceId(1)},
           {CrossHostTransferKey(0), CrossHostTransferKey(1)}),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
@@ -3060,7 +3062,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
 
   // Try to transfer some data between two addressable devices.
   EXPECT_THAT(
-      client->CrossHostSendBuffers({buffer.get()}, {PjRtGlobalDeviceId(1)},
+      client->CrossHostSendBuffers({buffer.get()}, {GlobalDeviceId(1)},
                                    {CrossHostTransferKey(0)}),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
@@ -3073,7 +3075,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostTransferSrcAndDstAddressable) {
       client->CrossHostReceiveBuffers(
           /*device=*/client->addressable_devices()[0],
           /*shapes=*/{shape},
-          /*src_global_device_ids=*/{PjRtGlobalDeviceId(1)},
+          /*src_global_device_ids=*/{GlobalDeviceId(1)},
           /*transfer_keys=*/{CrossHostTransferKey(0)}),
       absl_testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
@@ -3114,7 +3116,7 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostReceiveArgsSizeMismatch) {
       mismatch_status_or_2 = client->CrossHostReceiveBuffers(
           /*device=*/client->addressable_devices()[0],
           /*shapes=*/shapes,
-          /*src_global_device_ids=*/{PjRtGlobalDeviceId(0)},
+          /*src_global_device_ids=*/{GlobalDeviceId(0)},
           /*transfer_keys=*/{CrossHostTransferKey(0), CrossHostTransferKey(1)});
   EXPECT_THAT(
       mismatch_status_or_2.status(),
@@ -3256,11 +3258,11 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
     LOG(INFO) << log_prefix << ": issuing CrossHostSendBuffers";
 
     std::vector<PjRtBuffer*> raw_buffers;
-    std::vector<PjRtGlobalDeviceId> dst_device_ids;
+    std::vector<GlobalDeviceId> dst_device_ids;
     std::vector<CrossHostTransferKey> transfer_keys;
     for (int i = 0; i < buffers.size(); ++i) {
       raw_buffers.push_back(buffers[i].get());
-      dst_device_ids.push_back(PjRtGlobalDeviceId(1));
+      dst_device_ids.push_back(GlobalDeviceId(1));
       transfer_keys.push_back(CrossHostTransferKey(i));
     };
 
@@ -3278,11 +3280,11 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   } else {
     // Receiver logic.
     std::vector<Shape> shapes;
-    std::vector<PjRtGlobalDeviceId> src_device_ids;
+    std::vector<GlobalDeviceId> src_device_ids;
     std::vector<CrossHostTransferKey> transfer_keys;
     for (int i = 0; i < num_arrays; ++i) {
       shapes.push_back(ShapeUtil::MakeShape(S32, {256}));
-      src_device_ids.push_back(PjRtGlobalDeviceId(0));
+      src_device_ids.push_back(GlobalDeviceId(0));
       transfer_keys.push_back(CrossHostTransferKey(i));
     }
 
@@ -3442,7 +3444,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   TF_ASSIGN_OR_RETURN(
       se::CudaComputeCapability cc,
       se::CudaComputeCapability::FromString(std::get<std::string>(
-          client->addressable_devices().front()->Attributes().at(
+          client->addressable_devices().front()->description().Attributes().at(
               "compute_capability"))));
   if (!cc.IsAtLeastAmpere()) {
     return absl::FailedPreconditionError("Ampere+ GPU required");

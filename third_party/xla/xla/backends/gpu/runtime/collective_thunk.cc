@@ -224,14 +224,6 @@ absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
-    const Thunk::ExecuteParams& params,
-    const std::vector<CollectiveThunk::Buffer>& buffers,
-    const std::vector<PrimitiveType>& element_types) {
-  return ConvertToDeviceBuffers(params.buffer_allocations, buffers,
-                                element_types);
-}
-
-absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {

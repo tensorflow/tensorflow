@@ -216,7 +216,7 @@ bool DumpingToStdout(const DebugOptions& opts);
 // protobuf was written to.
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& directory,
-                                  const std::string& file_name,
+                                  absl::string_view file_name,
                                   std::string* full_path = nullptr);
 
 void DumpHloConfigIfEnabled(const HloModule& module);

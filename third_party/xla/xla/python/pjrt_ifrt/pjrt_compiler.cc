@@ -60,7 +60,7 @@ static absl::Status TranslateDeviceIds(PjRtClient* client,
   if (options.executable_build_options.device_ordinal() != -1) {
     TF_ASSIGN_OR_RETURN(
         auto pjrt_global_device_id,
-        client->GetPjRtGlobalDeviceId(
+        client->GetGlobalDeviceId(
             DeviceId(options.executable_build_options.device_ordinal())));
     options.executable_build_options.set_device_ordinal(
         pjrt_global_device_id.value());
@@ -75,7 +75,7 @@ static absl::Status TranslateDeviceIds(PjRtClient* client,
             return;
           }
           auto pjrt_global_device_id =
-              client->GetPjRtGlobalDeviceId(DeviceId(*device_id));
+              client->GetGlobalDeviceId(DeviceId(*device_id));
           if (pjrt_global_device_id.ok()) {
             *device_id = pjrt_global_device_id->value();
           } else {

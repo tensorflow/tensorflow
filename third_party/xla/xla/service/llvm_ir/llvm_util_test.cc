@@ -256,6 +256,60 @@ TEST_F(EmitReducePrecisionIrExecutionTest,
     EXPECT_EQ(res, tc.expected_res) << "Wrong result for input " << tc.input;
   }
 }
+
+class LLVMSPIRVTest : public HloTestBase {};
+
+TEST_F(LLVMSPIRVTest, AddRangeMetadataTest) {
+  llvm::LLVMContext llvm_context;
+  llvm::IRBuilder<> builder(llvm_context);
+  llvm::Triple spirv_triple("spirv64-unknown-unknown");
+  auto llvm_module = std::make_unique<llvm::Module>("Module", llvm_context);
+  llvm_module->setTargetTriple(spirv_triple);
+  llvm::Value* p0 = builder.getInt64(2);
+
+  auto SPIRVBuiltinOfType = [&llvm_context, &llvm_module](
+                                llvm::Type* type, absl::string_view func_name) {
+    llvm::FunctionType* func_type = llvm::FunctionType::get(
+        type, {llvm::Type::getInt64Ty(llvm_context)}, false);
+    return llvm_module->getOrInsertFunction(func_name, func_type);
+  };
+
+  auto EmitCallAndAddMDForType = [&](llvm::Type* type,
+                                     absl::string_view func_name) {
+    llvm::Instruction* call =
+        builder.CreateCall(SPIRVBuiltinOfType(type, func_name), {p0});
+    return AddRangeMetadata(5, 10, call, llvm_module.get());
+  };
+
+  auto GetMetadataValue = [](llvm::MDTuple* metadata_tuple, int index) {
+    llvm::ValueAsMetadata* metadata = llvm::dyn_cast<llvm::ValueAsMetadata>(
+        metadata_tuple->getOperand(index));
+    return metadata->getValue();
+  };
+
+  llvm::Function* main_func = llvm::Function::Create(
+      llvm::FunctionType::get(llvm::Type::getVoidTy(llvm_context), false),
+      llvm::Function::ExternalLinkage, "main", *llvm_module);
+  llvm::BasicBlock* entry_block =
+      llvm::BasicBlock::Create(llvm_context, "entry", main_func);
+  builder.SetInsertPoint(entry_block);
+
+  llvm::Instruction* call_int = EmitCallAndAddMDForType(
+      llvm::Type::getInt64Ty(llvm_context), "__spirv_builtin_func_i64");
+  llvm::Instruction* call_f32 = EmitCallAndAddMDForType(
+      llvm::Type::getFloatTy(llvm_context), "__spirv_builtin_func_float");
+
+  EXPECT_NE(call_int->getMetadata(llvm::LLVMContext::MD_range), nullptr);
+  // No metadata for non-int types
+  EXPECT_EQ(call_f32->getMetadata(llvm::LLVMContext::MD_range), nullptr);
+  llvm::MDTuple* metadata_tuple = llvm::dyn_cast<llvm::MDTuple>(
+      call_int->getMetadata(llvm::LLVMContext::MD_range));
+
+  // Metadata type must match Call type
+  EXPECT_TRUE(GetMetadataValue(metadata_tuple, 0)->getType()->isIntegerTy(64));
+  EXPECT_TRUE(GetMetadataValue(metadata_tuple, 1)->getType()->isIntegerTy(64));
+}
+
 }  // namespace
 
 }  // namespace xla::llvm_ir

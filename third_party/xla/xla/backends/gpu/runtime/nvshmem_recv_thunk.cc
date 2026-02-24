@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -77,7 +77,7 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
                                                     se::Stream& stream) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, {buffer_},
+      ConvertToDeviceBuffers(params.buffer_allocations, {buffer_},
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 

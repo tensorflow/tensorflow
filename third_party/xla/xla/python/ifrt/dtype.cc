@@ -31,6 +31,8 @@ namespace ifrt {
 
 std::optional<int> DType::byte_size() const {
   switch (kind_) {
+    case kS1:
+    case kU1:
     case kS2:
     case kU2:
     case kS4:
@@ -77,6 +79,9 @@ std::optional<int> DType::byte_size() const {
 
 std::optional<int> DType::bit_size() const {
   switch (kind_) {
+    case kS1:
+    case kU1:
+      return 1;
     case kS2:
     case kU2:
       return 2;
@@ -138,12 +143,14 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
 #define CASE(X)              \
   case DTypeProto::KIND_##X: \
     return DType(DType::Kind::k##X);
+      CASE(S1);
       CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U1);
       CASE(U2);
       CASE(U4);
       CASE(U8);
@@ -197,12 +204,14 @@ void DType::ToProto(DTypeProto& dtype_proto, SerDesVersion version) const {
   case DType::Kind::k##X:                       \
     dtype_proto.set_kind(DTypeProto::KIND_##X); \
     break;
+      CASE(S1);
       CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U1);
       CASE(U2);
       CASE(U4);
       CASE(U8);
@@ -240,6 +249,8 @@ std::string DType::DebugString() const {
       return "INVALID";
     case kPred:
       return "PRED";
+    case kS1:
+      return "S1";
     case kS2:
       return "S2";
     case kS4:
@@ -252,6 +263,8 @@ std::string DType::DebugString() const {
       return "S32";
     case kS64:
       return "S64";
+    case kU1:
+      return "U1";
     case kU2:
       return "U2";
     case kU4:

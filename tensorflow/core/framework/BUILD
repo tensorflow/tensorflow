@@ -1134,6 +1134,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1969,5 +1971,19 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "op_kernel_benchmark",
+    srcs = ["op_kernel_benchmark.cc"],
+    tags = ["benchmark"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
     ],
 )

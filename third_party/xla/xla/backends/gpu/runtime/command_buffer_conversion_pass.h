@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
+#include <cstdint>
 #include <string>
 
 #include "absl/base/nullability.h"
@@ -50,6 +51,9 @@ class CommandBufferConversionPass : public ThunkPassInterface {
     // remove that flag and enable all supported commands by default.
     absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
     const se::DeviceDescription& device_description;
+    // Number of devices in a fast-interconnect domain (host/node).
+    // 0 means unknown.
+    int64_t num_local_devices = 0;
     std::string ToString() const;
   };
 

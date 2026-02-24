@@ -58,8 +58,7 @@ namespace {
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:
-  explicit CommandOperation(Command::BufferUseVector buffers,
-                            const Command* cmd)
+  CommandOperation(Command::BufferUses buffers, const Command* cmd)
       : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(),
                               cmd->profile_annotation())),
         buffers_(std::move(buffers)),
@@ -93,7 +92,7 @@ class CommandOperation : public ExecutionGraph::Operation {
 
  private:
   std::string name_;
-  Command::BufferUseVector buffers_;
+  Command::BufferUses buffers_;
   const Command* cmd_;
   Command::ResourceUseVector resources_;
 
@@ -120,7 +119,7 @@ std::vector<CommandOperation> CreateCommandOperationsWithConcurrentMode(
   // For concurrent synchronization mode, pass in buffer and resources for
   // dependency inference.
   for (const std::unique_ptr<Command>& cmd : commands) {
-    operations.emplace_back(cmd->buffers(), cmd.get());
+    operations.emplace_back(cmd->buffer_uses(), cmd.get());
   }
 
   VlogOperations(operations);
@@ -186,7 +185,7 @@ std::vector<CommandOperation> CreateCommandOperationsWithLHSMode(
 
   // 1. Initialization Phase: Convert commands to operations
   for (const auto& cmd : commands) {
-    operations.emplace_back(Command::BufferUseVector{}, cmd.get());
+    operations.emplace_back(Command::BufferUses{}, cmd.get());
   }
 
   // 2. Dependency Analysis Phase
@@ -271,7 +270,7 @@ CommandExecutor::CommandExecutor(SynchronizationMode synchronization_mode,
   for (const std::unique_ptr<Command>& cmd : commands_) {
     absl::btree_set<BufferAllocation::Index> cmd_allocs_indices;
 
-    for (const BufferUse& buffer : cmd->buffers()) {
+    for (const BufferUse& buffer : cmd->buffer_uses()) {
       buffers_.insert(buffer);
       allocs_indices.insert(buffer.slice().index());
       cmd_allocs_indices.insert(buffer.slice().index());
@@ -330,7 +329,7 @@ static void VlogCommandSequenceDetails(const CommandSequence& commands) {
     bool has_output = false;
     bool has_temp = false;
 
-    for (const auto& buffer : cmd->buffers()) {
+    for (const auto& buffer : cmd->buffer_uses()) {
       if (buffer.slice().allocation()->IsPreallocatedTempBuffer()) {
         has_temp = true;
       }
@@ -676,7 +675,7 @@ std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
   return dependencies;
 }
 
-const absl::flat_hash_set<BufferUse>& CommandExecutor::buffers() const {
+const absl::flat_hash_set<BufferUse>& CommandExecutor::buffer_uses() const {
   return buffers_;
 }
 

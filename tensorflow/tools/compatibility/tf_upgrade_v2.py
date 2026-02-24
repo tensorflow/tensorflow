@@ -1452,11 +1452,11 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.nn.dilation2d": functools.partial(
             _add_argument_transformer,
             arg_name="data_format",
-            arg_value_ast=ast.Str("NHWC")),
+            arg_value_ast=ast.Constant(value="NHWC")),
         "tf.nn.erosion2d": functools.partial(
             _add_argument_transformer,
             arg_name="data_format",
-            arg_value_ast=ast.Str("NHWC")),
+            arg_value_ast=ast.Constant(value="NHWC")),
         "tf.contrib.summary.always_record_summaries": functools.partial(
             _add_summary_recording_cond_transformer, cond="True"),
         "tf.contrib.summary.audio": _add_summary_step_transformer,
@@ -1493,7 +1493,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "tf.keras.models.save_model": functools.partial(
             _add_argument_transformer,
             arg_name="save_format",
-            arg_value_ast=ast.Str("h5")),
+            arg_value_ast=ast.Constant(value="h5")),
     }
     all_renames_v2.add_contrib_direct_import_support(self.function_transformers)
 
@@ -1536,26 +1536,32 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
 
 def _is_ast_str(node):
   """Determine whether this node represents a string."""
-  allowed_types = [ast.Str]
+  allowed_types = (ast.Constant,)
+  if hasattr(ast, "Str"):
+    allowed_types += (ast.Str,)
   if hasattr(ast, "Bytes"):
-    allowed_types += [ast.Bytes]
+    allowed_types += (ast.Bytes,)
   if hasattr(ast, "JoinedStr"):
-    allowed_types += [ast.JoinedStr]
+    allowed_types += (ast.JoinedStr,)
   if hasattr(ast, "FormattedValue"):
-    allowed_types += [ast.FormattedValue]
-  return isinstance(node, allowed_types)
+    allowed_types += (ast.FormattedValue,)
+  if isinstance(node, allowed_types):
+    if isinstance(node, ast.Constant):
+      return isinstance(node.value, (str, bytes))
+    return True
+  return False
 
 
 def _is_ast_true(node):
   if hasattr(ast, "NameConstant"):
-    return isinstance(node, ast.NameConstant) and node.value is True
+    return isinstance(node, ast.Constant) and node.value is True
   else:
     return isinstance(node, ast.Name) and node.id == "True"
 
 
 def _is_ast_false(node):
   if hasattr(ast, "NameConstant"):
-    return isinstance(node, ast.NameConstant) and node.value is False
+    return isinstance(node, ast.Constant) and node.value is False
   else:
     return isinstance(node, ast.Name) and node.id == "False"
 
@@ -1675,7 +1681,7 @@ def _dropout_transformer(parent, node, full_name, name, logs):
   """Replace keep_prob with 1-rate."""
   def _replace_keep_prob_node(parent, old_value):
     """Replaces old_value with 1-(old_value)."""
-    one = ast.Num(n=1)
+    one = ast.Constant(value=1)
     one.lineno = 0
     one.col_offset = 0
     new_value = ast.BinOp(left=one, op=ast.Sub(),
@@ -1869,7 +1875,7 @@ def _pool_seed_transformer(parent, node, full_name, name, logs):
 
   if deterministic:
     if seed_arg is None:
-      new_keywords.append(ast.keyword(arg="seed", value=ast.Num(42)))
+      new_keywords.append(ast.keyword(arg="seed", value=ast.Constant(value=42)))
       logs.add((
           ast_edits.INFO, node.lineno, node.col_offset,
           "Adding seed=42 to call to %s since determinism was requested" % (
@@ -1895,8 +1901,8 @@ def _extract_glimpse_transformer(parent, node, full_name, name, logs):
 
   def _replace_uniform_noise_node(parent, old_value):
     """Replaces old_value with 'uniform' or 'gaussian'."""
-    uniform = ast.Str(s="uniform")
-    gaussian = ast.Str(s="gaussian")
+    uniform = ast.Constant(value="uniform")
+    gaussian = ast.Constant(value="gaussian")
     new_value = ast.IfExp(body=uniform, test=old_value, orelse=gaussian)
     # This copies the prefix and suffix on old_value to new_value.
     pasta.ast_utils.replace_child(parent, old_value, new_value)
@@ -2407,24 +2413,37 @@ def _string_split_transformer(parent, node, full_name, name, logs):
   for i, kw in enumerate(node.keywords):
     if kw.arg == "sep":
       found_sep = True
-      if isinstance(kw.value, ast.Str):
-        if kw.value.s == "":
+      if _is_ast_str(kw.value):
+        val = (
+            kw.value.value if isinstance(kw.value, ast.Constant) else kw.value.s
+        )
+        if val == "":
           node = _rename_func(
-              node, full_name, "tf.strings.bytes_split", logs,
-              "Splitting bytes is not handled by tf.strings.bytes_split().")
+              node,
+              full_name,
+              "tf.strings.bytes_split",
+              logs,
+              "Splitting bytes is not handled by tf.strings.bytes_split().",
+          )
           node.keywords.pop(i)
       else:
         return _rename_to_compat_v1(
-            node, full_name, logs,
+            node,
+            full_name,
+            logs,
             "The semantics for tf.string_split's sep parameter have changed "
             "when sep is the empty string; but sep is not a string literal, "
-            "so we can't tell if it's an empty string.")
+            "so we can't tell if it's an empty string.",
+        )
   if not found_sep:
     return _rename_to_compat_v1(
-        node, full_name, logs,
+        node,
+        full_name,
+        logs,
         "The semantics for tf.string_split's sep parameter have changed "
         "when sep unspecified: it now splits on all whitespace, not just "
-        "the space character.")
+        "the space character.",
+    )
   # Check the result_type parameter
   return _string_split_rtype_transformer(parent, node, full_name, name, logs)
 
@@ -2435,18 +2454,28 @@ def _string_split_rtype_transformer(parent, node, full_name, name, logs):
   need_to_sparse = True
   for i, kw in enumerate(node.keywords):
     if kw.arg == "result_type":
-      if (isinstance(kw.value, ast.Str) and
-          kw.value.s in ("RaggedTensor", "SparseTensor")):
-        logs.append((ast_edits.INFO, node.lineno, node.col_offset,
-                     "Removed argument result_type=%r for function %s" %
-                     (kw.value.s, full_name or name)))
-        node.keywords.pop(i)
-        if kw.value.s == "RaggedTensor":
-          need_to_sparse = False
+      if _is_ast_str(kw.value):
+        val = (
+            kw.value.value if isinstance(kw.value, ast.Constant) else kw.value.s
+        )
+        if val in ("RaggedTensor", "SparseTensor"):
+          logs.append((
+              ast_edits.INFO,
+              node.lineno,
+              node.col_offset,
+              "Removed argument result_type=%r for function %s"
+              % (val, full_name or name),
+          ))
+          node.keywords.pop(i)
+          if val == "RaggedTensor":
+            need_to_sparse = False
       else:
         return _rename_to_compat_v1(
-            node, full_name, logs,
-            "%s no longer takes the result_type parameter." % full_name)
+            node,
+            full_name,
+            logs,
+            "%s no longer takes the result_type parameter." % full_name,
+        )
       break
 
   for i, kw in enumerate(node.keywords):

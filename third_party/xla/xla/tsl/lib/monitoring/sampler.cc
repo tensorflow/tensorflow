@@ -15,6 +15,15 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/sampler.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
+
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "absl/log/check.h"
@@ -46,10 +55,10 @@ class ExplicitBuckets : public Buckets {
     //
     // Since we use ThreadSafeHistogram, we don't have to explicitly add
     // -DBL_MAX, because it uses these limits as upper-bounds, so
-    // bucket_count[0] is always the number of elements in
+    // bucket_boundary_count[0] is always the number of elements in
     // [-DBL_MAX, bucket_limits[0]).
-    if (bucket_limits_.back() != DBL_MAX) {
-      bucket_limits_.push_back(DBL_MAX);
+    if (bucket_limits_.back() != std::numeric_limits<double>::max()) {
+      bucket_limits_.push_back(std::numeric_limits<double>::max());
     }
   }
 
@@ -68,9 +77,10 @@ class ExponentialBuckets : public Buckets {
  public:
   ~ExponentialBuckets() override = default;
 
-  ExponentialBuckets(double scale, double growth_factor, int bucket_count)
+  ExponentialBuckets(double scale, double growth_factor,
+                     int bucket_boundary_count)
       : explicit_buckets_(
-            ComputeBucketLimits(scale, growth_factor, bucket_count)) {}
+            ComputeBucketLimits(scale, growth_factor, bucket_boundary_count)) {}
 
   const std::vector<double>& explicit_bounds() const override {
     return explicit_buckets_.explicit_bounds();
@@ -79,12 +89,12 @@ class ExponentialBuckets : public Buckets {
  private:
   static std::vector<double> ComputeBucketLimits(double scale,
                                                  double growth_factor,
-                                                 int bucket_count) {
-    CHECK_GT(bucket_count, 0);
+                                                 int bucket_boundary_count) {
+    CHECK_GT(bucket_boundary_count, 0);
     std::vector<double> bucket_limits;
-    bucket_limits.reserve(bucket_count);
+    bucket_limits.reserve(bucket_boundary_count);
     double bound = scale;
-    for (int i = 0; i < bucket_count; i++) {
+    for (int i = 0; i < bucket_boundary_count; i++) {
       bucket_limits.push_back(bound);
       bound *= growth_factor;
     }
@@ -112,11 +122,31 @@ std::unique_ptr<Buckets> Buckets::Explicit(
 }
 
 // static
+template <>
 std::unique_ptr<Buckets> Buckets::Exponential(double scale,
                                               double growth_factor,
-                                              int bucket_count) {
+                                              int bucket_boundary_count) {
   return std::unique_ptr<Buckets>(
-      new ExponentialBuckets(scale, growth_factor, bucket_count));
+      new ExponentialBuckets(scale, growth_factor, bucket_boundary_count));
+}
+
+// static
+std::unique_ptr<Buckets> Buckets::Exponential(double scale,
+                                              double growth_factor,
+                                              const DomainMax& domain_max) {
+  CHECK_GT(scale, 0.0);
+  CHECK_GE(growth_factor, 1.01);
+  CHECK_GT(domain_max.max_expected_value, 0.0);
+  CHECK_GT(domain_max.max_bucket_boundaries, 0);
+
+  // Choose width to cover range that includes |max_value|.
+  const double num_finite_buckets = std::max(
+      1.0,  // Avoid negative size when scale_factor > max_value.
+      std::min(1 + ceil((log(domain_max.max_expected_value) - log(scale)) /
+                        log(growth_factor)),
+               static_cast<double>(domain_max.max_bucket_boundaries)));
+
+  return Exponential(scale, growth_factor, lround(num_finite_buckets));
 }
 
 }  // namespace monitoring

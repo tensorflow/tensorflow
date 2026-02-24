@@ -380,7 +380,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 8);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 7);
+             /* max_version = */ 8);
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU_REF());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM_REF(),
              /* min_version = */ 1,
@@ -506,7 +506,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE_REF(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
   AddBuiltin(BuiltinOperator_IF, Register_IF());
   AddBuiltin(BuiltinOperator_WHILE, Register_WHILE());

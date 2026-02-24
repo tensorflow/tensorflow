@@ -140,7 +140,6 @@ ios_application(
     ],
     infoplists = ["apps/TestApp/TestApp/Info.plist"],
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
-    resource_locales = "//tools/build_defs/apple:English_only",
     sdk_frameworks = ["CoreGraphics"],
     tags = TFL_DEFAULT_TAGS,
     deps = [":TestAppLibrary"],

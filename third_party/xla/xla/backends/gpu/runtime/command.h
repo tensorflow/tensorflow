@@ -20,10 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,11 +34,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -68,6 +71,7 @@ namespace xla::gpu {
   V(kAllGatherCmd, "AllGatherCmd")                           \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
   V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
+  V(kRaggedAllToAllCmd, "RaggedAllToAllCmd")                 \
   V(kRecvCmd, "RecvCmd")                                     \
   V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
@@ -122,7 +126,7 @@ bool IsCollectiveCommand(CommandType type);
 // done with a state manager.
 class Command {
  public:
-  using BufferUseVector = absl::InlinedVector<BufferUse, 4>;
+  using BufferUses = Thunk::BufferUses;
   using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
 
  public:
@@ -146,7 +150,7 @@ class Command {
     // rely on this information to skip unnecessary updates.
     std::optional<std::vector<BufferAllocation::Index>> updated_allocs;
 
-    // A flag indicating whether we record comands at command buffer thunk
+    // A flag indicating whether we record commands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
 
@@ -213,7 +217,7 @@ class Command {
 
   // Returns true if command supports loop unroll, the while loop can be
   // unrolled only if it has pre-known trip count and also all commands from the
-  // body commands are unrollable..
+  // body commands are unrollable.
   virtual bool support_loop_unroll() { return true; }
 
   // This is only true for DynamicSliceCopyFusionCmd when offset is dependents
@@ -224,7 +228,7 @@ class Command {
 
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
-  virtual BufferUseVector buffers() const { return {}; }
+  virtual BufferUses buffer_uses() const { return {}; }
 
   std::shared_ptr<Resource> token() const { return token_; }
 
@@ -246,6 +250,26 @@ class Command {
   void set_priority(se::StreamPriority priority) { priority_ = priority; }
 
   virtual std::string ToString() const { return CommandTypeString(cmd_type_); }
+
+  // Type predicate for `Walk` callback.
+  template <typename F, typename Arg>
+  using Walker = std::enable_if_t<std::is_invocable_v<F, Arg> ||
+                                  std::is_invocable_r_v<absl::Status, F, Arg>>;
+
+  // Recursively walks all the commands nested inside *this one and calls
+  // the user provided callback on every command. Always starts traversal with
+  // *this.
+  template <typename F, Walker<F, Command*>* = nullptr>
+  std::invoke_result_t<F, Command*> Walk(F&& callback);
+  template <typename F, Walker<F, const Command*>* = nullptr>
+  std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
+
+ protected:
+  // Walks all nested commands and calls `callback` for them.
+  virtual absl::Status WalkNested(
+      absl::FunctionRef<absl::Status(Command*)> callback) {
+    return absl::OkStatus();
+  }
 
  private:
   std::string profile_annotation_;
@@ -269,17 +293,39 @@ inline bool IsCollectiveCommand(const Command& cmd) {
 }
 
 //===----------------------------------------------------------------------===//
+// Command templates implementation.
+//===----------------------------------------------------------------------===//
+
+template <typename F, Command::Walker<F, Command*>*>
+std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
+  if constexpr (std::is_void_v<std::invoke_result_t<F, Command*>>) {
+    Walk([f = std::forward<F>(callback)](Command* command) {
+      return (f(command), absl::OkStatus());
+    }).IgnoreError();  // Error can never happen here.
+  } else {
+    RETURN_IF_ERROR(callback(this));
+    return WalkNested(callback);
+  }
+}
+
+template <typename F, Command::Walker<F, const Command*>*>
+std::invoke_result_t<F, const Command*> Command::Walk(F&& callback) const {
+  return const_cast<Command*>(this)->Walk(  // NOLINT
+      std::forward<F>(callback));
+}
+
+//===----------------------------------------------------------------------===//
 // Asynchronous commands
 //===----------------------------------------------------------------------===//
 
-// A base class for a command that starts an asyncrhonous execution.
+// A base class for a command that starts an asynchronous execution.
 class AsyncStartCommand : public Command {
  public:
   using Command::Command;
 
-  // At run time async command might behave like a syncrhonous one, i.e.
+  // At run time async command might behave like a synchronous one, i.e.
   // some collective operations if they can't be overlapped with compute
-  // operations executed like they have syncrhonous execution semantics.
+  // operations executed like they have synchronous execution semantics.
   virtual bool IsAsync() const = 0;
 };
 
@@ -316,6 +362,21 @@ class CommandSequence : public std::vector<std::unique_ptr<Command>> {
       result += cmd->ToString() + "\n";
     }
     return result;
+  }
+
+  absl::Status Walk(
+      absl::FunctionRef<absl::Status(const Command*)> callback) const {
+    for (const std::unique_ptr<Command>& cmd : *this) {
+      RETURN_IF_ERROR(cmd->Walk(callback));
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
+    for (std::unique_ptr<Command>& cmd : *this) {
+      RETURN_IF_ERROR(cmd->Walk(callback));
+    }
+    return absl::OkStatus();
   }
 };
 

@@ -1939,8 +1939,8 @@ class DnnSupport {
   //    afterwards.
   virtual absl::Status DoCtcLoss(
       Stream* stream, DataType element_type,
-      const RnnStateTensorDescriptor& probs_desc,
-      const DeviceAddressBase probs_data, absl::Span<const int> labels_data,
+      const RnnStateTensorDescriptor& probs_desc, DeviceAddressBase probs_data,
+      absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data, DeviceAddressBase costs_data,
       const RnnStateTensorDescriptor& grads_desc, DeviceAddressBase grads_data,

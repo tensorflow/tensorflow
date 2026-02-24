@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -31,7 +32,8 @@ namespace tflite {
 
 namespace xnnpack {
 
-class QuantizedTransposeConvTester {
+class QuantizedTransposeConvTester
+    : public ModelCache<QuantizedTransposeConvTester> {
  public:
   explicit QuantizedTransposeConvTester() = default;
   QuantizedTransposeConvTester(const QuantizedTransposeConvTester&) = delete;
@@ -171,7 +173,7 @@ class QuantizedTransposeConvTester {
     return *this;
   }
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(TfLiteDelegate* delegate);
 
  private:
   int32_t ComputeInputSize(int32_t output_size, int32_t kernel_size,
@@ -202,7 +204,7 @@ class QuantizedTransposeConvTester {
   }
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel() const override;
 
   template <typename WeightType>
   void EnsureOutputsClose(const Interpreter* default_interpreter,

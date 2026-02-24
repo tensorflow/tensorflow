@@ -40,7 +40,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -149,20 +149,20 @@ class PjRtDevice {
   // general, not guaranteed to be dense, and -1 if undefined.
 
   // TODO(b/314368788): Remove `id()` and replace it with this function.
-  virtual PjRtGlobalDeviceId global_device_id() const {
-    return PjRtGlobalDeviceId(description().id());
+  virtual GlobalDeviceId global_device_id() const {
+    return GlobalDeviceId(description().id());
   }
 
-  virtual PjRtLocalDeviceId local_device_id() const {
+  virtual LocalDeviceId local_device_id() const {
     // By default, local_device_id is the same as local_hardware_id when there
     // is only one PJRT device on a physical device.
-    return PjRtLocalDeviceId(local_hardware_id().value());
+    return LocalDeviceId(local_hardware_id().value());
   }
 
   // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
   // which GPU when interacting with non-JAX code. In general, not guaranteed to
   // be dense, and -1 if undefined.
-  virtual PjRtLocalHardwareId local_hardware_id() const = 0;
+  virtual LocalChipId local_hardware_id() const = 0;
 
   // The index of the process that this device belongs to, i.e. is addressable
   // from. This is not always identical to PjRtClient::process_index() in a
@@ -193,6 +193,9 @@ class PjRtDevice {
   // Returns vendor specific attributes about the device. For example the model
   // number of a GPU, or the mesh coordinates of a TPU device. The returned
   // reference will remain valid for the lifetime of the PjRtDevice.
+  // This map contains all vendor-specific attributes, including both static
+  // information from the description and dynamic runtime information (if
+  // applicable).
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const {
     return description().Attributes();
@@ -540,14 +543,14 @@ class PjRtClient {
 
   // Lookup any PjRtDevice for a given PjRtDevice::id().
   virtual absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const {
+      GlobalDeviceId global_device_id) const {
     return absl::UnimplementedError("LookupDevice is not supported.");
   }
 
   // Return an addressable PjRtDevice for a given
   // PjRtDevice::local_device_id().
   virtual absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const {
+      LocalDeviceId local_device_id) const {
     return absl::UnimplementedError(
         "LookupAddressableDevice is not supported.");
   }
@@ -747,8 +750,14 @@ class PjRtClient {
   };
 
   // Returns the host allocator for the client if supported.
+  ABSL_DEPRECATED("Use GetHostMemoryAllocator instead.")
   virtual absl::StatusOr<HostAllocator*> GetHostAllocator() const {
     return absl::UnimplementedError("GetHostAllocator is not supported.");
+  }
+
+  // Returns the host memory allocator for the client or null if not supported.
+  virtual HostMemoryAllocator* GetHostMemoryAllocator() const {
+    return nullptr;
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
@@ -1043,7 +1052,7 @@ class PjRtClient {
   // Send buffers to remote devices specified by dst_global_device_ids.
   virtual absl::StatusOr<std::vector<Future<>>> CrossHostSendBuffers(
       absl::Span<PjRtBuffer* const> buffers,
-      absl::Span<const PjRtGlobalDeviceId> dst_global_device_ids,
+      absl::Span<const GlobalDeviceId> dst_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported by this client.");
@@ -1053,7 +1062,7 @@ class PjRtClient {
   virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   CrossHostReceiveBuffers(
       xla::PjRtDevice* device, absl::Span<const xla::Shape> shapes,
-      absl::Span<const PjRtGlobalDeviceId> src_global_device_ids,
+      absl::Span<const GlobalDeviceId> src_global_device_ids,
       std::vector<CrossHostTransferKey> transfer_keys) {
     return absl::UnimplementedError(
         "Cross-host data transfers are not supported.");

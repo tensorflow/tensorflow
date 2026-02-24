@@ -1123,15 +1123,6 @@ bool RangeEvaluator::IsAlwaysPositiveOrZero(SymbolicExpr expr) {
   return ComputeExpressionRange(expr).lower >= 0;
 }
 
-bool RangeEvaluator::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
-  return IsAlwaysNegativeOrZero(
-      AffineExprToSymbolicExpr(expr, indexing_map_.GetDimensionCount()));
-}
-
-bool RangeEvaluator::IsAlwaysNegativeOrZero(SymbolicExpr expr) {
-  return ComputeExpressionRange(expr).upper <= 0;
-}
-
 Interval RangeEvaluator::ComputeExpressionRange(mlir::AffineExpr expr) {
   return ComputeExpressionRange(
       AffineExprToSymbolicExpr(expr, indexing_map_.GetDimensionCount()));

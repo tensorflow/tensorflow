@@ -57,7 +57,9 @@ bool ProtoMapIsSubset(const google::protobuf::Map<int64_t, int64_t>& x,
                       const google::protobuf::Map<int64_t, int64_t>& y) {
   for (const auto& ypair : y) {
     const auto it = x.find(ypair.first);
-    if (it == x.end() || it->second != ypair.second) return false;
+    if (it == x.end() || it->second != ypair.second) {
+      return false;
+    }
   }
   return true;
 }
@@ -462,7 +464,9 @@ ConvDimIndices GetDimIndices(const FilterLayout& layout, const int data_dims) {
 
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const DataLayout& from, const DataLayout& to) {
-  if (from == to) return input;
+  if (from == to) {
+    return input;
+  }
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
@@ -484,7 +488,9 @@ std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
 std::vector<int64_t> ReorderDims(const std::vector<int64_t>& input,
                                  const FilterLayout& from,
                                  const FilterLayout& to) {
-  if (from == to) return input;
+  if (from == to) {
+    return input;
+  }
 
   ConvDimIndices from_indices = GetDimIndices(from, input.size());
   ConvDimIndices to_indices = GetDimIndices(to, input.size());
@@ -533,8 +539,9 @@ TensorDescriptor::GetPhysicalDimensionsMajorToMinor() const {
     int64_t logical = minor_to_major_.at(minor_to_major_.size() - 1 - physical);
     logical_to_physical[logical] = physical;
   }
-  if (dimensions_.size() != minor_to_major_.size())
+  if (dimensions_.size() != minor_to_major_.size()) {
     return absl::InternalError("Dimensions size should match the layout size.");
+  }
 
   std::vector<int64_t> physical_dims(dimensions_.size());
   for (int64_t i = 0; i < physical_dims.size(); ++i) {
@@ -592,10 +599,11 @@ MatmulTensorDescriptor::GetNonContractingDims() const {
 
   if (batch_dimension_numbers_.size() + contracting_dim_.size() +
           non_contracting_dims.size() !=
-      tensor_.dimensions().size())
+      tensor_.dimensions().size()) {
     return absl::InternalError(
         "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
         "should sum up to the total number of dimensions.");
+  }
   return non_contracting_dims;
 }
 
@@ -611,10 +619,11 @@ MatmulTensorDescriptor::MakeCudnnCompatible(const std::vector<int64_t>& vec,
   std::vector<int64_t> non_contracting_dims = GetNonContractingDims().value();
   if (batch_dimension_numbers_.size() + contracting_dim_.size() +
           non_contracting_dims.size() !=
-      vec.size())
+      vec.size()) {
     return absl::InternalError(
         "Batch_dimension_numbers, contracting_dim and non_contracting_dims "
         "should sum up to the total number of dimensions.");
+  }
   if (is_lhs) /* lhs -> {b0, b1,....bk, m, k} */ {
     for (int i = 0; i < non_contracting_dims.size(); i++) {
       cudnn_compatible[batch_dim_size + i] = vec.at(non_contracting_dims.at(i));

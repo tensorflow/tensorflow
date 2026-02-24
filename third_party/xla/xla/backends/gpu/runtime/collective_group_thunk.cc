@@ -77,18 +77,14 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
 
   // Gather the set of all communicators. There should be only one.
   absl::flat_hash_set<Communicator*> communicator_set;
-  absl::Status s;
-  ForAllThunks([&params, &s, &communicator_set](const Thunk* thunk) {
-    absl::StatusOr<std::vector<Communicator*>> communicators =
-        thunk->GetCommunicators(params);
-    if (!communicators.ok()) {
-      s = communicators.status();
-      return;
-    }
-    for (Communicator* comm : *communicators) {
+  RETURN_IF_ERROR(Walk([&](const Thunk* thunk) -> absl::Status {
+    ASSIGN_OR_RETURN(auto communicators, thunk->GetCommunicators(params));
+    for (Communicator* comm : communicators) {
       communicator_set.insert(comm);
     }
-  });
+    return absl::OkStatus();
+  }));
+
   if (communicator_set.empty()) {
     return absl::InvalidArgumentError("No communicators in NCCL group");
   }
@@ -115,20 +111,12 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-void CollectiveGroupThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
+absl::Status CollectiveGroupThunk::WalkNested(
+    absl::FunctionRef<absl::Status(Thunk*)> callback) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunks(fn);
+    RETURN_IF_ERROR(thunk->Walk(callback));
   }
-}
-
-void CollectiveGroupThunk::ForAllThunksMutable(
-    absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunksMutable(fn);
-  }
+  return absl::OkStatus();
 }
 
 absl::Status CollectiveGroupThunk::TransformAllNestedThunks(

@@ -115,7 +115,7 @@ class Mesh {
   bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:
-  absl::Status ValidateMesh();
+  absl::Status Validate();
   // Dimensions of the `device_assignment_` array correspond to the axes of the
   // mesh.
   TileAssignment device_assignment_;
@@ -194,9 +194,6 @@ class AxisRef {
   std::optional<SubAxis> sub_axis_info() const { return sub_axis_info_; }
 
   int64_t size(const Mesh& mesh) const;
-
- private:
-  absl::Status ValidateAxisRef();
 };
 
 std::ostream& operator<<(std::ostream& out, const Mesh& mesh);

@@ -295,7 +295,7 @@ inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
 // When a Send or Recv is annotated with frontend attribute
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
 // Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
-constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+inline constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 
 // Attribute to indicate that collective operations should be issued on a
 // dedicated p2p stream. This is a hint and there is no guarantee that this will
@@ -303,11 +303,6 @@ constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 inline constexpr absl::string_view kCollectiveStreamAttrName =
     "_xla_gpu_collective_stream";
 inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
-
-// Returns latency metadata in microseconds(us) if the instruction is a custom
-// call with latency metadata. Returns `std::nullopt` if the instruction is not
-// a custom call with latency metadata or invalid latency metadata is provided.
-std::optional<double> GetCustomCallLatencyMetadata(const HloInstruction* instr);
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);

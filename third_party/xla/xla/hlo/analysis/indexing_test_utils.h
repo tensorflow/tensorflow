@@ -90,9 +90,8 @@ class IndexingTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               mlir::MLIRContext* mlir_context);
-
+// TODO(b/446858351): Remove this function once we migrate constraint_expression
+// to use SymbolicExpr.
 mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
                                  mlir::MLIRContext* mlir_context);
 

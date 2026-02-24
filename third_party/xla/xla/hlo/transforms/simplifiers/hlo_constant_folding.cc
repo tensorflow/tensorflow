@@ -270,8 +270,16 @@ absl::StatusOr<bool> PropagateIdenticalConstantArguments(
       if (parameter->IsDead()) {
         continue;
       }
-      const HloInstruction* constant =
-          computation->caller_instructions()[0]->operand(i);
+      auto caller_instructions = computation->caller_instructions();
+      if (caller_instructions.size() > 1) {
+        // Sort the caller instructions by their unique id to make the
+        // compilation deterministic.
+        absl::c_sort(caller_instructions,
+                     [](const HloInstruction* a, const HloInstruction* b) {
+                       return a->unique_id() < b->unique_id();
+                     });
+      }
+      const HloInstruction* constant = caller_instructions[0]->operand(i);
       TF_RETURN_IF_ERROR(parameter->ReplaceAllUsesWith(
           computation->AddInstruction(constant->Clone())));
       changed = true;

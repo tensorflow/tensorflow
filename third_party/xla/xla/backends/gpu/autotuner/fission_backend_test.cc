@@ -39,6 +39,10 @@ limitations under the License.
 #endif
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/backends/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/backends/gpu/transforms/gemm_rewriter.h"
+#include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -46,10 +50,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -421,9 +421,8 @@ TEST_P(FissionTest, CanCreateFissionBackend) {
   }
 
   std::string expected_name = GetParam().expected_backend_name;
-  if (expected_name.empty()) {
-    expected_name =
-        IsRocm(stream_executor_) ? "Rocblas_fission" : "Cublas_fission";
+  if (IsRocm(stream_executor_) && expected_name == "CUBLAS_FISSION") {
+    expected_name = "ROCBLAS_FISSION";
   }
   EXPECT_EQ(fission_backend_->name(), expected_name);
 }
@@ -515,7 +514,7 @@ INSTANTIATE_TEST_SUITE_P(
                "custom_call_target=\"__cublas$gemm\"",
                "\"selected_algorithm\":\"-1\""};
          },
-         /*expected_backend_name=*/""},
+         /*expected_backend_name=*/"CUBLAS_FISSION"},
         {"TritonFusion_CublasLt_F8", kF8TritonFusionHlo,
          &FissionTest::GetCublasRewriterPipeline,
          &FissionTest::CreateCublasBackendWithF8Fallback,
@@ -532,7 +531,7 @@ INSTANTIATE_TEST_SUITE_P(
                "custom_call_target=\"__cublas$gemm\"",
                "\"selected_algorithm\":\"-1\""};
          },
-         /*expected_backend_name=*/""},
+         /*expected_backend_name=*/"CUBLAS_FISSION"},
         {"TritonFusion_CustomKernel", kTritonFusionHlo,
          &FissionTest::GetCustomKernelRewriterPipeline,
          &FissionTest::CreateCustomKernelBackend,
@@ -542,7 +541,7 @@ INSTANTIATE_TEST_SUITE_P(
                "\"kind\":\"__custom_fusion\"",
            };
          },
-         /*expected_backend_name=*/"CustomKernel_fission"},
+         /*expected_backend_name=*/"CUSTOM_KERNEL_FISSION"},
         {"ScaledDotFusion_Cublas", kScaledDotFusionHlo,
          &FissionTest::GetCublasRewriterPipeline,
          &FissionTest::CreateCublasBackend,
@@ -552,7 +551,7 @@ INSTANTIATE_TEST_SUITE_P(
                "custom_call_target=\"__cublas$gemm\"",
                "\"selected_algorithm\":\"-1\""};
          },
-         /*expected_backend_name=*/""},
+         /*expected_backend_name=*/"CUBLAS_FISSION"},
     }),
     [](const ::testing::TestParamInfo<FissionTest::ParamType>& info) {
       return info.param.test_name;

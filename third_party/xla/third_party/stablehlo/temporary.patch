@@ -1,673 +1,799 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -2000,6 +2000,7 @@
-     deps = [
-         ":attr_type_builder_util",
-         ":mlir_builder",
-+        ":stablehlo_broadcast_lowering",
-         ":stablehlo_builder_inc",
-         ":stablehlo_ops",
-         ":stablehlo_type_inference",
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -781,6 +781,220 @@
-   return success();
+@@ -866,10 +866,8 @@
  }
  
-+//===----------------------------------------------------------------------===//
-+// ScanOp
-+//===----------------------------------------------------------------------===//
-+
-+LogicalResult ScanOp::inferReturnTypeComponents(
-+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
-+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
-+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-+  ScanOp::Adaptor adaptor(operands, attributes, properties, regions);
-+  if (regions.empty() || regions.front()->empty()) {
-+    return emitOptionalError(location, "ScanOp region is empty");
-+  }
-+  auto* terminator = regions.front()->front().getTerminator();
-+  size_t numCarries = adaptor.getInits().size();
-+  if (terminator->getNumOperands() < numCarries) {
-+    return emitOptionalError(location, "ScanOp body must return at least ",
-+                             numCarries, " values (carries)");
-+  }
-+  size_t numOutputs = terminator->getNumOperands() - numCarries;
-+
-+  // Find the scan dimension size. If the scan dimension is dynamic, the
-+  // output dimension size will be dynamic as well.
-+  int64_t dim = adaptor.getDimension();
-+  int64_t dimSize = ShapedType::kDynamic;
-+  for (auto [i, type] : llvm::enumerate(adaptor.getInputs().getTypes())) {
-+    auto inputType = dyn_cast<RankedTensorType>(type);
-+    if (!inputType) {
-+      return emitOptionalError(location, "operand ", i, " is not ranked");
-+    }
-+    if (dim >= inputType.getRank()) {
-+      return emitOptionalError(location, "scan dimension of operand ", i,
-+                               " is out of bounds");
-+    }
-+    dimSize = inputType.getDimSize(dim);
-+    if (dimSize == ShapedType::kDynamic) {
-+      break;
-+    }
-+  }
-+
-+  for (auto [i, type] : llvm::enumerate(terminator->getOperands().getTypes())) {
-+    auto resultType = dyn_cast<RankedTensorType>(type);
-+    if (!resultType) {
-+      return emitOptionalError(location, "terminator operand ", i,
-+                               " is not ranked");
-+    }
-+    SmallVector<int64_t> shape(resultType.getShape().begin(),
-+                               resultType.getShape().end());
-+    if (i < numOutputs) {
-+      shape.insert(std::next(shape.begin(), dim), dimSize);
-+    }
-+    inferredReturnShapes.emplace_back(shape, resultType.getElementType());
-+  }
-+
-+  return success();
-+}
-+
-+LogicalResult ScanOp::reifyReturnTypeShapes(
-+    OpBuilder& builder, ValueRange operands,
-+    SmallVectorImpl<Value>& reifiedReturnShapes) {
-+  ScanOp::Adaptor adaptor(operands, getOperation()->getAttrDictionary(),
-+                          getOperation()->getPropertiesStorage());
-+  auto inputs = adaptor.getInputs();
-+  size_t k = adaptor.getInits().size();
-+  size_t numResults = getOperation()->getNumResults();
-+  size_t numOutputs = numResults - k;
-+
-+  for (size_t i = 0; i < numOutputs; ++i) {
-+    size_t inputIdx = i;
-+    Value inputVal = (inputIdx < inputs.size()) ? inputs[inputIdx] : inputs[0];
-+    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), inputVal,
-+                                           &reifiedReturnShapes))) {
-+      return failure();
-+    }
-+  }
-+
-+  for (auto init : adaptor.getInits()) {
-+    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), init,
-+                                           &reifiedReturnShapes))) {
-+      return failure();
-+    }
-+  }
-+  return success();
-+}
-+
-+LogicalResult ScanOp::verify() {
-+  if (getInits().size() != getCarries().size()) {
-+    return emitOpError() << "requires the number of inits ("
-+                         << getInits().size() << ") and carries ("
-+                         << getCarries().size() << ") to be equal";
-+  }
-+
-+  // Check that the scan dimension is in bounds for all operands. Also check
-+  // that all operands have the same scan dimension size.
-+  int64_t dim = getDimension();
-+  int64_t dimSize = ShapedType::kDynamic;
-+  for (auto [i, type] : llvm::enumerate(getInputs().getTypes())) {
-+    auto inputType = dyn_cast<RankedTensorType>(type);
-+    if (!inputType) {
-+      return emitOpError() << "operand " << i << " is not ranked";
-+    }
-+    if (dim >= inputType.getRank()) {
-+      return emitOpError() << "scan dimension of operand " << i
-+                           << " is out of bounds";
-+    }
-+    if (inputType.isDynamicDim(dim)) {
-+      continue;
-+    }
-+    dimSize = inputType.getDimSize(dim);
-+    if (dimSize != ShapedType::kDynamic &&
-+        dimSize != inputType.getDimSize(dim)) {
-+      return emitOpError() << "scan dimension size of operand " << i
-+                           << " does not match previous operands";
-+    }
-+    dimSize = inputType.getDimSize(dim);
-+  }
-+
-+  Block& bodyBlock = getBody().front();
-+  if (bodyBlock.getNumArguments() != getNumOperands()) {
-+    return emitOpError() << "expects " << getNumOperands()
-+                         << " arguments in the body, but got "
-+                         << bodyBlock.getNumArguments();
-+  }
-+
-+  // Check that the operand types are compatible with the body arguments.
-+  for (auto [i, type] : llvm::enumerate(getOperands().getTypes())) {
-+    auto argType = dyn_cast<RankedTensorType>(type);
-+    if (!argType) {
-+      return emitOpError() << "operand " << i << " is not ranked";
-+    }
-+    if (i < getInputs().size()) {
-+      auto argShape = llvm::to_vector(argType.getShape());
-+      argShape.erase(std::next(argShape.begin(), dim));
-+      argType = argType.clone(argShape);
-+    }
-+    if (!hlo::isCompatibleForHloTypeInference(
-+            argType, bodyBlock.getArgument(i).getType())) {
-+      return emitOpError() << "operand and body argument " << i
-+                           << " are incompatible";
-+    }
-+  }
-+
-+  // Compatibility of terminator operands and result types is checked by
-+  // InferTensorType trait.
-+
-+  return success();
-+}
-+
-+ParseResult ScanOp::parse(OpAsmParser& parser, OperationState& result) {
-+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inits;
-+  int64_t dimension = 0;
-+  Region* body = result.addRegion();
-+  FunctionType funcType;
-+
-+  if (parser.parseOperandList(inputs, OpAsmParser::Delimiter::Paren) ||
-+      parser.parseKeyword("inits") ||
-+      parser.parseOperandList(inits, OpAsmParser::Delimiter::Paren) ||
-+      parser.parseKeyword("dimension") || parser.parseEqual() ||
-+      parser.parseInteger(dimension) || parser.parseRegion(*body) ||
-+      parser.parseOptionalAttrDict(result.attributes) ||
-+      parser.parseColonType(funcType)) {
-+    return failure();
-+  }
-+
-+  size_t numInputs = inputs.size();
-+  size_t numCarries = inits.size();
-+  if (funcType.getInputs().size() != numInputs + numCarries) {
-+    return parser.emitError(
-+        parser.getNameLoc(),
-+        "operand types must match the number of inputs and inits");
-+  }
-+  if (funcType.getResults().size() < numCarries) {
-+    return parser.emitError(
-+        parser.getNameLoc(),
-+        "not enough result types to cover the required carries");
-+  }
-+
-+  auto inputTypes = funcType.getInputs().take_front(numInputs);
-+  auto initTypes = funcType.getInputs().take_back(numCarries);
-+  if (parser.resolveOperands(inputs, inputTypes, parser.getNameLoc(),
-+                             result.operands) ||
-+      parser.resolveOperands(inits, initTypes, parser.getNameLoc(),
-+                             result.operands)) {
-+    return failure();
-+  }
-+  result.addTypes(funcType.getResults());
-+
-+  Builder& builder = parser.getBuilder();
-+  result.addAttribute(ScanOp::getDimensionAttrName(result.name),
-+                      builder.getI64IntegerAttr(dimension));
-+  result.addAttribute(
-+      ScanOp::getOperandSegmentSizeAttr(),
-+      builder.getDenseI32ArrayAttr({(int32_t)numInputs, (int32_t)numCarries}));
-+  size_t numOutputs = funcType.getNumResults() - numCarries;
-+  result.addAttribute(
-+      ScanOp::getResultSegmentSizeAttr(),
-+      builder.getDenseI32ArrayAttr({(int32_t)numOutputs, (int32_t)numCarries}));
-+
-+  return success();
-+}
-+
-+void ScanOp::print(OpAsmPrinter& p) {
-+  p << "(";
-+  p.printOperands(getInputs());
-+  p << ") inits (";
-+  p.printOperands(getInits());
-+  p << ") dimension=" << getDimension() << " ";
-+  p.printRegion(getBody(), /*printEntryBlockArgs=*/true);
-+  p.printOptionalAttrDict(getOperation()->getAttrs(),
-+                          /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
-+                                           "resultSegmentSizes"});
-+  p << " : ";
-+  p.printFunctionalType(*this);
-+}
-+
- }  // namespace chlo
- }  // namespace mlir
+ LogicalResult ScanOp::verify() {
+-  if (getInits().size() != getCarries().size()) {
+-    return emitOpError() << "requires the number of inits ("
+-                         << getInits().size() << ") and carries ("
+-                         << getCarries().size() << ") to be equal";
++  if (getInputs().empty() && getOutputs().empty()) {
++    return emitOpError() << "at least one of inputs or outputs must be present";
+   }
  
+   // Check that the scan dimension is in bounds for all operands. Also check
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
 --- stablehlo/stablehlo/dialect/ChloOps.td
 +++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -31,6 +31,7 @@
- #define STABLEHLO_DIALECT_CHLO_OPS
+@@ -978,6 +978,9 @@
+         setNameFn(region.getArgument(i), i < getInputs().size() ? "input" : "carry");
+       }
+     }
++    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
++      return succeeded(mlir::verifyCompatibleShapes(l, r));
++    }
+   }];
  
- include "mlir/IR/BuiltinAttributeInterfaces.td"
-+include "mlir/IR/OpAsmInterface.td"
- include "mlir/IR/OpBase.td"
- include "mlir/Interfaces/ControlFlowInterfaces.td"
- include "mlir/Interfaces/InferTypeOpInterface.td"
-@@ -934,4 +935,53 @@
+   let hasCustomAssemblyFormat = 1;
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -47,6 +47,7 @@
+ #include "llvm/ADT/TypeSwitch.h"
+ #include "llvm/ADT/iterator_range.h"
+ #include "llvm/Support/Casting.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/FormatVariadic.h"
+ #include "llvm/Support/LogicalResult.h"
+ #include "llvm/Support/MathExtras.h"
+@@ -91,6 +92,8 @@
+ #include "stablehlo/dialect/StablehloOps.h.inc"
+ #include "stablehlo/dialect/TypeInference.h"
+ 
++#define DEBUG_TYPE "stablehlo"
++
+ // Include order matters
+ #define GET_TYPEDEF_CLASSES
+ #include "stablehlo/dialect/StablehloTypeDefs.cpp.inc"
+@@ -729,6 +732,16 @@
+                           getPrecisionConfig(), getResult());
+ }
+ 
++LogicalResult DotOp::inferReturnTypeComponents(
++    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
++    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++  DotOp::Adaptor adaptor(operands, attributes, properties, regions);
++  auto lhsType = mlir::cast<RankedTensorType>(adaptor.getLhs().getType());
++  auto rhsType = mlir::cast<RankedTensorType>(adaptor.getRhs().getType());
++  return hlo::inferDotOp(location, lhsType, rhsType, {}, inferredReturnShapes);
++}
++
+ // PrecisionConfig - std::optional attribute, print the array as raw enums
+ //
+ // {precision_config = [#stablehlo<precision DEFAULT>,
+@@ -856,6 +869,35 @@
+       getDotDimensionNumbersAttr().getRhsContractingDimensions(),
+       getPrecisionConfig(), isDefaultPrecisionConfig, hasAlgorithmSpecified,
+       getResult());
++}
++
++LogicalResult DotGeneralOp::inferReturnTypeComponents(
++    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
++    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
++    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
++  DotGeneralOp::Adaptor adaptor(operands, attributes, properties, regions);
++  LLVM_DEBUG(llvm::dbgs() << "DotGeneralOp::inferReturnTypeComponents\n");
++  LLVM_DEBUG(llvm::dbgs() << "attributes: " << attributes << "\n");
++  LLVM_DEBUG(llvm::dbgs() << "properties: " << properties << "\n");
++
++  ArrayRef<int64_t> lhsBatchingDimensions;
++  ArrayRef<int64_t> rhsBatchingDimensions;
++  ArrayRef<int64_t> lhsContractingDimensions;
++  ArrayRef<int64_t> rhsContractingDimensions;
++  if (adaptor.getDotDimensionNumbersAttr()) {
++    lhsBatchingDimensions =
++        adaptor.getDotDimensionNumbersAttr().getLhsBatchingDimensions();
++    rhsBatchingDimensions =
++        adaptor.getDotDimensionNumbersAttr().getRhsBatchingDimensions();
++    lhsContractingDimensions =
++        adaptor.getDotDimensionNumbersAttr().getLhsContractingDimensions();
++    rhsContractingDimensions =
++        adaptor.getDotDimensionNumbersAttr().getRhsContractingDimensions();
++  }
++  return hlo::inferDotGeneralOp(
++      location, adaptor.getLhs().getType(), adaptor.getRhs().getType(),
++      lhsBatchingDimensions, rhsBatchingDimensions, lhsContractingDimensions,
++      rhsContractingDimensions, {}, inferredReturnShapes);
+ }
+ 
+ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -56,9 +56,9 @@
+ include "stablehlo/dialect/StablehloAttrs.td"
+ include "stablehlo/dialect/StablehloTypes.td"
+ 
+-class StableHLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits> :
++class StableHLO_ShapedInterfaceOp<string mnemonic, list<Trait> traits, list<string> extraMethodOverrides = []> :
+     StableHLO_Op<mnemonic, traits # [DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+-    ["reifyReturnTypeShapes"]>]> {}
++    ["reifyReturnTypeShapes"] # extraMethodOverrides>]> {}
+ 
+ class StableHLO_ResourceBase<string resourceKind> :
+     Resource<!strconcat("::mlir::stablehlo::side_effects::", resourceKind)> {}
+@@ -2557,7 +2557,7 @@
    }];
  }
  
-+def CHLO_ScanOp : CHLO_Op<"scan", [
-+      AttrSizedOperandSegments,
-+      AttrSizedResultSegments,
-+      InferTensorTypeWithReify,
-+      IsolatedFromAbove,
-+      OpAsmOpInterface,
-+      RecursiveMemoryEffects,
-+    ]> {
-+  string summary = "Scan operation";
-+
-+  string description = [{
-+    Applies a reduction function `body` to `inputs` and `inits` along the
-+    `dimension` and produces `results` (comprising `outputs` and `carries`).
-+
-+    If `is_reverse` is true, the scan is performed in reverse order.
-+    `is_associative` indicates whether the reduction function is associative.
-+
-+    See: https://www.tensorflow.org/xla/operation_semantics#scan
-+
-+    ScanOp currently does not have a decomposition to StableHLO.
-+  }];
-+
-+  let arguments = (ins
-+    Variadic<HLO_AnyTensor>:$inputs,
-+    Variadic<HLO_AnyTensor>:$inits,
-+    ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
-+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
-+    OptionalAttr<BoolAttr>:$is_associative
-+  );
-+
-+  let results = (outs
-+    Variadic<HLO_AnyTensor>:$outputs,
-+    Variadic<HLO_AnyTensor>:$carries
-+  );
-+
-+  let regions = (region SizedRegion<1>:$body);
-+
-+  let extraClassDeclaration = [{
-+    void getAsmBlockArgumentNames(Region &region, OpAsmSetValueNameFn setNameFn) {
-+      for (size_t i = 0; i < region.getNumArguments(); ++i) {
-+        setNameFn(region.getArgument(i), i < getInputs().size() ? "input" : "carry");
-+      }
-+    }
-+  }];
-+
-+  let hasCustomAssemblyFormat = 1;
-+  let hasVerifier = 1;
-+}
-+
- #endif  // STABLEHLO_DIALECT_CHLO_OPS
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.cpp
-@@ -18,6 +18,7 @@
- #include <cstdint>
- #include <optional>
- 
-+#include "llvm/ADT/SmallVectorExtras.h"
- #include "llvm/Support/ErrorHandling.h"
- #include "mlir/IR/Attributes.h"
- #include "mlir/IR/BuiltinAttributes.h"
-@@ -30,6 +31,7 @@
- #include "stablehlo/dialect/TypeInference.h"
- #include "stablehlo/integrations/cpp/builder/AttrTypeBuilderUtil.h"
- #include "stablehlo/integrations/cpp/builder/MlirBuilder.h"
-+#include "stablehlo/transforms/StablehloBroadcastLowering.h"
- 
- namespace mlir {
- namespace stablehlo {
-@@ -94,6 +96,49 @@
-       value));
+-def StableHLO_DotOp: StableHLO_Op<"dot", [Pure]> {
++def StableHLO_DotOp: StableHLO_Op<"dot", [Pure, DeclareOpInterfaceMethods<InferShapedTypeOpInterface, ["inferReturnTypeComponents"]>]> {
+   let summary = "Dot operation";
+   let description = [{
+     This operation is on its way out of StableHLO, so it is not included in
+@@ -2587,7 +2587,8 @@
  }
  
+ def StableHLO_DotGeneralOp: StableHLO_ShapedInterfaceOp<"dot_general",
+-    [ConditionallySpeculatable, NoMemoryEffect]> {
++    [ConditionallySpeculatable, NoMemoryEffect,
++     DeclareOpInterfaceMethods<InferShapedTypeOpInterface, ["inferReturnTypeComponents"]>]> {
+   let summary = "DotGeneral operation";
+   let description = [{
+     Computes dot products between slices of `lhs` and slices of `rhs` and
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -48,6 +48,7 @@
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/ADT/Twine.h"
+ #include "llvm/ADT/iterator_range.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/MathExtras.h"
+ #include "llvm/Support/Regex.h"
+ #include "llvm/Support/raw_ostream.h"
+@@ -74,6 +75,8 @@
+ #include "stablehlo/dialect/AssemblyFormat.h"
+ #include "stablehlo/dialect/Base.h"
+ 
++#define DEBUG_TYPE "stablehlo-type-inference"
 +
-+MlirOp IotaLike(MlirOp input, int64_t dim, Type elementType) {
-+  auto inputType = mlir::cast<RankedTensorType>(input.getType());
-+  if (inputType.getRank() == 0) {
-+    // Need to construct 1-D iota and reshape to 0-D.
-+    auto iota = stablehlo::Iota(input.getBuilder(),
-+                                inputType.clone({1}, elementType), dim);
-+    return stablehlo::Reshape(iota, {});
-+  }
-+  if (inputType.hasStaticShape()) {
-+    return stablehlo::Iota(input.getBuilder(), inputType.clone(elementType),
-+                           dim);
-+  }
-+
-+  // Use input's static shape and slice to the dynamic shape.
-+  auto dims = mlir::stablehlo::getDimensions(input.getValue());
-+  if (mlir::failed(dims)) llvm::report_fatal_error(
-+      "failed to create dynamically shaped iota op, with MLIR error: ");
-+
-+  mlir::SmallVector<int64_t> iotaShape = llvm::map_to_vector(
-+      *dims,
-+      [&](mlir::stablehlo::DimensionInfo dim_size) { return dim_size.size; });
-+  auto iotaType =
-+      mlir::makeTensorType(input.getContext(), iotaShape, elementType);
-+  mlir::MlirOp iota = mlir::stablehlo::Iota(input.getBuilder(), iotaType, dim);
-+
-+  // Slice bounded dimensions to the dynamic shape.
-+  for (const mlir::stablehlo::DimensionInfo& dim : *dims) {
-+    if (!dim.boundOp.has_value()) continue;
-+
-+    auto runtime_dim_size =
-+        mlir::stablehlo::GetDimensionSize(input, dim.boundOpDim);
-+    iota = mlir::stablehlo::SetDimensionSize(iota, runtime_dim_size,
-+                                             dim.boundOpDim);
-+  }
-+  return iota;
-+}
-+
-+MlirOp IotaLike(MlirOp input, int64_t dim, ElementType elementType) {
-+  auto resultElementType = getElementType(input.getContext(), elementType);
-+  return IotaLike(input, dim, resultElementType);
-+}
-+
+ namespace mlir {
+ namespace hlo {
  namespace {
+@@ -1246,9 +1249,11 @@
+   if (!arrayAttr) return success();
+   return arrayAttr.size() <= 2
+              ? success()
+-             : emitOptionalError(loc,
+-                                 "expects precision config to be empty or have "
+-                                 "<= 2 elements.");
++             : emitOptionalError(
++                   loc,
++                   "expects precision config to be empty or have "
++                   "<= 2 elements, got " +
++                       std::to_string(arrayAttr.getValue().size()));
+ }
  
- // Use preferred element type, if not use LHS element type.
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
---- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
-+++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilder.h
-@@ -58,6 +58,12 @@
- MlirOp Constant(MlirBuilder& builder, int64_t value);
- MlirOp Constant(MlirBuilder& builder, std::vector<int64_t> value);
- 
-+// IotaLike is a sugar API for iota that accounts for bounded dynamism in the
-+// input tensor. Eventually this should be a chlo.iota_like op with a StableHLO
-+// decomposition, but for now it will be housed as a builder API.
-+MlirOp IotaLike(MlirOp input, int64_t dim, ElementType elementType);
-+MlirOp IotaLike(MlirOp input, int64_t dim, Type elementType);
-+
- // Better Dot / DotGeneral builders.
- // These ops don't support full type inference because the result element type
- // cannot be inferred from operands, however the result shape can be.
-diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
---- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
-+++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
-@@ -199,6 +199,79 @@
-         &ctx, {Precision::HIGHEST, Precision::HIGHEST});
-     auto dot = stablehlo::DotGeneral(arg0, arg1, dotDimsAttr, precision);
-     func::Return(fb, dot);
-+  }
-+
-+  OwningOpRef<ModuleOp> module = mb->build();
-+  EXPECT_TRUE(succeeded(mlir::verify(*module)));
-+  EXPECT_EQ(expected, debugString(*module));
-+}
-+
-+TEST(MlirBuilderTest, IotaLikeStatic) {
-+  std::string expected = R"mlir(module {
-+  func.func @main(%arg0: tensor<2x3xi64>) -> tensor<2x3xi64> {
-+    %0 = stablehlo.iota dim = 1 : tensor<2x3xi64>
-+    return %0 : tensor<2x3xi64>
-+  }
-+})mlir";
-+  StablehloModuleBuilder mb;
-+  {  // Build Main Func
-+    func::FunctionBuilder fb(mb.get(), "main");
-+    auto& ctx = fb.getContext();
-+    auto type2x3xi64 = makeTensorType(ctx, {2, 3}, ElementType::I64);
-+    auto arg0 = func::Argument(fb, type2x3xi64);
-+    auto iota = stablehlo::IotaLike(arg0, 1, type2x3xi64.getElementType());
-+    func::Return(fb, iota);
-+  }
-+
-+  OwningOpRef<ModuleOp> module = mb->build();
-+  EXPECT_TRUE(succeeded(mlir::verify(*module)));
-+  EXPECT_EQ(expected, debugString(*module));
-+}
-+
-+TEST(MlirBuilderTest, IotaLikeScalar) {
-+  std::string expected = R"mlir(module {
-+  func.func @main(%arg0: tensor<i64>) -> tensor<i64> {
-+    %0 = stablehlo.iota dim = 0 : tensor<1xi64>
-+    %1 = stablehlo.reshape %0 : (tensor<1xi64>) -> tensor<i64>
-+    return %1 : tensor<i64>
-+  }
-+})mlir";
-+  StablehloModuleBuilder mb;
-+  {  // Build Main Func
-+    func::FunctionBuilder fb(mb.get(), "main");
-+    auto& ctx = fb.getContext();
-+    auto typei64 = makeTensorType(ctx, {}, ElementType::I64);
-+    auto arg0 = func::Argument(fb, typei64);
-+    auto iota = stablehlo::IotaLike(arg0, 0, typei64.getElementType());
-+    func::Return(fb, iota);
-+  }
-+
-+  OwningOpRef<ModuleOp> module = mb->build();
-+  EXPECT_TRUE(succeeded(mlir::verify(*module)));
-+  EXPECT_EQ(expected, debugString(*module));
-+}
-+
-+TEST(MlirBuilderTest, IotaLikeDynamic) {
-+  std::string expected = R"mlir(module {
-+  func.func @main(%arg0: tensor<2x3xi64>, %arg1: tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>> {
-+    %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<2x3xi64>, tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>>
-+    %1 = stablehlo.iota dim = 1 : tensor<2x3xi64>
-+    %2 = stablehlo.get_dimension_size %0, dim = 0 : (tensor<?x3xi64, #stablehlo.bounds<2, ?>>) -> tensor<i32>
-+    %3 = stablehlo.set_dimension_size %1, %2, dim = 0 : (tensor<2x3xi64>, tensor<i32>) -> tensor<?x3xi64, #stablehlo.bounds<2, ?>>
-+    return %3 : tensor<?x3xi64, #stablehlo.bounds<2, ?>>
-+  }
-+})mlir";
-+  StablehloModuleBuilder mb;
-+  {  // Build Main Func
-+    func::FunctionBuilder fb(mb.get(), "main");
-+    auto& ctx = fb.getContext();
-+    auto type2x3xi64 = makeTensorType(ctx, {2, 3}, ElementType::I64);
-+    auto typei32 = makeTensorType(ctx, {}, ElementType::I32);
-+    auto arg0 = func::Argument(fb, type2x3xi64);
-+    auto arg1 = func::Argument(fb, typei32);
-+    auto sds = stablehlo::SetDimensionSize(arg0, arg1, 0);
-+    auto iota = stablehlo::IotaLike(sds, 1, type2x3xi64.getElementType());
-+    func::Return(fb, iota);
+ LogicalResult verifyConvolutionAttributes(
+@@ -2413,24 +2418,60 @@
    }
  
-   OwningOpRef<ModuleOp> module = mb->build();
-diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
---- stablehlo/stablehlo/tests/ops_chlo.mlir
-+++ stablehlo/stablehlo/tests/ops_chlo.mlir
-@@ -417,3 +417,90 @@
-   %0 = chlo.erf_inv %arg0 : tensor<16x16xf32> -> tensor<16x16xf32>
-   return
+   // Infer the output dimensions of the operation.
+-  SmallVector<int64_t> dimensions;
+   auto lhsRankedType = cast<RankedTensorType>(lhsType);
+   auto rhsRankedType = cast<RankedTensorType>(rhsType);
+   auto lhsShape = lhsRankedType.getShape();
+   auto rhsShape = rhsRankedType.getShape();
+-  for (const int64_t lhsBatchingDim : lhsBatchingDimensions)
+-    dimensions.push_back(lhsShape[lhsBatchingDim]);
+-  for (int64_t i = 0; i < lhsRankedType.getRank(); i++)
++
++  SmallVector<int64_t> lhsBounds =
++      to_vector(encodingToBounds(lhsRankedType.getEncoding()));
++  SmallVector<int64_t> rhsBounds =
++      to_vector(encodingToBounds(rhsRankedType.getEncoding()));
++
++  SmallVector<int64_t> inferredDimensions;
++  SmallVector<int64_t> inferredBounds;
++
++  for (size_t i = 0; i < lhsBatchingDimensions.size(); ++i) {
++    auto lhsDim = lhsBatchingDimensions[i];
++    auto rhsDim = rhsBatchingDimensions[i];
++    int64_t lhsBound =
++        lhsBounds.empty() ? ShapedType::kDynamic : lhsBounds[lhsDim];
++    int64_t rhsBound =
++        rhsBounds.empty() ? ShapedType::kDynamic : rhsBounds[rhsDim];
++    auto inferredDimAndBoundOrErr = inferMostSpecificDimAndBound(
++        location, i, lhsShape[lhsDim], rhsShape[rhsDim], lhsBound, rhsBound);
++    if (failed(inferredDimAndBoundOrErr)) {
++      return failure();
++    }
++    inferredDimensions.push_back(inferredDimAndBoundOrErr->first);
++    inferredBounds.push_back(inferredDimAndBoundOrErr->second);
++  }
++
++  for (int64_t i = 0; i < lhsRankedType.getRank(); i++) {
+     if (!llvm::is_contained(lhsBatchingDimensions, i) &&
+-        !llvm::is_contained(lhsContractingDimensions, i))
+-      dimensions.push_back(lhsShape[i]);
+-  for (int64_t i = 0; i < rhsRankedType.getRank(); i++)
++        !llvm::is_contained(lhsContractingDimensions, i)) {
++      inferredDimensions.push_back(lhsShape[i]);
++      inferredBounds.push_back(lhsBounds.empty() ? ShapedType::kDynamic
++                                                 : lhsBounds[i]);
++    }
++  }
++
++  for (int64_t i = 0; i < rhsRankedType.getRank(); i++) {
+     if (!llvm::is_contained(rhsBatchingDimensions, i) &&
+-        !llvm::is_contained(rhsContractingDimensions, i))
+-      dimensions.push_back(rhsShape[i]);
+-
+-  // dot_general_c12
+-  inferredReturnShapes.emplace_back(dimensions);
++        !llvm::is_contained(rhsContractingDimensions, i)) {
++      inferredDimensions.push_back(rhsShape[i]);
++      inferredBounds.push_back(rhsBounds.empty() ? ShapedType::kDynamic
++                                                 : rhsBounds[i]);
++    }
++  }
++
++  Attribute outputEncoding = lhsRankedType.getEncoding()
++                                 ? lhsRankedType.getEncoding()
++                                 : rhsRankedType.getEncoding();
++
++  Attribute boundsAttr = boundsToEncoding(outputEncoding, inferredBounds);
++  inferredReturnShapes.emplace_back(inferredDimensions, /*elementType=*/nullptr,
++                                    boundsAttr);
+   return success();
+ }
+ 
+diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
+--- stablehlo/stablehlo/integrations/python/ChloModule.cpp
++++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
+@@ -11,6 +11,7 @@
+ limitations under the License.
+ ==============================================================================*/
+ 
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir-c/IR.h"
+ #include "mlir/Bindings/Python/NanobindAdaptors.h"
+ #include "nanobind/nanobind.h"
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -13,6 +13,7 @@
+ 
+ #include <vector>
+ 
++#include "llvm/ADT/STLExtras.h"
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
+ #include "mlir/Bindings/Python/NanobindAdaptors.h"
+diff --ruN a/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir b/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
+--- stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
++++ stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
+@@ -19,7 +19,7 @@
+     return %c : tensor<100x100xi8>
+   }
+   func.func private @expected() -> (tensor<100x100xi1> {mhlo.layout_mode = "default"}) {
+-    %c = stablehlo.constant dense<"0xEEEEADDFEBFDEAEFCEBC8EFE377BF3B7F3455BBEFFFE7EFB9FBE75F9EEE767FFFF5FEF678EF77FEE9FE95DEDDBD9EFF3FAFBC7D7FDB797AFF5F8AB8AAFA6FFFFF3FF7FF9F6EF7FBE7FFFBFBE79D18F3F6EF7BBFEB97FBFF5DE634FDDE7BF7FF7E6FFF7FEDFF6FFFEF8CDFE7CCF7EAF7BEFE7FFEF37FB3E7ECDDBFB6EBF372EAAFFF3BD7B73FF7BB353FDCADEFFFF4F1FFABEFFDEFF7F972AEEB7C1EF7ED0E3FBB4DDAD1AFF9CB2FFEEFDFF3A3ED6EBFB5FFAA3CFE7AF6E722FE3BFF119FFF6FCB7BE8FD52DFFF3A572FAFFFDFAB9557BFEDEF5EFC52C2AFBFDFB7FBE5BB9ADBCF97B119E2AFDBFB3FF73BFFFBCA3BBB5FAEB87EDF49A6FEFEFF9FFF17A7FFFA77EF3D9FEDFFBFAFFB7FFDCF43EBD5E6FDD16FF5A73BFFFFDBCFBAEFFDFDEDFBE7CDF7FDD3FF7F81CDCA5D6E9E72FF3BF3FF9FFD67BEAFFDD9F6DE76BFDF77F6FD7FDF5517F7FF8FFF9E3F7EC3FFFEB4FE97EFEEEBFFF35FF8CF5BE7DEFBFCB97FEF9F7EF70DBDBAFFFDD57747FFFCDFDF3EF2BDD5DDFFAFFDDCDFD3FDDBB49F5F616E9E57D6FFFD3FD7ED31ADEFF7DF53FFD79FF6CEFFDDEBFBFBF6753EEBDCB356CF6E4FFFFDA8DA47FEBEFF5CE01E919DE4CF6F5F3A7DA2BAFAFFEDBABD6D7D7FEE8FEBFEF5F6F1FF6FB5BFBF6B7EEFFFF7BAFF07EBDCFFFB7FBCF73CBEF5FF4EF7ECEDBDFB0DF9FFDABF26E5B5D7AEEEFDDFCFF6FF7D7AFBE7FFFE3F7F5EB73B3EFDF7DDFDFE7E2EE39BFDFE177C3B587BFF5F5D33DD6FCAD63DBBA2777EBFFFB9FEFF78E5EFED0DFBD5FBBDF77F7AF7FBBDEFF1DF17FDF63EFE90B55FDCEADF6FB6FE6BECDFEFF7EFFFBF9FFD7D6E1FFFF9FEA7FAACEFBD6FDB6EEFF6E97CF7E767E61F7FEF227D3DEE7BD5DF9DE3FDDF7F6C5B799AFCBAFE7EF6DFFFFFBDEFFFFBEFFFB755F8F7D97BEF9DF79377EFB49BE5FEF5F6FBFFDFFEFFEDF7F5FA6B5CEFD7F3FFBFF07FFB5D6FAC7EDF79397F7FEFAFDD96FBF7FE7BD982D9CEDAFBDDF8F92FB5BF31FEDBE5C7FFF5FBFD7CB7F7FFDF2EFFE6FFFEF5F8FAF56FFFFFDAE527FD6F777D67AEE77FA7EEEFFF6DAE3B69FE7ECD7C77D7E9ADFC7FFF7838FBDD7DA465FDF3F3D9DBFD2EDFFDDCD7FFFFF497FF4F7FFD27FDD6A9F07FBFBF65FF345DB7FDFA7D77FFECDD969DFDD2BFADFDF66AEBBE3DEB3DE9BCEF6F16FFFF379AFD9F7FFF3AFF2FEFBB7EFFEF9F6077F77E9FBC7997F7FF47DBA6FFBBCFEFDD7FFAFBBBBE797FFDFF75FF4CFEBDA57EBFFFDFDFD3EB5DF9BF33B97DBFBBF3B9DEEDC6BFF4EECFFE955F4F3DB87AF9FFF3EDF29A9FDFF79DF465FFE9BFFBFF7337E6D4BE5F78CFFBD41FDBDABFF5EB3EFDF5BBF6FD3FAF9CBBC99FF7BF3FEFFFFEF2F3E7D6AFFFFFC4FFDFDFF3E2C7DFEAF7AFFFF61DBEEDBEFFFFADDF9FF5BFD71F97E7FB87EFBFFFF6F16997F77FB7996FFDF77CFF3CBFFFFE078E73FFBDFFF0EE7BAF9F9FAFEFBD7DEE4FBC76CBBFBDFFAFEDEEB3B7DDBBFF77FFFFD5D29DFFD5EFB3BFFCCEBFBEFD7FFF37BD5CF5DFFFCBE6BCDDFDFDF9CFD5CAA7FEFDBFBFD36CFFFEEEFBBEDFFF53EE7FA6FB9EFD5F797FAFB77AFFF3EF0BBE6FFFFABF27CFFFF9BFDF96BEE56DFFBBFDD6B66F396F79F7B7FA63FEEEDFD6D7F7AD0F9DEDFF7FEFBFF3FEF9BFED595FDF9A6FD337FF4BF6DDBBF6FFFAD76CF7FE9EE2FFEBF73BDD582EFFDF75E7B9DFAAFE3FEFB557BFEBAEFF5F7FB6CDFDEFCAEE1F3EDBFDFB7FD3DF5F1DE3B7FE4F54BFAADCAB7FF7DCEDA5EB6FAFB6FBFECFFFF"> : tensor<100x100xi1>
++    %c = stablehlo.constant dense<"0x00010101000101010001010100010101010001010001000101010101010001010101000100010101010001010101010100010001000101010101010100010101000101010000010100000101010100010001010100000001000101010101010101010100010100000101000101010100010100000101010101010100010100010101000001010101010001000000010001010001010001000001010101010001010101010101010100010101010101010001010101010100010100010101010101010101010000010001010101010001010001000101010001000001010101010001010100010101010101000001010101010100000101000101010101010101010101010101010101010101010001000101010100010101010101000001010000010101000000010101010001010101010101010101010000010101000101010101010101000001010000010001010101000101010001000100010100010101010100010100010101000001010001010101010100010101010100000101010100010001010101010101000101010101010101000000010101010100010001010100010101010101010101000101000101010100010000010101010100010001010001000101010100000001010101010101000100010001000100010000000101010101000100010001010000010001010101010101010101010101010101010101000001010101010101010101010101010101010101000100000101010101000101000101010101010101000101010101010101010100000101010101000101010101010101000101010101010101010101010101000100010101010100010100000101010100010000000100010101010101000000010101010101010000000101010001010001010100010101010101000101010001000101010101010101000001010100010101010101010100010101010101000101000100010101010001010101000101010100000001010001010101000001000100010101000101010101000001010101010101010100010101010101010100010101000101010100010100000101010101010101010101010101000101010100010101010101010101010101000101000101000101010101010101010101010001010101010101000000010101010101000101000001010001010101010101000001010101010001010101000001010001010101010100010101010001000101010001010101000101010100010101010101000001010101010101010101010101010100010101010101000101000001010001010101010001010101010000000101010101010001000101000001010101000101000101010100010101010100010101000101000101010101010001010101000101000000010101000100000001000100010001010101010101010101010000010101010100010101010001010100010101010001010000010101000101010101010101010100010101010001010000010100010101000001000100010001010101010100010001000001010001010101000101010101010101010101010101010101010101010100000100010101010100000000010001010101010001010101010001010101010101010100010101010001010101010101010101010101010101010001010100010000010001000100010000000101010001010101010100010100010100000000000101010101010001010100010101010101000000000001000101010100000001010101010001010101010000010001010001010001010100010101000101000100010001000101000000010101010101010100000101010000010001000001010001010101010101010100010101000101010100010101010101010101010101010100010001010100000001010101010000000101000100010101010001000101010101000101010101010101010100010000010001010101010101000000010001010101010000010101010100000101010101010100010001000101010001010000010000010101000101010100010000010100000001010101010101010100010100000001010101010000010100000001010101010101010001010001010101000001010101010101010100010100010001010101010001010101010000000101000100010001010100010100010000010101010101010101010000010101010100010000010001000100000101010000010001010101010101010101010101010001010101010100010001010101010100000101010001010001000100010001010001010101000001010101010101000101010100010101000100010101010101010100010101010001000000010100000101000100000001000100010000010100010101010101000101010101010101000101010101010101010101010000010101010100010101000101000100010000010101000101000101000100010000010101010001010000010101010101010001010101000100000001000000000101010100000100010001000100000100010101010101010101010101000101010000010100010101010101010101010100000101010001010101010100010101010101010101000001010101000101010000000100010101000101010001010001000101000100010001010101010101000100010101010101000000000101000101000101010000010001010101000100010100000101010101000101000101010100010101010101010001010101000001010101010101010101010101010000000101010100010001010101000101010101010100010101010101010101010100000100010001010101010100010100000101010101000001010001010001010101010101010101010100010101010001010101010001000101010101010101010101010101010100010100010101010101010101000001010100010100000100010101010001010101010000010001010101000100010101010001000101010100010100010001010100010100010100010000000101010101010101000100010100010001010000010101000101010101010001010101010101010101000101010101010000010101010001010100010101010100010101000100010101010101010101010101010100010100010101010001010101010101000101000101010101000100000101010101000101010101000101010101010101010001000101010001010101010101010000010101000101010100000001010101010000010101000000000001010100010101000100000100010001010001000101010000010001010101010100000101010101010100010000010100000101010101010101010100010101010101010000010000010101010101010101010101010001010001000101010100010101010000010001000101010101010101010101010001010100010101010101010000010100010100010100010101000001010101010001000101000100010101010101010101000101010101010101010101000101010100010100010101000100010101000101010101010100010001010101010000000100010001010101010101000101010101010100000000010101010101010101010101010100000101010101010100000001010101010100010101010000010100010101010101010101000001010101010101010101000100010101010101010000010001000001000101010001010101010100000101010101010100010101000101010101010101010001010101010101010101000100010100000101010101010101000001010000000101000100010101010001010101010001010001010101010001010101000101010101010101010001010100010000010101010100010000010001010101010101010000010101010101010100010101010101010100010101000000000101010001010001010001010101000101000101010101010001000101010101010101010100010101000101010101000100010000000100010101000101010101010100010101010101010101000101000001010100010101010101010100000101010101010101000101010101000100010000010001010100010101000101010001000101010101000101000100010101010101010101010101010100010101000101010001010000010101000101010101010101010101010000010001010100010101010001010100010100000100000100010001000101010100010100010101010001010001000000010000010001010101000100000101010100010101010100010101010001010001010101010101010101000001000101010001010101010100010101010101000101000001000101000100010100000000010101010001010101010101010101010001010101010001000100010101010101010101010000010001010101010101000001010101000101010101010101000001010001010001010101000101010100010101010101000101010100010101010101010100010101010101010001010101010101000101010100000101000101000001000100000101010001010101000101010100010101000100000101010001000101000000000101000101000001010001010101000001000001010101010101010101010101010101010101000100010100010101000101000000010000010000010001010101010101010001010001000101010101010100010101010001000101010100010101000001010100000000000000010000010001010101000001010000000001010101000101000001010000010000010100010101010100010001010101010100000101010101010100000100010001000101000101010100010001000001010101000100010101010100010001000101010101010101010001010001010101000100010001000101000100010101010100010001010101010001000101000101010101010100000001000101010001010101010101010101010101000101010101000101010101010101000100010101010001010001010101010000000001010001010101010100010101010101010001010001000101000101010101000101000101010101010100010100010001010100010101010101010101010101010101010101010101000101010100010101010001000100000000010101010001010101010100010001010101000101010101000001010101010101010101010101000101000101010001010101010101010100000101010100000101010001010001000001010101010100010101010101010100010000000100010101010101010100010101000101010101010000010101000001010101000101000101010101010100010100000000010100010101010101000101010101010100000101000101010101010101000100010001000100000101010100010101000101000101000101000100010001010100010000010001010101000001010100010101010101010001010101000101010001010000010101010101010101010101010101010101000101000101010001010101010101000100010101010101000100010001010101010001010101010101010001010101010101010101000000010101010101000101010101000100010101010101000100010101010100000101010001010000010100010101010100010101010101010100010101000101010101000101010101000101010101010100010101010100000101010001000000010101000101010001010101000001010100000101010101010001010101010100010101000000000101010101010001010100010100000000010101000100010100010101010000000001010101010101000101000100010101010100010001010101010100000100010101000101010100000001010001000101000001010101010101000101000100010101000000010100010100010100010100010001010100010101010000010000010101000101010001010001000101010101010101010101010100010101010101010101010000010101010100010101010101000101010100010101000000010001010101000100000101010101010100000000010001010101010101000101010001010101000101010101010001000101000101010001010101010100010101010100010101000101010001010101010101010001000101010101010101000101000101010001000101010100010101010101010101010100010101000000010000000101010101010101010101000101010101000101010100000001010001010101000101010100000100010101010100010000000001000100010001000100010101010101000101010000010101000101000100010001010001010101010100010101010101010101000101000001010000010101000101010101000101000101000001010001010101010101010101010101010100010101010101000101010101010101010100010101010101000001010101010101010101010101010101000100010100010100010001010100000000010101010101010101010101010101010101010101010101000001000100010001010101010101010101000001000100010001000101010000010101010001010101010001010001000101010001010101010100010100010100010001010100010101010101010101010100010101000101000101010001000001010101010000010100010101010101000001010001010100000101010101010001000000000101000101010001010101000101010101010100010000010101010101010000010000010100000100010100010101010001010101010000010101010001010101000101000101010001000100000101010101000101010100010101010101010100000100010101000101010101000101010100010100010101010100010000000101010101000101000101000001010000010101010100010001010100010000010101010101000100010101010000010101010101010001010101000101000101000101010101010101010101010101010101010001010101010001010101000101010101010101010101010101010101010001010101010001010101010101010101010001010101010100010001010100010101010100010001010101000000010100010101010100010101000100000100010101010100010100000101010101010101010100010101000001010101000101010001010000000101010101010001010001010101010100000100000100000101010101000101010101010001000101010100010101010101010100010001010101000101000101010101010001010001010101010101010101010101010101010100010101000101010101010101010101010001010101010101010100010101010100010000010100000100010100010001010001000101010000010101000101010101010101010101010100010101010101000001010001010101010101010101010101010101000000000001010101010101010100010001010001000101000100010100010001010101010101010000000101010001010001010101010100010101010101000001000001010101000100000101010100010101010001010101010101000100010101010101000101010101010100000101000101010101010001010001010101010100010101010101010100010101000001010101000101010100010000000101000001010001010001000000000101010000010100010100010101010101010001000101000101010100010101010101000101010101010000000100010000010000010101000101010101010100010100010001010000010101010101010101000000010001010001010100010101010100010000010101000100010101010101010001010101010101010101010101000100010101010101000101010100010001010101000100000101010101010101010001010101010101000100010101010101000100000101010101010101000101010001010101010101010101010001010001010101010101010101010100010101010101010100010001010101000000010101010100010001000101000100010001010101010101010101010101010101010001010101010100010101000100010001000001000100010101010101010000010100010001010101010001010101010101000101010000010100010001010001000101010100000101010001010101010100010101000001000101010101000101010101010000010101000101010101010101010101000101000101010100010001010001010101000000010101000101000101000101010101010000010101010000010101000001010001010101010100010001010101010000000101010001010101010000010101010101000001000101000001010101010100010101010100000001010101010101010101010101000101010101010000000000010101010100000001010001010101000101010100010001010001000101000101000101000000010001010101010001000101010101000101010101010101000001000101010100000100010101000001010101010101000100010000010001010100010100010101010101010101010101000101010001010100010100000101010101010101010001010101010101010101010101010101010000010000010001010101010101000000010001010101010101000101010101010101010101010001000001000101010101010101010001000101010001010001000100010100010101010100000101010100000000000101000101010101010100010101010100010100010101010101010101000100010100000101010101000100000001000101000101000101010101010101010001010101010001010101010000010001010101000100010101010101010101000001010101010101010001010000010101000001010001010100000100010100010101010100010101000101010001010101000100010000000100010101010101010101010001010101010101000101000101000001010000010101000100010101000101010001010100000001010100010101010001010101000001010001000101010100010101010001010000010001010100000101000101000101010101000000010101010101010100010100010101010101010101010000010101010100000101010100010101010001000101000001010001010101010001010101010101010101010101010000010101010101010100010001000100000101010100010101010101010101000101010101010101000101000101010101000101010001010101010101010000010101010100010100010101010101010000000000010101010101010001010100010101000100000100010101010100010101010101010100000001010100000101000001010101010101010001010101010101000000010001010101010001010101010000010001010100010101010100010100010100010101010100000101010100010001010101010101010001010101010101010100010001010101010101010101010101010001000101010001010100010101000101010001010101000001010101010100010000010101010101010101010101010100010101010100010101010101010101000100000001000101010101010101000001010101000100010101000100010100010101010100010001000101000100010101010101010101010101000101010101010100010101010101010001010101010100010101010100000100010001010001010101010100010101010001010000010101000001010101010100010101000001010100010000010101000101000101010100010101010101010101010100010101000101010000010001010100000100010101000101010000010101000101010100010001010001010101010101010001010100000100000001010001010101010101010101010100000100010101010001000100010000000100010101010101000001010101010100010100010101010100000000010101010100010001010101010100000101010101010101010001010101010000010101010100010101000001000100000100000100010001010001010101010101010101010101010100000101010100010101010100010100010100000001000101010101000100000101010101010101010001010000010101010101010101010101010101000101010100010101010101000001010000000101010101010001000101000101000101000100000100010001000001010101010100010101010000010100000001010101010101010101000101010100010100000000000100010001010101010101000101010100010101000100010001010101010101010100010101010001000101000001010001010101010001010101010101010001010101000101000100010101010101000101010101000101000101000001000101000100010101010101000001010101010101000100000101000001010101000101000001010000010101010101010101010100010101010001010000010101010001010101010101010101010101010101010101010101010101010100010101010101010001000000010101010100000100010101010100000100010001010001010101010101010101010101010101000001010101010101010101000001000100010101010101010001010101010101010101010101010001010101010000000001010001000001000101010101000001010101010101010101010001000100010001010101000101010101010101010101010101010101000000000101000101000101000101000101010001010101010001010001010101010100010101010101010101010100010001010101010100010101000101010000010101010101010101010101010101000101000100010001010101010101000000010101000100000101010101000101010101010001010101010101000000000101010001000101010101010001010001010101010101010101010101010101010101010101010101000101000001010001000000010000010100000101010101010101000101010001010100010100010101010101000001010101000001010001000001010101010101010101010101010001010101010001010100010101010000010101010000010101010101000100000101010101010101010101010101010101010000000000010101000000010101010001010100000101010101010101010000010100010101010101010101010001010101010101010101000101010000000001010100000101010001000101010001010000010101010101000001010101010001000101010101000101010101010101010001010101010101010001000101000101010100010100000100000101010101000101010101010101000000010100000101000101000101000101010001010100010101010101010101010001010001000101010101000101010101010100010101010001010101000100010101010100010101000001000101010101000101000101000101010101010101000101010100010101010101010101010100010101010101010101000101010101010100010101000100010000010001000001010101010001010100010101010101000101010100010001010001010101010101000101010000010101010101010100000101000001010101000100010101010100010101010101010101000101010101010001000101010101010101010101010000010101010101000101010100010001000100010101010101000001010100010101000100010101010101010100000101010101010001010101010001010100010001010001000101000001010101010101000101010101010100010101010101010001010000010101000001010001010101010100000101010001000001000100010001010101010101010001010101000101010101000101000101010100010101010101000101010101010001010001010000010101010000010101010101010101010001010100010101010101010001010101010001010100010100010100010101010101010101010101000100010101010001010101010000010101000001010100010001010101010101010100010100010000010101000101010101000101010100010001000101010101000101010101010100010000010001000101010101010100010101010101010100010101000101010100010001010101010101010100010101010100000000000001010101010100010101000100010100000101010101010101010101010101010101010101010001000100010001000001010101000001010101010001010101010101010101010101010101010100010100000101000101010101010100000101010101010100010001010000010101000101010001010001000100010101010100010101010001010101010101010101010001010001010100010101010001000101000001010000010100010100000101010100010100010000010101010001010101010101010100000101010001010101000101010101010100000101000001000101010101010100000001010100010101010001010001010101000101010101010100010100010100010101010101010000010001010101000000000001000101010000010101010100010101010001010101010101000101010101000101010100010101010101010101000101010101010101010101010101010101010100000101010100010101010100010100000100010101010101010100010001000101010001000100000101000101010101010100000101010101000101000001000101000101010101010101000001010000010101010101010000000100010101010101010101010001010001010001010001010001010001010101010101010001010101010001010001010101010101010100010100010001000101000101010001010101000001010101010101010100010000010001010100010101000101010101010100010000000101010101010101010101010100010101000001010100010001010101000101000100010001010001000000000001010101010001010101000101010101010101010001010101000101010100010001010001010101000100010101000001000100010101010101010101000100010101000000010101000101010101010101010001010101010100010001000100010100010101010000010101010101010001000101010001010101010001010101000100010101010101010001010101010100010101010100000101000101000101010101000101000101010100010100000101010101010001010100010001010000000001010101010000010101010100010100010101010101010101000101010101010001010101010001010001010001010101010101000101010100000100010001010101010000000101010100010101010001010101000101010000010101010101010000000100000101010100010001010101010100010000010000010001010101010100010100010001000100010000010101010100010100010101010101010101010001010101010000010101000001010001000101000101000101010100010000010100010100010001000101010101010100010101010101010101000101000101010101010001000001010001010101010101010101010101010101010101"> : tensor<100x100xi1>
+     return %c : tensor<100x100xi1>
+   }
+ }
+diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
+--- stablehlo/stablehlo/tests/TestUtils.cpp
++++ stablehlo/stablehlo/tests/TestUtils.cpp
+@@ -16,6 +16,7 @@
+ 
+ #include "stablehlo/tests/TestUtils.h"
+ 
++#include <cstdint>
+ #include <utility>
+ 
+ #include "llvm/ADT/STLExtras.h"
+@@ -25,6 +26,7 @@
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/OperationSupport.h"
+@@ -114,6 +116,54 @@
+   }
+ };
+ 
++struct InferReturnShapedTypesPattern : public RewritePattern {
++  explicit InferReturnShapedTypesPattern(MLIRContext* context)
++      : RewritePattern("hlo_test_infer.get_return_type_components", 1,
++                       context) {}
++  LogicalResult matchAndRewrite(Operation* op,
++                                PatternRewriter& rewriter) const override {
++    if (op->getNumOperands() != 1) return failure();
++    auto* definingOp = op->getOperand(0).getDefiningOp();
++    auto definingOpInt =
++        llvm::dyn_cast_or_null<InferShapedTypeOpInterface>(definingOp);
++    if (!definingOpInt)
++      return rewriter.notifyMatchFailure(
++          op, "doesn't implement InferShapedTypeOpInterface");
++
++    SmallVector<ShapedTypeComponents> inferredComponents;
++    if (failed(definingOpInt.inferReturnTypeComponents(
++            op->getContext(), op->getLoc(), definingOp->getOperands(),
++            definingOp->getAttrDictionary(), definingOp->getPropertiesStorage(),
++            definingOp->getRegions(), inferredComponents)))
++      return rewriter.notifyMatchFailure(op,
++                                         "failed to infer return shaped types");
++
++    // Replace the op with another pass-through op with attributes added.
++    OperationState state(op->getLoc(), "hlo_test_infer.return_type_components",
++                         op->getOperands(), op->getResultTypes(),
++                         op->getAttrs());
++    auto* newOp = rewriter.create(state);
++    for (const auto& it : llvm::enumerate(inferredComponents))
++      newOp->setAttr((StringRef("types") + Twine(it.index())).str(),
++                     componentToAttribute(it.value(), rewriter));
++    rewriter.replaceOp(op, {newOp->getResults()});
++    return success();
++  }
++  Attribute componentToAttribute(const ShapedTypeComponents& component,
++                                 PatternRewriter& rewriter) const {
++    SmallVector<NamedAttribute, 2> attrs;
++    // Dummy tensor of index type with the same rank as the shaped type.
++    // use tensor so we get `?` in the printing for dynamic dims
++    ArrayRef<int64_t> shape = component.getDims();
++    Type elementType = component.getElementType();
++    Attribute encoding = component.getAttribute();
++    if (!elementType) {
++      elementType = rewriter.getIndexType();
++    }
++    return TypeAttr::get(RankedTensorType::get(shape, elementType, encoding));
++  }
++};
++
+ LogicalResult checkSpeculatability(PatternRewriter& rewriter, Operation* op,
+                                    mlir::Speculation::Speculatability spec) {
+   if (op->getNumOperands() != 1) return failure();
+@@ -190,6 +240,7 @@
+     RewritePatternSet patterns(context);
+     patterns.add<InferReturnTypesPattern>(context);
+     patterns.add<ReifyReturnTypeShapesPattern>(context);
++    patterns.add<InferReturnShapedTypesPattern>(context);
+     patterns_ = std::move(patterns);
+     return success();
+   }
+diff --ruN a/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir b/stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+--- stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
++++ stablehlo/stablehlo/tests/chlo/chlo_legalize_to_stablehlo.mlir
+@@ -5123,3 +5123,47 @@
+   } : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
+   func.return %0 : tensor<2x11x7xf32>
  }
 +
 +// -----
 +
-+// CHECK-LABEL: func @scan
-+func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // CHECK: chlo.scan
-+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
-+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
-+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
-+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0 : tensor<2x3xf32>
++// CHECK-LABEL:   func.func @scan(
++// CHECK-SAME:      %[[ARG0:.*]]: tensor<2xi32>,
++// CHECK-SAME:      %[[ARG1:.*]]: tensor<i32>) -> (tensor<2xi32>, tensor<i32>) {
++// CHECK-DAG:       %[[GET_DIMENSION_SIZE:.*]] = stablehlo.get_dimension_size %[[ARG0]], dim = 0 : (tensor<2xi32>) -> tensor<i32>
++// CHECK-DAG:       %[[CONVERT:.*]] = stablehlo.convert %[[GET_DIMENSION_SIZE]] : (tensor<i32>) -> tensor<i64>
++// CHECK-DAG:       %[[C0_I64:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK-DAG:       %[[C0_I32:.*]] = stablehlo.constant dense<0> : tensor<i32>
++// CHECK-DAG:       %[[BROADCAST:.*]] = stablehlo.broadcast %[[C0_I32]], sizes = [2] : (tensor<i32>) -> tensor<2xi32>
++// CHECK:           %[[WHILE:.*]]:3 = stablehlo.while(%[[ITER:.*]] = %[[C0_I64]], %[[ACC:.*]] = %[[ARG1]], %[[OUT:.*]] = %[[BROADCAST]]) : tensor<i64>, tensor<i32>, tensor<2xi32>
++// CHECK:             cond {
++// CHECK:               %[[CMP:.*]] = stablehlo.compare  LT, %[[ITER]], %[[CONVERT]] : (tensor<i64>, tensor<i64>) -> tensor<i1>
++// CHECK:               stablehlo.return %[[CMP]] : tensor<i1>
++// CHECK:             } do {
++// CHECK-DAG:           %[[C0_I64_2:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK-DAG:           %[[RESHAPE_ITER:.*]] = stablehlo.reshape %[[ITER]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK-DAG:           %[[CONCAT_START:.*]] = stablehlo.concatenate %[[RESHAPE_ITER]], dim = 0 : (tensor<1xi64>) -> tensor<1xi64>
++// CHECK-DAG:           %[[C1_I64:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK-DAG:           %[[ITER_PLUS_1:.*]] = stablehlo.add %[[ITER]], %[[C1_I64]] : tensor<i64>
++// CHECK-DAG:           %[[RESHAPE_LIMIT:.*]] = stablehlo.reshape %[[ITER_PLUS_1]] : (tensor<i64>) -> tensor<1xi64>
++// CHECK-DAG:           %[[CONCAT_LIMIT:.*]] = stablehlo.concatenate %[[RESHAPE_LIMIT]], dim = 0 : (tensor<1xi64>) -> tensor<1xi64>
++// CHECK-DAG:           %[[STRIDES:.*]] = stablehlo.constant dense<1> : tensor<1xi64>
++// CHECK-DAG:           %[[SLICE:.*]] = stablehlo.real_dynamic_slice %[[ARG0]], %[[CONCAT_START]], %[[CONCAT_LIMIT]], %[[STRIDES]] : (tensor<2xi32>, tensor<1xi64>, tensor<1xi64>, tensor<1xi64>) -> tensor<1xi32>
++// CHECK-DAG:           %[[INPUT_ELEM:.*]] = stablehlo.reshape %[[SLICE]] : (tensor<1xi32>) -> tensor<i32>
++// CHECK-DAG:           %[[ADD_RES:.*]] = stablehlo.add %[[INPUT_ELEM]], %[[ACC]] : tensor<i32>
++// CHECK-DAG:           %[[RESHAPE_RES:.*]] = stablehlo.reshape %[[ADD_RES]] : (tensor<i32>) -> tensor<1xi32>
++// CHECK-DAG:           %[[C0_I64_3:.*]] = stablehlo.constant dense<0> : tensor<i64>
++// CHECK-DAG:           %[[UPDATE:.*]] = stablehlo.dynamic_update_slice %[[OUT]], %[[RESHAPE_RES]], %[[ITER]] : (tensor<2xi32>, tensor<1xi32>, tensor<i64>) -> tensor<2xi32>
++// CHECK-DAG:           %[[C1_I64_2:.*]] = stablehlo.constant dense<1> : tensor<i64>
++// CHECK-DAG:           %[[NEXT_ITER:.*]] = stablehlo.add %[[ITER]], %[[C1_I64_2]] : tensor<i64>
++// CHECK:               stablehlo.return %[[NEXT_ITER]], %[[ADD_RES]], %[[UPDATE]] : tensor<i64>, tensor<i32>, tensor<2xi32>
++// CHECK:             }
++// CHECK:           return %[[WHILE]]#2, %[[WHILE]]#1 : tensor<2xi32>, tensor<i32>
++// CHECK:         }
++func.func @scan(%arg0: tensor<2xi32>, %arg1: tensor<i32>) -> (tensor<2xi32>, tensor<i32>) {
++  %0:2 = chlo.scan(%arg0) inits(%arg1) dimension=0 {
++  ^bb0(%scan_arg0: tensor<i32>, %scan_arg1: tensor<i32>):
++    %1 = stablehlo.add %scan_arg0, %scan_arg1 : tensor<i32>
++    stablehlo.return %1, %1 : tensor<i32>, tensor<i32>
++  } : (tensor<2xi32>, tensor<i32>) -> (tensor<2xi32>, tensor<i32>)
++  func.return %0#0, %0#1 : tensor<2xi32>, tensor<i32>
++}
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -1807,7 +1807,8 @@
+ // CHECK-LABEL: func @dot_bounds
+ func.func @dot_bounds(%arg0: tensor<?x12xf32, #stablehlo.bounds<64, ?>>, %arg1: tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>> {
+   %0 = stablehlo.dot %arg0, %arg1, precision = [HIGHEST, HIGHEST] : (tensor<?x12xf32, #stablehlo.bounds<64, ?>>, tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>>
+-  // CHECK: return {{.*}} : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  // CHECK: types0 = tensor<?x?xindex, #stablehlo.bounds<64, 64>>
++  %1 = "hlo_test_infer.get_return_type_components"(%0): (tensor<?x?xf32, #stablehlo.bounds<64, 64>>) -> tensor<2xindex>
+   return %0 : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
+ }
+ 
+@@ -1833,6 +1834,26 @@
+   } : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+   %1 = "hlo_test_infer.reify_return_type_shapes"(%result): (tensor<?x?x?xf32>) -> tensor<3xindex>
+   func.return %1: tensor<3xindex>
 +}
 +
 +// -----
 +
-+// CHECK-LABEL: func @scan_variadic
-+func.func @scan_variadic(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>, %arg2: tensor<2x3xi32>, %arg3: tensor<3xi32>) -> (tensor<2x3xf32>, tensor<2x3xi32>) {
-+  // CHECK: chlo.scan
-+  %0:4 = chlo.scan(%arg0, %arg2) inits (%arg1, %arg3) dimension = 0 {
-+  ^bb0(%arg4: tensor<3xf32>, %arg5: tensor<3xi32>, %arg6: tensor<3xf32>, %arg7: tensor<3xi32>):
-+    %1 = stablehlo.add %arg4, %arg6 : tensor<3xf32>
-+    %2 = stablehlo.add %arg5, %arg7 : tensor<3xi32>
-+    stablehlo.return %1, %2, %1, %2 : tensor<3xf32>, tensor<3xi32>, tensor<3xf32>, tensor<3xi32>
-+  } : (tensor<2x3xf32>, tensor<2x3xi32>, tensor<3xf32>, tensor<3xi32>) -> (tensor<2x3xf32>, tensor<2x3xi32>, tensor<3xf32>, tensor<3xi32>)
-+  func.return %0#0, %0#1 : tensor<2x3xf32>, tensor<2x3xi32>
++// CHECK-LABEL: func @dot_general_bounds
++func.func @dot_general_bounds(%arg0: tensor<?x12xf32, #stablehlo.bounds<64, ?>>, %arg1: tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>> {
++  %0 = stablehlo.dot_general %arg0, %arg1, contracting_dims = [1] x [0], precision = [HIGHEST, HIGHEST] : (tensor<?x12xf32, #stablehlo.bounds<64, ?>>, tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  // CHECK: types0 = tensor<?x?xindex, #stablehlo.bounds<64, 64>>
++  %1 = "hlo_test_infer.get_return_type_components"(%0): (tensor<?x?xf32, #stablehlo.bounds<64, 64>>) -> tensor<2xindex>
++  return %0 : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
 +}
 +
 +// -----
 +
-+func.func @scan_size_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op expects 1 arguments in the body, but got 2}}
-+  %0 = chlo.scan(%arg0) inits () dimension = 0 {
-+  ^bb0(%arg2: tensor<3xf32>, %arg3: tensor<3xf32>):
-+    %1 = stablehlo.add %arg2, %arg3 : tensor<3xf32>
-+    stablehlo.return %1 : tensor<3xf32>
-+  } : (tensor<2x3xf32>) -> tensor<2x3xf32>
-+  func.return %0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+func.func @scan_element_type_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xi32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op operand and body argument 1 are incompatible}}
-+  %0:2 = chlo.scan(%arg0) inits (%arg1) dimension = 0 {
-+  ^bb0(%arg2: tensor<3xf32>, %arg3: tensor<3xf32>):
-+    // This body is invalid given the types but checking the verifier first.
-+    stablehlo.return %arg2, %arg2 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xi32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0#0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+func.func @scan_dim_out_of_bounds(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op scan dimension of operand 0 is out of bounds}}
-+  %0:2 = chlo.scan(%arg0) inits (%arg1) dimension = 2 {
-+  ^bb0(%arg2: tensor<3xf32>, %arg3: tensor<3xf32>):
-+    %1 = stablehlo.add %arg2, %arg3 : tensor<3xf32>
-+    stablehlo.return %1, %1 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
-+  func.return %0#0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+func.func @scan_init_rank_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<2x3xf32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op operand and body argument 1 are incompatible}}
-+  %0:2 = chlo.scan(%arg0) inits (%arg1) dimension = 0 {
-+  ^bb0(%arg2: tensor<3xf32>, %arg3: tensor<3xf32>):
-+    %1 = stablehlo.add %arg2, %arg3 : tensor<3xf32>
-+    stablehlo.return %1, %1 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<2x3xf32>)
-+  func.return %0#0 : tensor<2x3xf32>
-+}
-+
-+// -----
-+
-+func.func @scan_init_shape_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<2xf32>) -> tensor<2x3xf32> {
-+  // expected-error @+1 {{'chlo.scan' op operand and body argument 1 are incompatible}}
-+  %0:2 = chlo.scan(%arg0) inits (%arg1) dimension = 0 {
-+  ^bb0(%arg2: tensor<3xf32>, %arg3: tensor<3xf32>):
-+    %1 = stablehlo.add %arg2, %arg3 : tensor<3xf32>
-+    stablehlo.return %1, %1 : tensor<3xf32>, tensor<3xf32>
-+  } : (tensor<2x3xf32>, tensor<2xf32>) -> (tensor<2x3xf32>, tensor<2xf32>)
-+  func.return %0#0 : tensor<2x3xf32>
-+}
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
-@@ -584,6 +584,56 @@
-   %1 = stablehlo.divide %cst_1, %cst_1 : tensor<ui32>
-   %2 = stablehlo.divide %cst_2, %cst_2 : tensor<f32>
-   return %0, %1, %2 : tensor<i32>, tensor<ui32>, tensor<f32>
-+}
-+
-+// CHECK-LABEL: @div_fold_cst_zero_nan
-+func.func @div_fold_cst_zero_nan() -> (tensor<f32>) {
-+  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
-+  %cst_0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-+  %0 = stablehlo.divide %cst, %cst_0 : tensor<f32>
-+  // CHECK: stablehlo.constant dense<0x7F800000> : tensor<f32>
-+  // CHECK-NOT: stablehlo.divide
-+  return %0 : tensor<f32>
-+}
-+
-+// CHECK-LABEL: @div_fold_cst_nan
-+func.func @div_fold_cst_nan() -> (tensor<f32>) {
-+  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
-+  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  %0 = stablehlo.divide %cst, %cst_0 : tensor<f32>
-+  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  // CHECK-NOT: stablehlo.divide
-+  return %0 : tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// MaximumOp
-+
-+// CHECK-LABEL: @max_fold_cst_nan
-+func.func @max_fold_cst_nan() -> (tensor<f32>) {
-+  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
-+  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  %0 = stablehlo.maximum %cst, %cst_0 : tensor<f32>
-+  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  // CHECK-NOT: stablehlo.maximum
-+  return %0 : tensor<f32>
-+}
-+
-+// -----
-+
-+////////
-+// MinimumOp
-+
-+// CHECK-LABEL: @min_fold_cst_nan
-+func.func @min_fold_cst_nan() -> (tensor<f32>) {
-+  %cst = stablehlo.constant dense<3.000000e+00> : tensor<f32>
-+  %cst_0 = stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  %0 = stablehlo.minimum %cst, %cst_0 : tensor<f32>
-+  // CHECK: stablehlo.constant dense<0x7FC00000> : tensor<f32>
-+  // CHECK-NOT: stablehlo.minimum
-+  return %0 : tensor<f32>
++// CHECK-LABEL: func @dot_general_bounds_another
++func.func @dot_general_bounds_another(%arg0: tensor<10x?x12xf32, #stablehlo.bounds<?, 64, ?>>, %arg1: tensor<10x12x?xf32, #stablehlo.bounds<?, ?, 64>>) -> tensor<3xindex> {
++  %0 = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1] : (tensor<10x?x12xf32, #stablehlo.bounds<?, 64, ?>>, tensor<10x12x?xf32, #stablehlo.bounds<?, ?, 64>>) -> tensor<10x?x?xf32, #stablehlo.bounds<?, 64, 64>>
++  // CHECK: types0 = tensor<10x?x?xindex, #stablehlo.bounds<?, 64, 64>>
++  %1 = "hlo_test_infer.get_return_type_components"(%0): (tensor<10x?x?xf32, #stablehlo.bounds<?, 64, 64>>) -> tensor<3xindex>
++  func.return %1 : tensor<3xindex>
  }
  
  // -----
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
-@@ -1058,14 +1058,14 @@
-   std::function<APInt(APInt, APInt)> foldIntFn;
- 
-   APFloat operator()(APFloat lhs, APFloat rhs) {
--    return lhs >= rhs ? lhs : rhs;
-+    return llvm::maximum(lhs, rhs);
-   }
-   APInt operator()(APInt lhs, APInt rhs) { return foldIntFn(lhs, rhs); }
-   static APInt foldUint(APInt lhs, APInt rhs) {
--    return lhs.uge(rhs) ? lhs : rhs;
-+    return llvm::APIntOps::umax(lhs, rhs);
-   }
-   static APInt foldSint(APInt lhs, APInt rhs) {
--    return lhs.sge(rhs) ? lhs : rhs;
-+    return llvm::APIntOps::smax(lhs, rhs);
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -2294,6 +2294,325 @@
    }
  };
  
-@@ -1075,14 +1075,14 @@
-   std::function<APInt(APInt, APInt)> foldIntFn;
- 
-   APFloat operator()(APFloat lhs, APFloat rhs) {
--    return lhs <= rhs ? lhs : rhs;
-+    return llvm::minimum(lhs, rhs);
-   }
-   APInt operator()(APInt lhs, APInt rhs) { return foldIntFn(lhs, rhs); }
-   static APInt foldUint(APInt lhs, APInt rhs) {
--    return lhs.ule(rhs) ? lhs : rhs;
-+    return llvm::APIntOps::umin(lhs, rhs);
-   }
-   static APInt foldSint(APInt lhs, APInt rhs) {
--    return lhs.sle(rhs) ? lhs : rhs;
-+    return llvm::APIntOps::smin(lhs, rhs);
-   }
- };
- 
-@@ -1533,7 +1533,9 @@
-   using FoldUnaryOpPattern::FoldUnaryOpPattern;
- 
-   static std::optional<APInt> EvaluateOp(APInt operand) { return -operand; }
--  static std::optional<APFloat> EvaluateOp(APFloat operand) { return -operand; }
-+  static std::optional<APFloat> EvaluateOp(APFloat operand) {
-+    return llvm::neg(operand);
++struct ConvertScanOp final : OpConversionPattern<mlir::chlo::ScanOp> {
++  using OpConversionPattern::OpConversionPattern;
++
++ private:
++  static FailureOr<Value> getScanDimensionSize(
++      ConversionPatternRewriter& rewriter, Location loc, mlir::chlo::ScanOp op,
++      ValueRange inputs, int64_t dim) {
++    if (!inputs.empty()) {
++      return GetDimensionSizeOp::create(rewriter, loc, inputs[0], dim)
++          .getResult();
++    }
++    auto resType = cast<RankedTensorType>(op.getResult(0).getType());
++    if (resType.isDynamicDim(dim)) {
++      return rewriter.notifyMatchFailure(
++          op,
++          "cannot determine scan dimension size from empty inputs and "
++          "dynamic result");
++    }
++    auto scan_dim_size = static_cast<int32_t>(resType.getDimSize(dim));
++    auto attr = DenseIntElementsAttr::get(
++        RankedTensorType::get({}, rewriter.getI32Type()), scan_dim_size);
++    return ConstantOp::create(rewriter, loc, attr).getResult();
 +  }
- };
++
++  static SmallVector<Value> getLimitScalars(ConversionPatternRewriter& rewriter,
++                                            Location loc, int64_t dim,
++                                            Value index, Value input) {
++    auto inputType = cast<RankedTensorType>(input.getType());
++    int64_t rank = inputType.getRank();
++    SmallVector<Value> limitScalars;
++    for (int64_t d = 0; d < rank; ++d) {
++      if (d == dim) {
++        Value indexPlusOne = AddOp::create(
++            rewriter, loc, index,
++            ConstantOp::create(
++                rewriter, loc,
++                DenseIntElementsAttr::get(
++                    RankedTensorType::get({}, rewriter.getI64Type()), {1LL})));
++        limitScalars.push_back(indexPlusOne);
++      } else {
++        Value dSize = GetDimensionSizeOp::create(rewriter, loc, input, d);
++        dSize = ConvertOp::create(rewriter, loc, dSize, rewriter.getI64Type());
++        limitScalars.push_back(dSize);
++      }
++    }
++    return limitScalars;
++  }
++
++  static SmallVector<Value> createInitialValues(
++      ConversionPatternRewriter& rewriter, Location loc, mlir::chlo::ScanOp op,
++      ValueRange inputs, ValueRange inits) {
++    size_t numInputs = inputs.size();
++    size_t numCarries = inits.size();
++    size_t numScanOutputs = op.getNumResults() - numCarries;
++
++    Value zeroIndex = ConstantOp::create(
++        rewriter, loc,
++        DenseIntElementsAttr::get(
++            RankedTensorType::get({}, rewriter.getI64Type()), {0LL}));
++
++    SmallVector<Value> initialValues;
++    initialValues.reserve(1 + numCarries + numScanOutputs);
++    initialValues.push_back(zeroIndex);
++    initialValues.append(inits.begin(), inits.end());
++
++    // Initialize output arrays.
++    for (size_t i = 0; i < numScanOutputs; ++i) {
++      auto resultType = cast<RankedTensorType>(op.getResult(i).getType());
++      Value zero =
++          ConstantOp::create(rewriter, loc,
++                             rewriter.getZeroAttr(RankedTensorType::get(
++                                 {}, resultType.getElementType())));
++
++      if (resultType.hasStaticShape()) {
++        initialValues.push_back(BroadcastOp::create(
++            rewriter, loc, resultType, zero,
++            rewriter.getDenseI64ArrayAttr(resultType.getShape())));
++      } else {
++        if (numInputs == 0) {
++          // This should be caught by verification or earlier checks, but just
++          // in case.
++          return {};
++        }
++        Value refInput = inputs[i < numInputs ? i : 0];
++        Value refShape = shape::ShapeOfOp::create(rewriter, loc, refInput);
++        initialValues.push_back(DynamicBroadcastInDimOp::create(
++            rewriter, loc, resultType, zero, refShape,
++            rewriter.getDenseI64ArrayAttr({})));
++      }
++    }
++    return initialValues;
++  }
++
++  static void createConditionRegion(ConversionPatternRewriter& rewriter,
++                                    Location loc, WhileOp whileOp,
++                                    Value scanDimSize,
++                                    const SmallVector<Type>& whileTypes) {
++    OpBuilder::InsertionGuard guard(rewriter);
++    Block* condBlock = rewriter.createBlock(&whileOp.getCond());
++    for (Type t : whileTypes) condBlock->addArgument(t, loc);
++
++    Value index = condBlock->getArgument(0);
++    Value cond = CompareOp::create(rewriter, loc, index, scanDimSize,
++                                   ComparisonDirection::LT);
++    ReturnOp::create(rewriter, loc, cond);
++  }
++
++  static SmallVector<Value> sliceInputs(ConversionPatternRewriter& rewriter,
++                                        Location loc, int64_t dim, Value index,
++                                        ValueRange inputs) {
++    SmallVector<Value> slicedInputs;
++    for (Value input : inputs) {
++      auto inputType = cast<RankedTensorType>(input.getType());
++      int64_t rank = inputType.getRank();
++
++      auto build1DTensor = [&](const SmallVector<Value>& scalars) {
++        SmallVector<Value> parts;
++        auto i64Ty = RankedTensorType::get({1}, rewriter.getI64Type());
++        for (Value s : scalars) {
++          parts.push_back(ReshapeOp::create(rewriter, loc, i64Ty, s));
++        }
++        return ConcatenateOp::create(rewriter, loc, parts, 0);
++      };
++
++      Value zero =
++          ConstantOp::create(rewriter, loc, rewriter.getI64IntegerAttr(0));
++      SmallVector<Value> startScalars(rank, zero);
++      startScalars[dim] = index;
++
++      Value startTensor = build1DTensor(startScalars);
++
++      SmallVector<Value> limitScalars =
++          getLimitScalars(rewriter, loc, dim, index, input);
++      Value limitTensor = build1DTensor(limitScalars);
++
++      SmallVector<int64_t> strides(rank, 1);
++      Value stridesTensor = ConstantOp::create(
++          rewriter, loc,
++          DenseIntElementsAttr::get(
++              RankedTensorType::get({rank}, rewriter.getI64Type()), strides));
++
++      SmallVector<int64_t> sliceShape(inputType.getShape().begin(),
++                                      inputType.getShape().end());
++      sliceShape[dim] = 1;
++      auto sliceType =
++          RankedTensorType::get(sliceShape, inputType.getElementType());
++
++      Value slice =
++          RealDynamicSliceOp::create(rewriter, loc, sliceType, input,
++                                     startTensor, limitTensor, stridesTensor);
++
++      SmallVector<int64_t> resultShape;
++      for (int64_t d = 0; d < rank; ++d) {
++        if (d != dim) resultShape.push_back(sliceShape[d]);
++      }
++      Value reshaped = ReshapeOp::create(
++          rewriter, loc,
++          RankedTensorType::get(resultShape, inputType.getElementType()),
++          slice);
++      slicedInputs.push_back(reshaped);
++    }
++    return slicedInputs;
++  }
++
++  static SmallVector<Value> updateOutputs(ConversionPatternRewriter& rewriter,
++                                          Location loc, int64_t dim,
++                                          Value index,
++                                          ValueRange currentOutputs,
++                                          ValueRange newElements) {
++    SmallVector<Value> updatedOutputs;
++    size_t numScanOutputs = currentOutputs.size();
++    for (size_t i = 0; i < numScanOutputs; ++i) {
++      Value currentOutput = currentOutputs[i];
++      Value newElement = newElements[i];
++
++      auto outputType = cast<RankedTensorType>(currentOutput.getType());
++      SmallVector<int64_t> elementShape(outputType.getShape().begin(),
++                                        outputType.getShape().end());
++      elementShape[dim] = 1;
++      Value reshapedElement = ReshapeOp::create(
++          rewriter, loc,
++          RankedTensorType::get(elementShape, outputType.getElementType()),
++          newElement);
++
++      int64_t outRank = outputType.getRank();
++      SmallVector<Value> startScalars;
++      Value zero =
++          ConstantOp::create(rewriter, loc, rewriter.getI64IntegerAttr(0));
++      for (int64_t d = 0; d < outRank; ++d) {
++        if (d == dim)
++          startScalars.push_back(index);
++        else
++          startScalars.push_back(zero);
++      }
++
++      Value updated =
++          DynamicUpdateSliceOp::create(rewriter, loc, outputType, currentOutput,
++                                       reshapedElement, startScalars);
++      updatedOutputs.push_back(updated);
++    }
++    return updatedOutputs;
++  }
++
++  static void createBodyRegion(ConversionPatternRewriter& rewriter,
++                               Location loc, mlir::chlo::ScanOp op,
++                               WhileOp whileOp, ValueRange inputs, int64_t dim,
++                               const SmallVector<Type>& whileTypes) {
++    OpBuilder::InsertionGuard guard(rewriter);
++    Block* bodyBlock = rewriter.createBlock(&whileOp.getBody());
++    for (Type t : whileTypes) bodyBlock->addArgument(t, loc);
++
++    Value index = bodyBlock->getArgument(0);
++    size_t numCarries = op.getInits().size();
++    size_t numScanOutputs = op.getNumResults() - numCarries;
++
++    // Args: index (1), accs (numCarries), outputs (numScanOutputs)
++    size_t offset = 1;
++    auto argAccs = bodyBlock->getArguments().slice(offset, numCarries);
++    offset += numCarries;
++    auto argOutputs = bodyBlock->getArguments().slice(offset, numScanOutputs);
++
++    // Slice inputs.
++    SmallVector<Value> slicedInputs =
++        sliceInputs(rewriter, loc, dim, index, inputs);
++
++    // Inline Body.
++    Block& scanBody = op.getBody().front();
++    IRMapping mapping;
++    // inputs.size() is used as the number of inputs to map.
++    mapping.map(scanBody.getArguments().take_front(inputs.size()),
++                slicedInputs);
++    mapping.map(scanBody.getArguments().drop_front(inputs.size()), argAccs);
++
++    for (auto& nestedOp : scanBody.without_terminator()) {
++      rewriter.clone(nestedOp, mapping);
++    }
++
++    Operation* terminator = scanBody.getTerminator();
++    SmallVector<Value> bodyResults;
++    for (Value operand : terminator->getOperands()) {
++      bodyResults.push_back(mapping.lookup(operand));
++    }
++
++    auto newOutputElements = ArrayRef(bodyResults).take_front(numScanOutputs);
++    auto newAccs = ArrayRef(bodyResults).take_back(numCarries);
++
++    // Update Outputs.
++    SmallVector<Value> updatedOutputs =
++        updateOutputs(rewriter, loc, dim, index, argOutputs, newOutputElements);
++
++    Value oneIndex = ConstantOp::create(
++        rewriter, loc,
++        DenseIntElementsAttr::get(
++            RankedTensorType::get({}, rewriter.getI64Type()), {1LL}));
++    Value nextIndex = AddOp::create(rewriter, loc, index, oneIndex);
++
++    SmallVector<Value> yieldOperands;
++    yieldOperands.push_back(nextIndex);
++    yieldOperands.append(newAccs.begin(), newAccs.end());
++    yieldOperands.append(updatedOutputs.begin(), updatedOutputs.end());
++
++    ReturnOp::create(rewriter, loc, yieldOperands);
++  }
++
++  LogicalResult matchAndRewrite(
++      mlir::chlo::ScanOp op, OpAdaptor adaptor,
++      ConversionPatternRewriter& rewriter) const override {
++    Location loc = op.getLoc();
++    int64_t dim = op.getDimension();
++    ValueRange inputs = adaptor.getInputs();
++    ValueRange inits = adaptor.getInits();
++    size_t numCarries = inits.size();
++    size_t numScanOutputs = op.getNumResults() - numCarries;
++
++    // 1. Determine scan dimension size.
++    FailureOr<Value> scanDimSizeOrError =
++        getScanDimensionSize(rewriter, loc, op, inputs, dim);
++    if (failed(scanDimSizeOrError)) {
++      return failure();
++    }
++    Value scanDimSize = ConvertOp::create(
++        rewriter, loc, RankedTensorType::get({}, rewriter.getI64Type()),
++        *scanDimSizeOrError);
++
++    // 2. Initial values.
++    auto initialValues = createInitialValues(rewriter, loc, op, inputs, inits);
++    if (initialValues.empty() && numScanOutputs > 0) {
++      return rewriter.notifyMatchFailure(
++          op, "cannot determine dynamic output shape without inputs");
++    }
++
++    // 3. Create WhileOp.
++    SmallVector<Type> whileTypes;
++    for (Value v : initialValues) whileTypes.push_back(v.getType());
++
++    auto whileOp = WhileOp::create(rewriter, loc, whileTypes, initialValues);
++
++    // 4. Condition Region.
++    createConditionRegion(rewriter, loc, whileOp, scanDimSize, whileTypes);
++
++    // 5. Body Region.
++    createBodyRegion(rewriter, loc, op, whileOp, inputs, dim, whileTypes);
++
++    // 6. Extract Results.
++    SmallVector<Value> replacements;
++    size_t outputsStart = 1 + numCarries;
++    for (size_t i = 0; i < numScanOutputs; ++i) {
++      replacements.push_back(whileOp.getResult(outputsStart + i));
++    }
++    size_t accsStart = 1;
++    for (size_t i = 0; i < numCarries; ++i) {
++      replacements.push_back(whileOp.getResult(accsStart + i));
++    }
++
++    rewriter.replaceOp(op, replacements);
++    return success();
++  }
++};
++
+ struct ConvertSinhOp final : OpConversionPattern<mlir::chlo::SinhOp> {
+   using OpConversionPattern::OpConversionPattern;
  
- struct FoldNotOpPattern : public FoldUnaryOpPattern<FoldNotOpPattern, NotOp> {
+@@ -2531,12 +2850,11 @@
+ static void populateChloDecompositionPatterns(MLIRContext* context,
+                                               RewritePatternSet* patterns) {
+   populateWithGenerated(*patterns);
+-  patterns
+-      ->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
+-            ConvertDigammaOp, ConvertErfOp, ConvertErfcOp, ConvertErfInvOp,
+-            ConvertLgammaOp, ConvertNextAfterOp, ConvertPolygammaOp,
+-            ConvertRaggedDotOp, ConvertSinhOp, ConvertTopKOp, ConvertZetaOp>(
+-          context);
++  patterns->add<ConvertConstantOp, ConvertBesselI1eOp, ConvertCoshOp,
++                ConvertDigammaOp, ConvertErfOp, ConvertErfcOp, ConvertErfInvOp,
++                ConvertLgammaOp, ConvertNextAfterOp, ConvertPolygammaOp,
++                ConvertRaggedDotOp, ConvertScanOp, ConvertSinhOp, ConvertTopKOp,
++                ConvertZetaOp>(context);
+ }
+ }  // namespace
+ 
 

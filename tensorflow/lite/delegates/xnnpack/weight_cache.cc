@@ -481,6 +481,22 @@ bool MMapWeightCacheProvider::Load() {
   return true;
 }
 
+bool MMapWeightCacheProvider::LockMemory() {
+  for (auto& mmap_handle : mmap_handles_) {
+    XNNPACK_RETURN_CHECK(mmap_handle.LockMemory(),
+                         "could not lock cache in memory.");
+  }
+  return true;
+}
+
+bool MMapWeightCacheProvider::UnlockMemory() {
+  for (auto& mmap_handle : mmap_handles_) {
+    XNNPACK_RETURN_CHECK(mmap_handle.UnlockMemory(),
+                         "could not unlock cache in memory.");
+  }
+  return true;
+}
+
 bool MMapWeightCacheProvider::LoadLastBuildStep() {
   if (mmap_handles_.empty()) {
     return Load();

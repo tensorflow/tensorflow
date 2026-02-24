@@ -128,13 +128,9 @@ class InterpreterDevice final : public PjRtDevice {
     return InterpreterDescription::Singleton();
   }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(0);
-  }
+  LocalDeviceId local_device_id() const override { return LocalDeviceId(0); }
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {

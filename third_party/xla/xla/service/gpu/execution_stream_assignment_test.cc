@@ -94,7 +94,7 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
 
   ExecutionStreamAssignment assignment(
       module.get(),
-      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/2});
+      ExecutionStreamAssignment::Options{/*number_of_execution_streams=*/2});
 
   // The outermost computation should run on `ExecutionStreamId(0)`. The two
   // asynchronous branches should be launched on `ExecutionStreamId(1)` and
@@ -107,22 +107,22 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(1)}));
+                    /*parent_stream_id=*/ExecutionStreamId(0),
+                    /*async_stream_id=*/ExecutionStreamId(1)}));
   }
   for (absl::string_view instruction : {"start2", "update2", "done2"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(2)}));
+                    /*parent_stream_id=*/ExecutionStreamId(0),
+                    /*async_stream_id=*/ExecutionStreamId(2)}));
   }
   for (absl::string_view instruction : {"start3", "update3", "done3"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
                 absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-                    /*source_stream_id=*/ExecutionStreamId(0),
-                    /*destination_stream_id=*/ExecutionStreamId(1)}));
+                    /*parent_stream_id=*/ExecutionStreamId(0),
+                    /*async_stream_id=*/ExecutionStreamId(1)}));
   }
 
   // Leaf computations should run on the respective asynchronous
@@ -158,9 +158,9 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
     EXPECT_THAT(
         assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
             FindInstruction(module.get(), instruction))),
-        absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-            /*source_stream_id=*/ExecutionStreamId(0),
-            /*destination_stream_id=*/ExecutionStreamId(1)}));
+        absl_testing::IsOkAndHolds(
+            AsyncExecutionStreamIds{/*parent_stream_id=*/ExecutionStreamId(0),
+                                    /*async_stream_id=*/ExecutionStreamId(1)}));
   }
 }
 
@@ -268,7 +268,7 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
 
   ExecutionStreamAssignment assignment(
       module.get(),
-      ExecutionStreamAssignmentOptions{/*number_of_execution_streams=*/4});
+      ExecutionStreamAssignment::Options{/*number_of_execution_streams=*/4});
   // The outermost computation should run on `ExecutionStreamId(0)`.
   ExpectExecutionStreamForSyncInstructions(
       assignment, FindComputation(module.get(), "entry"), ExecutionStreamId(0));
@@ -331,15 +331,15 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
           FindInstruction(module.get(), "ar-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      absl_testing::IsOkAndHolds(
+          AsyncExecutionStreamIds{/*parent_stream_id=*/ExecutionStreamId(0),
+                                  /*async_stream_id=*/ExecutionStreamId(5)}));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
           FindInstruction(module.get(), "rs-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(6)}));
+      absl_testing::IsOkAndHolds(
+          AsyncExecutionStreamIds{/*parent_stream_id=*/ExecutionStreamId(0),
+                                  /*async_stream_id=*/ExecutionStreamId(6)}));
 
   // Redo stream assignment, with number_of_collective_execution_streams = 1
   // this time, expect rs-start to be scheduled on stream 5.
@@ -352,15 +352,110 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAllReduceInstruction>(
           FindInstruction(module.get(), "ar-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      absl_testing::IsOkAndHolds(
+          AsyncExecutionStreamIds{/*parent_stream_id=*/ExecutionStreamId(0),
+                                  /*async_stream_id=*/ExecutionStreamId(5)}));
   EXPECT_THAT(
       assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncStartInstruction>(
           FindInstruction(module.get(), "rs-start"))),
-      absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
-          /*source_stream_id=*/ExecutionStreamId(0),
-          /*destination_stream_id=*/ExecutionStreamId(5)}));
+      absl_testing::IsOkAndHolds(
+          AsyncExecutionStreamIds{/*parent_stream_id=*/ExecutionStreamId(0),
+                                  /*async_stream_id=*/ExecutionStreamId(5)}));
 }
+
+TEST_F(ExecutionStreamAssignmentTest, PipelinedSendRecv) {
+  const char* kModuleStr = R"(
+    HloModule test, num_partitions=2
+
+    cond {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      c2 = u32[] constant(2)
+      ROOT cmp = pred[] compare(i, c2), direction=LT
+    }
+
+    body {
+      param = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          parameter(0)
+      i = u32[] get-tuple-element(param), index=0
+      send_ctx = get-tuple-element(param), index=1
+      recv_ctx = get-tuple-element(param), index=2
+      send_done_inner = token[] send-done(send_ctx), channel_id=1
+      recv_done_inner = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      data = get-tuple-element(recv_done_inner), index=0
+      after_all = token[] after-all()
+      send_ctx_inner = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx_inner = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=2
+      c1 = u32[] constant(1)
+      i_ = u32[] add(i, c1)
+      ROOT result = (u32[], (f32[2,2], u32[], token[]),
+          (f32[2,2], u32[], token[])) tuple(i_, send_ctx_inner, recv_ctx_inner)
+    }
+
+    ENTRY test_computation {
+      data = f32[2,2] parameter(0)
+      i = u32[] constant(0)
+      after_all = token[] after-all()
+      send_ctx_ = (f32[2,2], u32[], token[]) send(data, after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=1
+      recv_ctx_ = (f32[2,2], u32[], token[]) recv(after_all),
+          frontend_attributes={_xla_send_recv_source_target_pairs={{0,1}}},
+          channel_id=2
+      init = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          tuple(i, send_ctx_, recv_ctx_)
+      while = (u32[], (f32[2,2], u32[], token[]), (f32[2,2], u32[], token[]))
+          while(init), condition=cond, body=body
+      send_ctx = get-tuple-element(while), index=1
+      recv_ctx = get-tuple-element(while), index=2
+      send_done = token[] send-done(send_ctx), channel_id=1
+      recv_done = (f32[2,2], token[]) recv-done(recv_ctx), channel_id=2
+      ROOT data_ = get-tuple-element(recv_done), index=0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  ExecutionStreamAssignment assignment(
+      module.get(), ExecutionStreamAssignment::Options{4, 4});
+
+  AsyncExecutionStreamIds send{ExecutionStreamId(0), ExecutionStreamId(5)};
+  AsyncExecutionStreamIds recv{ExecutionStreamId(0), ExecutionStreamId(6)};
+
+  // Check that all pipeline send/recv operations got the same execution
+  // stream assignment derived from the canonical operation.
+
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "send_ctx_")),
+              absl_testing::IsOkAndHolds(send));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "send_ctx_inner")),
+              absl_testing::IsOkAndHolds(send));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "send_done_inner")),
+              absl_testing::IsOkAndHolds(send));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "send_done")),
+              absl_testing::IsOkAndHolds(send));
+
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "recv_ctx_")),
+              absl_testing::IsOkAndHolds(recv));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "recv_ctx_inner")),
+              absl_testing::IsOkAndHolds(recv));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "recv_done_inner")),
+              absl_testing::IsOkAndHolds(recv));
+  EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(
+                  FindInstruction(module.get(), "recv_done")),
+              absl_testing::IsOkAndHolds(recv));
+}
+
 }  // namespace
 }  // namespace xla::gpu

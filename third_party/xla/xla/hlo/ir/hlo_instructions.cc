@@ -1583,6 +1583,29 @@ HloScanInstruction::HloScanInstruction(const Shape& shape,
   AppendComputation(to_apply);
 }
 
+absl::StatusOr<int64_t> HloScanInstruction::GetScanDimSize() const {
+  int64_t scan_dim = scan_dimension();
+  if (!inputs().empty()) {
+    return inputs()[0]->shape().dimensions(scan_dim);
+  }
+  // If there are no inputs, use an output to determine the scan dimension size.
+  const Shape& shape = this->shape();
+  if (shape.IsTuple()) {
+    int64_t num_outputs = shape.tuple_shapes().size() - num_carries();
+    if (num_outputs > 0) {
+      return shape.tuple_shapes(0).dimensions(scan_dim);
+    }
+  } else {
+    // If not tuple, check if it's an output or carry.
+    if (num_carries() == 0) {
+      return shape.dimensions(scan_dim);
+    }
+  }
+  return absl::InternalError(
+      "Scan instruction has no inputs and no outputs, cannot determine scan "
+      "dimension size.");
+}
+
 void HloScanInstruction::ToProto(HloInstructionProto* proto) const {
   HloInstruction::ToProto(proto);
   for (int64_t dimension : dimensions_) {
@@ -1599,6 +1622,9 @@ void HloScanInstruction::PrintExtraAttributesImpl(
     printer->Append("dimensions={");
     AppendJoin(printer, dimensions(), ",");
     printer->Append("}");
+  });
+  printer.Next([this](Printer* printer) {
+    AppendCat(printer, "num_carries=", num_carries_);
   });
   if (is_reverse_) {
     printer.Next([](Printer* printer) { printer->Append("is_reverse=true"); });

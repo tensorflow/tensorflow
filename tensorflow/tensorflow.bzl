@@ -4,7 +4,7 @@ load("@rules_cc//cc:cc_library.bzl", _cc_library = "cc_library")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@rules_java//java:defs.bzl", "java_test")
 load(
-    "//tensorflow:py.default.bzl",
+    "@xla//third_party/rules_python/python:defs.bzl",
     _plain_py_binary = "py_binary",
     _plain_py_library = "py_library",
     _plain_py_test = "py_test",
@@ -1365,6 +1365,7 @@ def _generate_op_reg_offsets_impl(ctx):
     args.add_all(op_reg_srcs)
 
     ctx.actions.run(
+        mnemonic = "GenerateOpRegOffsets",
         outputs = [ctx.outputs.out],
         inputs = op_reg_srcs + ctx.files.tf_binary_additional_srcs,
         tools = [ctx.executable._offset_counter],
@@ -2992,6 +2993,7 @@ _local_exec_transition = transition(
 
 def _local_genrule_impl(ctx):
     ctx.actions.run_shell(
+        mnemonic = "TensorflowLocalGenrule",
         outputs = [ctx.outputs.out],
         inputs = [f for t in ctx.attr.srcs for f in t.files.to_list()],
         tools = [ctx.executable.exec_tool],
@@ -3028,10 +3030,10 @@ _local_genrule_internal = rule(
 
 # Wrap the rule in a macro so we can pass in exec_compatible_with.
 def _local_genrule(**kwargs):
+    tags = kwargs.pop("tags", [])
+    tags = tags + ["no-remote-exec"]
     _local_genrule_internal(
-        exec_compatible_with = [
-            "@local_execution_config_platform//:platform_constraint",
-        ],
+        tags = tags,
         **kwargs
     )
 
@@ -3405,7 +3407,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@local_config_python//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@nccl_archive//:__subpackages__",
         "@onednn//:__subpackages__",
