@@ -279,25 +279,22 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
                       thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
 
-  // Assemble the LLVM module with all kernels.
-  results.llvm_module =
-      split_constants_module
-          ? ir_emitter_context.CreateLLVMModule(hlo_module->name())
-          : thunk_emitter.ConsumeConstantsModule();
-  llvm::Linker linker(*results.llvm_module);
-  for (auto& kernel_module : thunk_emitter.ConsumeKernelModules()) {
-    CHECK(!linker.linkInModule(std::move(kernel_module),
-                               llvm::Linker::Flags::OverrideFromSrc));
-  }
+  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
+
   if (split_constants_module) {
     results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
+  } else {
+    results.llvm_modules.push_back(thunk_emitter.ConsumeConstantsModule());
   }
 
-  RemoveUnusedAndUninitializedGlobals(platform_id, options,
-                                      split_constants_module
-                                          ? results.llvm_module_constants.get()
-                                          : results.llvm_module.get(),
-                                      ir_emitter_context.constants());
+  /*
+    RemoveUnusedAndUninitializedGlobals(platform_id, options,
+                                        results.llvm_module_constants.get(),
+                                        ir_emitter_context.constants());
+  for (std::unique_ptr<llvm::Module>& module : results.llvm_modules) {
+    RemoveUnusedAndUninitializedGlobals(platform_id, options, module.get(),
+                                        ir_emitter_context.constants());
+                                        }*/
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
@@ -311,6 +308,18 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   }
 
   return results;
+}
+
+void LinkLlvmModulesInPlace(
+    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules) {
+  CHECK(!llvm_modules.empty());
+
+  llvm::Linker linker(*llvm_modules[0]);
+  for (int i = 1; i < llvm_modules.size(); i++) {
+    CHECK(!linker.linkInModule(std::move(llvm_modules[i]),
+                               llvm::Linker::Flags::OverrideFromSrc));
+  }
+  llvm_modules.resize(1);
 }
 
 }  // namespace xla::gpu

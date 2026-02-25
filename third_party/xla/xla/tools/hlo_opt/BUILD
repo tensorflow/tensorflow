@@ -139,6 +139,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:ir_headers",
     ] + if_gpu_is_configured([
         "//xla/service:gpu_plugin_without_collectives",

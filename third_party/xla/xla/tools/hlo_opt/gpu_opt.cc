@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Linker/Linker.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
@@ -235,7 +236,9 @@ class GpuOptProvider : public CompiledOptProvider {
             gpu_compiler->GetDataLayout(), platform->id(), device_description,
             alias_info.get(), std::move(buffer_size_bytes_function),
             llvm_options_lock));
-    return llvm_ir::DumpToString(results.llvm_module.get());
+
+    gpu::LinkLlvmModulesInPlace(results.llvm_modules);
+    return llvm_ir::DumpToString(results.llvm_modules[0].get());
   }
 };
 

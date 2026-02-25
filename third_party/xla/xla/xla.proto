@@ -1259,7 +1259,7 @@ message DebugOptions {
 
   // Whether to force inline before llvm module split to get a more balanced
   // splits for parallel compilation.
-  optional bool xla_llvm_force_inline_before_split = 300;
+  optional bool xla_llvm_force_inline_before_split = 300 [deprecated = true];
 
   // Disable dumping metadata in HLO dumps.
   optional bool xla_dump_disable_metadata = 153;
