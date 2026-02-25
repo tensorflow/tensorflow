@@ -1338,6 +1338,12 @@ class ReadySetLt {
     // the heuristic algorithm.
     CMP_PROPERTY(GetPreference(), "kPreference");
 
+    // Update the resource_constrained of the candidate before any
+    // target specific rule is applied so rules can access the
+    // update-to-date value.
+    UpdateCandidateResourceConstrained(a, an);
+    UpdateCandidateResourceConstrained(b, bn);
+
     const SchedulerConfig& config = sched_state_.config;
     if (config.force_delay_over_memory_pressure) {
       if (ABSL_PREDICT_FALSE(has_early_target_scheduling_rule_)) {
@@ -1554,14 +1560,13 @@ class ReadySetLt {
   static bool IsNop(const HloGraphNode& gn) {
     return IsNopInstruction(gn.GetOpcode(), gn.GetInstr());
   }
-  bool IsResourceConstrained(DefaultSchedulerCore::ScheduleCandidate& cand,
-                             const HloGraphNode* cand_node) const {
-    if (cand.has_resource_constrained) {
-      return cand.resource_constrained;
-    }
+
+  void UpdateCandidateResourceConstrained(
+      DefaultSchedulerCore::ScheduleCandidate& cand,
+      const HloGraphNode* cand_node) const {
     if (cand_node->GetResources().empty()) {
       cand.set_resource_constrained(false);
-      return cand.resource_constrained;
+      return;
     }
     cand.set_resource_constrained(false);
     for (const auto& [resource_type, usage_type] : cand_node->GetResources()) {
@@ -1573,9 +1578,16 @@ class ReadySetLt {
           res_it != sched_state_.resource_users_in_queue.end() &&
           res_it->second > 0);
       if (cand.resource_constrained) {
-        return cand.resource_constrained;
+        return;
       }
     }
+  }
+  bool IsResourceConstrained(DefaultSchedulerCore::ScheduleCandidate& cand,
+                             const HloGraphNode* cand_node) const {
+    if (cand.has_resource_constrained) {
+      return cand.resource_constrained;
+    }
+    UpdateCandidateResourceConstrained(cand, cand_node);
     return cand.resource_constrained;
   }
   HloGraphNode::TimeCost PastDueCyclesForNonextendableResource(
