@@ -22,23 +22,26 @@ table Buffer {
   weights_id: uint64;
   bias_id: uint64;
 
-  /// The buffer data is appended after the flatbuffer to bypass 2GB file size
-  /// limitation. The offset is calculated relative to the base offset.
-  /// (i.e. beginning of the file + base_offset).
+  // The buffer data is appended after the flatbuffer to bypass 2GB file size
+  // limitation. The offset is calculated relative to the base offset.
+  // (i.e. beginning of the file + base_offset).
   offset: uint64;
 
-  /// Size of the buffer in bytes.
+  // Size of the buffer in bytes.
   size: uint64;
 }
 
 table BufferList {
-  /// A list of packing fingerprints. All of these need to be checked when
-  /// loading the cache to ensure that it is compatible.
+  // A list of packing fingerprints. All of these need to be checked when
+  // loading the cache to ensure that it is compatible.
   fingerprints: [uint64];
-  /// A list of buffers.
+  // XNNPack's caching strategy version. This may change when caching is
+  // enabled for operations for instance.
+  caching_strategy_version: uint64;
+  // A list of buffers.
   buffers: [Buffer];
-  /// Defines the base offset for the data in the file. That offset
-  /// may be needed to guarantee data alignment.
+  // Defines the base offset for the data in the file. That offset
+  // may be needed to guarantee data alignment.
   base_offset: uint64;
 }
 
